@@ -2,23 +2,38 @@ import { useState, useEffect } from 'react';
 import { TrendingUp, DollarSign, AlertCircle } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
+import NoCredentialsMessage from '../components/common/NoCredentialsMessage';
+import authService from '../services/authService';
 
 const Costs = () => {
   const [loading, setLoading] = useState(true);
+  const [noCredentials, setNoCredentials] = useState(false);
   const [costs, setCosts] = useState({
     aws: { daily: 0, weekly: 0, monthly: 0 },
     azure: { daily: 0, weekly: 0, monthly: 0 }
   });
 
   useEffect(() => {
-    // Simulate cost loading
-    setTimeout(() => {
-      setCosts({
-        aws: { daily: 45.23, weekly: 316.61, monthly: 1350.90 },
-        azure: { daily: 32.50, weekly: 227.50, monthly: 975.00 }
-      });
-      setLoading(false);
-    }, 1000);
+    const loadCosts = async () => {
+      try {
+        const credentials = await authService.listCredentials();
+        if (!credentials || credentials.length === 0) {
+          setNoCredentials(true);
+          setLoading(false);
+          return;
+        }
+        // Simulate cost loading (replace with real API when available)
+        setCosts({
+          aws: { daily: 45.23, weekly: 316.61, monthly: 1350.90 },
+          azure: { daily: 32.50, weekly: 227.50, monthly: 975.00 }
+        });
+      } catch {
+        setNoCredentials(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadCosts();
   }, []);
 
   const CostCard = ({ title, daily, weekly, monthly }) => (
@@ -47,6 +62,10 @@ const Costs = () => {
         <LoadingSpinner text="Carregando dados de custos..." />
       </Layout>
     );
+  }
+
+  if (noCredentials) {
+    return <Layout><NoCredentialsMessage provider="costs" /></Layout>;
   }
 
   const totalDaily = costs.aws.daily + costs.azure.daily;

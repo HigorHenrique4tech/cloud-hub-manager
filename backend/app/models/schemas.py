@@ -1,6 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr, field_validator
 from typing import List, Optional, Dict
 from datetime import datetime
+from uuid import UUID
 
 
 class EC2Instance(BaseModel):
@@ -36,6 +37,8 @@ class ConnectionTestResponse(BaseModel):
     success: bool
     message: Optional[str] = None
     region: Optional[str] = None
+    subscription_id: Optional[str] = None
+    subscriptions_count: Optional[int] = None
     error: Optional[str] = None
 
 
@@ -74,3 +77,57 @@ class AzureResourceGroupListResponse(BaseModel):
     total_resource_groups: int
     resource_groups: List[AzureResourceGroup]
     error: Optional[str] = None
+
+
+# ── Auth & User schemas ──────────────────────────────────────────────────────
+
+class UserCreate(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+
+    @field_validator('password')
+    @classmethod
+    def password_max_length(cls, v: str) -> str:
+        if len(v.encode('utf-8')) > 72:
+            raise ValueError('A senha deve ter no máximo 72 caracteres')
+        return v
+
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: UUID
+    email: str
+    name: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: UserResponse
+
+
+# ── Cloud Credential schemas ─────────────────────────────────────────────────
+
+class CloudCredentialCreate(BaseModel):
+    provider: str  # 'aws' or 'azure'
+    label: str = "default"
+    data: Dict  # raw credential fields (will be encrypted server-side)
+
+
+class CloudCredentialResponse(BaseModel):
+    id: UUID
+    provider: str
+    label: str
+    is_active: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}

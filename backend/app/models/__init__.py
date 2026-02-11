@@ -6,8 +6,15 @@ from .schemas import (
     AzureVM,
     AzureVMListResponse,
     AzureResourceGroup,
-    AzureResourceGroupListResponse
+    AzureResourceGroupListResponse,
+    UserCreate,
+    UserLogin,
+    UserResponse,
+    TokenResponse,
+    CloudCredentialCreate,
+    CloudCredentialResponse,
 )
+from . import db_models  # noqa: F401 - ensures ORM models are registered
 
 __all__ = [
     "EC2Instance",
@@ -17,5 +24,12 @@ __all__ = [
     "AzureVM",
     "AzureVMListResponse",
     "AzureResourceGroup",
-    "AzureResourceGroupListResponse"
+    "AzureResourceGroupListResponse",
+    "UserCreate",
+    "UserLogin",
+    "UserResponse",
+    "TokenResponse",
+    "CloudCredentialCreate",
+    "CloudCredentialResponse",
+    "db_models",
 ]

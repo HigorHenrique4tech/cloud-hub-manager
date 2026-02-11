@@ -146,6 +146,44 @@ class AzureService:
                 'resource_groups': []
             }
     
+    async def start_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+        """Start an Azure Virtual Machine"""
+        try:
+            poller = self.compute_client.virtual_machines.begin_start(
+                resource_group_name=resource_group,
+                vm_name=vm_name
+            )
+            poller.result()
+            return {
+                'success': True,
+                'message': f'VM {vm_name} iniciada com sucesso'
+            }
+        except Exception as e:
+            logger.error(f"Error starting VM {vm_name}: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
+    async def stop_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+        """Stop (deallocate) an Azure Virtual Machine"""
+        try:
+            poller = self.compute_client.virtual_machines.begin_deallocate(
+                resource_group_name=resource_group,
+                vm_name=vm_name
+            )
+            poller.result()
+            return {
+                'success': True,
+                'message': f'VM {vm_name} parada com sucesso'
+            }
+        except Exception as e:
+            logger.error(f"Error stopping VM {vm_name}: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+
     async def test_connection(self) -> Dict:
         """Test Azure connection and credentials"""
         try:

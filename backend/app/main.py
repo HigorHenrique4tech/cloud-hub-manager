@@ -6,6 +6,7 @@ import logging
 from app.core import settings
 from app.api import api_router
 from app.models import HealthResponse
+from app.database import create_tables
 
 # Configure logging
 logging.basicConfig(
@@ -21,7 +22,8 @@ app = FastAPI(
     version=settings.APP_VERSION,
     description="Hub centralizado para gerenciamento multi-cloud e infraestrutura",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    openapi_url="/openapi.json"
 )
 
 # Configure CORS
@@ -63,6 +65,8 @@ async def startup_event():
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Debug mode: {settings.DEBUG}")
     logger.info(f"AWS Region: {settings.AWS_DEFAULT_REGION}")
+    create_tables()
+    logger.info("Database tables created/verified")
 
 
 @app.on_event("shutdown")

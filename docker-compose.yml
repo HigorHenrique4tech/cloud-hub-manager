@@ -1,6 +1,26 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudhub-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudhub_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudhub_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cloudhub-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudhub} -d ${POSTGRES_DB:-cloudhub_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -16,12 +36,18 @@ services:
       - AZURE_TENANT_ID=${AZURE_TENANT_ID}
       - AZURE_CLIENT_ID=${AZURE_CLIENT_ID}
       - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudhub}:${POSTGRES_PASSWORD:-cloudhub_pass}@postgres:5432/${POSTGRES_DB:-cloudhub_db}
+      - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - DEBUG=${DEBUG:-True}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     volumes:
       - ./backend:/app
     networks:
       - cloudhub-network
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -45,3 +71,6 @@ services:
 networks:
   cloudhub-network:
     driver: bridge
+
+volumes:
+  postgres_data:

@@ -5,12 +5,14 @@ import AzureVMTable from '../components/resources/azurevmtable';
 import ResourceCard from '../components/resources/resourcecard';
 import LoadingSpinner from '../components/common/loadingspinner';
 import ErrorMessage from '../components/common/errormessage';
+import NoCredentialsMessage from '../components/common/NoCredentialsMessage';
 import azureService from '../services/azureservices';
 
 const Azure = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const [noCredentials, setNoCredentials] = useState(false);
   const [vms, setVms] = useState([]);
   const [viewType, setViewType] = useState('table'); // 'table' or 'grid'
 
@@ -22,12 +24,17 @@ const Azure = () => {
         setLoading(true);
       }
       setError(null);
+      setNoCredentials(false);
 
       const data = await azureService.listVMs();
       setVms(data.virtual_machines || []);
     } catch (err) {
       console.error('Azure error:', err);
-      setError(err.message || 'Erro ao carregar VMs Azure');
+      if (err.response?.status === 400) {
+        setNoCredentials(true);
+      } else {
+        setError(err.response?.data?.detail || err.message || 'Erro ao carregar VMs Azure');
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -72,6 +79,10 @@ const Azure = () => {
         <LoadingSpinner text="Carregando VMs Azure..." />
       </Layout>
     );
+  }
+
+  if (noCredentials) {
+    return <Layout><NoCredentialsMessage provider="azure" /></Layout>;
   }
 
   if (error && vms.length === 0) {

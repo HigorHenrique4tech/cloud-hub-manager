@@ -28,10 +28,12 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
-      // Server responded with error
       console.error('API Error:', error.response.data);
+      if (error.response.status === 401) {
+        localStorage.removeItem('token');
+        window.location.href = '/login';
+      }
     } else if (error.request) {
-      // No response received
       console.error('Network Error:', error.message);
     }
     return Promise.reject(error);
