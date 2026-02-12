@@ -16,6 +16,19 @@ const authService = {
     return data;
   },
 
+  refreshToken: async (refreshToken) => {
+    const { data } = await api.post('/auth/refresh', { refresh_token: refreshToken });
+    return data;
+  },
+
+  logoutServer: async (refreshToken) => {
+    try {
+      await api.post('/auth/logout', { refresh_token: refreshToken });
+    } catch {
+      // Ignore — token may already be expired/revoked
+    }
+  },
+
   listCredentials: async () => {
     const { data } = await api.get('/users/credentials');
     return data;

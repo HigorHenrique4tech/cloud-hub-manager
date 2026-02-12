@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
 import SearchBar from '../common/SearchBar';
+import OrgSwitcher from './OrgSwitcher';
 import alertService from '../../services/alertService';
 
 const Header = () => {
@@ -57,6 +58,9 @@ const Header = () => {
               Cloud Hub Manager
             </span>
           </div>
+
+          {/* Org switcher */}
+          <OrgSwitcher />
 
           {/* Search bar — fills available space */}
           <div className="flex-1 flex justify-center">

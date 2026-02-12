@@ -47,6 +47,7 @@ build/
 .env.*.local
 *.key
 *.pem
+PROJETO.md
 
 # Docker
 .dockerignore

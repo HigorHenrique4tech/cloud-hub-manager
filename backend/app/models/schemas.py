@@ -104,6 +104,7 @@ class UserResponse(BaseModel):
     email: str
     name: str
     is_active: bool
+    default_org_id: Optional[UUID] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -111,6 +112,7 @@ class UserResponse(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     user: UserResponse
 

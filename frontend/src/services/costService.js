@@ -1,4 +1,4 @@
-import api from './api';
+import api, { wsUrl } from './api';
 
 export const costService = {
   /**
@@ -9,7 +9,7 @@ export const costService = {
    * @param {string} granularity  'DAILY' | 'MONTHLY'
    */
   getCosts: async (provider, startDate, endDate, granularity = 'DAILY') => {
-    const endpoint = provider === 'aws' ? '/aws/costs' : '/azure/costs';
+    const endpoint = provider === 'aws' ? wsUrl('/aws/costs') : wsUrl('/azure/costs');
     const params = { start_date: startDate, end_date: endDate, granularity };
     const response = await api.get(endpoint, { params });
     return response.data;
@@ -20,9 +20,10 @@ export const costService = {
    * Returns null for a provider if the call fails (no credentials).
    */
   getCombinedCosts: async (startDate, endDate, granularity = 'DAILY') => {
+    const params = { start_date: startDate, end_date: endDate, granularity };
     const [awsResult, azureResult] = await Promise.allSettled([
-      api.get('/aws/costs', { params: { start_date: startDate, end_date: endDate, granularity } }),
-      api.get('/azure/costs', { params: { start_date: startDate, end_date: endDate, granularity } }),
+      api.get(wsUrl('/aws/costs'), { params }),
+      api.get(wsUrl('/azure/costs'), { params }),
     ]);
 
     const aws = awsResult.status === 'fulfilled' ? awsResult.value.data : null;

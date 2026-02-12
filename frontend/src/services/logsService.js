@@ -1,4 +1,4 @@
-import api from './api';
+import api, { wsUrl } from './api';
 
 export const logsService = {
   getLogs: async ({ limit = 50, offset = 0, action = '', provider = '', startDate = '', endDate = '' } = {}) => {
@@ -9,7 +9,7 @@ export const logsService = {
     if (provider)  params.set('provider', provider);
     if (startDate) params.set('start_date', startDate);
     if (endDate)   params.set('end_date', endDate);
-    return (await api.get(`/logs?${params.toString()}`)).data;
+    return (await api.get(`${wsUrl('/logs')}?${params.toString()}`)).data;
   },
 };
 

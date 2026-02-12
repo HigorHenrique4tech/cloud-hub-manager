@@ -16,6 +16,7 @@ export const AuthProvider = ({ children }) => {
           setUser(me);
         } catch {
           localStorage.removeItem('token');
+          localStorage.removeItem('refreshToken');
           setToken(null);
         }
       }
@@ -27,6 +28,9 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     const data = await authService.login(email, password);
     localStorage.setItem('token', data.access_token);
+    if (data.refresh_token) {
+      localStorage.setItem('refreshToken', data.refresh_token);
+    }
     setToken(data.access_token);
     setUser(data.user);
     return data;
@@ -35,13 +39,23 @@ export const AuthProvider = ({ children }) => {
   const register = async (name, email, password) => {
     const data = await authService.register(name, email, password);
     localStorage.setItem('token', data.access_token);
+    if (data.refresh_token) {
+      localStorage.setItem('refreshToken', data.refresh_token);
+    }
     setToken(data.access_token);
     setUser(data.user);
     return data;
   };
 
-  const logout = () => {
+  const logout = async () => {
+    const rt = localStorage.getItem('refreshToken');
+    if (rt) {
+      await authService.logoutServer(rt);
+    }
     localStorage.removeItem('token');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('selectedOrg');
+    localStorage.removeItem('selectedWorkspace');
     setToken(null);
     setUser(null);
   };
