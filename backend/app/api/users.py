@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models.db_models import User, CloudCredential
 from app.models.schemas import CloudCredentialCreate, CloudCredentialResponse
 from app.services.auth_service import encrypt_credential, decrypt_credential
+from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -44,6 +45,11 @@ def add_credential(
     db.add(cred)
     db.commit()
     db.refresh(cred)
+
+    log_activity(db, current_user, 'credential.add', 'Credential',
+                 resource_id=str(cred.id), resource_name=f"{payload.provider} / {payload.label}",
+                 provider=payload.provider)
+
     return CloudCredentialResponse.model_validate(cred)
 
 
@@ -62,8 +68,13 @@ def delete_credential(
     if not cred:
         raise HTTPException(status_code=404, detail="Credencial não encontrada")
 
+    label = f"{cred.provider} / {cred.label}"
+    provider = cred.provider
     db.delete(cred)
     db.commit()
+
+    log_activity(db, current_user, 'credential.remove', 'Credential',
+                 resource_id=credential_id, resource_name=label, provider=provider)
 
 
 @router.get("/credentials/{credential_id}/data")

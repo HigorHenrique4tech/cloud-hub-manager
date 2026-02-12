@@ -1,6 +1,6 @@
 # Cloud Hub Manager
 
-Plataforma centralizada para gerenciar recursos multi-cloud em um único lugar, com autenticação de usuários e credenciais por conta.
+Plataforma centralizada para gerenciar recursos multi-cloud em um único lugar, com autenticação de usuários, credenciais por conta e auditoria de atividades.
 
 ## Visão Geral
 
@@ -14,14 +14,16 @@ O Cloud Hub Manager permite que times de infraestrutura visualizem e operem recu
 |--------|-----------|
 | Backend | FastAPI + Python 3.11 |
 | Banco de dados | PostgreSQL 16 |
-| ORM | SQLAlchemy 2.0 + Alembic |
+| ORM | SQLAlchemy 2.0 |
 | Autenticação | JWT (python-jose) + bcrypt |
 | Criptografia de credenciais | Fernet (cryptography) |
 | AWS SDK | boto3 |
-| Azure SDK | azure-identity + azure-mgmt-compute |
+| Azure SDK | azure-identity + azure-mgmt-compute + azure-mgmt-costmanagement |
 | Frontend | React 18 + Vite |
 | Estilização | Tailwind CSS |
+| Gráficos | Recharts |
 | Ícones | lucide-react |
+| Queries assíncronas | @tanstack/react-query |
 | Containerização | Docker + Docker Compose |
 
 ---
@@ -61,6 +63,32 @@ cloud_credentials
 ├── label
 ├── encrypted_data  ← Fernet-encrypted JSON
 └── created_at
+
+cost_alerts
+├── id (UUID, PK)
+├── user_id (FK → users)
+├── name, provider, service
+├── threshold_type ('fixed' | 'percentage')
+├── threshold_value, period ('daily' | 'monthly')
+└── is_active
+
+alert_events
+├── id (UUID, PK)
+├── alert_id (FK → cost_alerts)
+├── triggered_at, current_value, threshold_value
+├── message
+└── is_read
+
+activity_logs
+├── id (UUID, PK)
+├── user_id (FK → users, SET NULL)
+├── user_name, user_email  ← denormalizados
+├── action                 ← 'ec2.start' | 'azurevm.stop' | 'auth.login' | ...
+├── resource_type, resource_id, resource_name
+├── provider  ('aws' | 'azure' | 'system')
+├── status    ('success' | 'error')
+├── detail
+└── created_at
 ```
 
 As credenciais de cloud são armazenadas criptografadas por usuário. Cada requisição às APIs de cloud usa somente as credenciais do usuário autenticado.
@@ -76,16 +104,21 @@ cloud-hub-manager/
 │   │   ├── api/
 │   │   │   ├── auth.py          # POST /auth/register, /login, GET /auth/me
 │   │   │   ├── users.py         # GET/POST/DELETE /users/credentials
-│   │   │   ├── aws.py           # GET /aws/ec2, start, stop
-│   │   │   └── azure.py         # GET /azure/vms, start, stop
+│   │   │   ├── aws.py           # EC2, S3, RDS, Lambda, VPC, costs
+│   │   │   ├── azure.py         # VMs, storage, vnets, databases, app services, costs
+│   │   │   ├── alerts.py        # CRUD alertas de custo + avaliação
+│   │   │   └── logs.py          # GET /logs (auditoria)
 │   │   ├── core/
 │   │   │   ├── config.py        # Settings (env vars)
 │   │   │   └── dependencies.py  # get_current_user (JWT guard)
 │   │   ├── models/
-│   │   │   ├── db_models.py     # SQLAlchemy ORM (User, CloudCredential)
+│   │   │   ├── db_models.py     # SQLAlchemy ORM (User, CloudCredential, CostAlert, AlertEvent, ActivityLog)
 │   │   │   └── schemas.py       # Pydantic schemas
 │   │   ├── services/
-│   │   │   └── auth_service.py  # JWT, bcrypt, Fernet
+│   │   │   ├── auth_service.py  # JWT, bcrypt, Fernet
+│   │   │   ├── aws_service.py   # boto3: EC2, S3, RDS, Lambda, VPC, Cost Explorer
+│   │   │   ├── azure_service.py # Azure SDK: VMs, storage, vnets, DB, App Services, Cost Management
+│   │   │   └── log_service.py   # log_activity() — persistência de auditoria (non-fatal)
 │   │   ├── database.py          # Engine, SessionLocal, create_tables
 │   │   └── main.py
 │   ├── Dockerfile
@@ -93,26 +126,36 @@ cloud-hub-manager/
 ├── frontend/
 │   └── src/
 │       ├── contexts/
-│       │   └── AuthContext.jsx      # Estado global de autenticação
+│       │   ├── AuthContext.jsx      # Estado global de autenticação
+│       │   └── ThemeContext.jsx     # Dark/light mode
 │       ├── components/
 │       │   ├── common/
-│       │   │   ├── ProtectedRoute.jsx    # Guard de rota
+│       │   │   ├── ProtectedRoute.jsx
 │       │   │   └── NoCredentialsMessage.jsx
 │       │   ├── layout/
+│       │   │   ├── layout.jsx
+│       │   │   ├── sidebar.jsx
+│       │   │   ├── header.jsx           # Bell badge com alertas não lidos
+│       │   │   ├── AwsSecondarySidebar.jsx
+│       │   │   └── AzureSecondarySidebar.jsx
 │       │   └── resources/
 │       ├── pages/
-│       │   ├── login.jsx        # Tela de login com animação SVG
+│       │   ├── login.jsx
 │       │   ├── register.jsx
-│       │   ├── dashboard.jsx
-│       │   ├── AWS.jsx          # Listagem e controle de EC2
-│       │   ├── Azure.jsx        # Listagem e controle de VMs Azure
-│       │   ├── costs.jsx        # Análise de custos (WIP)
-│       │   └── settings.jsx     # Gerenciar credenciais por usuário
+│       │   ├── dashboard.jsx        # Cost Forecast, Instâncias, Atividades Recentes (logs reais)
+│       │   ├── costs.jsx            # Gráficos Recharts + alertas de custo
+│       │   ├── logs.jsx             # Auditoria com filtros e paginação
+│       │   ├── settings.jsx
+│       │   ├── aws/                 # Overview, EC2, S3, RDS, Lambda, VPC
+│       │   └── azure/               # Overview, VMs, Storage, VNets, Databases, App Services
 │       └── services/
-│           ├── api.js           # Axios + interceptor 401
-│           ├── authService.js   # login, register, credentials CRUD
-│           ├── awsservices.js
-│           └── azureservices.js
+│           ├── api.js               # Axios + interceptor 401
+│           ├── authService.js       # login, register, credentials CRUD
+│           ├── awsservices.js       # EC2, S3, RDS, Lambda, VPC, costs, overview
+│           ├── azureservices.js     # VMs, storage, vnets, databases, app services, costs
+│           ├── costService.js       # Abstração multi-cloud de custos
+│           ├── alertService.js      # CRUD alertas + eventos
+│           └── logsService.js       # GET /logs com filtros
 ├── docker-compose.yml
 └── README.md
 ```
@@ -169,7 +212,7 @@ docker-compose up -d --build
 1. Acesse http://localhost:3000 → você será redirecionado para `/login`
 2. Clique em **Criar conta** e cadastre um usuário
 3. Vá em **Configurações** e adicione suas credenciais AWS e/ou Azure
-4. Navegue para as abas **AWS** ou **Azure** para ver seus recursos
+4. Navegue pelas abas para gerenciar seus recursos
 
 ---
 
@@ -190,59 +233,87 @@ docker-compose up -d --build
 - [x] Mensagem de orientação quando nenhuma credencial está cadastrada
 
 ### AWS
-- [x] Listagem de instâncias EC2
-- [x] Iniciar instância
-- [x] Parar instância
-- [x] Visualização em tabela e grade
+- [x] Overview com contagens por serviço
+- [x] EC2 — listagem, iniciar, parar instâncias
+- [x] S3 — listagem de buckets
+- [x] RDS — listagem de instâncias de banco
+- [x] Lambda — listagem de funções serverless
+- [x] VPC — listagem de redes
+- [x] Custos via AWS Cost Explorer API
+- [x] Sidebar secundária com collapse/expand
 
 ### Azure
-- [x] Listagem de VMs
-- [x] Iniciar VM
-- [x] Parar VM (desalocação)
-- [x] Visualização em tabela e grade
+- [x] Overview com contagens por serviço
+- [x] VMs — listagem, iniciar, parar (desalocação)
+- [x] Storage Accounts — listagem
+- [x] VNets — listagem de redes virtuais
+- [x] SQL Databases — listagem de servidores e bancos
+- [x] App Services — listagem, iniciar, parar
+- [x] Custos via Azure Cost Management API
+- [x] Sidebar secundária com collapse/expand
+
+### Dashboard
+- [x] Stat cards (total VMs, em execução, paradas, clouds)
+- [x] Tabs AWS / Azure com contagens
+- [x] Cost Forecast — gráfico LineChart 30 dias (lazy loading)
+- [x] Card de instâncias compacto com link "Ver todas"
+- [x] Atividades Recentes — alimentado por logs reais de auditoria
+
+### Análise de Custos (`/costs`)
+- [x] Seletor de período (30d / 90d / 6m / 1 ano)
+- [x] Métricas: total, crescimento %, maior serviço, projeção fim do mês
+- [x] LineChart — evolução diária AWS + Azure + Total
+- [x] BarChart — custos por serviço (top 8)
+- [x] PieChart — distribuição AWS vs Azure
+- [x] Export CSV e PDF
+
+### Alertas de Custo
+- [x] Criar/editar/excluir alertas por provedor, serviço e threshold
+- [x] Alertas do tipo valor fixo ou percentual
+- [x] Badge de notificações no header com contagem não lida
+- [x] Dropdown com últimos 5 eventos não lidos
+- [x] Histórico de eventos disparados
+- [x] Marcar como lido / marcar todos como lidos
+
+### Logs de Auditoria (`/logs`)
+- [x] Registro automático de todas as ações relevantes:
+  - Login e cadastro
+  - Adição e remoção de credenciais
+  - Iniciar/parar EC2, VMs Azure e App Services
+  - Criação e exclusão de alertas
+- [x] Página `/logs` com tabela filtrável (ação, provedor, período)
+- [x] Paginação por offset
+- [x] Logs preservados mesmo após exclusão de usuário
 
 ### Interface
+- [x] Dark mode (toggle no header)
 - [x] Layout responsivo com sidebar
 - [x] Tela de login com animação SVG (nós flutuantes AWS/Azure)
-- [x] Dashboard com resumo de recursos
+- [x] Busca local em todas as tabelas de recursos
+- [x] Visualização em tabela e grade nos painéis de recursos
 - [x] Indicador de carregamento e atualização
 - [x] Tratamento de erros com mensagens amigáveis
 
 ---
 
-## Roadmap
+## Permissões Necessárias nas Clouds
 
-### Fase 2 — Múltiplas credenciais e regiões
-- [ ] Seletor de credencial ativa por página (quando o usuário tem mais de uma)
-- [ ] Suporte a múltiplas regiões AWS simultâneas
-- [ ] Suporte a múltiplas subscriptions Azure simultâneas
+### AWS (IAM)
 
-### Fase 3 — Mais serviços AWS
-- [ ] S3 — listagem de buckets e objetos
-- [ ] RDS — instâncias de banco de dados
-- [ ] Lambda — funções serverless
-- [ ] VPC — redes e sub-redes
+```
+ec2:DescribeInstances, ec2:StartInstances, ec2:StopInstances
+ec2:DescribeVpcs, ec2:DescribeSubnets
+s3:ListAllMyBuckets, s3:GetBucketLocation
+rds:DescribeDBInstances
+lambda:ListFunctions
+ce:GetCostAndUsage
+```
 
-### Fase 4 — Custos reais
-- [ ] Integração com AWS Cost Explorer API
-- [ ] Integração com Azure Cost Management API
-- [ ] Gráficos de evolução de gastos (Recharts)
-- [ ] Alertas de custo por threshold
+### Azure (RBAC)
 
-### Fase 5 — Alertas e Notificações
-- [ ] Alertas de instâncias paradas/com erro
-- [ ] Notificações por e-mail ou webhook
-- [ ] Histórico de eventos por recurso
-
-### Fase 6 — Expansão de provedores
-- [ ] Google Cloud Platform (GCP) — Compute Engine
-- [ ] Oracle Cloud Infrastructure (OCI)
-- [ ] Firewalls de borda (pfSense, FortiGate)
-
-### Fase 7 — Observabilidade
-- [ ] Métricas de CPU/memória por instância
-- [ ] Logs centralizados
-- [ ] Status de saúde dos serviços
+- **Reader** — para listar recursos (VMs, Storage, VNets, Databases, App Services)
+- **Contributor** ou **Virtual Machine Contributor** — para start/stop de VMs e App Services
+- **Cost Management Reader** — para consultar custos via Cost Management API
 
 ---
 
@@ -261,6 +332,19 @@ docker-compose up -d --build
 | `LOG_LEVEL` | Nível de log | `INFO` |
 
 > **Produção**: gere o `SECRET_KEY` com `openssl rand -hex 32` e defina `DEBUG=False`.
+
+---
+
+## Roadmap
+
+### Próximas Funcionalidades
+- [ ] Suporte a múltiplas regiões AWS simultâneas
+- [ ] Suporte a múltiplas subscriptions Azure simultâneas
+- [ ] Alertas de instâncias paradas/com erro
+- [ ] Notificações por e-mail ou webhook
+- [ ] Métricas de CPU/memória por instância (CloudWatch / Azure Monitor)
+- [ ] Google Cloud Platform (GCP) — Compute Engine
+- [ ] Oracle Cloud Infrastructure (OCI)
 
 ---
 

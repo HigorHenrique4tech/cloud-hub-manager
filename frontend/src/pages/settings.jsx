@@ -35,35 +35,35 @@ const CredentialForm = ({ provider, onSave, onCancel }) => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-3">
+    <form onSubmit={handleSubmit} className="mt-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600 space-y-3">
       {error && <p className="text-red-600 text-sm">{error}</p>}
 
       <div>
-        <label className="block text-xs font-medium text-gray-600 mb-1">Label</label>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Label</label>
         <input
           type="text"
           value={label}
           onChange={(e) => setLabel(e.target.value)}
-          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary"
+          className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-primary focus:border-primary"
         />
       </div>
 
       {isAws ? (
         <>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Access Key ID</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Access Key ID</label>
             <input type="password" name="access_key_id" value={fields.access_key_id} onChange={handleChange} required
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Secret Access Key</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Secret Access Key</label>
             <input type="password" name="secret_access_key" value={fields.secret_access_key} onChange={handleChange} required
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Região</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Região</label>
             <select name="region" value={fields.region} onChange={handleChange}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary">
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-primary focus:border-primary">
               <option value="us-east-1">US East (N. Virginia)</option>
               <option value="us-west-2">US West (Oregon)</option>
               <option value="eu-west-1">EU (Ireland)</option>
@@ -75,24 +75,24 @@ const CredentialForm = ({ provider, onSave, onCancel }) => {
       ) : (
         <>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Subscription ID</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Subscription ID</label>
             <input type="text" name="subscription_id" value={fields.subscription_id} onChange={handleChange} required
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Tenant ID</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Tenant ID</label>
             <input type="password" name="tenant_id" value={fields.tenant_id} onChange={handleChange} required
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Client ID</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Client ID</label>
             <input type="password" name="client_id" value={fields.client_id} onChange={handleChange} required
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Client Secret</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Client Secret</label>
             <input type="password" name="client_secret" value={fields.client_secret} onChange={handleChange} required
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100 rounded-lg focus:outline-none focus:ring-primary focus:border-primary" />
           </div>
         </>
       )}
@@ -103,7 +103,7 @@ const CredentialForm = ({ provider, onSave, onCancel }) => {
           {saving ? 'Salvando...' : 'Salvar'}
         </button>
         <button type="button" onClick={onCancel}
-          className="px-4 py-2 text-sm border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50">
+          className="px-4 py-2 text-sm border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-600">
           Cancelar
         </button>
       </div>
@@ -131,7 +131,7 @@ const CredentialCard = ({ provider, title, credentials, onRefresh }) => {
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-primary text-white rounded-lg hover:bg-primary-dark"
@@ -145,9 +145,9 @@ const CredentialCard = ({ provider, title, credentials, onRefresh }) => {
       ) : (
         <ul className="space-y-2">
           {filtered.map((cred) => (
-            <li key={cred.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+            <li key={cred.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700 rounded-lg border border-gray-200 dark:border-gray-600">
               <div>
-                <span className="text-sm font-medium text-gray-800">{cred.label}</span>
+                <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{cred.label}</span>
                 <span className="ml-2 text-xs text-gray-400">
                   adicionada {new Date(cred.created_at).toLocaleDateString('pt-BR')}
                 </span>
@@ -207,12 +207,12 @@ const Settings = () => {
     <Layout>
       <div className="mb-6 flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Configurações</h1>
-          <p className="text-gray-600">Gerencie as configurações do Cloud Hub Manager</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Configurações</h1>
+          <p className="text-gray-600 dark:text-gray-400">Gerencie as configurações do Cloud Hub Manager</p>
         </div>
         <button
           onClick={handleLogout}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm"
+          className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm"
         >
           <LogOut className="w-4 h-4" />
           Sair
@@ -221,14 +221,14 @@ const Settings = () => {
 
       {/* User info */}
       <div className="card mb-6">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Perfil</h2>
+        <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-4">Perfil</h2>
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-full bg-primary flex items-center justify-center text-white font-bold text-lg">
             {user?.name?.[0]?.toUpperCase() ?? 'U'}
           </div>
           <div>
-            <p className="font-medium text-gray-900">{user?.name}</p>
-            <p className="text-sm text-gray-500">{user?.email}</p>
+            <p className="font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400">{user?.email}</p>
           </div>
         </div>
       </div>
@@ -258,16 +258,16 @@ const Settings = () => {
       </div>
 
       {/* Security note */}
-      <div className="card bg-yellow-50 border border-yellow-200">
+      <div className="card bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
         <div className="flex mb-3">
-          <AlertCircle className="w-5 h-5 text-yellow-600 mr-3 flex-shrink-0" />
-          <h2 className="text-xl font-semibold text-yellow-900">Segurança</h2>
+          <AlertCircle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 mr-3 flex-shrink-0" />
+          <h2 className="text-xl font-semibold text-yellow-900 dark:text-yellow-200">Segurança</h2>
         </div>
-        <p className="text-sm text-yellow-800">
+        <p className="text-sm text-yellow-800 dark:text-yellow-300">
           <strong>Importante:</strong> Suas credenciais são armazenadas de forma criptografada no banco de dados.
           Nunca compartilhe suas chaves de acesso.
         </p>
-        <ul className="mt-3 space-y-1.5 text-sm text-yellow-800">
+        <ul className="mt-3 space-y-1.5 text-sm text-yellow-800 dark:text-yellow-300">
           <li>• Use credenciais com permissões limitadas (princípio de menor privilégio)</li>
           <li>• Revise regularmente as permissões de suas contas</li>
           <li>• Use autenticação multi-fator (MFA) nas suas contas cloud</li>

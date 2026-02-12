@@ -5,6 +5,7 @@ from app.database import get_db
 from app.models.db_models import User
 from app.models.schemas import UserCreate, UserLogin, UserResponse, TokenResponse
 from app.services.auth_service import hash_password, verify_password, create_access_token
+from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
@@ -29,6 +30,9 @@ def register(payload: UserCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(user)
 
+    log_activity(db, user, 'auth.register', 'User', resource_id=str(user.id),
+                 resource_name=user.email, provider='system')
+
     token = create_access_token(str(user.id))
     return TokenResponse(
         access_token=token,
@@ -46,6 +50,9 @@ def login(payload: UserLogin, db: Session = Depends(get_db)):
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email ou senha incorretos",
         )
+
+    log_activity(db, user, 'auth.login', 'User', resource_id=str(user.id),
+                 resource_name=user.email, provider='system')
 
     token = create_access_token(str(user.id))
     return TokenResponse(

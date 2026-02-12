@@ -1,29 +1,29 @@
 import api from './api';
 
 export const awsService = {
-  // Test connection
-  testConnection: async () => {
-    const response = await api.get('/aws/test-connection');
-    return response.data;
-  },
+  testConnection: async () => (await api.get('/aws/test-connection')).data,
 
-  // List EC2 instances
-  listEC2Instances: async () => {
-    const response = await api.get('/aws/ec2/instances');
-    return response.data;
-  },
+  // Overview
+  getOverview: async () => (await api.get('/aws/overview')).data,
 
-  // Start EC2 instance
-  startEC2Instance: async (instanceId) => {
-    const response = await api.post(`/aws/ec2/instances/${instanceId}/start`);
-    return response.data;
-  },
+  // EC2
+  listEC2Instances: async () => (await api.get('/aws/ec2/instances')).data,
+  startEC2Instance: async (instanceId) => (await api.post(`/aws/ec2/instances/${instanceId}/start`)).data,
+  stopEC2Instance: async (instanceId) => (await api.post(`/aws/ec2/instances/${instanceId}/stop`)).data,
+  listVPCs: async () => (await api.get('/aws/ec2/vpcs')).data,
 
-  // Stop EC2 instance
-  stopEC2Instance: async (instanceId) => {
-    const response = await api.post(`/aws/ec2/instances/${instanceId}/stop`);
-    return response.data;
-  }
+  // S3
+  listS3Buckets: async () => (await api.get('/aws/s3/buckets')).data,
+
+  // RDS
+  listRDSInstances: async () => (await api.get('/aws/rds/instances')).data,
+
+  // Lambda
+  listLambdaFunctions: async () => (await api.get('/aws/lambda/functions')).data,
+
+  // Costs
+  getCosts: async (startDate, endDate, granularity = 'DAILY') =>
+    (await api.get('/aws/costs', { params: { start_date: startDate, end_date: endDate, granularity } })).data,
 };
 
 export default awsService;

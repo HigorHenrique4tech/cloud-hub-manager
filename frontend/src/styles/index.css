@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
   }
 }
 
@@ -12,40 +12,64 @@
   .btn-primary {
     @apply bg-primary hover:bg-primary-dark text-white font-medium py-2 px-4 rounded-lg transition-colors;
   }
-  
+
   .btn-secondary {
-    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors;
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors
+           dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-100;
   }
-  
+
   .btn-success {
     @apply bg-success hover:bg-success-dark text-white font-medium py-2 px-4 rounded-lg transition-colors;
   }
-  
+
   .btn-danger {
     @apply bg-danger hover:bg-danger-dark text-white font-medium py-2 px-4 rounded-lg transition-colors;
   }
-  
+
   .card {
-    @apply bg-white rounded-lg shadow-md p-6;
+    @apply bg-white rounded-lg shadow-md p-6 dark:bg-gray-800;
   }
-  
+
   .badge {
     @apply px-3 py-1 rounded-full text-sm font-medium;
   }
-  
+
   .badge-success {
-    @apply badge bg-success-light text-success-dark;
+    @apply badge bg-success-light text-success-dark dark:bg-green-800 dark:text-green-100;
   }
-  
+
   .badge-warning {
-    @apply badge bg-warning-light text-warning-dark;
+    @apply badge bg-warning-light text-warning-dark dark:bg-yellow-800 dark:text-yellow-100;
   }
-  
+
   .badge-danger {
-    @apply badge bg-danger-light text-danger-dark;
+    @apply badge bg-danger-light text-danger-dark dark:bg-red-800 dark:text-red-100;
   }
-  
+
   .badge-gray {
-    @apply badge bg-gray-200 text-gray-700;
+    @apply badge bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300;
+  }
+
+  .input {
+    @apply block w-full rounded-lg border border-gray-300 bg-white px-3 py-2
+           text-sm text-gray-900 placeholder-gray-400
+           focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary
+           dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100
+           dark:placeholder-gray-400 dark:focus:border-primary;
+  }
+}
+
+@media print {
+  aside,
+  header,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
   }
 }
