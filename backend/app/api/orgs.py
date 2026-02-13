@@ -1,4 +1,6 @@
 import re
+import secrets
+from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Path
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -6,7 +8,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.models.db_models import (
-    User, Organization, OrganizationMember, Workspace,
+    User, Organization, OrganizationMember, Workspace, PendingInvitation,
 )
 from app.core.dependencies import (
     get_current_user, get_current_member, require_org_permission,
@@ -28,6 +30,10 @@ class OrgCreate(BaseModel):
 
 class OrgUpdate(BaseModel):
     name: Optional[str] = None
+
+
+class PlanUpdate(BaseModel):
+    plan_tier: str  # free | pro | enterprise
 
 
 class MemberInvite(BaseModel):
@@ -173,6 +179,32 @@ async def delete_org(
     return None
 
 
+# ── Plan ─────────────────────────────────────────────────────────────────────
+
+
+@router.put("/{org_slug}/plan")
+async def update_plan(
+    payload: PlanUpdate,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Update the organization's plan tier (owner/admin only)."""
+    valid_tiers = {"free", "pro", "enterprise"}
+    if payload.plan_tier not in valid_tiers:
+        raise HTTPException(status_code=400, detail=f"Plano inválido. Opções: {', '.join(valid_tiers)}")
+
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    org.plan_tier = payload.plan_tier
+    db.commit()
+    db.refresh(org)
+
+    log_activity(db, member.user, "org.plan.update", "Organization",
+                 resource_id=str(org.id), resource_name=org.name,
+                 detail=f"plan_tier={payload.plan_tier}")
+
+    return _org_to_dict(org, role=member.role)
+
+
 # ── Members ──────────────────────────────────────────────────────────────────
 
 
@@ -210,40 +242,80 @@ async def invite_member(
     member: MemberContext = Depends(require_org_permission("org.members.manage")),
     db: Session = Depends(get_db),
 ):
-    """Add a user to the organization by email."""
+    """Add a user to the organization by email, or create a pending invitation."""
     if payload.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Role inválida. Opções: {', '.join(VALID_ROLES)}")
 
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
 
-    existing = db.query(OrganizationMember).filter(
-        OrganizationMember.organization_id == member.organization_id,
-        OrganizationMember.user_id == user.id,
+    if user:
+        # User exists — add directly
+        existing = db.query(OrganizationMember).filter(
+            OrganizationMember.organization_id == member.organization_id,
+            OrganizationMember.user_id == user.id,
+        ).first()
+        if existing:
+            if existing.is_active:
+                raise HTTPException(status_code=409, detail="Usuário já é membro")
+            existing.is_active = True
+            existing.role = payload.role
+            existing.invited_by = member.user.id
+            db.commit()
+        else:
+            new_member = OrganizationMember(
+                organization_id=member.organization_id,
+                user_id=user.id,
+                role=payload.role,
+                invited_by=member.user.id,
+            )
+            db.add(new_member)
+            db.commit()
+
+        log_activity(db, member.user, "org.member.add", "OrganizationMember",
+                     resource_name=user.email, detail=f"role={payload.role}",
+                     provider="system")
+
+        return {"user_id": str(user.id), "email": user.email, "name": user.name, "role": payload.role, "status": "added"}
+
+    # User not found — create pending invitation
+    existing_invite = db.query(PendingInvitation).filter(
+        PendingInvitation.organization_id == member.organization_id,
+        PendingInvitation.email == payload.email,
+        PendingInvitation.accepted_at == None,
     ).first()
-    if existing:
-        if existing.is_active:
-            raise HTTPException(status_code=409, detail="Usuário já é membro")
-        existing.is_active = True
-        existing.role = payload.role
-        existing.invited_by = member.user.id
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(days=7)
+
+    if existing_invite:
+        existing_invite.token = token
+        existing_invite.expires_at = expires_at
+        existing_invite.role = payload.role
+        existing_invite.invited_by = member.user.id
         db.commit()
     else:
-        new_member = OrganizationMember(
+        invite = PendingInvitation(
             organization_id=member.organization_id,
-            user_id=user.id,
+            email=payload.email,
             role=payload.role,
+            token=token,
             invited_by=member.user.id,
+            expires_at=expires_at,
         )
-        db.add(new_member)
+        db.add(invite)
         db.commit()
 
-    log_activity(db, member.user, "org.member.add", "OrganizationMember",
-                 resource_name=user.email, detail=f"role={payload.role}",
+    log_activity(db, member.user, "org.member.invite", "PendingInvitation",
+                 resource_name=payload.email, detail=f"role={payload.role}",
                  provider="system")
 
-    return {"user_id": str(user.id), "email": user.email, "name": user.name, "role": payload.role}
+    return {
+        "email": payload.email,
+        "role": payload.role,
+        "status": "pending",
+        "invite_link": f"/invite/{token}",
+        "expires_at": expires_at.isoformat(),
+    }
 
 
 @router.put("/{org_slug}/members/{user_id}")
@@ -316,4 +388,58 @@ async def remove_member(
     log_activity(db, member.user, "org.member.remove", "OrganizationMember",
                  resource_id=user_id, provider="system")
 
+    return None
+
+
+# ── Invitations ─────────────────────────────────────────────────────────────
+
+
+@router.get("/{org_slug}/invitations")
+async def list_pending_invitations(
+    member: MemberContext = Depends(require_org_permission("org.members.view")),
+    db: Session = Depends(get_db),
+):
+    """List pending (unaccepted) invitations for this organization."""
+    invites = (
+        db.query(PendingInvitation)
+        .filter(
+            PendingInvitation.organization_id == member.organization_id,
+            PendingInvitation.accepted_at == None,
+        )
+        .order_by(PendingInvitation.created_at.desc())
+        .all()
+    )
+    now = datetime.utcnow()
+    result = []
+    for inv in invites:
+        inviter = db.query(User).filter(User.id == inv.invited_by).first() if inv.invited_by else None
+        result.append({
+            "id": str(inv.id),
+            "email": inv.email,
+            "role": inv.role,
+            "token": inv.token,
+            "invited_by_name": inviter.name if inviter else None,
+            "created_at": inv.created_at.isoformat(),
+            "expires_at": inv.expires_at.isoformat(),
+            "is_expired": inv.expires_at < now,
+        })
+    return {"invitations": result}
+
+
+@router.delete("/{org_slug}/invitations/{invitation_id}", status_code=204)
+async def cancel_invitation(
+    invitation_id: str,
+    member: MemberContext = Depends(require_org_permission("org.members.manage")),
+    db: Session = Depends(get_db),
+):
+    """Cancel a pending invitation."""
+    invite = db.query(PendingInvitation).filter(
+        PendingInvitation.id == invitation_id,
+        PendingInvitation.organization_id == member.organization_id,
+        PendingInvitation.accepted_at == None,
+    ).first()
+    if not invite:
+        raise HTTPException(status_code=404, detail="Convite não encontrado")
+    db.delete(invite)
+    db.commit()
     return None

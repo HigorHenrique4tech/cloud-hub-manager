@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Mail, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -64,7 +64,7 @@ const CloudAnimation = () => (
       <g className="n1">
         <circle cx="240" cy="240" r="36" fill="url(#nodeGlow)" />
         <circle cx="240" cy="240" r="24" fill="#1e3a5f" stroke="#3b82f6" strokeWidth="2" filter="url(#glow)" />
-        {/* Cloud Hub icon */}
+        {/* CloudAtlas icon */}
         <text x="240" y="245" textAnchor="middle" dominantBaseline="middle" fontSize="18" fill="#60a5fa">⬡</text>
       </g>
 
@@ -121,6 +121,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -128,7 +129,8 @@ const Login = () => {
     setLoading(true);
     try {
       await login(email, password);
-      navigate('/');
+      const inviteToken = searchParams.get('invite');
+      navigate(inviteToken ? `/invite/${inviteToken}` : '/');
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao fazer login');
     } finally {
@@ -143,8 +145,8 @@ const Login = () => {
         {/* Logo */}
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-lg">C</div>
-            <span className="text-2xl font-bold text-gray-900">Cloud Hub</span>
+            <img src="/logo.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
+            <span className="text-2xl font-bold text-gray-900">CloudAtlas</span>
           </div>
           <p className="text-gray-500 text-sm">Gerenciamento multi-cloud centralizado</p>
         </div>

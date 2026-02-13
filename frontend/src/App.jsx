@@ -27,6 +27,10 @@ import Logs from './pages/logs';
 // Multi-tenant
 import OrgSettings from './pages/OrgSettings';
 import WorkspaceSettings from './pages/WorkspaceSettings';
+import InviteAccept from './pages/InviteAccept';
+import PlanSelection from './pages/PlanSelection';
+import VerifyEmail from './pages/VerifyEmail';
+import VerifyCallback from './pages/VerifyCallback';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -51,6 +55,10 @@ function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/invite/:token" element={<InviteAccept />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/verify/:token" element={<VerifyCallback />} />
+                <Route path="/select-plan" element={<PR><PlanSelection /></PR>} />
                 <Route path="/" element={<PR><Dashboard /></PR>} />
                 {/* AWS */}
                 <Route path="/aws" element={<PR><AwsOverview /></PR>} />

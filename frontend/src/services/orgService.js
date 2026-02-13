@@ -7,6 +7,8 @@ export const orgService = {
   getOrg: async (slug) => (await api.get(`/orgs/${slug}`)).data,
   updateOrg: async (slug, data) => (await api.put(`/orgs/${slug}`, data)).data,
   deleteOrg: async (slug) => (await api.delete(`/orgs/${slug}`)).data,
+  updatePlan: async (slug, plan_tier) =>
+    (await api.put(`/orgs/${slug}/plan`, { plan_tier })).data,
 
   // ── Members ──────────────────────────────────────────────────────────────
   listMembers: async (slug) => (await api.get(`/orgs/${slug}/members`)).data,
@@ -16,6 +18,12 @@ export const orgService = {
     (await api.put(`/orgs/${slug}/members/${userId}`, { role })).data,
   removeMember: async (slug, userId) =>
     (await api.delete(`/orgs/${slug}/members/${userId}`)).data,
+
+  // ── Invitations ────────────────────────────────────────────────────────
+  listInvitations: async (slug) =>
+    (await api.get(`/orgs/${slug}/invitations`)).data,
+  cancelInvitation: async (slug, invitationId) =>
+    (await api.delete(`/orgs/${slug}/invitations/${invitationId}`)).data,
 
   // ── Workspaces ───────────────────────────────────────────────────────────
   listWorkspaces: async (slug) =>

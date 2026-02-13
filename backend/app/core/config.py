@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     """Application settings"""
 
     # Application
-    APP_NAME: str = "Cloud Hub Manager"
+    APP_NAME: str = "CloudAtlas"
     APP_VERSION: str = "0.1.0"
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
@@ -25,8 +25,17 @@ class Settings(BaseSettings):
     # Authentication
     SECRET_KEY: str = "changeme-use-openssl-rand-hex-32-in-production"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24  # 24 hours
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     ENCRYPTION_KEY: str = ""  # Fernet key; auto-generated if empty
+
+    # Email / SMTP
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM: str = "noreply@cloudatlas.io"
+    SMTP_USE_TLS: bool = True
+    FRONTEND_URL: str = "http://localhost:3000"
 
     # AWS (global fallback)
     AWS_ACCESS_KEY_ID: str = ""

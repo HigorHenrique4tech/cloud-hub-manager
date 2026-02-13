@@ -104,6 +104,7 @@ class UserResponse(BaseModel):
     email: str
     name: str
     is_active: bool
+    is_verified: bool = False
     default_org_id: Optional[UUID] = None
     created_at: datetime
 
@@ -117,19 +118,20 @@ class TokenResponse(BaseModel):
     user: UserResponse
 
 
-# ── Cloud Credential schemas ─────────────────────────────────────────────────
+# ── Profile update schemas ───────────────────────────────────────────────────
 
-class CloudCredentialCreate(BaseModel):
-    provider: str  # 'aws' or 'azure'
-    label: str = "default"
-    data: Dict  # raw credential fields (will be encrypted server-side)
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
 
 
-class CloudCredentialResponse(BaseModel):
-    id: UUID
-    provider: str
-    label: str
-    is_active: bool
-    created_at: datetime
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
 
-    model_config = {"from_attributes": True}
+    @field_validator('new_password')
+    @classmethod
+    def password_max_length(cls, v: str) -> str:
+        if len(v.encode('utf-8')) > 72:
+            raise ValueError('A senha deve ter no máximo 72 caracteres')
+        return v
