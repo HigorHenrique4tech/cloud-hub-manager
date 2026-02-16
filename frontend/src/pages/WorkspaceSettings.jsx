@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Layers, Plus, Trash2, TestTube2, CheckCircle2, XCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Layers, Plus, Trash2, TestTube2, CheckCircle2, XCircle, ArrowUpRight } from 'lucide-react';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import { RoleGate } from '../components/common/PermissionGate';
+import ConfirmDeleteModal from '../components/common/ConfirmDeleteModal';
 import orgService from '../services/orgService';
 
 const WorkspaceSettings = () => {
@@ -49,6 +51,20 @@ const WorkspaceSettings = () => {
 
   const testMutation = useMutation({
     mutationFn: (accountId) => orgService.testAccount(slug, wsId, accountId),
+  });
+
+  // Modal state — delete account
+  const [accountToDelete, setAccountToDelete] = useState(null); // { id, label }
+
+  // Modal state — delete workspace
+  const [showDeleteWs, setShowDeleteWs] = useState(false);
+  const navigate = useNavigate();
+  const deleteWsMutation = useMutation({
+    mutationFn: () => orgService.deleteWorkspace(slug, wsId),
+    onSuccess: () => {
+      refreshWorkspaces();
+      navigate('/');
+    },
   });
 
   // Workspace name update
@@ -129,6 +145,21 @@ const WorkspaceSettings = () => {
                     <Plus className="w-4 h-4" /> Criar
                   </button>
                 </div>
+                {createWsMutation.isError && (
+                  createWsMutation.error?.response?.data?.detail?.includes('Limite') ? (
+                    <div className="flex items-center justify-between p-4 mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">{createWsMutation.error.response.data.detail}</p>
+                      <button
+                        onClick={() => navigate('/select-plan')}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 flex-shrink-0 ml-4"
+                      >
+                        Fazer upgrade <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-500 mt-2">{createWsMutation.error?.response?.data?.detail || 'Erro ao criar workspace'}</p>
+                  )
+                )}
               </div>
             </div>
           </RoleGate>
@@ -205,7 +236,19 @@ const WorkspaceSettings = () => {
                   </button>
                 </div>
                 {createMutation.isError && (
-                  <p className="text-sm text-red-500">{createMutation.error?.response?.data?.detail || 'Erro ao criar conta'}</p>
+                  createMutation.error?.response?.data?.detail?.includes('Limite') ? (
+                    <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">{createMutation.error.response.data.detail}</p>
+                      <button
+                        onClick={() => navigate('/select-plan')}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 flex-shrink-0 ml-4"
+                      >
+                        Fazer upgrade <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-500">{createMutation.error?.response?.data?.detail || 'Erro ao criar conta'}</p>
+                  )
                 )}
               </div>
             )}
@@ -259,7 +302,7 @@ const WorkspaceSettings = () => {
                       </button>
                       <RoleGate allowed={['owner', 'admin']}>
                         <button
-                          onClick={() => deleteMutation.mutate(acc.id)}
+                          onClick={() => setAccountToDelete({ id: acc.id, label: acc.label })}
                           className="p-1.5 rounded text-gray-400 hover:text-red-500 transition-colors"
                           title="Remover conta"
                         >
@@ -272,6 +315,48 @@ const WorkspaceSettings = () => {
               </div>
             )}
           </div>
+
+          {/* Danger Zone */}
+          <RoleGate allowed={['owner', 'admin']}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-200 dark:border-red-900/50 p-6">
+              <h2 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">Zona de Perigo</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Excluir este workspace removerá todas as contas cloud e dados associados permanentemente.
+              </p>
+              <button
+                onClick={() => setShowDeleteWs(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+              >
+                Excluir Workspace
+              </button>
+            </div>
+          </RoleGate>
+
+          {/* Modals */}
+          <ConfirmDeleteModal
+            isOpen={!!accountToDelete}
+            onClose={() => setAccountToDelete(null)}
+            onConfirm={() => {
+              deleteMutation.mutate(accountToDelete.id, {
+                onSuccess: () => setAccountToDelete(null),
+              });
+            }}
+            title="Excluir conta cloud"
+            description={`Deseja excluir a conta "${accountToDelete?.label || ''}"? Os recursos associados não serão mais monitorados.`}
+            confirmLabel="Excluir"
+            isLoading={deleteMutation.isPending}
+          />
+
+          <ConfirmDeleteModal
+            isOpen={showDeleteWs}
+            onClose={() => setShowDeleteWs(false)}
+            onConfirm={() => deleteWsMutation.mutate()}
+            title="Excluir workspace"
+            description="Esta ação é irreversível. Todas as contas cloud e dados deste workspace serão permanentemente excluídos."
+            confirmText={currentWorkspace.name}
+            confirmLabel="Excluir Workspace"
+            isLoading={deleteWsMutation.isPending}
+          />
         </main>
       </div>
     </div>

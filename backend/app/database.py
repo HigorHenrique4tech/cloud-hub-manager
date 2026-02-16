@@ -30,11 +30,13 @@ def create_tables():
     from app.models import db_models  # noqa: F401 - ensures models are registered
     Base.metadata.create_all(bind=engine)
     _migrate_existing_tables()
-    _migrate_credentials_to_cloud_accounts()
 
 
 def _migrate_existing_tables():
-    """Add missing columns to existing tables (PostgreSQL ADD COLUMN IF NOT EXISTS)."""
+    """Add missing columns to existing tables and enforce constraints."""
+    import logging
+    logger = logging.getLogger(__name__)
+
     migrations = [
         # users — new FK to organizations
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS default_org_id UUID REFERENCES organizations(id) ON DELETE SET NULL",
@@ -54,57 +56,38 @@ def _migrate_existing_tables():
                 pass  # column may already exist or table may not exist yet
         conn.commit()
 
-
-def _migrate_credentials_to_cloud_accounts():
-    """
-    One-time migration: copy rows from cloud_credentials into cloud_accounts
-    for each user's default workspace.  Skips users that already have accounts
-    in their workspace or that don't have a personal org yet.
-    """
-    import logging
-    logger = logging.getLogger(__name__)
-
+    # ── Step 3.2: Migrate orphan cost_alerts and enforce NOT NULL ────────
     with engine.connect() as conn:
-        # Check if cloud_credentials table exists
-        exists = conn.execute(text(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='cloud_credentials')"
-        )).scalar()
-        if not exists:
-            return
-
-        # Get credentials not yet migrated:
-        # Join user → org_member → workspace (slug='default') and check
-        # if a matching cloud_account already exists
-        rows = conn.execute(text("""
-            SELECT cc.id, cc.user_id, cc.provider, cc.label, cc.encrypted_data, cc.is_active,
-                   w.id AS workspace_id
-            FROM cloud_credentials cc
-            JOIN users u ON u.id = cc.user_id
-            JOIN organization_members om ON om.user_id = u.id AND om.is_active = true
-            JOIN workspaces w ON w.organization_id = om.organization_id AND w.slug = 'default'
-            WHERE NOT EXISTS (
-                SELECT 1 FROM cloud_accounts ca
-                WHERE ca.workspace_id = w.id
-                  AND ca.provider = cc.provider
-                  AND ca.label = cc.label
-            )
-        """)).fetchall()
-
-        if not rows:
-            return
-
-        for row in rows:
+        try:
+            # Associate orphan alerts to the user's default workspace
             conn.execute(text("""
-                INSERT INTO cloud_accounts (id, workspace_id, provider, label, encrypted_data, is_active, created_by, created_at, updated_at)
-                VALUES (gen_random_uuid(), :ws_id, :provider, :label, :enc_data, :is_active, :user_id, NOW(), NOW())
-            """), {
-                "ws_id": row.workspace_id,
-                "provider": row.provider,
-                "label": row.label,
-                "enc_data": row.encrypted_data,
-                "is_active": row.is_active,
-                "user_id": row.user_id,
-            })
+                UPDATE cost_alerts ca
+                SET workspace_id = w.id
+                FROM users u
+                JOIN organization_members om ON om.user_id = u.id AND om.is_active = true
+                JOIN workspaces w ON w.organization_id = om.organization_id AND w.slug = 'default'
+                WHERE ca.user_id = u.id AND ca.workspace_id IS NULL
+            """))
+            # Delete any remaining orphans (no default workspace found)
+            conn.execute(text(
+                "DELETE FROM cost_alerts WHERE workspace_id IS NULL"
+            ))
+            # Make workspace_id NOT NULL
+            conn.execute(text(
+                "ALTER TABLE cost_alerts ALTER COLUMN workspace_id SET NOT NULL"
+            ))
+            conn.commit()
+            logger.info("cost_alerts.workspace_id is now NOT NULL")
+        except Exception as e:
+            conn.rollback()
+            logger.warning(f"cost_alerts NOT NULL migration skipped: {e}")
 
-        conn.commit()
-        logger.info(f"Migrated {len(rows)} credential(s) to cloud_accounts")
+    # ── Step 3.3: Drop legacy cloud_credentials table ───────────────────
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("DROP TABLE IF EXISTS cloud_credentials"))
+            conn.commit()
+            logger.info("Dropped legacy cloud_credentials table")
+        except Exception as e:
+            conn.rollback()
+            logger.warning(f"Could not drop cloud_credentials: {e}")

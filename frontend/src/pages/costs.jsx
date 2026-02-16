@@ -222,7 +222,7 @@ const Costs = () => {
     if (!data) return;
     const date = new Date().toLocaleDateString('pt-BR');
     const rows = [
-      ['Relatório de Custos Cloud Hub Manager', '', ''],
+      ['Relatório de Custos CloudAtlas', '', ''],
       [`Período: ${startDate} a ${endDate}`, '', ''],
       [`Gerado em: ${date}`, '', ''],
       [''],

@@ -5,12 +5,13 @@ from pydantic import BaseModel
 from typing import Optional
 
 from app.database import get_db
-from app.models.db_models import Workspace
+from app.models.db_models import Workspace, Organization
 from app.core.dependencies import (
     get_current_member, require_org_permission,
 )
 from app.core.auth_context import MemberContext
 from app.services.log_service import log_activity
+from app.services.plan_service import check_workspace_limit
 
 router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces",
@@ -80,6 +81,15 @@ async def create_workspace(
     db: Session = Depends(get_db),
 ):
     """Create a new workspace (admin+ required)."""
+    # Plan limit check
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    allowed, current, limit = check_workspace_limit(db, member.organization_id, org.plan_tier)
+    if not allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Limite de workspaces atingido para o plano {org.plan_tier.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
+        )
+
     slug = payload.slug or _slugify(payload.name)
     if not slug:
         raise HTTPException(status_code=400, detail="Slug inválido")

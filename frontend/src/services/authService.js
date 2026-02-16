@@ -29,22 +29,37 @@ const authService = {
     }
   },
 
-  listCredentials: async () => {
-    const { data } = await api.get('/users/credentials');
-    return data;
+  updateProfile: async (data) => {
+    const { data: result } = await api.put('/auth/me', data);
+    return result;
   },
 
-  addCredential: async (provider, label, credData) => {
-    const { data } = await api.post('/users/credentials', {
-      provider,
-      label,
-      data: credData,
+  changePassword: async (currentPassword, newPassword) => {
+    const { data: result } = await api.put('/auth/me/password', {
+      current_password: currentPassword,
+      new_password: newPassword,
     });
+    return result;
+  },
+
+  verifyEmail: async (token) => {
+    const { data } = await api.get(`/auth/verify/${token}`);
     return data;
   },
 
-  deleteCredential: async (id) => {
-    await api.delete(`/users/credentials/${id}`);
+  resendVerification: async (email) => {
+    const { data } = await api.post('/auth/resend-verification', { email });
+    return data;
+  },
+
+  getMyInvitations: async () => {
+    const { data } = await api.get('/auth/invitations');
+    return data;
+  },
+
+  acceptInvitation: async (token) => {
+    const { data } = await api.post(`/auth/invitations/${token}/accept`);
+    return data;
   },
 };
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { User, Mail, Lock, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -14,6 +14,7 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const { register } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   const handleChange = (e) => setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
 
@@ -35,7 +36,7 @@ const Register = () => {
     setLoading(true);
     try {
       await register(form.name, form.email, form.password);
-      navigate('/');
+      navigate('/verify-email');
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao criar conta');
     } finally {
@@ -49,8 +50,8 @@ const Register = () => {
       <div className="flex-1 flex flex-col justify-center px-8 py-12 bg-white lg:max-w-md xl:max-w-lg">
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-2">
-            <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center text-white font-bold text-lg">C</div>
-            <span className="text-2xl font-bold text-gray-900">Cloud Hub</span>
+            <img src="/logo.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
+            <span className="text-2xl font-bold text-gray-900">CloudAtlas</span>
           </div>
           <p className="text-gray-500 text-sm">Gerenciamento multi-cloud centralizado</p>
         </div>
@@ -173,10 +174,8 @@ const Register = () => {
         style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #0f172a 100%)' }}
       >
         <div className="text-center px-8">
-          <div className="w-20 h-20 rounded-2xl bg-primary/20 border border-primary/30 flex items-center justify-center mx-auto mb-6">
-            <span className="text-4xl text-primary">⬡</span>
-          </div>
-          <h2 className="text-2xl font-bold text-white mb-3">Cloud Hub Manager</h2>
+          <img src="/logoblack.png" alt="CloudAtlas" className="w-24 h-24 object-contain mx-auto mb-6 drop-shadow-lg" />
+          <h2 className="text-2xl font-bold text-white mb-3">CloudAtlas</h2>
           <p className="text-slate-400 text-sm leading-relaxed max-w-xs mx-auto">
             Centralize a gestão da sua infraestrutura AWS e Azure em uma única plataforma segura.
           </p>

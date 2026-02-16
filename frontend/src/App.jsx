@@ -27,6 +27,12 @@ import Logs from './pages/logs';
 // Multi-tenant
 import OrgSettings from './pages/OrgSettings';
 import WorkspaceSettings from './pages/WorkspaceSettings';
+import InviteAccept from './pages/InviteAccept';
+import PlanSelection from './pages/PlanSelection';
+import VerifyEmail from './pages/VerifyEmail';
+import VerifyCallback from './pages/VerifyCallback';
+import Billing from './pages/Billing';
+import BillingSuccess from './pages/BillingSuccess';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -51,6 +57,10 @@ function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/invite/:token" element={<InviteAccept />} />
+                <Route path="/verify-email" element={<VerifyEmail />} />
+                <Route path="/verify/:token" element={<VerifyCallback />} />
+                <Route path="/select-plan" element={<PR><PlanSelection /></PR>} />
                 <Route path="/" element={<PR><Dashboard /></PR>} />
                 {/* AWS */}
                 <Route path="/aws" element={<PR><AwsOverview /></PR>} />
@@ -70,6 +80,9 @@ function App() {
                 <Route path="/costs" element={<PR><Costs /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
+                {/* Billing */}
+                <Route path="/billing" element={<PR><Billing /></PR>} />
+                <Route path="/billing/success" element={<PR><BillingSuccess /></PR>} />
                 {/* Multi-tenant settings */}
                 <Route path="/org/settings" element={<PR><OrgSettings /></PR>} />
                 <Route path="/workspace/settings" element={<PR><WorkspaceSettings /></PR>} />

@@ -6,7 +6,7 @@ import {
 } from 'recharts';
 import {
   Server, Play, Square, Cloud, TrendingUp, ChevronRight,
-  Database, Box, Zap, ExternalLink,
+  Database, Box, Zap, ExternalLink, Settings,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import StatsCard from '../components/dashboard/statscard';
@@ -15,6 +15,8 @@ import awsService from '../services/awsservices';
 import azureService from '../services/azureservices';
 import costService from '../services/costService';
 import logsService from '../services/logsService';
+import orgService from '../services/orgService';
+import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 
 /* ── helpers ───────────────────────────────────────────────── */
 const today   = new Date();
@@ -297,27 +299,88 @@ const RecentActivitiesCard = ({ logs, isLoading }) => {
   );
 };
 
+/* ── EmptyWorkspaceState ──────────────────────────────────── */
+const EmptyWorkspaceState = () => {
+  const navigate = useNavigate();
+  return (
+    <Layout>
+      <div className="flex flex-col items-center justify-center py-20 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
+          <Cloud className="w-8 h-8 text-primary" />
+        </div>
+        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">
+          Nenhuma conta cloud configurada
+        </h2>
+        <p className="text-gray-500 dark:text-gray-400 text-sm max-w-md mb-6">
+          Este workspace não possui contas AWS ou Azure. Adicione suas credenciais cloud para começar a monitorar recursos e custos.
+        </p>
+        <button
+          onClick={() => navigate('/workspace/settings')}
+          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors"
+        >
+          <Settings className="w-4 h-4" />
+          Configurar Workspace
+        </button>
+      </div>
+    </Layout>
+  );
+};
+
 /* ── Dashboard (main) ──────────────────────────────────────── */
 const Dashboard = () => {
   const [selectedCloud, setSelectedCloud] = useState('aws');
+  const { currentOrg, currentWorkspace } = useOrgWorkspace();
+  const wsReady = !!currentOrg && !!currentWorkspace;
 
-  /* Main queries */
-  const { data: awsData,   isLoading: awsLoading   } = useQuery({ queryKey: ['dashboard-aws'],   queryFn: () => awsService.listEC2Instances(),   retry: false });
-  const { data: azureData, isLoading: azureLoading } = useQuery({ queryKey: ['dashboard-azure'], queryFn: () => azureService.listVMs(),          retry: false });
+  /* Cloud accounts in this workspace */
+  const { data: accountsData } = useQuery({
+    queryKey: ['dashboard-accounts', currentOrg?.slug, currentWorkspace?.id],
+    queryFn: () => orgService.listAccounts(currentOrg.slug, currentWorkspace.id),
+    enabled: wsReady,
+    retry: false,
+    staleTime: 60 * 1000,
+  });
+
+  const accounts = accountsData?.accounts || accountsData || [];
+  const uniqueProviders = [...new Set(accounts.map((a) => a.provider))];
+  const cloudCount = uniqueProviders.length;
+  const hasAws = uniqueProviders.includes('aws');
+  const hasAzure = uniqueProviders.includes('azure');
+
+  /* Main queries — only run when workspace has corresponding provider */
+  const { data: awsData,   isLoading: awsLoading   } = useQuery({
+    queryKey: ['dashboard-aws'],
+    queryFn: () => awsService.listEC2Instances(),
+    enabled: wsReady && hasAws,
+    retry: false,
+  });
+  const { data: azureData, isLoading: azureLoading } = useQuery({
+    queryKey: ['dashboard-azure'],
+    queryFn: () => azureService.listVMs(),
+    enabled: wsReady && hasAzure,
+    retry: false,
+  });
 
   /* Lazy background queries */
   const { data: costsData,  isLoading: costsLoading } = useQuery({
     queryKey: ['dashboard-costs', start30, end30],
     queryFn:  () => costService.getCombinedCosts(start30, end30, 'DAILY'),
+    enabled: wsReady && (hasAws || hasAzure),
     retry: false,
     staleTime: 5 * 60 * 1000,
   });
   const { data: logsData, isLoading: logsLoading } = useQuery({
     queryKey: ['dashboard-logs'],
     queryFn:  () => logsService.getLogs({ limit: 8 }),
+    enabled: wsReady,
     staleTime: 30 * 1000,
     retry: false,
   });
+
+  /* Empty state: workspace without cloud accounts */
+  if (wsReady && accountsData && accounts.length === 0) {
+    return <EmptyWorkspaceState />;
+  }
 
   /* Derived stats */
   const awsInstances = awsData?.instances  || [];
@@ -328,7 +391,7 @@ const Dashboard = () => {
     azureVMs.filter((v) => v.power_state === 'running').length;
   const stoppedVMs   = totalVMs - runningVMs;
 
-  if (awsLoading && azureLoading) {
+  if ((awsLoading && hasAws) || (azureLoading && hasAzure)) {
     return <Layout><LoadingSpinner text="Carregando recursos..." /></Layout>;
   }
 
@@ -339,15 +402,15 @@ const Dashboard = () => {
         <StatsCard title="Total de VMs" value={totalVMs}   icon={Server} color="primary" />
         <StatsCard title="Em Execução"  value={runningVMs} icon={Play}   color="success" />
         <StatsCard title="Paradas"      value={stoppedVMs} icon={Square} color="danger"  />
-        <StatsCard title="Clouds"       value={2}          icon={Cloud}  color="primary" />
+        <StatsCard title="Clouds"       value={cloudCount} icon={Cloud}  color="primary" />
       </div>
 
       {/* ── Cloud Tabs ──────────────────────────────────── */}
       <div className="flex gap-2 mb-5">
         {[
-          { key: 'aws',   label: `AWS (${awsData?.total_instances ?? '…'})` },
-          { key: 'azure', label: `Azure (${azureData?.total_vms ?? '…'})` },
-        ].map(({ key, label }) => (
+          hasAws   && { key: 'aws',   label: `AWS (${awsData?.total_instances ?? '…'})` },
+          hasAzure && { key: 'azure', label: `Azure (${azureData?.total_vms ?? '…'})` },
+        ].filter(Boolean).map(({ key, label }) => (
           <button
             key={key}
             onClick={() => setSelectedCloud(key)}
