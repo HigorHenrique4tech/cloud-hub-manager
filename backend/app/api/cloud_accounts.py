@@ -4,11 +4,12 @@ from pydantic import BaseModel
 from typing import Optional, Dict
 
 from app.database import get_db
-from app.models.db_models import CloudAccount
+from app.models.db_models import CloudAccount, Organization, Workspace
 from app.core.dependencies import get_workspace_member, require_permission
 from app.core.auth_context import MemberContext
 from app.services.auth_service import encrypt_credential, decrypt_credential
 from app.services.log_service import log_activity
+from app.services.plan_service import check_account_limit
 
 router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces/{workspace_id}/accounts",
@@ -81,6 +82,16 @@ async def create_account(
     db: Session = Depends(get_db),
 ):
     """Add a cloud account (admin+ required)."""
+    # Plan limit check
+    ws = db.query(Workspace).filter(Workspace.id == member.workspace_id).first()
+    org = db.query(Organization).filter(Organization.id == ws.organization_id).first()
+    allowed, current, limit = check_account_limit(db, org.id, org.plan_tier)
+    if not allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Limite de contas cloud atingido para o plano {org.plan_tier.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
+        )
+
     if payload.provider not in ("aws", "azure"):
         raise HTTPException(status_code=400, detail="Provider deve ser 'aws' ou 'azure'")
 

@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, ArrowRight, Sparkles, Building2, ChevronRight } from 'lucide-react';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import orgService from '../services/orgService';
+import billingService from '../services/billingService';
 
 const plans = [
   {
@@ -63,9 +64,11 @@ const PlanSelection = () => {
 
   const inviteToken = searchParams.get('invite');
 
+  const [error, setError] = useState('');
+
   const handleSelect = async (planId) => {
     if (planId === 'enterprise') {
-      // For enterprise, just skip to dashboard (contact sales flow not implemented)
+      // Enterprise: contact sales (not yet implemented)
       handleSkip();
       return;
     }
@@ -76,21 +79,29 @@ const PlanSelection = () => {
     }
 
     setLoading(planId);
+    setError('');
     try {
-      await orgService.updatePlan(currentOrg.slug, planId);
-      await refreshOrgs();
-      if (inviteToken) {
-        navigate(`/invite/${inviteToken}`);
+      if (planId === 'free') {
+        // Free plan: just update directly
+        await orgService.updatePlan(currentOrg.slug, planId);
+        await refreshOrgs();
+        if (inviteToken) {
+          navigate(`/invite/${inviteToken}`);
+        } else {
+          navigate('/');
+        }
       } else {
-        navigate('/');
+        // Paid plan: create checkout via AbacatePay
+        const result = await billingService.checkout(currentOrg.slug, planId);
+        if (result.payment_url) {
+          // Save payment_id so BillingSuccess can verify after redirect
+          localStorage.setItem('pending_payment_id', result.payment_id);
+          localStorage.setItem('pending_payment_org', currentOrg.slug);
+          window.location.href = result.payment_url;
+        }
       }
-    } catch {
-      // If plan update fails, just go to dashboard
-      if (inviteToken) {
-        navigate(`/invite/${inviteToken}`);
-      } else {
-        navigate('/');
-      }
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Erro ao processar. Tente novamente.');
     } finally {
       setLoading(null);
     }
@@ -112,7 +123,7 @@ const PlanSelection = () => {
       {/* Header */}
       <div className="pt-8 pb-2 text-center">
         <div className="flex items-center justify-center gap-3 mb-6">
-          <img src="/logo.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
+          <img src="/logoblack.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
           <span className="text-2xl font-bold text-white">CloudAtlas</span>
         </div>
 
@@ -138,6 +149,14 @@ const PlanSelection = () => {
           Comece grátis e escale conforme sua necessidade. Todos os planos incluem acesso a AWS e Azure.
         </p>
       </div>
+
+      {error && (
+        <div className="mx-auto max-w-md px-4">
+          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm text-center">
+            {error}
+          </div>
+        </div>
+      )}
 
       {/* Plan cards */}
       <div className="flex-1 flex items-start justify-center px-4 py-10">

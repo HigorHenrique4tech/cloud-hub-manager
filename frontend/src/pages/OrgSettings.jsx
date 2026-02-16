@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, UserPlus, Trash2, Shield, Copy, Clock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Building2, UserPlus, Trash2, Shield, Copy, Clock, ArrowUpRight } from 'lucide-react';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
@@ -12,6 +13,7 @@ const ROLES = ['owner', 'admin', 'operator', 'viewer', 'billing'];
 
 const OrgSettings = () => {
   const { currentOrg, refreshOrgs } = useOrgWorkspace();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const slug = currentOrg?.slug;
 
@@ -169,7 +171,19 @@ const OrgSettings = () => {
                 </button>
               </div>
               {inviteMutation.isError && (
-                <p className="text-sm text-red-500 mb-4">{inviteMutation.error?.response?.data?.detail || 'Erro ao convidar'}</p>
+                inviteMutation.error?.response?.data?.detail?.includes('Limite') ? (
+                  <div className="flex items-center justify-between p-4 mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <p className="text-sm text-amber-800 dark:text-amber-200">{inviteMutation.error.response.data.detail}</p>
+                    <button
+                      onClick={() => navigate('/select-plan')}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 flex-shrink-0 ml-4"
+                    >
+                      Fazer upgrade <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-red-500 mb-4">{inviteMutation.error?.response?.data?.detail || 'Erro ao convidar'}</p>
+                )
               )}
               {inviteResult && inviteResult.status === 'pending' && (
                 <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">

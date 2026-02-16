@@ -174,7 +174,7 @@ const Register = () => {
         style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #0f172a 100%)' }}
       >
         <div className="text-center px-8">
-          <img src="/logo.png" alt="CloudAtlas" className="w-24 h-24 object-contain mx-auto mb-6 drop-shadow-lg" />
+          <img src="/logoblack.png" alt="CloudAtlas" className="w-24 h-24 object-contain mx-auto mb-6 drop-shadow-lg" />
           <h2 className="text-2xl font-bold text-white mb-3">CloudAtlas</h2>
           <p className="text-slate-400 text-sm leading-relaxed max-w-xs mx-auto">
             Centralize a gestão da sua infraestrutura AWS e Azure em uma única plataforma segura.

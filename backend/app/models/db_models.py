@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Text, Float, UniqueConstraint, Index
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text, Float, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID
 
@@ -210,3 +210,25 @@ class ActivityLog(Base):
     status          = Column(String(20),  nullable=False, default="success")
     detail          = Column(Text, nullable=True)
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+# ── Payments ───────────────────────────────────────────────────────────────
+
+
+class Payment(Base):
+    __tablename__ = "payments"
+
+    id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id    = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id            = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    abacate_billing_id = Column(String(255), nullable=True, index=True)
+    plan_tier          = Column(String(50), nullable=False)
+    amount             = Column(Integer, nullable=False)          # centavos
+    status             = Column(String(50), nullable=False, default="PENDING")  # PENDING | PAID | EXPIRED | CANCELLED | REFUNDED
+    payment_url        = Column(String(500), nullable=True)
+    payment_method     = Column(String(50), nullable=True)        # PIX | CARD
+    created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    paid_at            = Column(DateTime, nullable=True)
+
+    organization = relationship("Organization")
+    user         = relationship("User")

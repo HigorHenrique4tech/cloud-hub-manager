@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # AbacatePay
+    ABACATEPAY_API_KEY: str = ""
+    ABACATEPAY_API_URL: str = "https://api.abacatepay.com/v1"
+
     # AWS (global fallback)
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""

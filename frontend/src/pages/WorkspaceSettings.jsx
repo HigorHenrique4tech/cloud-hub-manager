@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Layers, Plus, Trash2, TestTube2, CheckCircle2, XCircle } from 'lucide-react';
+import { Layers, Plus, Trash2, TestTube2, CheckCircle2, XCircle, ArrowUpRight } from 'lucide-react';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
@@ -145,6 +145,21 @@ const WorkspaceSettings = () => {
                     <Plus className="w-4 h-4" /> Criar
                   </button>
                 </div>
+                {createWsMutation.isError && (
+                  createWsMutation.error?.response?.data?.detail?.includes('Limite') ? (
+                    <div className="flex items-center justify-between p-4 mt-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">{createWsMutation.error.response.data.detail}</p>
+                      <button
+                        onClick={() => navigate('/select-plan')}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 flex-shrink-0 ml-4"
+                      >
+                        Fazer upgrade <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-500 mt-2">{createWsMutation.error?.response?.data?.detail || 'Erro ao criar workspace'}</p>
+                  )
+                )}
               </div>
             </div>
           </RoleGate>
@@ -221,7 +236,19 @@ const WorkspaceSettings = () => {
                   </button>
                 </div>
                 {createMutation.isError && (
-                  <p className="text-sm text-red-500">{createMutation.error?.response?.data?.detail || 'Erro ao criar conta'}</p>
+                  createMutation.error?.response?.data?.detail?.includes('Limite') ? (
+                    <div className="flex items-center justify-between p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                      <p className="text-sm text-amber-800 dark:text-amber-200">{createMutation.error.response.data.detail}</p>
+                      <button
+                        onClick={() => navigate('/select-plan')}
+                        className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 flex-shrink-0 ml-4"
+                      >
+                        Fazer upgrade <ArrowUpRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-500">{createMutation.error?.response?.data?.detail || 'Erro ao criar conta'}</p>
+                  )
                 )}
               </div>
             )}

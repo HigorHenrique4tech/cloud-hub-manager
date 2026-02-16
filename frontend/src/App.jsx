@@ -31,6 +31,8 @@ import InviteAccept from './pages/InviteAccept';
 import PlanSelection from './pages/PlanSelection';
 import VerifyEmail from './pages/VerifyEmail';
 import VerifyCallback from './pages/VerifyCallback';
+import Billing from './pages/Billing';
+import BillingSuccess from './pages/BillingSuccess';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -78,6 +80,9 @@ function App() {
                 <Route path="/costs" element={<PR><Costs /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
+                {/* Billing */}
+                <Route path="/billing" element={<PR><Billing /></PR>} />
+                <Route path="/billing/success" element={<PR><BillingSuccess /></PR>} />
                 {/* Multi-tenant settings */}
                 <Route path="/org/settings" element={<PR><OrgSettings /></PR>} />
                 <Route path="/workspace/settings" element={<PR><WorkspaceSettings /></PR>} />

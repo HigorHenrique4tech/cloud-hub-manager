@@ -16,6 +16,7 @@ from app.core.dependencies import (
 from app.core.auth_context import MemberContext
 from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
+from app.services.plan_service import check_member_limit, get_org_usage
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
 
@@ -205,6 +206,19 @@ async def update_plan(
     return _org_to_dict(org, role=member.role)
 
 
+# ── Usage ────────────────────────────────────────────────────────────────────
+
+
+@router.get("/{org_slug}/usage")
+async def org_usage(
+    member: MemberContext = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Return plan usage and limits for the organization."""
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    return get_org_usage(db, org.id, org.plan_tier)
+
+
 # ── Members ──────────────────────────────────────────────────────────────────
 
 
@@ -245,6 +259,15 @@ async def invite_member(
     """Add a user to the organization by email, or create a pending invitation."""
     if payload.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Role inválida. Opções: {', '.join(VALID_ROLES)}")
+
+    # Plan limit check
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    allowed, current, limit = check_member_limit(db, member.organization_id, org.plan_tier)
+    if not allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Limite de membros atingido para o plano {org.plan_tier.capitalize()} (máx {limit}). Faça upgrade para convidar mais.",
+        )
 
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
 

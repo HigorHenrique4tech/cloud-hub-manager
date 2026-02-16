@@ -91,7 +91,7 @@ const Header = () => {
         <div className="flex items-center gap-4">
           {/* Logo */}
           <div className="flex items-center gap-2 flex-shrink-0">
-            <img src="/logo.png" alt="CloudAtlas" className="w-8 h-8 object-contain" />
+            <img src={isDark ? '/logoblack.png' : '/logo.png'} alt="CloudAtlas" className="w-8 h-8 object-contain" />
             <span className="text-lg font-bold text-gray-900 dark:text-gray-100 hidden sm:block">
               CloudAtlas
             </span>
@@ -225,7 +225,7 @@ const Header = () => {
             {/* Plan badge */}
             {currentOrg && (
               <button
-                onClick={() => navigate('/select-plan')}
+                onClick={() => navigate('/billing')}
                 title="Gerenciar plano"
                 className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                   currentOrg.plan_tier === 'pro'
