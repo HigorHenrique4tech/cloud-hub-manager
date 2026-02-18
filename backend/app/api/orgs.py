@@ -17,6 +17,7 @@ from app.core.auth_context import MemberContext
 from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
 from app.services.plan_service import check_member_limit, get_org_usage
+from app.services.email_service import send_invite_email
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
 
@@ -331,6 +332,15 @@ async def invite_member(
     log_activity(db, member.user, "org.member.invite", "PendingInvitation",
                  resource_name=payload.email, detail=f"role={payload.role}",
                  provider="system")
+
+    # Send invite email
+    send_invite_email(
+        to_email=payload.email,
+        org_name=org.name,
+        inviter_name=member.user.name or member.user.email,
+        role=payload.role,
+        token=token,
+    )
 
     return {
         "email": payload.email,

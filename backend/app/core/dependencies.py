@@ -60,9 +60,9 @@ def get_current_member(
     if not user:
         raise HTTPException(status_code=401, detail="Usuário não encontrado")
 
-    # 1b. Require email verification for org operations
-    if not user.is_verified:
-        raise HTTPException(status_code=403, detail="Email não verificado")
+    # 1b. Require email verification for org operations (disabled for now)
+    # if not user.is_verified:
+    #     raise HTTPException(status_code=403, detail="Email não verificado")
 
     # 2. Resolve org
     org = db.query(Organization).filter(

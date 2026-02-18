@@ -61,6 +61,17 @@ const authService = {
     const { data } = await api.post(`/auth/invitations/${token}/accept`);
     return data;
   },
+
+  // OAuth
+  googleCallback: async (code, redirectUri) => {
+    const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri });
+    return data;
+  },
+
+  githubCallback: async (code) => {
+    const { data } = await api.post('/auth/github/callback', { code });
+    return data;
+  },
 };
 
 export default authService;

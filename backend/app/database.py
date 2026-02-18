@@ -1,8 +1,12 @@
-from sqlalchemy import create_engine, text
+import logging
+
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 engine = create_engine(
     settings.DATABASE_URL,
@@ -25,69 +29,60 @@ def get_db():
         db.close()
 
 
-def create_tables():
-    """Create all tables in the database and migrate existing ones."""
-    from app.models import db_models  # noqa: F401 - ensures models are registered
-    Base.metadata.create_all(bind=engine)
-    _migrate_existing_tables()
+def _get_alembic_config():
+    """Build an Alembic Config pointing at our alembic.ini."""
+    from alembic.config import Config
+    import os
+
+    alembic_ini = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
+    cfg = Config(alembic_ini)
+    cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    return cfg
 
 
-def _migrate_existing_tables():
-    """Add missing columns to existing tables and enforce constraints."""
-    import logging
-    logger = logging.getLogger(__name__)
+def run_migrations():
+    """Run Alembic migrations programmatically (upgrade to head).
 
-    migrations = [
-        # users — new FK to organizations
-        "ALTER TABLE users ADD COLUMN IF NOT EXISTS default_org_id UUID REFERENCES organizations(id) ON DELETE SET NULL",
-        # cost_alerts — workspace + created_by + cloud_account
-        "ALTER TABLE cost_alerts ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE",
-        "ALTER TABLE cost_alerts ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL",
-        "ALTER TABLE cost_alerts ADD COLUMN IF NOT EXISTS cloud_account_id UUID REFERENCES cloud_accounts(id) ON DELETE SET NULL",
-        # activity_logs — org + workspace scope
-        "ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL",
-        "ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL",
-    ]
-    with engine.connect() as conn:
-        for sql in migrations:
-            try:
-                conn.execute(text(sql))
-            except Exception:
-                pass  # column may already exist or table may not exist yet
-        conn.commit()
+    If the database already has tables but no alembic_version table
+    (transition from create_all()), it stamps the DB first so Alembic
+    doesn't try to re-create everything.
+    """
+    from alembic import command
+    from sqlalchemy import inspect, text
 
-    # ── Step 3.2: Migrate orphan cost_alerts and enforce NOT NULL ────────
-    with engine.connect() as conn:
-        try:
-            # Associate orphan alerts to the user's default workspace
-            conn.execute(text("""
-                UPDATE cost_alerts ca
-                SET workspace_id = w.id
-                FROM users u
-                JOIN organization_members om ON om.user_id = u.id AND om.is_active = true
-                JOIN workspaces w ON w.organization_id = om.organization_id AND w.slug = 'default'
-                WHERE ca.user_id = u.id AND ca.workspace_id IS NULL
-            """))
-            # Delete any remaining orphans (no default workspace found)
-            conn.execute(text(
-                "DELETE FROM cost_alerts WHERE workspace_id IS NULL"
-            ))
-            # Make workspace_id NOT NULL
-            conn.execute(text(
-                "ALTER TABLE cost_alerts ALTER COLUMN workspace_id SET NOT NULL"
-            ))
-            conn.commit()
-            logger.info("cost_alerts.workspace_id is now NOT NULL")
-        except Exception as e:
-            conn.rollback()
-            logger.warning(f"cost_alerts NOT NULL migration skipped: {e}")
+    inspector = inspect(engine)
+    existing_tables = inspector.get_table_names()
+    has_alembic = "alembic_version" in existing_tables
+    has_app_tables = "users" in existing_tables
 
-    # ── Step 3.3: Drop legacy cloud_credentials table ───────────────────
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("DROP TABLE IF EXISTS cloud_credentials"))
-            conn.commit()
-            logger.info("Dropped legacy cloud_credentials table")
-        except Exception as e:
-            conn.rollback()
-            logger.warning(f"Could not drop cloud_credentials: {e}")
+    cfg = _get_alembic_config()
+
+    if has_app_tables and not has_alembic:
+        # Existing DB created via create_all() — stamp it at head
+        logger.info("Existing database detected without Alembic history. Stamping as current...")
+        command.stamp(cfg, "head")
+        logger.info("Database stamped at head.")
+        return
+
+    logger.info("Running Alembic migrations (upgrade head)...")
+    command.upgrade(cfg, "head")
+    logger.info("Alembic migrations complete.")
+
+
+def stamp_existing_db():
+    """Stamp an existing database as being at the latest migration.
+
+    Use this once when migrating from create_all() to Alembic,
+    so Alembic knows the current state without re-running migrations.
+    """
+    from alembic.config import Config
+    from alembic import command
+    import os
+
+    alembic_ini = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
+    alembic_cfg = Config(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+    logger.info("Stamping database as current (head)...")
+    command.stamp(alembic_cfg, "head")
+    logger.info("Database stamped.")
