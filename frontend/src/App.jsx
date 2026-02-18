@@ -33,6 +33,7 @@ import VerifyEmail from './pages/VerifyEmail';
 import VerifyCallback from './pages/VerifyCallback';
 import Billing from './pages/Billing';
 import BillingSuccess from './pages/BillingSuccess';
+import OAuthCallback from './pages/OAuthCallback';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -57,6 +58,8 @@ function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/auth/google/callback" element={<OAuthCallback provider="google" />} />
+                <Route path="/auth/github/callback" element={<OAuthCallback provider="github" />} />
                 <Route path="/invite/:token" element={<InviteAccept />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/verify/:token" element={<VerifyCallback />} />

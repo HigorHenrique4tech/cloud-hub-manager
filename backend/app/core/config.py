@@ -37,6 +37,12 @@ class Settings(BaseSettings):
     SMTP_USE_TLS: bool = True
     FRONTEND_URL: str = "http://localhost:3000"
 
+    # OAuth (SSO)
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GITHUB_CLIENT_ID: str = ""
+    GITHUB_CLIENT_SECRET: str = ""
+
     # AbacatePay
     ABACATEPAY_API_KEY: str = ""
     ABACATEPAY_API_URL: str = "https://api.abacatepay.com/v1"

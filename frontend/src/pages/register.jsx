@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { User, Mail, Lock, UserPlus, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import OAuthButtons from '../components/auth/OAuthButtons';
 
 const inputClass =
   'w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent';
@@ -36,7 +37,7 @@ const Register = () => {
     setLoading(true);
     try {
       await register(form.name, form.email, form.password);
-      navigate('/verify-email');
+      navigate('/select-plan');
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao criar conta');
     } finally {
@@ -166,6 +167,8 @@ const Register = () => {
             Entrar
           </Link>
         </p>
+
+        <OAuthButtons />
       </div>
 
       {/* Right panel */}

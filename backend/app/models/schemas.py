@@ -106,6 +106,8 @@ class UserResponse(BaseModel):
     is_active: bool
     is_verified: bool = False
     default_org_id: Optional[UUID] = None
+    oauth_provider: Optional[str] = None
+    avatar_url: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}

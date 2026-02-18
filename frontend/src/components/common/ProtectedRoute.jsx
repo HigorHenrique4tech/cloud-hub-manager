@@ -17,10 +17,10 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
-  // Block unverified users — redirect to verify-email
-  if (user && !user.is_verified && location.pathname !== '/select-plan') {
-    return <Navigate to="/verify-email" replace />;
-  }
+  // Block unverified users — redirect to verify-email (disabled for now)
+  // if (user && !user.is_verified && location.pathname !== '/select-plan') {
+  //   return <Navigate to="/verify-email" replace />;
+  // }
 
   return children;
 };

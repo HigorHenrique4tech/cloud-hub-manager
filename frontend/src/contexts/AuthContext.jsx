@@ -47,6 +47,16 @@ export const AuthProvider = ({ children }) => {
     return data;
   };
 
+  /** Set auth state from a TokenResponse (used by OAuth callback) */
+  const loginWithTokens = (data) => {
+    localStorage.setItem('token', data.access_token);
+    if (data.refresh_token) {
+      localStorage.setItem('refreshToken', data.refresh_token);
+    }
+    setToken(data.access_token);
+    setUser(data.user);
+  };
+
   const logout = async () => {
     const rt = localStorage.getItem('refreshToken');
     if (rt) {
@@ -61,7 +71,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, setUser, token, loading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, setUser, token, loading, login, register, loginWithTokens, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -152,6 +152,9 @@ class User(Base):
     is_verified        = Column(Boolean, default=False, nullable=False)
     verification_token = Column(String(255), nullable=True, index=True)
     default_org_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    oauth_provider     = Column(String(50), nullable=True)    # "google" | "github" | None
+    oauth_id           = Column(String(255), nullable=True)   # Provider's user ID
+    avatar_url         = Column(String(500), nullable=True)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

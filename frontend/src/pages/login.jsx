@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Mail, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import OAuthButtons from '../components/auth/OAuthButtons';
 
 /* ── Animated cloud network SVG ─────────────────────────────────── */
 const CloudAnimation = () => (
@@ -219,6 +220,8 @@ const Login = () => {
             Criar conta
           </Link>
         </p>
+
+        <OAuthButtons />
       </div>
 
       {/* Right panel – animation */}

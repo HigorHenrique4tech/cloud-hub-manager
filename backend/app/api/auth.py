@@ -1,3 +1,4 @@
+import logging
 import secrets
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -13,9 +14,12 @@ from app.services.auth_service import (
     hash_password, verify_password, create_access_token,
     create_refresh_token, validate_refresh_token, revoke_refresh_token,
 )
+from app.services.oauth_service import google_get_user_info, github_get_user_info
 from app.services.email_service import send_verification_email
 from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
@@ -378,3 +382,138 @@ def accept_invitation(
         "organization_slug": org.slug if org else None,
         "role": invite.role,
     }
+
+
+# ── OAuth (SSO) ────────────────────────────────────────────────────────────
+
+
+class OAuthCallback(BaseModel):
+    code: str
+    redirect_uri: str = ""
+
+
+def _oauth_login_or_register(
+    db: Session,
+    request: Request,
+    *,
+    email: str,
+    name: str,
+    provider: str,
+    oauth_id: str,
+    avatar_url: str | None,
+) -> TokenResponse:
+    """Shared logic for Google / GitHub OAuth callback.
+
+    1. Find user by oauth_id+provider OR by email.
+    2. If not found → create new user (verified, random password).
+    3. If found without OAuth → link OAuth fields.
+    4. Ensure personal org exists.
+    5. Return JWT + refresh token.
+    """
+    # Try to find by oauth link first
+    user = db.query(User).filter(
+        User.oauth_provider == provider,
+        User.oauth_id == oauth_id,
+        User.is_active == True,
+    ).first()
+
+    # Fall back to email match
+    if not user:
+        user = db.query(User).filter(User.email == email, User.is_active == True).first()
+
+    if user:
+        # Link OAuth if not yet linked
+        if not user.oauth_provider:
+            user.oauth_provider = provider
+            user.oauth_id = oauth_id
+        if avatar_url and not user.avatar_url:
+            user.avatar_url = avatar_url
+        if not user.is_verified:
+            user.is_verified = True
+            user.verification_token = None
+        db.commit()
+        action = "auth.oauth_login"
+    else:
+        # Create new user
+        user = User(
+            email=email,
+            name=name,
+            hashed_password=hash_password(secrets.token_urlsafe(32)),
+            is_verified=True,
+            oauth_provider=provider,
+            oauth_id=oauth_id,
+            avatar_url=avatar_url,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        action = "auth.oauth_register"
+
+    _ensure_personal_org(db, user)
+    db.refresh(user)
+
+    log_activity(
+        db, user, action, "User",
+        resource_id=str(user.id),
+        resource_name=user.email,
+        detail=f"provider={provider}",
+        provider="system",
+    )
+
+    access_token = create_access_token(str(user.id))
+    refresh_token = create_refresh_token(
+        db, user.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.model_validate(user),
+    )
+
+
+@router.post("/google/callback", response_model=TokenResponse)
+async def google_callback(
+    payload: OAuthCallback,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Login or register via Google OAuth2."""
+    try:
+        info = await google_get_user_info(payload.code, payload.redirect_uri)
+    except Exception as exc:
+        logger.error("Google OAuth failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Falha na autenticação com Google")
+
+    return _oauth_login_or_register(
+        db, request,
+        email=info["email"],
+        name=info["name"],
+        provider="google",
+        oauth_id=info["oauth_id"],
+        avatar_url=info.get("avatar_url"),
+    )
+
+
+@router.post("/github/callback", response_model=TokenResponse)
+async def github_callback(
+    payload: OAuthCallback,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Login or register via GitHub OAuth2."""
+    try:
+        info = await github_get_user_info(payload.code)
+    except Exception as exc:
+        logger.error("GitHub OAuth failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Falha na autenticação com GitHub")
+
+    return _oauth_login_or_register(
+        db, request,
+        email=info["email"],
+        name=info["name"],
+        provider="github",
+        oauth_id=info["oauth_id"],
+        avatar_url=info.get("avatar_url"),
+    )
