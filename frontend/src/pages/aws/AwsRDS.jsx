@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus } from 'lucide-react';
+import { AlertCircle, Plus, Trash2 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateRDSForm from '../../components/create/CreateRDSForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
+import CostEstimatePanel from '../../components/common/CostEstimatePanel';
 import awsService from '../../services/awsservices';
 
 const defaultForm = { db_instance_identifier: '', engine: 'mysql', engine_version: '', db_instance_class: 'db.t3.micro', allocated_storage: 20, storage_type: 'gp2', db_name: '', master_username: '', master_password: '', security_group_ids: [], db_subnet_group: '', multi_az: false, publicly_accessible: false, backup_retention: 7, storage_encrypted: false, deletion_protection: false, tags: {}, tags_list: [] };
@@ -24,6 +26,9 @@ const AwsRDS = () => {
   const q = (searchParams.get('q') || '').toLowerCase();
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-rds'],
@@ -35,6 +40,20 @@ const AwsRDS = () => {
     (data) => awsService.createRDSInstance(data),
     { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); refetch(); }, 1500); } }
   );
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await awsService.deleteRDSInstance(deleteTarget.db_instance_id);
+      setDeleteTarget(null);
+      refetch();
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir instância RDS');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando instâncias RDS..." /></Layout>;
 
@@ -83,7 +102,7 @@ const AwsRDS = () => {
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-900/50">
               <tr>
-                {['ID', 'Engine', 'Versão', 'Classe', 'Status', 'Endpoint', 'AZ', 'Multi-AZ', 'Storage (GB)'].map(h => (
+                {['ID', 'Engine', 'Versão', 'Classe', 'Status', 'Endpoint', 'AZ', 'Multi-AZ', 'Storage (GB)', 'Ações'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -100,6 +119,17 @@ const AwsRDS = () => {
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.availability_zone || '—'}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.multi_az ? 'Sim' : 'Não'}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.storage_gb ?? '—'}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <PermissionGate permission="resources.delete">
+                      <button
+                        onClick={() => setDeleteTarget(i)}
+                        className="text-red-400 hover:text-red-600 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </PermissionGate>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -115,9 +145,21 @@ const AwsRDS = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        estimate={<CostEstimatePanel type="rds" form={form} />}
       >
         <CreateRDSForm form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={handleDelete}
+        title="Excluir Instância RDS"
+        description="A instância será excluída sem snapshot final. Todos os dados serão perdidos permanentemente."
+        confirmText={deleteTarget?.db_instance_id}
+        isLoading={isDeleting}
+        error={deleteError}
+      />
     </Layout>
   );
 };

@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus } from 'lucide-react';
+import { AlertCircle, Plus, Trash2 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateLambdaForm from '../../components/create/CreateLambdaForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
@@ -18,6 +19,9 @@ const AwsLambda = () => {
   const q = (searchParams.get('q') || '').toLowerCase();
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-lambda'],
@@ -29,6 +33,20 @@ const AwsLambda = () => {
     (data) => awsService.createLambdaFunction(data),
     { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); refetch(); }, 1500); } }
   );
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await awsService.deleteLambdaFunction(deleteTarget.name);
+      setDeleteTarget(null);
+      refetch();
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir função Lambda');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando funções Lambda..." /></Layout>;
 
@@ -77,7 +95,7 @@ const AwsLambda = () => {
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-900/50">
               <tr>
-                {['Nome', 'Runtime', 'Handler', 'Memória (MB)', 'Timeout (s)', 'Código (KB)', 'Última modificação'].map(h => (
+                {['Nome', 'Runtime', 'Handler', 'Memória (MB)', 'Timeout (s)', 'Código (KB)', 'Última modificação', 'Ações'].map(h => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -98,6 +116,17 @@ const AwsLambda = () => {
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {f.last_modified ? new Date(f.last_modified).toLocaleDateString('pt-BR') : '—'}
                   </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <PermissionGate permission="resources.delete">
+                      <button
+                        onClick={() => setDeleteTarget(f)}
+                        className="text-red-400 hover:text-red-600 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </PermissionGate>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -116,6 +145,17 @@ const AwsLambda = () => {
       >
         <CreateLambdaForm form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={handleDelete}
+        title="Excluir Função Lambda"
+        description="A função e todo o seu histórico serão excluídos permanentemente."
+        confirmText={deleteTarget?.name}
+        isLoading={isDeleting}
+        error={deleteError}
+      />
     </Layout>
   );
 };

@@ -40,6 +40,13 @@ export const azureService = {
 
   // Subscriptions
   listSubscriptions: async () => (await api.get(wsUrl('/azure/subscriptions'))).data,
+
+  // Delete
+  deleteVM: async (resourceGroup, vmName) => (await api.delete(wsUrl(`/azure/vms/${resourceGroup}/${vmName}`))).data,
+  deleteStorageAccount: async (resourceGroup, accountName) => (await api.delete(wsUrl(`/azure/storage-accounts/${resourceGroup}/${accountName}`))).data,
+  deleteVNet: async (resourceGroup, vnetName) => (await api.delete(wsUrl(`/azure/vnets/${resourceGroup}/${vnetName}`))).data,
+  deleteSQLServer: async (resourceGroup, serverName) => (await api.delete(wsUrl(`/azure/databases/${resourceGroup}/${serverName}`))).data,
+  deleteAppService: async (resourceGroup, appName) => (await api.delete(wsUrl(`/azure/app-services/${resourceGroup}/${appName}`))).data,
 };
 
 export default azureService;

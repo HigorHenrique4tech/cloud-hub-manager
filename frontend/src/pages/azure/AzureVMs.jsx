@@ -8,6 +8,10 @@ import LoadingSpinner from '../../components/common/loadingspinner';
 import ErrorMessage from '../../components/common/errormessage';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
+import BatchActionBar from '../../components/common/BatchActionBar';
+import BatchDeleteModal from '../../components/common/BatchDeleteModal';
+import CostEstimatePanel from '../../components/common/CostEstimatePanel';
 import CreateAzureVMForm from '../../components/create/CreateAzureVMForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
@@ -24,8 +28,18 @@ const AzureVMs = () => {
   const [viewType, setViewType] = useState('table');
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
+
+  // Batch state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [batchErrors, setBatchErrors] = useState([]);
 
   const fetchVMs = async (isRefresh = false) => {
     try {
@@ -77,6 +91,46 @@ const AzureVMs = () => {
     }
   };
 
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await azureService.deleteVM(deleteTarget.resource_group, deleteTarget.name);
+      setDeleteTarget(null);
+      fetchVMs(true);
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir VM');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Selection helpers
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const toggleAll = (ids) => setSelectedIds(prev =>
+    ids.every(id => prev.has(id)) ? new Set() : new Set(ids)
+  );
+
+  // Batch runner
+  const runBatch = async (targets, actionFn) => {
+    setBatchLoading(true);
+    setBatchProgress({ done: 0, total: targets.length });
+    const errors = [];
+    for (const item of targets) {
+      try { await actionFn(item); }
+      catch (e) { errors.push({ id: item.vm_id, name: item.name, error: e.response?.data?.detail || e.message }); }
+      setBatchProgress(p => ({ ...p, done: p.done + 1 }));
+    }
+    setBatchErrors(errors);
+    setBatchLoading(false);
+    setSelectedIds(new Set());
+    fetchVMs(true);
+  };
+
   const filtered = query
     ? vms.filter(v =>
         v.name?.toLowerCase().includes(query) ||
@@ -84,6 +138,26 @@ const AzureVMs = () => {
         v.location?.toLowerCase().includes(query)
       )
     : vms;
+
+  const selectedVMs = filtered.filter(v => selectedIds.has(v.vm_id));
+  const canBatchStart = selectedVMs.some(v => ['deallocated', 'stopped'].includes(v.power_state));
+  const canBatchStop = selectedVMs.some(v => v.power_state === 'running');
+
+  const handleBatchStart = () => runBatch(
+    selectedVMs.filter(v => ['deallocated', 'stopped'].includes(v.power_state)),
+    (vm) => azureService.startVM(vm.resource_group, vm.name)
+  );
+  const handleBatchStop = () => runBatch(
+    selectedVMs.filter(v => v.power_state === 'running'),
+    (vm) => azureService.stopVM(vm.resource_group, vm.name)
+  );
+  const handleBatchDelete = async () => {
+    await runBatch(
+      selectedVMs,
+      (vm) => azureService.deleteVM(vm.resource_group, vm.name)
+    );
+    setBatchDeleteOpen(false);
+  };
 
   if (loading) return <Layout><LoadingSpinner text="Carregando VMs Azure..." /></Layout>;
   if (noCredentials) return <Layout><NoCredentialsMessage provider="azure" /></Layout>;
@@ -120,7 +194,7 @@ const AzureVMs = () => {
             className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${viewType === 'table' ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600'}`}>
             Tabela
           </button>
-          <button onClick={() => setViewType('grid')}
+          <button onClick={() => { setViewType('grid'); setSelectedIds(new Set()); }}
             className={`px-4 py-2 rounded-lg font-medium transition-colors text-sm ${viewType === 'grid' ? 'bg-primary text-white' : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600'}`}>
             Grade
           </button>
@@ -136,7 +210,16 @@ const AzureVMs = () => {
         {filtered.length === 0 ? (
           <p className="text-center py-12 text-gray-500 dark:text-gray-400">Nenhuma VM encontrada</p>
         ) : viewType === 'table' ? (
-          <AzureVMTable vms={filtered} onStart={handleStart} onStop={handleStop} loading={refreshing} />
+          <AzureVMTable
+            vms={filtered}
+            onStart={handleStart}
+            onStop={handleStop}
+            onDelete={(vm) => setDeleteTarget(vm)}
+            loading={refreshing}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleAll={toggleAll}
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filtered.map(vm => <ResourceCard key={vm.vm_id} resource={vm} type="azure" />)}
@@ -152,9 +235,42 @@ const AzureVMs = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        estimate={<CostEstimatePanel type="azure-vm" form={form} />}
       >
         <CreateAzureVMForm form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={handleDelete}
+        title="Excluir Virtual Machine"
+        description="A VM será excluída permanentemente. Discos associados não são removidos automaticamente."
+        confirmText={deleteTarget?.name}
+        isLoading={isDeleting}
+        error={deleteError}
+      />
+
+      <BatchActionBar
+        count={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        onStart={handleBatchStart}
+        onStop={handleBatchStop}
+        onDelete={() => setBatchDeleteOpen(true)}
+        canStart={canBatchStart}
+        canStop={canBatchStop}
+        isLoading={batchLoading}
+        progress={batchProgress}
+      />
+
+      <BatchDeleteModal
+        isOpen={batchDeleteOpen}
+        onClose={() => { setBatchDeleteOpen(false); setBatchErrors([]); }}
+        onConfirm={handleBatchDelete}
+        resources={selectedVMs.map(v => ({ id: v.vm_id, name: v.name }))}
+        isLoading={batchLoading}
+        errors={batchErrors}
+      />
     </Layout>
   );
 };

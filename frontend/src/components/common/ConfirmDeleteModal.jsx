@@ -17,6 +17,7 @@ const ConfirmDeleteModal = ({
   confirmText = null,
   confirmLabel = 'Excluir',
   isLoading = false,
+  error = null,
 }) => {
   const [typed, setTyped] = useState('');
 
@@ -50,6 +51,12 @@ const ConfirmDeleteModal = ({
         {/* Body */}
         <div className="p-5 space-y-4">
           <p className="text-sm text-gray-600 dark:text-gray-400">{description}</p>
+
+          {error && (
+            <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg text-sm text-red-700 dark:text-red-300">
+              {error}
+            </div>
+          )}
 
           {confirmText && (
             <div>

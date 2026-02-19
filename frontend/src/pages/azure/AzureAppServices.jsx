@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Globe, Play, Square, Plus } from 'lucide-react';
+import { RefreshCw, Globe, Play, Square, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
+import BatchActionBar from '../../components/common/BatchActionBar';
+import BatchDeleteModal from '../../components/common/BatchDeleteModal';
+import CostEstimatePanel from '../../components/common/CostEstimatePanel';
 import CreateAzureAppServiceForm from '../../components/create/CreateAzureAppServiceForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
@@ -20,8 +24,18 @@ const AzureAppServices = () => {
   const [apps, setApps] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
+
+  // Batch state
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [batchLoading, setBatchLoading] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
+  const [batchErrors, setBatchErrors] = useState([]);
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -63,12 +77,52 @@ const AzureAppServices = () => {
     }
   };
 
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await azureService.deleteAppService(deleteTarget.resource_group, deleteTarget.name);
+      setDeleteTarget(null);
+      fetchData(true);
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir App Service');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   useEffect(() => { fetchData(); }, []);
 
   const { mutate: createApp, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
     (data) => azureService.createAppService(data),
     { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchData(true); }, 1500); } }
   );
+
+  // Selection helpers
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+  const toggleAll = (ids) => setSelectedIds(prev =>
+    ids.every(id => prev.has(id)) ? new Set() : new Set(ids)
+  );
+
+  // Batch runner
+  const runBatch = async (targets, actionFn) => {
+    setBatchLoading(true);
+    setBatchProgress({ done: 0, total: targets.length });
+    const errors = [];
+    for (const item of targets) {
+      try { await actionFn(item); }
+      catch (e) { errors.push({ id: item.id, name: item.name, error: e.response?.data?.detail || e.message }); }
+      setBatchProgress(p => ({ ...p, done: p.done + 1 }));
+    }
+    setBatchErrors(errors);
+    setBatchLoading(false);
+    setSelectedIds(new Set());
+    fetchData(true);
+  };
 
   const filtered = query
     ? apps.filter(a =>
@@ -77,6 +131,30 @@ const AzureAppServices = () => {
         a.location?.toLowerCase().includes(query)
       )
     : apps;
+
+  const allFilteredIds = filtered.map(a => a.id);
+  const hasAll = allFilteredIds.length > 0 && allFilteredIds.every(id => selectedIds.has(id));
+  const hasSome = allFilteredIds.some(id => selectedIds.has(id));
+
+  const selectedApps = filtered.filter(a => selectedIds.has(a.id));
+  const canBatchStart = selectedApps.some(a => a.state !== 'Running');
+  const canBatchStop = selectedApps.some(a => a.state === 'Running');
+
+  const handleBatchStart = () => runBatch(
+    selectedApps.filter(a => a.state !== 'Running'),
+    (app) => azureService.startAppService(app.resource_group, app.name)
+  );
+  const handleBatchStop = () => runBatch(
+    selectedApps.filter(a => a.state === 'Running'),
+    (app) => azureService.stopAppService(app.resource_group, app.name)
+  );
+  const handleBatchDelete = async () => {
+    await runBatch(
+      selectedApps,
+      (app) => azureService.deleteAppService(app.resource_group, app.name)
+    );
+    setBatchDeleteOpen(false);
+  };
 
   if (loading) return <Layout><LoadingSpinner text="Carregando App Services..." /></Layout>;
   if (noCredentials) return <Layout><NoCredentialsMessage provider="azure" /></Layout>;
@@ -124,6 +202,15 @@ const AzureAppServices = () => {
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
               <thead className="bg-gray-50 dark:bg-gray-900/50">
                 <tr>
+                  <th className="w-10 px-3 py-3">
+                    <input
+                      type="checkbox"
+                      ref={el => el && (el.indeterminate = hasSome && !hasAll)}
+                      checked={hasAll}
+                      onChange={() => toggleAll(allFilteredIds)}
+                      className="w-4 h-4 accent-primary"
+                    />
+                  </th>
                   {['Nome', 'Grupo de Recursos', 'Localização', 'Runtime', 'Plano', 'Status', 'Ações'].map(h => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
                   ))}
@@ -132,6 +219,14 @@ const AzureAppServices = () => {
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {filtered.map(app => (
                   <tr key={app.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                    <td className="px-3 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(app.id)}
+                        onChange={() => toggleSelect(app.id)}
+                        className="w-4 h-4 accent-primary"
+                      />
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <Globe className="w-4 h-4 text-sky-500 flex-shrink-0" />
@@ -156,18 +251,29 @@ const AzureAppServices = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex gap-2">
-                        {app.state !== 'Running' && (
-                          <button onClick={() => handleStart(app.resource_group, app.name)} disabled={refreshing}
-                            className="text-success hover:text-success-dark disabled:opacity-50" title="Iniciar">
-                            <Play className="w-5 h-5" />
+                        <PermissionGate permission="resources.start_stop">
+                          {app.state !== 'Running' && (
+                            <button onClick={() => handleStart(app.resource_group, app.name)} disabled={refreshing}
+                              className="text-success hover:text-success-dark disabled:opacity-50" title="Iniciar">
+                              <Play className="w-5 h-5" />
+                            </button>
+                          )}
+                          {app.state === 'Running' && (
+                            <button onClick={() => handleStop(app.resource_group, app.name)} disabled={refreshing}
+                              className="text-danger hover:text-danger-dark disabled:opacity-50" title="Parar">
+                              <Square className="w-5 h-5" />
+                            </button>
+                          )}
+                        </PermissionGate>
+                        <PermissionGate permission="resources.delete">
+                          <button
+                            onClick={() => setDeleteTarget(app)}
+                            className="text-red-400 hover:text-red-600 transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 className="w-5 h-5" />
                           </button>
-                        )}
-                        {app.state === 'Running' && (
-                          <button onClick={() => handleStop(app.resource_group, app.name)} disabled={refreshing}
-                            className="text-danger hover:text-danger-dark disabled:opacity-50" title="Parar">
-                            <Square className="w-5 h-5" />
-                          </button>
-                        )}
+                        </PermissionGate>
                       </div>
                     </td>
                   </tr>
@@ -186,9 +292,42 @@ const AzureAppServices = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        estimate={<CostEstimatePanel type="azure-app-service" form={form} />}
       >
         <CreateAzureAppServiceForm form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={handleDelete}
+        title="Excluir App Service"
+        description="O App Service e seu conteúdo serão excluídos. O Plano de hospedagem não é removido automaticamente."
+        confirmText={deleteTarget?.name}
+        isLoading={isDeleting}
+        error={deleteError}
+      />
+
+      <BatchActionBar
+        count={selectedIds.size}
+        onClear={() => setSelectedIds(new Set())}
+        onStart={handleBatchStart}
+        onStop={handleBatchStop}
+        onDelete={() => setBatchDeleteOpen(true)}
+        canStart={canBatchStart}
+        canStop={canBatchStop}
+        isLoading={batchLoading}
+        progress={batchProgress}
+      />
+
+      <BatchDeleteModal
+        isOpen={batchDeleteOpen}
+        onClose={() => { setBatchDeleteOpen(false); setBatchErrors([]); }}
+        onConfirm={handleBatchDelete}
+        resources={selectedApps.map(a => ({ id: a.id, name: a.name }))}
+        isLoading={batchLoading}
+        errors={batchErrors}
+      />
     </Layout>
   );
 };

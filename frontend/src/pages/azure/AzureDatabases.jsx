@@ -1,38 +1,51 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Database, ChevronDown, ChevronRight, Plus } from 'lucide-react';
+import { RefreshCw, Database, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateAzureSQLForm from '../../components/create/CreateAzureSQLForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
+import CostEstimatePanel from '../../components/common/CostEstimatePanel';
 import azureService from '../../services/azureservices';
 
 const defaultForm = { server_name: '', resource_group: '', location: '', admin_login: '', admin_password: '', database_name: '', sku_name: 'GP_Gen5_2', max_size_bytes: 2147483648, collation: 'SQL_Latin1_General_CP1_CI_AS', tags: {}, tags_list: [] };
 
-const ServerRow = ({ server }) => {
+const ServerRow = ({ server, onDelete }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
-      <button
-        onClick={() => setOpen(p => !p)}
-        className="w-full flex items-center justify-between px-5 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors text-left"
-      >
-        <div className="flex items-center gap-3">
-          <Database className="w-4 h-4 text-sky-500 flex-shrink-0" />
-          <div>
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{server.name}</span>
-            <span className="ml-3 text-xs text-gray-400 dark:text-gray-500 font-mono">{server.fully_qualified_domain_name}</span>
+      <div className="flex items-center w-full px-5 py-3 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors">
+        <button
+          onClick={() => setOpen(p => !p)}
+          className="flex-1 flex items-center justify-between text-left"
+        >
+          <div className="flex items-center gap-3">
+            <Database className="w-4 h-4 text-sky-500 flex-shrink-0" />
+            <div>
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{server.name}</span>
+              <span className="ml-3 text-xs text-gray-400 dark:text-gray-500 font-mono">{server.fully_qualified_domain_name}</span>
+            </div>
           </div>
-        </div>
-        <div className="flex items-center gap-3 flex-shrink-0 ml-4">
-          <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">{server.location}</span>
-          <span className="text-xs text-gray-400 dark:text-gray-500">{server.databases?.length || 0} DB(s)</span>
-          {open ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
-        </div>
-      </button>
+          <div className="flex items-center gap-3 flex-shrink-0 ml-4">
+            <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">{server.location}</span>
+            <span className="text-xs text-gray-400 dark:text-gray-500">{server.databases?.length || 0} DB(s)</span>
+            {open ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
+          </div>
+        </button>
+        <PermissionGate permission="resources.delete">
+          <button
+            onClick={() => onDelete(server)}
+            className="ml-3 text-red-400 hover:text-red-600 transition-colors flex-shrink-0"
+            title="Excluir servidor"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </PermissionGate>
+      </div>
       {open && server.databases?.length > 0 && (
         <div className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/30 px-5 py-3">
           <div className="overflow-x-auto">
@@ -74,6 +87,9 @@ const AzureDatabases = () => {
   const [servers, setServers] = useState([]);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -97,6 +113,20 @@ const AzureDatabases = () => {
     (data) => azureService.createSQLDatabase(data),
     { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchData(true); }, 1500); } }
   );
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await azureService.deleteSQLServer(deleteTarget.resource_group, deleteTarget.name);
+      setDeleteTarget(null);
+      fetchData(true);
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir servidor SQL');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const filtered = query
     ? servers.filter(s =>
@@ -142,7 +172,7 @@ const AzureDatabases = () => {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(s => <ServerRow key={s.id} server={s} />)}
+          {filtered.map(s => <ServerRow key={s.id} server={s} onDelete={setDeleteTarget} />)}
         </div>
       )}
 
@@ -154,9 +184,21 @@ const AzureDatabases = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        estimate={<CostEstimatePanel type="azure-sql" form={form} />}
       >
         <CreateAzureSQLForm form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={handleDelete}
+        title="Excluir Servidor Azure SQL"
+        description="O servidor Azure SQL e todos os databases nele serão excluídos permanentemente."
+        confirmText={deleteTarget?.name}
+        isLoading={isDeleting}
+        error={deleteError}
+      />
     </Layout>
   );
 };

@@ -2,23 +2,36 @@ import { useState, useEffect } from 'react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
 import awsService from '../../services/awsservices';
+import { AWS_RDS_INSTANCE_CLASSES, AWS_RDS_ENGINE_VERSIONS } from '../../data/awsConstants';
 
-const ENGINES = ['mysql', 'postgres', 'mariadb', 'oracle-ee', 'sqlserver-ex', 'aurora-mysql', 'aurora-postgresql'];
+const ENGINES = [
+  { value: 'mysql',              label: 'MySQL' },
+  { value: 'postgres',           label: 'PostgreSQL' },
+  { value: 'mariadb',            label: 'MariaDB' },
+  { value: 'oracle-ee',          label: 'Oracle Enterprise Edition' },
+  { value: 'sqlserver-ex',       label: 'SQL Server Express' },
+  { value: 'aurora-mysql',       label: 'Aurora MySQL (Serverless ready)' },
+  { value: 'aurora-postgresql',  label: 'Aurora PostgreSQL (Serverless ready)' },
+];
 const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary';
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const toggleCls = 'w-4 h-4 text-primary accent-primary';
 
 export default function CreateRDSForm({ form, setForm }) {
-  const [versions, setVersions] = useState([]);
-  const [classes, setClasses] = useState([]);
+  const [apiVersions, setApiVersions] = useState([]);
+  const [apiClasses, setApiClasses] = useState([]);
   const [subnetGroups, setSubnetGroups] = useState([]);
   const [securityGroups, setSecurityGroups] = useState([]);
 
   const engine = form.engine || 'mysql';
+  const versions = apiVersions.length > 0 ? apiVersions : (AWS_RDS_ENGINE_VERSIONS[engine] || []);
+  const classes = apiClasses.length > 0 ? apiClasses : (AWS_RDS_INSTANCE_CLASSES[engine] || ['db.t3.micro']);
 
   useEffect(() => {
-    awsService.listRDSEngineVersions(engine).then((d) => d?.versions && setVersions(d.versions)).catch(() => {});
-    awsService.listRDSInstanceClasses(engine).then((d) => d?.instance_classes && setClasses(d.instance_classes)).catch(() => {});
+    setApiVersions([]);
+    setApiClasses([]);
+    awsService.listRDSEngineVersions(engine).then((d) => d?.versions?.length && setApiVersions(d.versions)).catch(() => {});
+    awsService.listRDSInstanceClasses(engine).then((d) => d?.instance_classes?.length && setApiClasses(d.instance_classes)).catch(() => {});
   }, [engine]);
 
   useEffect(() => {
@@ -46,7 +59,7 @@ export default function CreateRDSForm({ form, setForm }) {
         <div>
           <label className={labelCls}>Engine <span className="text-red-500">*</span></label>
           <select className={inputCls} value={engine} onChange={(e) => { set('engine', e.target.value); set('engine_version', ''); }}>
-            {ENGINES.map((e) => <option key={e} value={e}>{e}</option>)}
+            {ENGINES.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
           </select>
         </div>
         <div>
@@ -59,9 +72,7 @@ export default function CreateRDSForm({ form, setForm }) {
         <div>
           <label className={labelCls}>Classe da Instância</label>
           <select className={inputCls} value={form.db_instance_class || 'db.t3.micro'} onChange={(e) => set('db_instance_class', e.target.value)}>
-            {classes.length === 0
-              ? <option value="db.t3.micro">db.t3.micro</option>
-              : classes.map((c) => <option key={c} value={c}>{c}</option>)}
+            {classes.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
       </FormSection>

@@ -10,6 +10,7 @@ const CreateResourceModal = ({
   isLoading = false,
   error = '',
   success = '',
+  estimate = null,
   children,
 }) => {
   useEffect(() => {
@@ -55,6 +56,7 @@ const CreateResourceModal = ({
             </div>
           )}
           {children}
+          {estimate}
         </div>
 
         {/* Footer */}

@@ -1,8 +1,9 @@
-import { Play, Square } from 'lucide-react';
+import { Play, Square, Trash2 } from 'lucide-react';
 import StatusBadge from '../common/statusbadge';
 import { formatDate } from '../../utils/formatters';
+import PermissionGate from '../common/PermissionGate';
 
-const EC2Table = ({ instances = [], onStart, onStop, loading = false }) => {
+const EC2Table = ({ instances = [], onStart, onStop, onDelete, loading = false, selectedIds, onToggleSelect, onToggleAll }) => {
   if (!instances || instances.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -11,11 +12,24 @@ const EC2Table = ({ instances = [], onStart, onStop, loading = false }) => {
     );
   }
 
+  const allIds = instances.map(i => i.instance_id);
+  const hasAll = allIds.length > 0 && allIds.every(id => selectedIds?.has(id));
+  const hasSome = allIds.some(id => selectedIds?.has(id));
+
   return (
     <div className="overflow-x-auto">
       <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
         <thead className="bg-gray-50 dark:bg-gray-900/50">
           <tr>
+            <th className="w-10 px-3 py-3">
+              <input
+                type="checkbox"
+                ref={el => el && (el.indeterminate = hasSome && !hasAll)}
+                checked={hasAll}
+                onChange={() => onToggleAll?.(allIds)}
+                className="w-4 h-4 accent-primary"
+              />
+            </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
               Nome
             </th>
@@ -45,6 +59,14 @@ const EC2Table = ({ instances = [], onStart, onStop, loading = false }) => {
         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
           {instances.map((instance) => (
             <tr key={instance.instance_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+              <td className="px-3 py-4">
+                <input
+                  type="checkbox"
+                  checked={selectedIds?.has(instance.instance_id) ?? false}
+                  onChange={() => onToggleSelect?.(instance.instance_id)}
+                  className="w-4 h-4 accent-primary"
+                />
+              </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
                   {instance.name || 'N/A'}
@@ -76,26 +98,38 @@ const EC2Table = ({ instances = [], onStart, onStop, loading = false }) => {
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                 <div className="flex space-x-2">
-                  {instance.state === 'stopped' && (
+                  <PermissionGate permission="resources.start_stop">
+                    {instance.state === 'stopped' && (
+                      <button
+                        onClick={() => onStart?.(instance.instance_id)}
+                        disabled={loading}
+                        className="text-success hover:text-success-dark disabled:opacity-50"
+                        title="Iniciar"
+                      >
+                        <Play className="w-5 h-5" />
+                      </button>
+                    )}
+                    {instance.state === 'running' && (
+                      <button
+                        onClick={() => onStop?.(instance.instance_id)}
+                        disabled={loading}
+                        className="text-danger hover:text-danger-dark disabled:opacity-50"
+                        title="Parar"
+                      >
+                        <Square className="w-5 h-5" />
+                      </button>
+                    )}
+                  </PermissionGate>
+                  <PermissionGate permission="resources.delete">
                     <button
-                      onClick={() => onStart?.(instance.instance_id)}
+                      onClick={() => onDelete?.(instance)}
                       disabled={loading}
-                      className="text-success hover:text-success-dark disabled:opacity-50"
-                      title="Iniciar"
+                      className="text-red-400 hover:text-red-600 disabled:opacity-50"
+                      title="Excluir"
                     >
-                      <Play className="w-5 h-5" />
+                      <Trash2 className="w-5 h-5" />
                     </button>
-                  )}
-                  {instance.state === 'running' && (
-                    <button
-                      onClick={() => onStop?.(instance.instance_id)}
-                      disabled={loading}
-                      className="text-danger hover:text-danger-dark disabled:opacity-50"
-                      title="Parar"
-                    >
-                      <Square className="w-5 h-5" />
-                    </button>
-                  )}
+                  </PermissionGate>
                 </div>
               </td>
             </tr>

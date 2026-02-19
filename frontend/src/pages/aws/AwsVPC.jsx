@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus } from 'lucide-react';
+import { AlertCircle, Plus, Trash2 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateVPCForm from '../../components/create/CreateVPCForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
@@ -18,6 +19,9 @@ const AwsVPC = () => {
   const q = (searchParams.get('q') || '').toLowerCase();
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-vpc'],
@@ -29,6 +33,20 @@ const AwsVPC = () => {
     (data) => awsService.createVPC(data),
     { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); refetch(); }, 1500); } }
   );
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await awsService.deleteVPC(deleteTarget.vpc_id);
+      setDeleteTarget(null);
+      refetch();
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir VPC');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando VPCs..." /></Layout>;
 
@@ -77,7 +95,7 @@ const AwsVPC = () => {
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-900/50">
               <tr>
-                {['VPC ID', 'Nome', 'CIDR', 'Estado', 'Padrão', 'Subnets'].map(h => (
+                {['VPC ID', 'Nome', 'CIDR', 'Estado', 'Padrão', 'Subnets', 'Ações'].map(h => (
                   <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -95,6 +113,17 @@ const AwsVPC = () => {
                     {v.is_default ? <span className="badge-gray">Padrão</span> : '—'}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{v.subnets_count ?? 0}</td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <PermissionGate permission="resources.delete">
+                      <button
+                        onClick={() => setDeleteTarget(v)}
+                        className="text-red-400 hover:text-red-600 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </PermissionGate>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -113,6 +142,17 @@ const AwsVPC = () => {
       >
         <CreateVPCForm form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={handleDelete}
+        title="Excluir VPC"
+        description="A VPC deve estar vazia (sem subnets, IGW ou ENIs) para ser excluída. Esta ação é permanente."
+        confirmText={deleteTarget?.name || deleteTarget?.vpc_id}
+        isLoading={isDeleting}
+        error={deleteError}
+      />
     </Layout>
   );
 };

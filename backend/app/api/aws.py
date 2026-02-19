@@ -373,6 +373,88 @@ async def ws_list_iam_roles(
     return await svc.list_iam_roles(service_filter=service)
 
 
+# ── Delete ──────────────────────────────────────────────────────────────────
+
+@ws_router.delete("/ec2/instances/{instance_id}")
+async def ws_terminate_ec2_instance(
+    instance_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.terminate_ec2_instance(instance_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao terminar instância EC2'))
+    log_activity(db, member.user, 'ec2.delete', 'EC2',
+                 resource_id=instance_id, resource_name=instance_id, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/s3/buckets/{bucket_name}")
+async def ws_delete_s3_bucket(
+    bucket_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.delete_s3_bucket(bucket_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir bucket S3'))
+    log_activity(db, member.user, 's3.delete', 'S3',
+                 resource_name=bucket_name, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/rds/instances/{db_instance_id}")
+async def ws_delete_rds_instance(
+    db_instance_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.delete_rds_instance(db_instance_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir instância RDS'))
+    log_activity(db, member.user, 'rds.delete', 'RDS',
+                 resource_id=db_instance_id, resource_name=db_instance_id, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/lambda/functions/{function_name}")
+async def ws_delete_lambda_function(
+    function_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.delete_lambda_function(function_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir função Lambda'))
+    log_activity(db, member.user, 'lambda.delete', 'Lambda',
+                 resource_name=function_name, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/ec2/vpcs/{vpc_id}")
+async def ws_delete_vpc(
+    vpc_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.delete_vpc(vpc_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir VPC'))
+    log_activity(db, member.user, 'vpc.delete', 'VPC',
+                 resource_id=vpc_id, resource_name=vpc_id, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
 # ── Costs ───────────────────────────────────────────────────────────────────
 
 @ws_router.get("/costs")

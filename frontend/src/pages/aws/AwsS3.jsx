@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { HardDrive, ShieldAlert, ShieldCheck, AlertCircle, Plus } from 'lucide-react';
+import { HardDrive, ShieldAlert, ShieldCheck, AlertCircle, Plus, Trash2 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateS3Form from '../../components/create/CreateS3Form';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
@@ -18,6 +19,9 @@ const AwsS3 = () => {
   const q = (searchParams.get('q') || '').toLowerCase();
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-s3'],
@@ -29,6 +33,20 @@ const AwsS3 = () => {
     (data) => awsService.createS3Bucket(data),
     { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); refetch(); }, 1500); } }
   );
+
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    setDeleteError('');
+    try {
+      await awsService.deleteS3Bucket(deleteTarget.name);
+      setDeleteTarget(null);
+      refetch();
+    } catch (err) {
+      setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir bucket');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando buckets S3..." /></Layout>;
 
@@ -77,7 +95,7 @@ const AwsS3 = () => {
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-900/50">
               <tr>
-                {['Nome', 'Região', 'Criado em', 'Acesso Público'].map(h => (
+                {['Nome', 'Região', 'Criado em', 'Acesso Público', 'Ações'].map(h => (
                   <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
                 ))}
               </tr>
@@ -108,6 +126,17 @@ const AwsS3 = () => {
                       </span>
                     )}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <PermissionGate permission="resources.delete">
+                      <button
+                        onClick={() => setDeleteTarget(b)}
+                        className="text-red-400 hover:text-red-600 transition-colors"
+                        title="Excluir"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </PermissionGate>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -126,6 +155,17 @@ const AwsS3 = () => {
       >
         <CreateS3Form form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteTarget}
+        onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
+        onConfirm={handleDelete}
+        title="Excluir Bucket S3"
+        description="O bucket deve estar vazio antes de ser excluído. Objetos existentes impedirão a exclusão."
+        confirmText={deleteTarget?.name}
+        isLoading={isDeleting}
+        error={deleteError}
+      />
     </Layout>
   );
 };
