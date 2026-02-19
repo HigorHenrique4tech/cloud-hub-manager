@@ -45,6 +45,10 @@ def _migrate_existing_tables():
         # activity_logs — org + workspace scope
         "ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL",
         "ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL",
+        # cloud_accounts — account_id + created_by (added after initial table creation)
+        "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS account_id VARCHAR(255)",
+        "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL",
+        "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
     ]
     with engine.connect() as conn:
         for sql in migrations:
