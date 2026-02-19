@@ -692,6 +692,73 @@ class AWSService:
             logger.error(f"get_cost_and_usage error: {e}")
             return {'success': False, 'error': str(e)}
 
+    # ── Delete operations ─────────────────────────────────────────────────────
+
+    async def terminate_ec2_instance(self, instance_id: str) -> Dict:
+        try:
+            self.ec2_client.terminate_instances(InstanceIds=[instance_id])
+            return {'success': True}
+        except ClientError as e:
+            logger.error(f"terminate_ec2_instance error: {e}")
+            return {'success': False, 'error': str(e)}
+        except Exception as e:
+            logger.error(f"terminate_ec2_instance error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def delete_s3_bucket(self, bucket_name: str) -> Dict:
+        try:
+            self.s3_client.delete_bucket(Bucket=bucket_name)
+            return {'success': True}
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code == 'BucketNotEmpty':
+                return {'success': False, 'error': 'O bucket não está vazio. Remova todos os objetos antes de excluir.'}
+            logger.error(f"delete_s3_bucket error: {e}")
+            return {'success': False, 'error': str(e)}
+        except Exception as e:
+            logger.error(f"delete_s3_bucket error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def delete_rds_instance(self, db_instance_id: str) -> Dict:
+        try:
+            self.rds_client.delete_db_instance(
+                DBInstanceIdentifier=db_instance_id,
+                SkipFinalSnapshot=True,
+                DeleteAutomatedBackups=True,
+            )
+            return {'success': True}
+        except ClientError as e:
+            logger.error(f"delete_rds_instance error: {e}")
+            return {'success': False, 'error': str(e)}
+        except Exception as e:
+            logger.error(f"delete_rds_instance error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def delete_lambda_function(self, function_name: str) -> Dict:
+        try:
+            self.lambda_client.delete_function(FunctionName=function_name)
+            return {'success': True}
+        except ClientError as e:
+            logger.error(f"delete_lambda_function error: {e}")
+            return {'success': False, 'error': str(e)}
+        except Exception as e:
+            logger.error(f"delete_lambda_function error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def delete_vpc(self, vpc_id: str) -> Dict:
+        try:
+            self.ec2_client.delete_vpc(VpcId=vpc_id)
+            return {'success': True}
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code == 'DependencyViolation':
+                return {'success': False, 'error': 'A VPC ainda possui recursos associados (subnets, IGW, ENIs). Remova-os antes de excluir a VPC.'}
+            logger.error(f"delete_vpc error: {e}")
+            return {'success': False, 'error': str(e)}
+        except Exception as e:
+            logger.error(f"delete_vpc error: {e}")
+            return {'success': False, 'error': str(e)}
+
     # ── Connection test ───────────────────────────────────────────────────────
 
     async def test_connection(self) -> Dict:

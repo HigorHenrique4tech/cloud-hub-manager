@@ -41,6 +41,13 @@ export const awsService = {
   createLambdaFunction: async (data) => (await api.post(wsUrl('/aws/lambda/functions'), data)).data,
   listIAMRoles: async (service = 'lambda') => (await api.get(wsUrl('/aws/iam/roles'), { params: { service } })).data,
 
+  // Delete
+  deleteEC2Instance: async (instanceId) => (await api.delete(wsUrl(`/aws/ec2/instances/${instanceId}`))).data,
+  deleteS3Bucket: async (bucketName) => (await api.delete(wsUrl(`/aws/s3/buckets/${bucketName}`))).data,
+  deleteRDSInstance: async (dbInstanceId) => (await api.delete(wsUrl(`/aws/rds/instances/${dbInstanceId}`))).data,
+  deleteLambdaFunction: async (functionName) => (await api.delete(wsUrl(`/aws/lambda/functions/${functionName}`))).data,
+  deleteVPC: async (vpcId) => (await api.delete(wsUrl(`/aws/ec2/vpcs/${vpcId}`))).data,
+
   // Costs
   getCosts: async (startDate, endDate, granularity = 'DAILY') =>
     (await api.get(wsUrl('/aws/costs'), { params: { start_date: startDate, end_date: endDate, granularity } })).data,

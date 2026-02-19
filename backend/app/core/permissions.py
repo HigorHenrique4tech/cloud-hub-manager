@@ -31,6 +31,7 @@ class Permission(str, Enum):
     RESOURCES_VIEW       = "resources.view"
     RESOURCES_CREATE     = "resources.create"
     RESOURCES_START_STOP = "resources.start_stop"
+    RESOURCES_DELETE     = "resources.delete"
 
     # Costs
     COSTS_VIEW = "costs.view"

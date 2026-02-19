@@ -3,16 +3,19 @@ import { Plus, Trash2 } from 'lucide-react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
 import azureService from '../../services/azureservices';
+import { AZURE_LOCATIONS } from '../../data/azureConstants';
 
 const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary';
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
 export default function CreateAzureVNetForm({ form, setForm }) {
-  const [locations, setLocations] = useState([]);
+  const [apiLocations, setApiLocations] = useState([]);
   const [resourceGroups, setResourceGroups] = useState([]);
 
+  const locations = apiLocations.length > 0 ? apiLocations : AZURE_LOCATIONS;
+
   useEffect(() => {
-    azureService.listLocations().then((d) => d?.locations && setLocations(d.locations)).catch(() => {});
+    azureService.listLocations().then((d) => d?.locations?.length && setApiLocations(d.locations)).catch(() => {});
     azureService.listResourceGroups().then((d) => d?.resource_groups && setResourceGroups(d.resource_groups)).catch(() => {});
   }, []);
 
@@ -35,16 +38,20 @@ export default function CreateAzureVNetForm({ form, setForm }) {
         </div>
         <div>
           <label className={labelCls}>Resource Group <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
-            <option value="">Selecione...</option>
-            {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
-          </select>
+          {resourceGroups.length > 0 ? (
+            <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
+              <option value="">Selecione...</option>
+              {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
+            </select>
+          ) : (
+            <input className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)} placeholder="meu-resource-group" />
+          )}
         </div>
         <div>
           <label className={labelCls}>Localização <span className="text-red-500">*</span></label>
           <select className={inputCls} value={form.location || ''} onChange={(e) => set('location', e.target.value)}>
             <option value="">Selecione...</option>
-            {locations.map((l) => <option key={l.name} value={l.name}>{l.display_name}</option>)}
+            {locations.map((l) => <option key={l.name} value={l.name}>{l.display_name || l.name}</option>)}
           </select>
         </div>
       </FormSection>

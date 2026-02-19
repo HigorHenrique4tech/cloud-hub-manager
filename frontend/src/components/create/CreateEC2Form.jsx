@@ -3,8 +3,16 @@ import { Plus, Trash2 } from 'lucide-react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
 import awsService from '../../services/awsservices';
+import { AWS_EC2_INSTANCE_TYPES } from '../../data/awsConstants';
 
-const VOLUME_TYPES = ['gp2', 'gp3', 'io1', 'io2', 'st1', 'sc1'];
+const VOLUME_TYPES = [
+  { value: 'gp3', label: 'gp3 — SSD de propósito geral v3 (recomendado)' },
+  { value: 'gp2', label: 'gp2 — SSD de propósito geral v2' },
+  { value: 'io1', label: 'io1 — SSD IOPS provisionados v1' },
+  { value: 'io2', label: 'io2 — SSD IOPS provisionados v2 (maior durabilidade)' },
+  { value: 'st1', label: 'st1 — HDD otimizado para throughput (big data)' },
+  { value: 'sc1', label: 'sc1 — HDD frio (acesso infrequente, mais barato)' },
+];
 
 const defaultVolume = () => ({
   device_name: '/dev/sda1',
@@ -23,12 +31,14 @@ const toggleCls = 'w-4 h-4 text-primary accent-primary';
 export default function CreateEC2Form({ form, setForm }) {
   const [amis, setAmis] = useState([]);
   const [amiSearch, setAmiSearch] = useState('');
-  const [instanceTypes, setInstanceTypes] = useState([]);
+  const [apiInstanceTypes, setApiInstanceTypes] = useState([]);
   const [keyPairs, setKeyPairs] = useState([]);
   const [securityGroups, setSecurityGroups] = useState([]);
   const [subnets, setSubnets] = useState([]);
   const [iamRoles, setIamRoles] = useState([]);
   const [loading, setLoading] = useState({});
+
+  const instanceTypes = apiInstanceTypes.length > 0 ? apiInstanceTypes : AWS_EC2_INSTANCE_TYPES;
 
   const load = async (key, fn) => {
     setLoading((p) => ({ ...p, [key]: true }));
@@ -40,7 +50,7 @@ export default function CreateEC2Form({ form, setForm }) {
   };
 
   useEffect(() => {
-    load('types', awsService.listInstanceTypes).then((d) => d && setInstanceTypes(d.instance_types || []));
+    load('types', awsService.listInstanceTypes).then((d) => d?.instance_types?.length && setApiInstanceTypes(d.instance_types));
     load('keys', awsService.listKeyPairs).then((d) => d && setKeyPairs(d.key_pairs || []));
     load('sgs', awsService.listSecurityGroups).then((d) => d && setSecurityGroups(d.security_groups || []));
     load('subnets', awsService.listSubnets).then((d) => d && setSubnets(d.subnets || []));
@@ -95,7 +105,7 @@ export default function CreateEC2Form({ form, setForm }) {
           <label className={labelCls}>Tipo de Instância</label>
           <select className={inputCls} value={form.instance_type || 't3.micro'} onChange={(e) => set('instance_type', e.target.value)}>
             {loading.types ? <option>Carregando...</option> : instanceTypes.map((t) => (
-              <option key={t.name} value={t.name}>{t.name} ({t.vcpus} vCPU, {Math.round(t.memory_mb / 1024)}GB RAM)</option>
+              <option key={t.name} value={t.name}>{t.label || `${t.name} — ${t.vcpus} vCPU, ${Math.round(t.memory_mb / 1024)} GB RAM`}</option>
             ))}
           </select>
         </div>
@@ -161,7 +171,7 @@ export default function CreateEC2Form({ form, setForm }) {
                 <div>
                   <label className={labelCls}>Tipo</label>
                   <select className={inputCls} value={vol.volume_type} onChange={(e) => updateVolume(i, 'volume_type', e.target.value)}>
-                    {VOLUME_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    {VOLUME_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 {['io1', 'io2', 'gp3'].includes(vol.volume_type) && (

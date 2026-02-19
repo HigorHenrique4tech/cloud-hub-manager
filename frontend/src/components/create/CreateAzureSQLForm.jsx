@@ -2,8 +2,22 @@ import { useState, useEffect } from 'react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
 import azureService from '../../services/azureservices';
+import { AZURE_LOCATIONS } from '../../data/azureConstants';
 
-const SKUS = ['Basic', 'S0', 'S1', 'S2', 'S3', 'P1', 'P2', 'GP_Gen5_2', 'GP_Gen5_4', 'BC_Gen5_2'];
+const SKUS = [
+  { value: 'Basic',      label: 'Basic — DTU, 5 DTUs, 2 GB' },
+  { value: 'S0',         label: 'S0 — Standard, 10 DTUs, 250 GB' },
+  { value: 'S1',         label: 'S1 — Standard, 20 DTUs, 250 GB' },
+  { value: 'S2',         label: 'S2 — Standard, 50 DTUs, 250 GB' },
+  { value: 'S3',         label: 'S3 — Standard, 100 DTUs, 250 GB' },
+  { value: 'P1',         label: 'P1 — Premium, 125 DTUs, 500 GB' },
+  { value: 'P2',         label: 'P2 — Premium, 250 DTUs, 500 GB' },
+  { value: 'GP_Gen5_2',  label: 'GP_Gen5_2 — General Purpose, 2 vCores, 10.2 GB' },
+  { value: 'GP_Gen5_4',  label: 'GP_Gen5_4 — General Purpose, 4 vCores, 20.4 GB' },
+  { value: 'GP_Gen5_8',  label: 'GP_Gen5_8 — General Purpose, 8 vCores, 40.8 GB' },
+  { value: 'BC_Gen5_2',  label: 'BC_Gen5_2 — Business Critical, 2 vCores, 10.2 GB' },
+  { value: 'BC_Gen5_4',  label: 'BC_Gen5_4 — Business Critical, 4 vCores, 20.4 GB' },
+];
 const MAX_SIZES = [
   { label: '100 MB', value: 104857600 },
   { label: '250 MB', value: 268435456 },
@@ -19,11 +33,13 @@ const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gr
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
 export default function CreateAzureSQLForm({ form, setForm }) {
-  const [locations, setLocations] = useState([]);
+  const [apiLocations, setApiLocations] = useState([]);
   const [resourceGroups, setResourceGroups] = useState([]);
 
+  const locations = apiLocations.length > 0 ? apiLocations : AZURE_LOCATIONS;
+
   useEffect(() => {
-    azureService.listLocations().then((d) => d?.locations && setLocations(d.locations)).catch(() => {});
+    azureService.listLocations().then((d) => d?.locations?.length && setApiLocations(d.locations)).catch(() => {});
     azureService.listResourceGroups().then((d) => d?.resource_groups && setResourceGroups(d.resource_groups)).catch(() => {});
   }, []);
 
@@ -39,16 +55,20 @@ export default function CreateAzureSQLForm({ form, setForm }) {
         </div>
         <div>
           <label className={labelCls}>Resource Group <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
-            <option value="">Selecione...</option>
-            {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
-          </select>
+          {resourceGroups.length > 0 ? (
+            <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
+              <option value="">Selecione...</option>
+              {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
+            </select>
+          ) : (
+            <input className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)} placeholder="meu-resource-group" />
+          )}
         </div>
         <div>
           <label className={labelCls}>Localização <span className="text-red-500">*</span></label>
           <select className={inputCls} value={form.location || ''} onChange={(e) => set('location', e.target.value)}>
             <option value="">Selecione...</option>
-            {locations.map((l) => <option key={l.name} value={l.name}>{l.display_name}</option>)}
+            {locations.map((l) => <option key={l.name} value={l.name}>{l.display_name || l.name}</option>)}
           </select>
         </div>
       </FormSection>
@@ -72,7 +92,7 @@ export default function CreateAzureSQLForm({ form, setForm }) {
         <div>
           <label className={labelCls}>SKU / Tier</label>
           <select className={inputCls} value={form.sku_name || 'Basic'} onChange={(e) => set('sku_name', e.target.value)}>
-            {SKUS.map((s) => <option key={s} value={s}>{s}</option>)}
+            {SKUS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
         <div>

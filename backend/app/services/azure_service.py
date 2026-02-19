@@ -661,3 +661,48 @@ class AzureService:
         except Exception as e:
             logger.error(f"Azure cost error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
+
+    # ── Delete operations ─────────────────────────────────────────────────────
+
+    async def delete_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+        try:
+            poller = self.compute_client.virtual_machines.begin_delete(resource_group, vm_name)
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_virtual_machine error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def delete_storage_account(self, resource_group: str, account_name: str) -> Dict:
+        try:
+            self.storage_client.storage_accounts.delete(resource_group, account_name)
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_storage_account error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def delete_virtual_network(self, resource_group: str, vnet_name: str) -> Dict:
+        try:
+            poller = self.network_client.virtual_networks.begin_delete(resource_group, vnet_name)
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_virtual_network error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def delete_sql_server(self, resource_group: str, server_name: str) -> Dict:
+        try:
+            poller = self.sql_client.servers.begin_delete(resource_group, server_name)
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_sql_server error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def delete_app_service(self, resource_group: str, app_name: str) -> Dict:
+        try:
+            self.web_client.web_apps.delete(resource_group, app_name)
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_app_service error: {e}")
+            return {'success': False, 'error': str(e)}

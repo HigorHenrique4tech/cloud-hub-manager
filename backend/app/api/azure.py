@@ -368,6 +368,93 @@ async def ws_list_subscriptions(
     return await svc.list_subscriptions()
 
 
+# ── Delete ──────────────────────────────────────────────────────────────────
+
+@ws_router.delete("/vms/{resource_group}/{vm_name}")
+async def ws_delete_azure_vm(
+    resource_group: str,
+    vm_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.delete_virtual_machine(resource_group, vm_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir VM'))
+    log_activity(db, member.user, 'vm.delete', 'AzureVM',
+                 resource_name=vm_name, provider='azure',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/storage-accounts/{resource_group}/{account_name}")
+async def ws_delete_azure_storage(
+    resource_group: str,
+    account_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.delete_storage_account(resource_group, account_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir Storage Account'))
+    log_activity(db, member.user, 'storage.delete', 'AzureStorage',
+                 resource_name=account_name, provider='azure',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/vnets/{resource_group}/{vnet_name}")
+async def ws_delete_azure_vnet(
+    resource_group: str,
+    vnet_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.delete_virtual_network(resource_group, vnet_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir VNet'))
+    log_activity(db, member.user, 'vnet.delete', 'AzureVNet',
+                 resource_name=vnet_name, provider='azure',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/databases/{resource_group}/{server_name}")
+async def ws_delete_azure_sql_server(
+    resource_group: str,
+    server_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.delete_sql_server(resource_group, server_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir servidor SQL'))
+    log_activity(db, member.user, 'sql.delete', 'AzureSQL',
+                 resource_name=server_name, provider='azure',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/app-services/{resource_group}/{app_name}")
+async def ws_delete_azure_app_service(
+    resource_group: str,
+    app_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.delete_app_service(resource_group, app_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir App Service'))
+    log_activity(db, member.user, 'appservice.delete', 'AzureAppService',
+                 resource_name=app_name, provider='azure',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
 # ── Costs ───────────────────────────────────────────────────────────────────
 
 @ws_router.get("/costs")

@@ -2,20 +2,36 @@ import { useState, useEffect } from 'react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
 import azureService from '../../services/azureservices';
+import { AZURE_LOCATIONS } from '../../data/azureConstants';
 
-const SKUS = ['Standard_LRS', 'Standard_GRS', 'Standard_RAGRS', 'Standard_ZRS', 'Premium_LRS', 'Premium_ZRS'];
-const KINDS = ['StorageV2', 'BlobStorage', 'BlockBlobStorage', 'FileStorage', 'Storage'];
+const SKUS = [
+  { value: 'Standard_LRS',   label: 'Standard_LRS — LRS (redundância local, mais barato)' },
+  { value: 'Standard_GRS',   label: 'Standard_GRS — GRS (redundância geográfica)' },
+  { value: 'Standard_RAGRS', label: 'Standard_RAGRS — RA-GRS (geo com leitura)' },
+  { value: 'Standard_ZRS',   label: 'Standard_ZRS — ZRS (redundância de zona)' },
+  { value: 'Premium_LRS',    label: 'Premium_LRS — Premium LRS (SSD, blobs de bloco)' },
+  { value: 'Premium_ZRS',    label: 'Premium_ZRS — Premium ZRS (SSD + zona)' },
+];
+const KINDS = [
+  { value: 'StorageV2',        label: 'StorageV2 — Uso geral v2 (recomendado)' },
+  { value: 'BlobStorage',      label: 'BlobStorage — Somente blobs' },
+  { value: 'BlockBlobStorage', label: 'BlockBlobStorage — Blobs de bloco Premium' },
+  { value: 'FileStorage',      label: 'FileStorage — Azure Files Premium' },
+  { value: 'Storage',          label: 'Storage — Uso geral v1 (legado)' },
+];
 const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary';
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const toggleCls = 'w-4 h-4 text-primary accent-primary';
 
 export default function CreateAzureStorageForm({ form, setForm }) {
-  const [locations, setLocations] = useState([]);
+  const [apiLocations, setApiLocations] = useState([]);
   const [resourceGroups, setResourceGroups] = useState([]);
 
+  const locations = apiLocations.length > 0 ? apiLocations : AZURE_LOCATIONS;
+
   useEffect(() => {
-    azureService.listLocations().then((d) => d?.locations && setLocations(d.locations)).catch(() => {});
-    azureService.listResourceGroups().then((d) => d?.resource_groups && setResourceGroups(d.resource_groups)).catch(() => {});
+    azureService.listLocations().then((d) => d?.locations?.length && setApiLocations(d.locations)).catch(() => {});
+    azureService.listResourceGroups().then((d) => d?.resource_groups?.length && setResourceGroups(d.resource_groups)).catch(() => {});
   }, []);
 
   const set = (field, val) => setForm((p) => ({ ...p, [field]: val }));
@@ -30,16 +46,20 @@ export default function CreateAzureStorageForm({ form, setForm }) {
         </div>
         <div>
           <label className={labelCls}>Resource Group <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
-            <option value="">Selecione...</option>
-            {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
-          </select>
+          {resourceGroups.length > 0 ? (
+            <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
+              <option value="">Selecione...</option>
+              {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
+            </select>
+          ) : (
+            <input className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)} placeholder="meu-resource-group" />
+          )}
         </div>
         <div>
           <label className={labelCls}>Localização <span className="text-red-500">*</span></label>
           <select className={inputCls} value={form.location || ''} onChange={(e) => set('location', e.target.value)}>
             <option value="">Selecione...</option>
-            {locations.map((l) => <option key={l.name} value={l.name}>{l.display_name}</option>)}
+            {locations.map((l) => <option key={l.name} value={l.name}>{l.display_name || l.name}</option>)}
           </select>
         </div>
       </FormSection>
@@ -48,13 +68,13 @@ export default function CreateAzureStorageForm({ form, setForm }) {
         <div>
           <label className={labelCls}>SKU</label>
           <select className={inputCls} value={form.sku || 'Standard_LRS'} onChange={(e) => set('sku', e.target.value)}>
-            {SKUS.map((s) => <option key={s} value={s}>{s}</option>)}
+            {SKUS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
         </div>
         <div>
           <label className={labelCls}>Kind</label>
           <select className={inputCls} value={form.kind || 'StorageV2'} onChange={(e) => set('kind', e.target.value)}>
-            {KINDS.map((k) => <option key={k} value={k}>{k}</option>)}
+            {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
           </select>
         </div>
         <div>
