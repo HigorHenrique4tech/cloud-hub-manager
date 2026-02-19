@@ -3,6 +3,12 @@ FROM node:20-alpine AS build
 
 WORKDIR /app
 
+# Build args for Vite env vars (baked into static bundle)
+ARG VITE_GOOGLE_CLIENT_ID=""
+ARG VITE_GITHUB_CLIENT_ID=""
+ENV VITE_GOOGLE_CLIENT_ID=$VITE_GOOGLE_CLIENT_ID
+ENV VITE_GITHUB_CLIENT_ID=$VITE_GITHUB_CLIENT_ID
+
 COPY frontend/package*.json ./
 RUN npm ci
 
