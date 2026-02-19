@@ -19,6 +19,7 @@ class AWSService:
         self._rds_client = None
         self._lambda_client = None
         self._ce_client = None
+        self._iam_client = None
 
     def _boto3_client(self, service: str, region_override: str = None):
         return boto3.client(
@@ -37,7 +38,6 @@ class AWSService:
     @property
     def s3_client(self):
         if not self._s3_client:
-            # S3 is a global service — us-east-1 endpoint works for listing
             self._s3_client = self._boto3_client('s3', 'us-east-1')
         return self._s3_client
 
@@ -55,10 +55,15 @@ class AWSService:
 
     @property
     def ce_client(self):
-        # Cost Explorer only available in us-east-1
         if not self._ce_client:
             self._ce_client = self._boto3_client('ce', 'us-east-1')
         return self._ce_client
+
+    @property
+    def iam_client(self):
+        if not self._iam_client:
+            self._iam_client = self._boto3_client('iam', 'us-east-1')
+        return self._iam_client
 
     # ── EC2 ──────────────────────────────────────────────────────────────────
 
@@ -110,6 +115,216 @@ class AWSService:
             logger.error(f"stop_ec2_instance error: {e}")
             return {'success': False, 'error': str(e)}
 
+    async def list_amis(self, search: str = '') -> Dict:
+        """List AMIs filtered by search term (amazon-owned + self-owned)."""
+        try:
+            filters = [
+                {'Name': 'state', 'Values': ['available']},
+                {'Name': 'architecture', 'Values': ['x86_64']},
+            ]
+            if search:
+                filters.append({'Name': 'name', 'Values': [f'*{search}*']})
+            response = self.ec2_client.describe_images(
+                Owners=['amazon', 'self'],
+                Filters=filters,
+            )
+            amis = [
+                {
+                    'image_id': img['ImageId'],
+                    'name': img.get('Name', ''),
+                    'description': img.get('Description', ''),
+                    'architecture': img.get('Architecture', ''),
+                    'creation_date': img.get('CreationDate', ''),
+                }
+                for img in response.get('Images', [])
+            ]
+            amis.sort(key=lambda x: x['creation_date'], reverse=True)
+            return {'success': True, 'amis': amis[:50]}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_amis error: {e}")
+            return {'success': False, 'error': str(e), 'amis': []}
+
+    async def list_instance_types(self) -> Dict:
+        try:
+            types = []
+            paginator = self.ec2_client.get_paginator('describe_instance_types')
+            for page in paginator.paginate(MaxResults=100):
+                for it in page.get('InstanceTypes', []):
+                    types.append({
+                        'name': it['InstanceType'],
+                        'vcpus': it['VCpuInfo']['DefaultVCpus'],
+                        'memory_mb': it['MemoryInfo']['SizeInMiB'],
+                    })
+            types.sort(key=lambda x: (x['vcpus'], x['memory_mb']))
+            return {'success': True, 'instance_types': types}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_instance_types error: {e}")
+            return {'success': False, 'error': str(e), 'instance_types': []}
+
+    async def list_key_pairs(self) -> Dict:
+        try:
+            response = self.ec2_client.describe_key_pairs()
+            pairs = [
+                {'name': kp['KeyName'], 'fingerprint': kp.get('KeyFingerprint', '')}
+                for kp in response.get('KeyPairs', [])
+            ]
+            return {'success': True, 'key_pairs': pairs}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_key_pairs error: {e}")
+            return {'success': False, 'error': str(e), 'key_pairs': []}
+
+    async def list_security_groups(self) -> Dict:
+        try:
+            response = self.ec2_client.describe_security_groups()
+            groups = [
+                {
+                    'id': sg['GroupId'],
+                    'name': sg['GroupName'],
+                    'description': sg.get('Description', ''),
+                    'vpc_id': sg.get('VpcId', ''),
+                }
+                for sg in response.get('SecurityGroups', [])
+            ]
+            return {'success': True, 'security_groups': groups}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_security_groups error: {e}")
+            return {'success': False, 'error': str(e), 'security_groups': []}
+
+    async def list_subnets(self) -> Dict:
+        try:
+            response = self.ec2_client.describe_subnets()
+            subnets = []
+            for s in response.get('Subnets', []):
+                name = next((tag['Value'] for tag in (s.get('Tags') or []) if tag['Key'] == 'Name'), '')
+                subnets.append({
+                    'id': s['SubnetId'],
+                    'name': name,
+                    'vpc_id': s['VpcId'],
+                    'cidr': s['CidrBlock'],
+                    'az': s['AvailabilityZone'],
+                    'available_ips': s.get('AvailableIpAddressCount', 0),
+                })
+            return {'success': True, 'subnets': subnets}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_subnets error: {e}")
+            return {'success': False, 'error': str(e), 'subnets': []}
+
+    async def list_availability_zones(self) -> Dict:
+        try:
+            response = self.ec2_client.describe_availability_zones(
+                Filters=[{'Name': 'state', 'Values': ['available']}]
+            )
+            zones = [
+                {'zone_name': az['ZoneName'], 'zone_id': az['ZoneId'], 'region': az['RegionName']}
+                for az in response.get('AvailabilityZones', [])
+            ]
+            return {'success': True, 'availability_zones': zones}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_availability_zones error: {e}")
+            return {'success': False, 'error': str(e), 'availability_zones': []}
+
+    async def list_regions(self) -> Dict:
+        try:
+            response = self.ec2_client.describe_regions()
+            regions = [
+                {'name': r['RegionName'], 'endpoint': r['Endpoint']}
+                for r in response.get('Regions', [])
+            ]
+            return {'success': True, 'regions': regions}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_regions error: {e}")
+            return {'success': False, 'error': str(e), 'regions': []}
+
+    async def create_ec2_instance(self, params: dict) -> Dict:
+        try:
+            tags = [{'Key': 'Name', 'Value': params['name']}]
+            for k, v in params.get('tags', {}).items():
+                tags.append({'Key': k, 'Value': v})
+            tag_spec = [{'ResourceType': 'instance', 'Tags': tags}]
+
+            block_devices = []
+            for vol in params.get('volumes', []):
+                ebs = {
+                    'VolumeSize': vol['volume_size_gb'],
+                    'VolumeType': vol['volume_type'],
+                    'DeleteOnTermination': vol.get('delete_on_termination', True),
+                    'Encrypted': vol.get('encrypted', False),
+                }
+                if vol.get('iops') and vol['volume_type'] in ('io1', 'io2', 'gp3'):
+                    ebs['Iops'] = vol['iops']
+                if vol.get('throughput') and vol['volume_type'] == 'gp3':
+                    ebs['Throughput'] = vol['throughput']
+                block_devices.append({'DeviceName': vol['device_name'], 'Ebs': ebs})
+
+            run_kwargs = {
+                'ImageId': params['image_id'],
+                'InstanceType': params.get('instance_type', 't3.micro'),
+                'MinCount': 1,
+                'MaxCount': 1,
+                'TagSpecifications': tag_spec,
+            }
+            if params.get('key_name'):
+                run_kwargs['KeyName'] = params['key_name']
+            if block_devices:
+                run_kwargs['BlockDeviceMappings'] = block_devices
+            if params.get('user_data'):
+                run_kwargs['UserData'] = params['user_data']
+            if params.get('iam_instance_profile'):
+                run_kwargs['IamInstanceProfile'] = {'Arn': params['iam_instance_profile']}
+
+            if params.get('associate_public_ip') and params.get('subnet_id'):
+                run_kwargs['NetworkInterfaces'] = [{
+                    'DeviceIndex': 0,
+                    'SubnetId': params['subnet_id'],
+                    'AssociatePublicIpAddress': True,
+                    'Groups': params.get('security_group_ids', []),
+                }]
+            else:
+                if params.get('security_group_ids'):
+                    run_kwargs['SecurityGroupIds'] = params['security_group_ids']
+                if params.get('subnet_id'):
+                    run_kwargs['SubnetId'] = params['subnet_id']
+
+            response = self.ec2_client.run_instances(**run_kwargs)
+            instance = response['Instances'][0]
+            return {'success': True, 'instance_id': instance['InstanceId'], 'state': instance['State']['Name']}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"create_ec2_instance error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def create_vpc(self, params: dict) -> Dict:
+        try:
+            tags = [{'Key': 'Name', 'Value': params['name']}]
+            for k, v in params.get('tags', {}).items():
+                tags.append({'Key': k, 'Value': v})
+
+            response = self.ec2_client.create_vpc(
+                CidrBlock=params.get('cidr_block', '10.0.0.0/16'),
+                InstanceTenancy=params.get('tenancy', 'default'),
+                TagSpecifications=[{'ResourceType': 'vpc', 'Tags': tags}],
+            )
+            vpc_id = response['Vpc']['VpcId']
+
+            if params.get('enable_dns_support', True):
+                self.ec2_client.modify_vpc_attribute(VpcId=vpc_id, EnableDnsSupport={'Value': True})
+            if params.get('enable_dns_hostnames', True):
+                self.ec2_client.modify_vpc_attribute(VpcId=vpc_id, EnableDnsHostnames={'Value': True})
+
+            created_subnets = []
+            for subnet_def in params.get('subnets', []):
+                sub_args = {'VpcId': vpc_id, 'CidrBlock': subnet_def['cidr_block']}
+                if subnet_def.get('availability_zone'):
+                    sub_args['AvailabilityZone'] = subnet_def['availability_zone']
+                if subnet_def.get('name'):
+                    sub_args['TagSpecifications'] = [{'ResourceType': 'subnet', 'Tags': [{'Key': 'Name', 'Value': subnet_def['name']}]}]
+                sub_resp = self.ec2_client.create_subnet(**sub_args)
+                created_subnets.append(sub_resp['Subnet']['SubnetId'])
+
+            return {'success': True, 'vpc_id': vpc_id, 'subnets': created_subnets}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"create_vpc error: {e}")
+            return {'success': False, 'error': str(e)}
+
     async def list_vpcs(self) -> Dict:
         try:
             response = self.ec2_client.describe_vpcs()
@@ -148,15 +363,11 @@ class AWSService:
             for bucket in response.get('Buckets', []):
                 name = bucket.get('Name', '')
                 created = bucket.get('CreationDate')
-
-                # Detect bucket region
                 try:
                     loc = self.s3_client.get_bucket_location(Bucket=name)
                     bucket_region = loc.get('LocationConstraint') or 'us-east-1'
                 except Exception:
                     bucket_region = 'unknown'
-
-                # Check public access block
                 try:
                     pub = self.s3_client.get_public_access_block(Bucket=name)
                     cfg = pub.get('PublicAccessBlockConfiguration', {})
@@ -167,8 +378,7 @@ class AWSService:
                         cfg.get('RestrictPublicBuckets', False)
                     )
                 except Exception:
-                    public_access = None  # unknown
-
+                    public_access = None
                 buckets.append({
                     'name': name,
                     'creation_date': created.isoformat() if created else None,
@@ -179,6 +389,44 @@ class AWSService:
         except (NoCredentialsError, ClientError, Exception) as e:
             logger.error(f"list_s3_buckets error: {e}")
             return {'success': False, 'error': str(e), 'buckets': []}
+
+    async def create_s3_bucket(self, params: dict) -> Dict:
+        try:
+            bucket_name = params['bucket_name']
+            region = params.get('region', 'us-east-1')
+            s3 = self._boto3_client('s3', region)
+
+            create_args = {'Bucket': bucket_name}
+            if region != 'us-east-1':
+                create_args['CreateBucketConfiguration'] = {'LocationConstraint': region}
+            s3.create_bucket(**create_args)
+
+            if params.get('versioning_enabled'):
+                s3.put_bucket_versioning(Bucket=bucket_name, VersioningConfiguration={'Status': 'Enabled'})
+
+            enc_algo = params.get('encryption_algorithm', 'AES256')
+            enc_rule = {'ApplyServerSideEncryptionByDefault': {'SSEAlgorithm': enc_algo}}
+            if enc_algo == 'aws:kms' and params.get('kms_key_id'):
+                enc_rule['ApplyServerSideEncryptionByDefault']['KMSMasterKeyID'] = params['kms_key_id']
+            s3.put_bucket_encryption(Bucket=bucket_name, ServerSideEncryptionConfiguration={'Rules': [enc_rule]})
+
+            s3.put_public_access_block(Bucket=bucket_name, PublicAccessBlockConfiguration={
+                'BlockPublicAcls': params.get('block_public_acls', True),
+                'IgnorePublicAcls': params.get('ignore_public_acls', True),
+                'BlockPublicPolicy': params.get('block_public_policy', True),
+                'RestrictPublicBuckets': params.get('restrict_public_buckets', True),
+            })
+
+            tags = params.get('tags', {})
+            if tags:
+                s3.put_bucket_tagging(Bucket=bucket_name, Tagging={
+                    'TagSet': [{'Key': k, 'Value': v} for k, v in tags.items()]
+                })
+
+            return {'success': True, 'bucket_name': bucket_name, 'region': region}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"create_s3_bucket error: {e}")
+            return {'success': False, 'error': str(e)}
 
     # ── RDS ──────────────────────────────────────────────────────────────────
 
@@ -205,6 +453,91 @@ class AWSService:
             logger.error(f"list_rds_instances error: {e}")
             return {'success': False, 'error': str(e), 'instances': []}
 
+    async def list_rds_engine_versions(self, engine: str = 'mysql') -> Dict:
+        try:
+            response = self.rds_client.describe_db_engine_versions(Engine=engine)
+            versions = [
+                {
+                    'engine': v['Engine'],
+                    'version': v['EngineVersion'],
+                    'description': v.get('DBEngineVersionDescription', ''),
+                }
+                for v in response.get('DBEngineVersions', [])
+            ]
+            return {'success': True, 'versions': versions}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_rds_engine_versions error: {e}")
+            return {'success': False, 'error': str(e), 'versions': []}
+
+    async def list_rds_instance_classes(self, engine: str = 'mysql') -> Dict:
+        try:
+            classes = set()
+            paginator = self.rds_client.get_paginator('describe_orderable_db_instance_options')
+            for page in paginator.paginate(Engine=engine, MaxRecords=100):
+                for opt in page.get('OrderableDBInstanceOptions', []):
+                    classes.add(opt['DBInstanceClass'])
+            return {'success': True, 'instance_classes': sorted(list(classes))}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_rds_instance_classes error: {e}")
+            return {'success': False, 'error': str(e), 'instance_classes': []}
+
+    async def list_db_subnet_groups(self) -> Dict:
+        try:
+            response = self.rds_client.describe_db_subnet_groups()
+            groups = [
+                {
+                    'name': g['DBSubnetGroupName'],
+                    'description': g.get('DBSubnetGroupDescription', ''),
+                    'vpc_id': g.get('VpcId', ''),
+                }
+                for g in response.get('DBSubnetGroups', [])
+            ]
+            return {'success': True, 'subnet_groups': groups}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_db_subnet_groups error: {e}")
+            return {'success': False, 'error': str(e), 'subnet_groups': []}
+
+    async def create_rds_instance(self, params: dict) -> Dict:
+        try:
+            tags = [{'Key': k, 'Value': v} for k, v in params.get('tags', {}).items()]
+            create_args = {
+                'DBInstanceIdentifier': params['db_instance_identifier'],
+                'Engine': params['engine'],
+                'DBInstanceClass': params.get('db_instance_class', 'db.t3.micro'),
+                'AllocatedStorage': params.get('allocated_storage_gb', 20),
+                'StorageType': params.get('storage_type', 'gp3'),
+                'MasterUsername': params['master_username'],
+                'MasterUserPassword': params['master_password'],
+                'MultiAZ': params.get('multi_az', False),
+                'PubliclyAccessible': params.get('publicly_accessible', False),
+                'BackupRetentionPeriod': params.get('backup_retention_days', 7),
+                'StorageEncrypted': params.get('storage_encrypted', True),
+                'AutoMinorVersionUpgrade': params.get('auto_minor_version_upgrade', True),
+                'DeletionProtection': params.get('deletion_protection', False),
+                'Tags': tags,
+            }
+            if params.get('engine_version'):
+                create_args['EngineVersion'] = params['engine_version']
+            if params.get('db_name'):
+                create_args['DBName'] = params['db_name']
+            if params.get('vpc_security_group_ids'):
+                create_args['VpcSecurityGroupIds'] = params['vpc_security_group_ids']
+            if params.get('db_subnet_group_name'):
+                create_args['DBSubnetGroupName'] = params['db_subnet_group_name']
+            if params.get('iops') and params.get('storage_type') in ('io1', 'gp3'):
+                create_args['Iops'] = params['iops']
+
+            response = self.rds_client.create_db_instance(**create_args)
+            db_instance = response['DBInstance']
+            return {
+                'success': True,
+                'db_instance_id': db_instance['DBInstanceIdentifier'],
+                'status': db_instance['DBInstanceStatus'],
+            }
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"create_rds_instance error: {e}")
+            return {'success': False, 'error': str(e)}
+
     # ── Lambda ───────────────────────────────────────────────────────────────
 
     async def list_lambda_functions(self) -> Dict:
@@ -213,14 +546,13 @@ class AWSService:
             paginator = self.lambda_client.get_paginator('list_functions')
             for page in paginator.paginate():
                 for fn in page.get('Functions', []):
-                    modified = fn.get('LastModified')
                     functions.append({
                         'name': fn.get('FunctionName'),
                         'runtime': fn.get('Runtime'),
                         'memory_mb': fn.get('MemorySize'),
                         'timeout_sec': fn.get('Timeout'),
                         'description': fn.get('Description'),
-                        'last_modified': modified,
+                        'last_modified': fn.get('LastModified'),
                         'handler': fn.get('Handler'),
                         'code_size_bytes': fn.get('CodeSize'),
                     })
@@ -229,12 +561,64 @@ class AWSService:
             logger.error(f"list_lambda_functions error: {e}")
             return {'success': False, 'error': str(e), 'functions': []}
 
+    async def list_iam_roles(self, service_filter: str = 'lambda') -> Dict:
+        try:
+            roles = []
+            paginator = self.iam_client.get_paginator('list_roles')
+            for page in paginator.paginate():
+                for role in page.get('Roles', []):
+                    trust = str(role.get('AssumeRolePolicyDocument', ''))
+                    if service_filter in trust:
+                        roles.append({'arn': role['Arn'], 'name': role['RoleName']})
+            return {'success': True, 'roles': roles}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_iam_roles error: {e}")
+            return {'success': False, 'error': str(e), 'roles': []}
+
+    async def create_lambda_function(self, params: dict) -> Dict:
+        try:
+            import base64
+            code = {}
+            if params.get('code_zip_base64'):
+                code['ZipFile'] = base64.b64decode(params['code_zip_base64'])
+            elif params.get('code_s3_bucket') and params.get('code_s3_key'):
+                code['S3Bucket'] = params['code_s3_bucket']
+                code['S3Key'] = params['code_s3_key']
+            else:
+                return {'success': False, 'error': 'Código obrigatório (zip base64 ou S3)'}
+
+            env_vars = {ev['key']: ev['value'] for ev in params.get('environment_variables', [])}
+            create_args = {
+                'FunctionName': params['function_name'],
+                'Runtime': params['runtime'],
+                'Role': params['role_arn'],
+                'Handler': params.get('handler', 'lambda_function.lambda_handler'),
+                'Code': code,
+                'MemorySize': params.get('memory_size_mb', 128),
+                'Timeout': params.get('timeout_seconds', 3),
+                'Tags': params.get('tags', {}),
+            }
+            if params.get('description'):
+                create_args['Description'] = params['description']
+            if env_vars:
+                create_args['Environment'] = {'Variables': env_vars}
+            if params.get('layers'):
+                create_args['Layers'] = params['layers']
+
+            response = self.lambda_client.create_function(**create_args)
+            return {
+                'success': True,
+                'function_name': response['FunctionName'],
+                'function_arn': response['FunctionArn'],
+            }
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"create_lambda_function error: {e}")
+            return {'success': False, 'error': str(e)}
+
     # ── Overview ─────────────────────────────────────────────────────────────
 
     async def get_overview(self) -> Dict:
-        """Return resource counts for AWS Overview page."""
         try:
-            # EC2
             ec2_resp = self.ec2_client.describe_instances()
             ec2_total = sum(len(r.get('Instances', [])) for r in ec2_resp.get('Reservations', []))
             ec2_running = sum(
@@ -242,23 +626,14 @@ class AWSService:
                 for i in r.get('Instances', [])
                 if i.get('State', {}).get('Name') == 'running'
             )
-
-            # S3
             s3_resp = self.s3_client.list_buckets()
             s3_total = len(s3_resp.get('Buckets', []))
-
-            # RDS
             rds_resp = self.rds_client.describe_db_instances()
             rds_total = len(rds_resp.get('DBInstances', []))
-
-            # Lambda
             lambda_resp = self.lambda_client.list_functions()
             lambda_total = len(lambda_resp.get('Functions', []))
-
-            # VPC
             vpc_resp = self.ec2_client.describe_vpcs()
             vpc_total = len(vpc_resp.get('Vpcs', []))
-
             return {
                 'success': True,
                 'region': self.region,
@@ -277,10 +652,6 @@ class AWSService:
     # ── Costs ─────────────────────────────────────────────────────────────────
 
     async def get_cost_and_usage(self, start_date: str, end_date: str, granularity: str = 'DAILY') -> Dict:
-        """
-        Get AWS cost and usage from Cost Explorer.
-        Requires IAM permission: ce:GetCostAndUsage
-        """
         try:
             response = self.ce_client.get_cost_and_usage(
                 TimePeriod={'Start': start_date, 'End': end_date},
@@ -288,12 +659,10 @@ class AWSService:
                 Metrics=['UnblendedCost'],
                 GroupBy=[{'Type': 'DIMENSION', 'Key': 'SERVICE'}],
             )
-
             results = response.get('ResultsByTime', [])
             total = 0.0
             service_map: Dict[str, float] = {}
             daily = []
-
             for period in results:
                 period_total = 0.0
                 for group in period.get('Groups', []):
@@ -302,17 +671,11 @@ class AWSService:
                     period_total += amount
                     service_map[svc] = service_map.get(svc, 0.0) + amount
                 total += period_total
-                daily.append({
-                    'date': period['TimePeriod']['Start'],
-                    'total': round(period_total, 4),
-                })
-
+                daily.append({'date': period['TimePeriod']['Start'], 'total': round(period_total, 4)})
             by_service = sorted(
                 [{'name': k, 'amount': round(v, 4)} for k, v in service_map.items()],
-                key=lambda x: x['amount'],
-                reverse=True,
+                key=lambda x: x['amount'], reverse=True,
             )
-
             return {
                 'success': True,
                 'period': {'start': start_date, 'end': end_date},
@@ -322,7 +685,6 @@ class AWSService:
                 'by_service': by_service,
                 'daily': daily,
             }
-
         except ClientError as e:
             logger.error(f"Cost Explorer error: {e}")
             return {'success': False, 'error': str(e)}

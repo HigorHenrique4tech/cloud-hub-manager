@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Database, ChevronDown, ChevronRight } from 'lucide-react';
+import { RefreshCw, Database, ChevronDown, ChevronRight, Plus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import CreateResourceModal from '../../components/common/CreateResourceModal';
+import CreateAzureSQLForm from '../../components/create/CreateAzureSQLForm';
+import PermissionGate from '../../components/common/PermissionGate';
+import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+
+const defaultForm = { server_name: '', resource_group: '', location: '', admin_login: '', admin_password: '', database_name: '', sku_name: 'GP_Gen5_2', max_size_bytes: 2147483648, collation: 'SQL_Latin1_General_CP1_CI_AS', tags: {}, tags_list: [] };
 
 const ServerRow = ({ server }) => {
   const [open, setOpen] = useState(false);
@@ -66,6 +72,8 @@ const AzureDatabases = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
   const [servers, setServers] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(defaultForm);
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -84,6 +92,11 @@ const AzureDatabases = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const { mutate: createDB, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
+    (data) => azureService.createSQLDatabase(data),
+    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchData(true); }, 1500); } }
+  );
 
   const filtered = query
     ? servers.filter(s =>
@@ -105,11 +118,21 @@ const AzureDatabases = () => {
             {filtered.length} servidor(es){query && ` para "${query}"`}
           </p>
         </div>
-        <button onClick={() => fetchData(true)} disabled={refreshing}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-dark disabled:opacity-50">
-          <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <PermissionGate permission="resources.create">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Criar Banco de Dados
+            </button>
+          </PermissionGate>
+          <button onClick={() => fetchData(true)} disabled={refreshing}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-dark disabled:opacity-50">
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
       {filtered.length === 0 ? (
@@ -122,6 +145,18 @@ const AzureDatabases = () => {
           {filtered.map(s => <ServerRow key={s.id} server={s} />)}
         </div>
       )}
+
+      <CreateResourceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
+        onSubmit={() => createDB(form)}
+        title="Criar Banco de Dados Azure SQL"
+        isLoading={creating}
+        error={createError}
+        success={createSuccess}
+      >
+        <CreateAzureSQLForm form={form} setForm={setForm} />
+      </CreateResourceModal>
     </Layout>
   );
 };
