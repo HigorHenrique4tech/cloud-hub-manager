@@ -6,10 +6,10 @@ const ROLE_PERMISSIONS = {
     'org.settings.view', 'org.settings.edit', 'org.members.view', 'org.members.manage',
     'workspace.create', 'workspace.edit', 'workspace.delete',
     'accounts.view', 'accounts.create', 'accounts.delete',
-    'resources.view', 'resources.start_stop',
+    'resources.view', 'resources.create', 'resources.start_stop',
     'costs.view', 'alerts.view', 'alerts.manage', 'logs.view',
   ]),
-  operator: new Set(['resources.view', 'resources.start_stop', 'logs.view']),
+  operator: new Set(['resources.view', 'resources.create', 'resources.start_stop', 'logs.view']),
   viewer: new Set(['resources.view', 'logs.view']),
   billing: new Set(['costs.view', 'alerts.view', 'alerts.manage', 'logs.view']),
 };

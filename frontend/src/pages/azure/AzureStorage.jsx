@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, HardDrive } from 'lucide-react';
+import { RefreshCw, HardDrive, Plus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import CreateResourceModal from '../../components/common/CreateResourceModal';
+import CreateAzureStorageForm from '../../components/create/CreateAzureStorageForm';
+import PermissionGate from '../../components/common/PermissionGate';
+import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+
+const defaultForm = { name: '', resource_group: '', location: '', sku: 'Standard_LRS', kind: 'StorageV2', access_tier: 'Hot', enable_https_only: true, allow_blob_public_access: false, min_tls_version: 'TLS1_2', tags: {}, tags_list: [] };
 
 const AzureStorage = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
   const [accounts, setAccounts] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(defaultForm);
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -29,6 +37,11 @@ const AzureStorage = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const { mutate: createStorage, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
+    (data) => azureService.createStorageAccount(data),
+    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchData(true); }, 1500); } }
+  );
 
   const filtered = query
     ? accounts.filter(a =>
@@ -50,11 +63,21 @@ const AzureStorage = () => {
             {filtered.length} de {accounts.length} conta(s){query && ` para "${query}"`}
           </p>
         </div>
-        <button onClick={() => fetchData(true)} disabled={refreshing}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-dark disabled:opacity-50">
-          <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <PermissionGate permission="resources.create">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Criar Storage Account
+            </button>
+          </PermissionGate>
+          <button onClick={() => fetchData(true)} disabled={refreshing}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-dark disabled:opacity-50">
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -100,6 +123,18 @@ const AzureStorage = () => {
           </div>
         )}
       </div>
+
+      <CreateResourceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
+        onSubmit={() => createStorage(form)}
+        title="Criar Storage Account"
+        isLoading={creating}
+        error={createError}
+        success={createSuccess}
+      >
+        <CreateAzureStorageForm form={form} setForm={setForm} />
+      </CreateResourceModal>
     </Layout>
   );
 };

@@ -1,10 +1,17 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Plus } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import CreateResourceModal from '../../components/common/CreateResourceModal';
+import CreateRDSForm from '../../components/create/CreateRDSForm';
+import PermissionGate from '../../components/common/PermissionGate';
+import useCreateResource from '../../hooks/useCreateResource';
 import awsService from '../../services/awsservices';
+
+const defaultForm = { db_instance_identifier: '', engine: 'mysql', engine_version: '', db_instance_class: 'db.t3.micro', allocated_storage: 20, storage_type: 'gp2', db_name: '', master_username: '', master_password: '', security_group_ids: [], db_subnet_group: '', multi_az: false, publicly_accessible: false, backup_retention: 7, storage_encrypted: false, deletion_protection: false, tags: {}, tags_list: [] };
 
 const statusClass = (s) => {
   if (s === 'available') return 'badge-success';
@@ -15,12 +22,19 @@ const statusClass = (s) => {
 const AwsRDS = () => {
   const [searchParams] = useSearchParams();
   const q = (searchParams.get('q') || '').toLowerCase();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(defaultForm);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-rds'],
     queryFn: () => awsService.listRDSInstances(),
     retry: false,
   });
+
+  const { mutate: createInstance, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
+    (data) => awsService.createRDSInstance(data),
+    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); refetch(); }, 1500); } }
+  );
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando instâncias RDS..." /></Layout>;
 
@@ -45,11 +59,21 @@ const AwsRDS = () => {
 
   return (
     <Layout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">RDS — Banco de Dados</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          Região: {data?.region || 'N/A'} · {instances.length} instância(s){q && ` · filtrado por "${q}"`}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">RDS — Banco de Dados</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Região: {data?.region || 'N/A'} · {instances.length} instância(s){q && ` · filtrado por "${q}"`}
+          </p>
+        </div>
+        <PermissionGate permission="resources.create">
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Criar Instância
+          </button>
+        </PermissionGate>
       </div>
 
       <div className="card overflow-x-auto">
@@ -82,6 +106,18 @@ const AwsRDS = () => {
           </table>
         )}
       </div>
+
+      <CreateResourceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
+        onSubmit={() => createInstance(form)}
+        title="Criar Instância RDS"
+        isLoading={creating}
+        error={createError}
+        success={createSuccess}
+      >
+        <CreateRDSForm form={form} setForm={setForm} />
+      </CreateResourceModal>
     </Layout>
   );
 };

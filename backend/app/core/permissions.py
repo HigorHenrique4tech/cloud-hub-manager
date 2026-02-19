@@ -29,6 +29,7 @@ class Permission(str, Enum):
 
     # Resources (EC2, VMs, etc.)
     RESOURCES_VIEW       = "resources.view"
+    RESOURCES_CREATE     = "resources.create"
     RESOURCES_START_STOP = "resources.start_stop"
 
     # Costs
@@ -53,6 +54,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
 
     "operator": {
         Permission.RESOURCES_VIEW,
+        Permission.RESOURCES_CREATE,
         Permission.RESOURCES_START_STOP,
         Permission.LOGS_VIEW,
     },

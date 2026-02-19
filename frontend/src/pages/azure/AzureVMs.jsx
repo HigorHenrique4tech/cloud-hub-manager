@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Plus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import AzureVMTable from '../../components/resources/azurevmtable';
@@ -7,7 +7,13 @@ import ResourceCard from '../../components/resources/resourcecard';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import ErrorMessage from '../../components/common/errormessage';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import CreateResourceModal from '../../components/common/CreateResourceModal';
+import CreateAzureVMForm from '../../components/create/CreateAzureVMForm';
+import PermissionGate from '../../components/common/PermissionGate';
+import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+
+const defaultForm = { name: '', resource_group: '', location: '', vm_size: 'Standard_B1s', image_publisher: '', image_offer: '', image_sku: '', image_version: 'latest', admin_username: '', admin_password: '', create_public_ip: false, os_disk_type: 'Standard_LRS', data_disks: [], tags: {}, tags_list: [] };
 
 const AzureVMs = () => {
   const [loading, setLoading] = useState(true);
@@ -16,6 +22,8 @@ const AzureVMs = () => {
   const [noCredentials, setNoCredentials] = useState(false);
   const [vms, setVms] = useState([]);
   const [viewType, setViewType] = useState('table');
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(defaultForm);
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -39,6 +47,11 @@ const AzureVMs = () => {
   };
 
   useEffect(() => { fetchVMs(); }, []);
+
+  const { mutate: createVM, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
+    (data) => azureService.createVM(data),
+    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchVMs(true); }, 1500); } }
+  );
 
   const handleStart = async (rg, name) => {
     try {
@@ -78,11 +91,21 @@ const AzureVMs = () => {
 
   return (
     <Layout>
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Azure — Virtual Machines</h1>
-        <p className="text-gray-600 dark:text-gray-400">
-          {filtered.length} de {vms.length} VM(s){query && ` para "${query}"`}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Azure — Virtual Machines</h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            {filtered.length} de {vms.length} VM(s){query && ` para "${query}"`}
+          </p>
+        </div>
+        <PermissionGate permission="resources.create">
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Criar VM
+          </button>
+        </PermissionGate>
       </div>
 
       {error && (
@@ -120,6 +143,18 @@ const AzureVMs = () => {
           </div>
         )}
       </div>
+
+      <CreateResourceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
+        onSubmit={() => createVM(form)}
+        title="Criar Virtual Machine"
+        isLoading={creating}
+        error={createError}
+        success={createSuccess}
+      >
+        <CreateAzureVMForm form={form} setForm={setForm} />
+      </CreateResourceModal>
     </Layout>
   );
 };
