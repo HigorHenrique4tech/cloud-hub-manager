@@ -1,0 +1,51 @@
+name: Deploy to Azure VM
+
+on:
+  push:
+    branches: [main]
+
+env:
+  VM_HOST: ${{ secrets.VM_HOST }}
+  VM_USER: cloudatlas
+  APP_DIR: /app/cloud-hub-manager
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Setup SSH ─────────────────────────────────────────────────────────
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VM_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ env.VM_HOST }} >> ~/.ssh/known_hosts
+
+      # ── Pull latest code ──────────────────────────────────────────────────
+      - name: Pull latest code on VM
+        run: |
+          ssh ${{ env.VM_USER }}@${{ env.VM_HOST }} \
+            "cd ${{ env.APP_DIR }} && git pull origin main"
+
+      # ── Rebuild & restart containers ──────────────────────────────────────
+      - name: Rebuild & restart containers
+        run: |
+          ssh ${{ env.VM_USER }}@${{ env.VM_HOST }} \
+            "cd ${{ env.APP_DIR }}/infra && docker compose -f docker-compose.prod.yml up --build -d"
+
+      # ── Health check ──────────────────────────────────────────────────────
+      - name: Health check
+        run: |
+          sleep 30
+          ssh ${{ env.VM_USER }}@${{ env.VM_HOST }} \
+            "curl -sf http://localhost:8000/health || exit 1"
+
+      # ── Cleanup old images ────────────────────────────────────────────────
+      - name: Cleanup old images
+        run: |
+          ssh ${{ env.VM_USER }}@${{ env.VM_HOST }} \
+            "docker image prune -f"

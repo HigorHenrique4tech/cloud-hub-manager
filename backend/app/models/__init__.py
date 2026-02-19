@@ -11,8 +11,8 @@ from .schemas import (
     UserLogin,
     UserResponse,
     TokenResponse,
-    CloudCredentialCreate,
-    CloudCredentialResponse,
+    UserUpdate,
+    PasswordChange,
 )
 from . import db_models  # noqa: F401 - ensures ORM models are registered
 
@@ -29,7 +29,7 @@ __all__ = [
     "UserLogin",
     "UserResponse",
     "TokenResponse",
-    "CloudCredentialCreate",
-    "CloudCredentialResponse",
+    "UserUpdate",
+    "PasswordChange",
     "db_models",
 ]

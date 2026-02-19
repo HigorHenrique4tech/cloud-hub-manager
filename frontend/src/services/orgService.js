@@ -7,6 +7,8 @@ export const orgService = {
   getOrg: async (slug) => (await api.get(`/orgs/${slug}`)).data,
   updateOrg: async (slug, data) => (await api.put(`/orgs/${slug}`, data)).data,
   deleteOrg: async (slug) => (await api.delete(`/orgs/${slug}`)).data,
+  updatePlan: async (slug, plan_tier) =>
+    (await api.put(`/orgs/${slug}/plan`, { plan_tier })).data,
 
   // ── Members ──────────────────────────────────────────────────────────────
   listMembers: async (slug) => (await api.get(`/orgs/${slug}/members`)).data,
@@ -16,6 +18,12 @@ export const orgService = {
     (await api.put(`/orgs/${slug}/members/${userId}`, { role })).data,
   removeMember: async (slug, userId) =>
     (await api.delete(`/orgs/${slug}/members/${userId}`)).data,
+
+  // ── Invitations ────────────────────────────────────────────────────────
+  listInvitations: async (slug) =>
+    (await api.get(`/orgs/${slug}/invitations`)).data,
+  cancelInvitation: async (slug, invitationId) =>
+    (await api.delete(`/orgs/${slug}/invitations/${invitationId}`)).data,
 
   // ── Workspaces ───────────────────────────────────────────────────────────
   listWorkspaces: async (slug) =>
@@ -28,6 +36,14 @@ export const orgService = {
     (await api.put(`/orgs/${slug}/workspaces/${wsId}`, data)).data,
   deleteWorkspace: async (slug, wsId) =>
     (await api.delete(`/orgs/${slug}/workspaces/${wsId}`)).data,
+
+  // ── Workspace Members (role overrides) ───────────────────────────────────
+  listWorkspaceMembers: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/members`)).data,
+  updateWorkspaceMemberRole: async (slug, wsId, userId, roleOverride) =>
+    (await api.put(`/orgs/${slug}/workspaces/${wsId}/members/${userId}`, { role_override: roleOverride })).data,
+  removeWorkspaceMemberOverride: async (slug, wsId, userId) =>
+    (await api.delete(`/orgs/${slug}/workspaces/${wsId}/members/${userId}`)).data,
 
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {

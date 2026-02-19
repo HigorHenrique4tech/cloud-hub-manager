@@ -1,16 +1,19 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, UserPlus, Trash2, Shield } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Building2, UserPlus, Trash2, Shield, Copy, Clock, ArrowUpRight } from 'lucide-react';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import { RoleGate } from '../components/common/PermissionGate';
+import ConfirmDeleteModal from '../components/common/ConfirmDeleteModal';
 import orgService from '../services/orgService';
 
 const ROLES = ['owner', 'admin', 'operator', 'viewer', 'billing'];
 
 const OrgSettings = () => {
   const { currentOrg, refreshOrgs } = useOrgWorkspace();
+  const navigate = useNavigate();
   const qc = useQueryClient();
   const slug = currentOrg?.slug;
 
@@ -22,15 +25,36 @@ const OrgSettings = () => {
   });
   const members = membersData?.members || [];
 
+  // Pending invitations
+  const { data: invitesData } = useQuery({
+    queryKey: ['org-invitations', slug],
+    queryFn: () => orgService.listInvitations(slug),
+    enabled: !!slug,
+  });
+  const pendingInvites = invitesData?.invitations || [];
+
   // Invite
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('viewer');
+  const [inviteResult, setInviteResult] = useState(null);
   const inviteMutation = useMutation({
     mutationFn: () => orgService.inviteMember(slug, inviteEmail, inviteRole),
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['org-members', slug] });
+      qc.invalidateQueries({ queryKey: ['org-invitations', slug] });
       setInviteEmail('');
+      if (data.status === 'pending') {
+        setInviteResult(data);
+      } else {
+        setInviteResult(null);
+      }
     },
+  });
+
+  // Cancel invitation
+  const cancelInviteMutation = useMutation({
+    mutationFn: (invitationId) => orgService.cancelInvitation(slug, invitationId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['org-invitations', slug] }),
   });
 
   // Role change
@@ -43,6 +67,19 @@ const OrgSettings = () => {
   const removeMutation = useMutation({
     mutationFn: (userId) => orgService.removeMember(slug, userId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['org-members', slug] }),
+  });
+
+  // Modal state — remove member
+  const [memberToRemove, setMemberToRemove] = useState(null); // { user_id, name }
+
+  // Modal state — delete org
+  const [showDeleteOrg, setShowDeleteOrg] = useState(false);
+  const deleteOrgMutation = useMutation({
+    mutationFn: () => orgService.deleteOrg(slug),
+    onSuccess: () => {
+      refreshOrgs();
+      window.location.reload();
+    },
   });
 
   // Org name update
@@ -134,7 +171,37 @@ const OrgSettings = () => {
                 </button>
               </div>
               {inviteMutation.isError && (
-                <p className="text-sm text-red-500 mb-4">{inviteMutation.error?.response?.data?.detail || 'Erro ao convidar'}</p>
+                inviteMutation.error?.response?.data?.detail?.includes('Limite') ? (
+                  <div className="flex items-center justify-between p-4 mb-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+                    <p className="text-sm text-amber-800 dark:text-amber-200">{inviteMutation.error.response.data.detail}</p>
+                    <button
+                      onClick={() => navigate('/select-plan')}
+                      className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white text-xs font-medium rounded-lg hover:bg-primary/90 flex-shrink-0 ml-4"
+                    >
+                      Fazer upgrade <ArrowUpRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <p className="text-sm text-red-500 mb-4">{inviteMutation.error?.response?.data?.detail || 'Erro ao convidar'}</p>
+                )
+              )}
+              {inviteResult && inviteResult.status === 'pending' && (
+                <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <p className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                    Convite criado para <strong>{inviteResult.email}</strong>. Compartilhe o link abaixo:
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-xs bg-white dark:bg-gray-700 px-3 py-2 rounded border border-gray-200 dark:border-gray-600 text-gray-700 dark:text-gray-300 overflow-x-auto">
+                      {window.location.origin}{inviteResult.invite_link}
+                    </code>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(`${window.location.origin}${inviteResult.invite_link}`)}
+                      className="flex items-center gap-1 px-3 py-2 bg-primary text-white text-xs rounded-lg hover:bg-primary/90"
+                    >
+                      <Copy className="w-3 h-3" /> Copiar
+                    </button>
+                  </div>
+                </div>
               )}
             </RoleGate>
 
@@ -174,7 +241,7 @@ const OrgSettings = () => {
                         <td className="py-2 px-3">
                           <RoleGate allowed={['owner', 'admin']}>
                             <button
-                              onClick={() => removeMutation.mutate(m.user_id)}
+                              onClick={() => setMemberToRemove({ user_id: m.user_id, name: m.name })}
                               className="text-red-500 hover:text-red-700 transition-colors"
                               title="Remover membro"
                             >
@@ -189,6 +256,106 @@ const OrgSettings = () => {
               </div>
             )}
           </div>
+
+          {/* Pending Invitations */}
+          {pendingInvites.length > 0 && (
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2 mb-4">
+                <Clock className="w-5 h-5" /> Convites Pendentes ({pendingInvites.length})
+              </h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700">
+                      <th className="py-2 px-3 font-medium">Email</th>
+                      <th className="py-2 px-3 font-medium">Role</th>
+                      <th className="py-2 px-3 font-medium">Status</th>
+                      <th className="py-2 px-3 font-medium">Ações</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {pendingInvites.map((inv) => (
+                      <tr key={inv.id} className="text-gray-800 dark:text-gray-200">
+                        <td className="py-2 px-3">{inv.email}</td>
+                        <td className="py-2 px-3">
+                          <span className="text-xs px-2 py-0.5 rounded bg-gray-100 dark:bg-gray-700 uppercase">{inv.role}</span>
+                        </td>
+                        <td className="py-2 px-3">
+                          {inv.is_expired ? (
+                            <span className="text-xs px-2 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300">Expirado</span>
+                          ) : (
+                            <span className="text-xs px-2 py-0.5 rounded bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-300">Pendente</span>
+                          )}
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => navigator.clipboard.writeText(`${window.location.origin}/invite/${inv.token}`)}
+                              className="text-xs text-primary hover:underline flex items-center gap-1"
+                              title="Copiar link do convite"
+                            >
+                              <Copy className="w-3 h-3" /> Link
+                            </button>
+                            <RoleGate allowed={['owner', 'admin']}>
+                              <button
+                                onClick={() => cancelInviteMutation.mutate(inv.id)}
+                                className="text-red-500 hover:text-red-700 transition-colors"
+                                title="Cancelar convite"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </RoleGate>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Danger Zone */}
+          <RoleGate allowed={['owner']}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-red-200 dark:border-red-900/50 p-6">
+              <h2 className="text-lg font-semibold text-red-600 dark:text-red-400 mb-2">Zona de Perigo</h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                Excluir esta organização removerá todos os workspaces, contas cloud e membros permanentemente.
+              </p>
+              <button
+                onClick={() => setShowDeleteOrg(true)}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 transition-colors"
+              >
+                Excluir Organização
+              </button>
+            </div>
+          </RoleGate>
+
+          {/* Modals */}
+          <ConfirmDeleteModal
+            isOpen={!!memberToRemove}
+            onClose={() => setMemberToRemove(null)}
+            onConfirm={() => {
+              removeMutation.mutate(memberToRemove.user_id, {
+                onSuccess: () => setMemberToRemove(null),
+              });
+            }}
+            title="Remover membro"
+            description={`Deseja remover ${memberToRemove?.name || 'este membro'} da organização?`}
+            confirmLabel="Remover"
+            isLoading={removeMutation.isPending}
+          />
+
+          <ConfirmDeleteModal
+            isOpen={showDeleteOrg}
+            onClose={() => setShowDeleteOrg(false)}
+            onConfirm={() => deleteOrgMutation.mutate()}
+            title="Excluir organização"
+            description="Esta ação é irreversível. Todos os workspaces, contas cloud e dados serão permanentemente excluídos."
+            confirmText={currentOrg.name}
+            confirmLabel="Excluir Organização"
+            isLoading={deleteOrgMutation.isPending}
+          />
         </main>
       </div>
     </div>

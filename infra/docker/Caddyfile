@@ -1,0 +1,15 @@
+cloudatlas.app.br {
+    # API + backend endpoints
+    reverse_proxy /api/* backend:8000
+    reverse_proxy /health backend:8000
+    reverse_proxy /metrics backend:8000
+    reverse_proxy /docs backend:8000
+    reverse_proxy /openapi.json backend:8000
+
+    # Frontend (nginx serving static SPA)
+    reverse_proxy /* frontend:80
+}
+
+www.cloudatlas.app.br {
+    redir https://cloudatlas.app.br{uri} permanent
+}

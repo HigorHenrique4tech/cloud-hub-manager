@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Server, Cloud, DollarSign, Settings, FileText, Building2, Layers } from 'lucide-react';
+import { LayoutDashboard, Server, Cloud, DollarSign, Settings, FileText, Building2, Layers, CreditCard } from 'lucide-react';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import PermissionGate from '../common/PermissionGate';
 
@@ -13,6 +13,7 @@ const navItems = [
 ];
 
 const bottomItems = [
+  { to: '/billing', label: 'Faturamento', icon: CreditCard, permission: 'costs.view' },
   { to: '/org/settings', label: 'Organização', icon: Building2 },
   { to: '/workspace/settings', label: 'Workspace', icon: Layers },
 ];
@@ -56,9 +57,17 @@ const Sidebar = () => {
 
         {/* Separator + settings links */}
         <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700 space-y-1">
-          {bottomItems.map(({ to, label, icon }) => (
-            <NavItem key={to} to={to} label={label} icon={icon} />
-          ))}
+          {bottomItems.map(({ to, label, icon, permission }) => {
+            const item = <NavItem key={to} to={to} label={label} icon={icon} />;
+            if (permission) {
+              return (
+                <PermissionGate key={to} permission={permission}>
+                  {item}
+                </PermissionGate>
+              );
+            }
+            return item;
+          })}
         </div>
       </nav>
 

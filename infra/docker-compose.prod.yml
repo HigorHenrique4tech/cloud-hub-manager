@@ -1,0 +1,149 @@
+version: '3.8'
+
+services:
+  # ── Caddy (HTTPS reverse proxy + auto SSL) ──────────────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    container_name: cloudatlas-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - cloudatlas-network
+    depends_on:
+      frontend:
+        condition: service_started
+    restart: unless-stopped
+
+  # ── Database ─────────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: cloudatlas-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cloudhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudhub_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudhub_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - cloudatlas-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudhub} -d ${POSTGRES_DB:-cloudhub_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Backend (FastAPI + Gunicorn) ─────────────────────────────────────────────
+  backend:
+    build:
+      context: ..
+      dockerfile: infra/docker/backend.prod.Dockerfile
+    container_name: cloudatlas-backend
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudhub}:${POSTGRES_PASSWORD:-cloudhub_pass}@postgres:5432/${POSTGRES_DB:-cloudhub_db}
+      - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - 'ALLOWED_ORIGINS=["https://cloudatlas.app.br","https://www.cloudatlas.app.br","http://localhost","http://localhost:3000"]'
+      - DEBUG=False
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Cloud credentials
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-2}
+      - AZURE_SUBSCRIPTION_ID=${AZURE_SUBSCRIPTION_ID:-}
+      - AZURE_TENANT_ID=${AZURE_TENANT_ID:-}
+      - AZURE_CLIENT_ID=${AZURE_CLIENT_ID:-}
+      - AZURE_CLIENT_SECRET=${AZURE_CLIENT_SECRET:-}
+      # Email
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@cloudatlas.io}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-True}
+      - FRONTEND_URL=${FRONTEND_URL:-https://cloudatlas.app.br}
+      # OAuth (SSO)
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      # Payments
+      - ABACATEPAY_API_KEY=${ABACATEPAY_API_KEY:-}
+    networks:
+      - cloudatlas-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+
+  # ── Frontend (Nginx + React build) ──────────────────────────────────────────
+  frontend:
+    build:
+      context: ..
+      dockerfile: infra/docker/frontend.prod.Dockerfile
+      args:
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+        VITE_GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+    container_name: cloudatlas-frontend
+    networks:
+      - cloudatlas-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Prometheus ───────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cloudatlas-prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - cloudatlas-network
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+
+  # ── Grafana ──────────────────────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cloudatlas-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    networks:
+      - cloudatlas-network
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+networks:
+  cloudatlas-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  prometheus_data:
+  grafana_data:
+  caddy_data:
+  caddy_config:

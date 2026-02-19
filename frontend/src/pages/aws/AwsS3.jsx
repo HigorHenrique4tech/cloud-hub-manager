@@ -1,20 +1,34 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { HardDrive, ShieldAlert, ShieldCheck, AlertCircle } from 'lucide-react';
+import { HardDrive, ShieldAlert, ShieldCheck, AlertCircle, Plus } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import CreateResourceModal from '../../components/common/CreateResourceModal';
+import CreateS3Form from '../../components/create/CreateS3Form';
+import PermissionGate from '../../components/common/PermissionGate';
+import useCreateResource from '../../hooks/useCreateResource';
 import awsService from '../../services/awsservices';
+
+const defaultForm = { name: '', region: 'us-east-1', versioning: false, encryption: 'AES256', kms_key_id: '', block_public_acls: true, ignore_public_acls: true, block_public_policy: true, restrict_public_buckets: true, tags: {}, tags_list: [] };
 
 const AwsS3 = () => {
   const [searchParams] = useSearchParams();
   const q = (searchParams.get('q') || '').toLowerCase();
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(defaultForm);
 
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-s3'],
     queryFn: () => awsService.listS3Buckets(),
     retry: false,
   });
+
+  const { mutate: createBucket, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
+    (data) => awsService.createS3Bucket(data),
+    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); refetch(); }, 1500); } }
+  );
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando buckets S3..." /></Layout>;
 
@@ -39,11 +53,21 @@ const AwsS3 = () => {
 
   return (
     <Layout>
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">S3 — Buckets</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          {buckets.length} bucket(s){q && ` · filtrado por "${q}"`}
-        </p>
+      <div className="mb-6 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">S3 — Buckets</h1>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            {buckets.length} bucket(s){q && ` · filtrado por "${q}"`}
+          </p>
+        </div>
+        <PermissionGate permission="resources.create">
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Criar Bucket
+          </button>
+        </PermissionGate>
       </div>
 
       <div className="card overflow-x-auto">
@@ -90,6 +114,18 @@ const AwsS3 = () => {
           </table>
         )}
       </div>
+
+      <CreateResourceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
+        onSubmit={() => createBucket(form)}
+        title="Criar Bucket S3"
+        isLoading={creating}
+        error={createError}
+        success={createSuccess}
+      >
+        <CreateS3Form form={form} setForm={setForm} />
+      </CreateResourceModal>
     </Layout>
   );
 };

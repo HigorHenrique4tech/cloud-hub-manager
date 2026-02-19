@@ -1,16 +1,24 @@
 import { useState, useEffect } from 'react';
-import { RefreshCw, Network } from 'lucide-react';
+import { RefreshCw, Network, Plus } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import CreateResourceModal from '../../components/common/CreateResourceModal';
+import CreateAzureVNetForm from '../../components/create/CreateAzureVNetForm';
+import PermissionGate from '../../components/common/PermissionGate';
+import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+
+const defaultForm = { name: '', resource_group: '', location: '', address_prefixes: ['10.0.0.0/16'], subnets: [], tags: {}, tags_list: [] };
 
 const AzureVNets = () => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
   const [vnets, setVnets] = useState([]);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [form, setForm] = useState(defaultForm);
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -29,6 +37,11 @@ const AzureVNets = () => {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  const { mutate: createVNet, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
+    (data) => azureService.createVNet(data),
+    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchData(true); }, 1500); } }
+  );
 
   const filtered = query
     ? vnets.filter(v =>
@@ -50,11 +63,21 @@ const AzureVNets = () => {
             {filtered.length} de {vnets.length} rede(s){query && ` para "${query}"`}
           </p>
         </div>
-        <button onClick={() => fetchData(true)} disabled={refreshing}
-          className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-dark disabled:opacity-50">
-          <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-2">
+          <PermissionGate permission="resources.create">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Criar VNet
+            </button>
+          </PermissionGate>
+          <button onClick={() => fetchData(true)} disabled={refreshing}
+            className="inline-flex items-center px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-dark disabled:opacity-50">
+            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            Atualizar
+          </button>
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">
@@ -106,6 +129,18 @@ const AzureVNets = () => {
           </div>
         )}
       </div>
+
+      <CreateResourceModal
+        isOpen={modalOpen}
+        onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
+        onSubmit={() => createVNet(form)}
+        title="Criar Virtual Network"
+        isLoading={creating}
+        error={createError}
+        success={createSuccess}
+      >
+        <CreateAzureVNetForm form={form} setForm={setForm} />
+      </CreateResourceModal>
     </Layout>
   );
 };

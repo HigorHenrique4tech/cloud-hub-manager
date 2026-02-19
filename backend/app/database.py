@@ -1,8 +1,12 @@
-from sqlalchemy import create_engine, text
+import logging
+
+from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 engine = create_engine(
     settings.DATABASE_URL,
@@ -25,14 +29,18 @@ def get_db():
         db.close()
 
 
-def create_tables():
-    """Create all tables in the database and migrate existing ones."""
-    from app.models import db_models  # noqa: F401 - ensures models are registered
-    Base.metadata.create_all(bind=engine)
-    _migrate_existing_tables()
-    _migrate_credentials_to_cloud_accounts()
+def _get_alembic_config():
+    """Build an Alembic Config pointing at our alembic.ini."""
+    from alembic.config import Config
+    import os
+
+    alembic_ini = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
+    cfg = Config(alembic_ini)
+    cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+    return cfg
 
 
+<<<<<<< HEAD
 def _migrate_existing_tables():
     """Add missing columns to existing tables (PostgreSQL ADD COLUMN IF NOT EXISTS)."""
     migrations = [
@@ -57,58 +65,51 @@ def _migrate_existing_tables():
             except Exception:
                 pass  # column may already exist or table may not exist yet
         conn.commit()
+=======
+def run_migrations():
+    """Run Alembic migrations programmatically (upgrade to head).
+>>>>>>> e04367910b21072e8806a0818780f294c2285967
 
-
-def _migrate_credentials_to_cloud_accounts():
+    If the database already has tables but no alembic_version table
+    (transition from create_all()), it stamps the DB first so Alembic
+    doesn't try to re-create everything.
     """
-    One-time migration: copy rows from cloud_credentials into cloud_accounts
-    for each user's default workspace.  Skips users that already have accounts
-    in their workspace or that don't have a personal org yet.
+    from alembic import command
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(engine)
+    existing_tables = inspector.get_table_names()
+    has_alembic = "alembic_version" in existing_tables
+    has_app_tables = "users" in existing_tables
+
+    cfg = _get_alembic_config()
+
+    if has_app_tables and not has_alembic:
+        # Existing DB created via create_all() — stamp it at head
+        logger.info("Existing database detected without Alembic history. Stamping as current...")
+        command.stamp(cfg, "head")
+        logger.info("Database stamped at head.")
+        return
+
+    logger.info("Running Alembic migrations (upgrade head)...")
+    command.upgrade(cfg, "head")
+    logger.info("Alembic migrations complete.")
+
+
+def stamp_existing_db():
+    """Stamp an existing database as being at the latest migration.
+
+    Use this once when migrating from create_all() to Alembic,
+    so Alembic knows the current state without re-running migrations.
     """
-    import logging
-    logger = logging.getLogger(__name__)
+    from alembic.config import Config
+    from alembic import command
+    import os
 
-    with engine.connect() as conn:
-        # Check if cloud_credentials table exists
-        exists = conn.execute(text(
-            "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name='cloud_credentials')"
-        )).scalar()
-        if not exists:
-            return
+    alembic_ini = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
+    alembic_cfg = Config(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
-        # Get credentials not yet migrated:
-        # Join user → org_member → workspace (slug='default') and check
-        # if a matching cloud_account already exists
-        rows = conn.execute(text("""
-            SELECT cc.id, cc.user_id, cc.provider, cc.label, cc.encrypted_data, cc.is_active,
-                   w.id AS workspace_id
-            FROM cloud_credentials cc
-            JOIN users u ON u.id = cc.user_id
-            JOIN organization_members om ON om.user_id = u.id AND om.is_active = true
-            JOIN workspaces w ON w.organization_id = om.organization_id AND w.slug = 'default'
-            WHERE NOT EXISTS (
-                SELECT 1 FROM cloud_accounts ca
-                WHERE ca.workspace_id = w.id
-                  AND ca.provider = cc.provider
-                  AND ca.label = cc.label
-            )
-        """)).fetchall()
-
-        if not rows:
-            return
-
-        for row in rows:
-            conn.execute(text("""
-                INSERT INTO cloud_accounts (id, workspace_id, provider, label, encrypted_data, is_active, created_by, created_at, updated_at)
-                VALUES (gen_random_uuid(), :ws_id, :provider, :label, :enc_data, :is_active, :user_id, NOW(), NOW())
-            """), {
-                "ws_id": row.workspace_id,
-                "provider": row.provider,
-                "label": row.label,
-                "enc_data": row.encrypted_data,
-                "is_active": row.is_active,
-                "user_id": row.user_id,
-            })
-
-        conn.commit()
-        logger.info(f"Migrated {len(rows)} credential(s) to cloud_accounts")
+    logger.info("Stamping database as current (head)...")
+    command.stamp(alembic_cfg, "head")
+    logger.info("Database stamped.")
