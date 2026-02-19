@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -40,7 +40,6 @@ def _get_alembic_config():
     return cfg
 
 
-<<<<<<< HEAD
 def _migrate_existing_tables():
     """Add missing columns to existing tables (PostgreSQL ADD COLUMN IF NOT EXISTS)."""
     migrations = [
@@ -65,17 +64,17 @@ def _migrate_existing_tables():
             except Exception:
                 pass  # column may already exist or table may not exist yet
         conn.commit()
-=======
+
+
 def run_migrations():
     """Run Alembic migrations programmatically (upgrade to head).
->>>>>>> e04367910b21072e8806a0818780f294c2285967
 
     If the database already has tables but no alembic_version table
     (transition from create_all()), it stamps the DB first so Alembic
     doesn't try to re-create everything.
     """
     from alembic import command
-    from sqlalchemy import inspect, text
+    from sqlalchemy import inspect
 
     inspector = inspect(engine)
     existing_tables = inspector.get_table_names()
@@ -89,11 +88,14 @@ def run_migrations():
         logger.info("Existing database detected without Alembic history. Stamping as current...")
         command.stamp(cfg, "head")
         logger.info("Database stamped at head.")
-        return
+    else:
+        logger.info("Running Alembic migrations (upgrade head)...")
+        command.upgrade(cfg, "head")
+        logger.info("Alembic migrations complete.")
 
-    logger.info("Running Alembic migrations (upgrade head)...")
-    command.upgrade(cfg, "head")
-    logger.info("Alembic migrations complete.")
+    # Always apply manual column additions for backwards compatibility
+    _migrate_existing_tables()
+    logger.info("Column migrations applied.")
 
 
 def stamp_existing_db():
