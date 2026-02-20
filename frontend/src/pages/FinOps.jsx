@@ -158,15 +158,18 @@ const FinOps = () => {
     enabled: activeTab === 'actions',
   });
 
+  const isPro = ['pro', 'enterprise'].includes(planTier);
+
   const budgetsQ = useQuery({
     queryKey: ['finops-budgets'],
     queryFn: finopsService.getBudgets,
-    enabled: activeTab === 'budgets',
+    enabled: activeTab === 'budgets' && isPro,
   });
 
   const anomaliesQ = useQuery({
     queryKey: ['finops-anomalies'],
     queryFn: finopsService.getAnomalies,
+    enabled: isPro,
   });
 
   /* ── Mutations ── */
@@ -406,7 +409,11 @@ const FinOps = () => {
 
               {budgetsQ.isLoading ? (
                 <div className="flex justify-center py-12"><LoadingSpinner /></div>
-              ) : budgetsQ.data?.length === 0 ? (
+              ) : budgetsQ.isError ? (
+                <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-4 text-sm text-red-300">
+                  Erro ao carregar orçamentos.
+                </div>
+              ) : (budgetsQ.data ?? []).length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-slate-500">
                   <Wallet size={40} className="mb-3 opacity-20" />
                   <p className="text-base font-medium">Nenhum orçamento criado</p>
@@ -414,8 +421,8 @@ const FinOps = () => {
                 </div>
               ) : (
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {budgetsQ.data.map((budget) => {
-                    const pct = Math.min(100, Math.random() * 100); // TODO: plug in real spend
+                  {(budgetsQ.data ?? []).map((budget) => {
+                    const pct = 0; // real spend TBD via cost API
                     const barColor = pct >= budget.alert_threshold * 100
                       ? 'bg-red-500'
                       : pct >= (budget.alert_threshold * 100 * 0.75)
