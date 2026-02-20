@@ -373,6 +373,73 @@ async def ws_list_iam_roles(
     return await svc.list_iam_roles(service_filter=service)
 
 
+# ── Detail ──────────────────────────────────────────────────────────────────
+
+@ws_router.get("/ec2/instances/{instance_id}")
+async def ws_get_ec2_instance_detail(
+    instance_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.get_ec2_instance_detail(instance_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da instância EC2'))
+    return result
+
+
+@ws_router.get("/ec2/vpcs/{vpc_id}")
+async def ws_get_vpc_detail(
+    vpc_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.get_vpc_detail(vpc_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da VPC'))
+    return result
+
+
+@ws_router.get("/s3/buckets/{bucket_name}")
+async def ws_get_s3_bucket_detail(
+    bucket_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.get_s3_bucket_detail(bucket_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe do bucket S3'))
+    return result
+
+
+@ws_router.get("/rds/instances/{db_instance_id}")
+async def ws_get_rds_instance_detail(
+    db_instance_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.get_rds_instance_detail(db_instance_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da instância RDS'))
+    return result
+
+
+@ws_router.get("/lambda/functions/{function_name}")
+async def ws_get_lambda_function_detail(
+    function_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await svc.get_lambda_function_detail(function_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da função Lambda'))
+    return result
+
+
 # ── Delete ──────────────────────────────────────────────────────────────────
 
 @ws_router.delete("/ec2/instances/{instance_id}")

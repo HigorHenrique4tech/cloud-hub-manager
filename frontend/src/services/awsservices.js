@@ -41,6 +41,13 @@ export const awsService = {
   createLambdaFunction: async (data) => (await api.post(wsUrl('/aws/lambda/functions'), data)).data,
   listIAMRoles: async (service = 'lambda') => (await api.get(wsUrl('/aws/iam/roles'), { params: { service } })).data,
 
+  // Detail
+  getEC2InstanceDetail: async (instanceId) => (await api.get(wsUrl(`/aws/ec2/instances/${instanceId}`))).data,
+  getVPCDetail: async (vpcId) => (await api.get(wsUrl(`/aws/ec2/vpcs/${vpcId}`))).data,
+  getS3BucketDetail: async (bucketName) => (await api.get(wsUrl(`/aws/s3/buckets/${encodeURIComponent(bucketName)}`))).data,
+  getRDSInstanceDetail: async (dbInstanceId) => (await api.get(wsUrl(`/aws/rds/instances/${dbInstanceId}`))).data,
+  getLambdaFunctionDetail: async (functionName) => (await api.get(wsUrl(`/aws/lambda/functions/${encodeURIComponent(functionName)}`))).data,
+
   // Delete
   deleteEC2Instance: async (instanceId) => (await api.delete(wsUrl(`/aws/ec2/instances/${instanceId}`))).data,
   deleteS3Bucket: async (bucketName) => (await api.delete(wsUrl(`/aws/s3/buckets/${bucketName}`))).data,

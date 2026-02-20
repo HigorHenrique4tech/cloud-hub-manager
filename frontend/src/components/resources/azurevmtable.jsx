@@ -2,7 +2,7 @@ import { Play, Square, Trash2 } from 'lucide-react';
 import StatusBadge from '../common/statusbadge';
 import PermissionGate from '../common/PermissionGate';
 
-const AzureVMTable = ({ vms = [], onStart, onStop, onDelete, loading = false, selectedIds, onToggleSelect, onToggleAll }) => {
+const AzureVMTable = ({ vms = [], onStart, onStop, onDelete, onRowClick, loading = false, selectedIds, onToggleSelect, onToggleAll }) => {
   if (!vms || vms.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -54,8 +54,12 @@ const AzureVMTable = ({ vms = [], onStart, onStop, onDelete, loading = false, se
         </thead>
         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
           {vms.map((vm) => (
-            <tr key={vm.vm_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-              <td className="px-3 py-4">
+            <tr
+              key={vm.vm_id}
+              className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+              onClick={() => onRowClick?.(vm)}
+            >
+              <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
                   checked={selectedIds?.has(vm.vm_id) ?? false}
@@ -87,7 +91,7 @@ const AzureVMTable = ({ vms = [], onStart, onStop, onDelete, loading = false, se
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 {vm.os_type || 'N/A'}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium" onClick={(e) => e.stopPropagation()}>
                 <div className="flex space-x-2">
                   <PermissionGate permission="resources.start_stop">
                     {(vm.power_state === 'deallocated' || vm.power_state === 'stopped') && (

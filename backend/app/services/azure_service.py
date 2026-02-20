@@ -679,6 +679,181 @@ class AzureService:
             logger.error(f"Azure cost error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
+    # ── Detail operations ─────────────────────────────────────────────────────
+
+    async def get_vm_detail(self, resource_group: str, vm_name: str) -> Dict:
+        try:
+            vm = self.compute_client.virtual_machines.get(resource_group, vm_name, expand='instanceView')
+            # OS disk
+            os_disk = {}
+            if vm.storage_profile and vm.storage_profile.os_disk:
+                d = vm.storage_profile.os_disk
+                os_disk = {
+                    'name': d.name,
+                    'type': d.managed_disk.storage_account_type if d.managed_disk else '—',
+                    'size_gb': d.disk_size_gb or '—',
+                    'caching': d.caching,
+                }
+            # Data disks
+            data_disks = []
+            if vm.storage_profile and vm.storage_profile.data_disks:
+                for d in vm.storage_profile.data_disks:
+                    data_disks.append({
+                        'name': d.name,
+                        'lun': d.lun,
+                        'size_gb': d.disk_size_gb or '—',
+                        'type': d.managed_disk.storage_account_type if d.managed_disk else '—',
+                    })
+            # NICs
+            network_interfaces = []
+            if vm.network_profile and vm.network_profile.network_interfaces:
+                for nic_ref in vm.network_profile.network_interfaces:
+                    network_interfaces.append({'id': nic_ref.id.split('/')[-1] if nic_ref.id else '—'})
+            # Admin username
+            admin_username = '—'
+            if vm.os_profile:
+                admin_username = vm.os_profile.admin_username or '—'
+            # Image
+            image = {}
+            if vm.storage_profile and vm.storage_profile.image_reference:
+                ir = vm.storage_profile.image_reference
+                image = {
+                    'publisher': ir.publisher or '—',
+                    'offer': ir.offer or '—',
+                    'sku': ir.sku or '—',
+                    'version': ir.exact_version or ir.version or 'latest',
+                }
+            # Power state from instance view
+            power_state = '—'
+            if vm.instance_view and vm.instance_view.statuses:
+                for status in vm.instance_view.statuses:
+                    if status.code and status.code.startswith('PowerState/'):
+                        power_state = status.code.split('/')[-1]
+                        break
+            return {
+                'success': True,
+                'power_state': power_state,
+                'os_disk': os_disk,
+                'data_disks': data_disks,
+                'network_interfaces': network_interfaces,
+                'admin_username': admin_username,
+                'image': image,
+                'zones': list(vm.zones) if vm.zones else [],
+                'tags': vm.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_vm_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def get_sql_server_detail(self, resource_group: str, server_name: str) -> Dict:
+        try:
+            server = self.sql_client.servers.get(resource_group, server_name)
+            # Firewall rules
+            firewall_rules = []
+            try:
+                for rule in self.sql_client.firewall_rules.list_by_server(resource_group, server_name):
+                    firewall_rules.append({
+                        'name': rule.name,
+                        'start_ip': rule.start_ip_address,
+                        'end_ip': rule.end_ip_address,
+                    })
+            except Exception:
+                pass
+            return {
+                'success': True,
+                'admin_login': server.administrator_login or '—',
+                'fqdn': server.fully_qualified_domain_name or '—',
+                'state': server.state or '—',
+                'version': server.version or '—',
+                'minimal_tls_version': server.minimal_tls_version or '—',
+                'public_network_access': str(server.public_network_access) if server.public_network_access else '—',
+                'firewall_rules': firewall_rules,
+                'tags': server.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_sql_server_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def get_app_service_detail(self, resource_group: str, app_name: str) -> Dict:
+        try:
+            app = self.web_client.web_apps.get(resource_group, app_name)
+            site_config = app.site_config
+            return {
+                'success': True,
+                'default_host_name': app.default_host_name or '—',
+                'outbound_ip_addresses': app.outbound_ip_addresses or '—',
+                'https_only': app.https_only,
+                'state': app.state or '—',
+                'kind': app.kind or '—',
+                'runtime': (
+                    (site_config.linux_fx_version or site_config.windows_fx_version or 'N/A')
+                    if site_config else 'N/A'
+                ),
+                'always_on': site_config.always_on if site_config else False,
+                'min_tls_version': site_config.min_tls_version if site_config else '—',
+                'ftps_state': site_config.ftps_state if site_config else '—',
+                'http20_enabled': site_config.http20_enabled if site_config else False,
+                'custom_domains': [h for h in (app.host_names or []) if not h.endswith('.azurewebsites.net')],
+                'tags': app.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_app_service_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def get_storage_account_detail(self, resource_group: str, account_name: str) -> Dict:
+        try:
+            sa = self.storage_client.storage_accounts.get_properties(resource_group, account_name)
+            endpoints = {}
+            if sa.primary_endpoints:
+                pe = sa.primary_endpoints
+                endpoints = {
+                    'blob': pe.blob or '—',
+                    'file': pe.file or '—',
+                    'queue': pe.queue or '—',
+                    'table': pe.table or '—',
+                }
+            return {
+                'success': True,
+                'access_tier': sa.access_tier or '—',
+                'https_only': sa.enable_https_traffic_only,
+                'min_tls_version': sa.minimum_tls_version or '—',
+                'allow_blob_public_access': sa.allow_blob_public_access,
+                'creation_time': sa.creation_time.isoformat() if sa.creation_time else '—',
+                'endpoints': endpoints,
+                'provisioning_state': sa.provisioning_state or '—',
+                'tags': sa.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_storage_account_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def get_vnet_detail(self, resource_group: str, vnet_name: str) -> Dict:
+        try:
+            vnet = self.network_client.virtual_networks.get(resource_group, vnet_name)
+            subnets = []
+            for s in (vnet.subnets or []):
+                subnets.append({
+                    'name': s.name,
+                    'address_prefix': s.address_prefix or '—',
+                    'provisioning_state': s.provisioning_state or '—',
+                })
+            dns_servers = []
+            if vnet.dhcp_options and vnet.dhcp_options.dns_servers:
+                dns_servers = list(vnet.dhcp_options.dns_servers)
+            peerings_count = len(list(vnet.virtual_network_peerings or []))
+            return {
+                'success': True,
+                'address_space': list(vnet.address_space.address_prefixes) if vnet.address_space else [],
+                'subnets': subnets,
+                'dns_servers': dns_servers,
+                'peerings_count': peerings_count,
+                'provisioning_state': vnet.provisioning_state or '—',
+                'tags': vnet.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_vnet_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
     # ── Delete operations ─────────────────────────────────────────────────────
 
     async def delete_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:

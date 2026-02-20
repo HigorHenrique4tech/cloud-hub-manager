@@ -759,6 +759,207 @@ class AWSService:
             logger.error(f"delete_vpc error: {e}")
             return {'success': False, 'error': str(e)}
 
+    # ── Detail operations ─────────────────────────────────────────────────────
+
+    async def get_ec2_instance_detail(self, instance_id: str) -> Dict:
+        try:
+            resp = self.ec2_client.describe_instances(InstanceIds=[instance_id])
+            reservations = resp.get('Reservations', [])
+            if not reservations or not reservations[0].get('Instances'):
+                return {'success': False, 'error': 'Instância não encontrada'}
+            inst = reservations[0]['Instances'][0]
+            security_groups = [
+                {'id': sg['GroupId'], 'name': sg['GroupName']}
+                for sg in inst.get('SecurityGroups', [])
+            ]
+            volumes = [
+                {
+                    'device': bdm.get('DeviceName'),
+                    'volume_id': bdm.get('Ebs', {}).get('VolumeId'),
+                    'status': bdm.get('Ebs', {}).get('Status'),
+                    'delete_on_termination': bdm.get('Ebs', {}).get('DeleteOnTermination'),
+                }
+                for bdm in inst.get('BlockDeviceMappings', [])
+            ]
+            tags = {t['Key']: t['Value'] for t in (inst.get('Tags') or [])}
+            iam_profile = inst.get('IamInstanceProfile', {}).get('Arn', '') if inst.get('IamInstanceProfile') else ''
+            return {
+                'success': True,
+                'ami_id': inst.get('ImageId'),
+                'key_name': inst.get('KeyName') or '—',
+                'security_groups': security_groups,
+                'subnet_id': inst.get('SubnetId') or '—',
+                'vpc_id': inst.get('VpcId') or '—',
+                'architecture': inst.get('Architecture'),
+                'virtualization_type': inst.get('VirtualizationType'),
+                'root_device_type': inst.get('RootDeviceType'),
+                'root_device_name': inst.get('RootDeviceName'),
+                'monitoring_state': inst.get('Monitoring', {}).get('State', '—'),
+                'iam_instance_profile': iam_profile or '—',
+                'state_reason': inst.get('StateTransitionReason') or '—',
+                'volumes': volumes,
+                'tags': tags,
+            }
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"get_ec2_instance_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def get_s3_bucket_detail(self, bucket_name: str) -> Dict:
+        try:
+            # Versioning
+            try:
+                ver_resp = self.s3_client.get_bucket_versioning(Bucket=bucket_name)
+                versioning_status = ver_resp.get('Status', 'Disabled') or 'Disabled'
+            except Exception:
+                versioning_status = '—'
+            # Encryption
+            try:
+                enc_resp = self.s3_client.get_bucket_encryption(Bucket=bucket_name)
+                rules = enc_resp.get('ServerSideEncryptionConfiguration', {}).get('Rules', [])
+                encryption_type = rules[0].get('ApplyServerSideEncryptionByDefault', {}).get('SSEAlgorithm', '—') if rules else '—'
+            except Exception:
+                encryption_type = '—'
+            # Tags
+            try:
+                tag_resp = self.s3_client.get_bucket_tagging(Bucket=bucket_name)
+                tags = {t['Key']: t['Value'] for t in tag_resp.get('TagSet', [])}
+            except Exception:
+                tags = {}
+            # Location
+            try:
+                loc_resp = self.s3_client.get_bucket_location(Bucket=bucket_name)
+                region = loc_resp.get('LocationConstraint') or 'us-east-1'
+            except Exception:
+                region = '—'
+            return {
+                'success': True,
+                'region': region,
+                'versioning_status': versioning_status,
+                'encryption_type': encryption_type,
+                'tags': tags,
+            }
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"get_s3_bucket_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def get_rds_instance_detail(self, db_instance_id: str) -> Dict:
+        try:
+            resp = self.rds_client.describe_db_instances(DBInstanceIdentifier=db_instance_id)
+            instances = resp.get('DBInstances', [])
+            if not instances:
+                return {'success': False, 'error': 'Instância RDS não encontrada'}
+            db = instances[0]
+            vpc_sgs = [
+                {'id': sg.get('VpcSecurityGroupId'), 'status': sg.get('Status')}
+                for sg in db.get('VpcSecurityGroups', [])
+            ]
+            param_group = db.get('DBParameterGroups', [{}])[0].get('DBParameterGroupName', '—') if db.get('DBParameterGroups') else '—'
+            subnet_group = db.get('DBSubnetGroup', {}).get('DBSubnetGroupName', '—') if db.get('DBSubnetGroup') else '—'
+            tags = {t['Key']: t['Value'] for t in (db.get('TagList') or [])}
+            return {
+                'success': True,
+                'parameter_group': param_group,
+                'subnet_group': subnet_group,
+                'vpc_security_groups': vpc_sgs,
+                'backup_retention': db.get('BackupRetentionPeriod'),
+                'preferred_backup_window': db.get('PreferredBackupWindow', '—'),
+                'preferred_maintenance_window': db.get('PreferredMaintenanceWindow', '—'),
+                'auto_minor_version_upgrade': db.get('AutoMinorVersionUpgrade'),
+                'deletion_protection': db.get('DeletionProtection'),
+                'publicly_accessible': db.get('PubliclyAccessible'),
+                'storage_type': db.get('StorageType'),
+                'storage_encrypted': db.get('StorageEncrypted'),
+                'ca_certificate': db.get('CACertificateIdentifier', '—'),
+                'tags': tags,
+            }
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"get_rds_instance_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def get_lambda_function_detail(self, function_name: str) -> Dict:
+        try:
+            resp = self.lambda_client.get_function(FunctionName=function_name)
+            config = resp.get('Configuration', {})
+            code = resp.get('Code', {})
+            env_vars = config.get('Environment', {}).get('Variables', {})
+            layers = [
+                {'arn': l.get('Arn'), 'size': l.get('CodeSize')}
+                for l in config.get('Layers', [])
+            ]
+            vpc_config = config.get('VpcConfig') or {}
+            return {
+                'success': True,
+                'function_arn': config.get('FunctionArn'),
+                'description': config.get('Description') or '—',
+                'role_arn': config.get('Role', '—'),
+                'package_type': config.get('PackageType', '—'),
+                'architectures': config.get('Architectures', []),
+                'tracing_mode': config.get('TracingConfig', {}).get('Mode', '—'),
+                'env_var_keys': list(env_vars.keys()),
+                'layers': layers,
+                'vpc_id': vpc_config.get('VpcId') or '—',
+                'vpc_subnets_count': len(vpc_config.get('SubnetIds', [])),
+                'vpc_sgs_count': len(vpc_config.get('SecurityGroupIds', [])),
+                'code_location': code.get('Location', '—'),
+                'last_update_status': config.get('LastUpdateStatus', '—'),
+                'state': config.get('State', '—'),
+            }
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"get_lambda_function_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    async def get_vpc_detail(self, vpc_id: str) -> Dict:
+        try:
+            # VPC attributes
+            vpc_resp = self.ec2_client.describe_vpcs(VpcIds=[vpc_id])
+            vpcs = vpc_resp.get('Vpcs', [])
+            if not vpcs:
+                return {'success': False, 'error': 'VPC não encontrada'}
+            vpc = vpcs[0]
+            tags = {t['Key']: t['Value'] for t in (vpc.get('Tags') or [])}
+            # DNS attributes
+            try:
+                dns_support = self.ec2_client.describe_vpc_attribute(VpcId=vpc_id, Attribute='enableDnsSupport')
+                enable_dns_support = dns_support.get('EnableDnsSupport', {}).get('Value', False)
+            except Exception:
+                enable_dns_support = None
+            try:
+                dns_hostnames = self.ec2_client.describe_vpc_attribute(VpcId=vpc_id, Attribute='enableDnsHostnames')
+                enable_dns_hostnames = dns_hostnames.get('EnableDnsHostnames', {}).get('Value', False)
+            except Exception:
+                enable_dns_hostnames = None
+            # Subnets
+            subnets_resp = self.ec2_client.describe_subnets(Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
+            subnets = [
+                {
+                    'id': s['SubnetId'],
+                    'cidr': s['CidrBlock'],
+                    'az': s['AvailabilityZone'],
+                    'public': s.get('MapPublicIpOnLaunch', False),
+                    'available_ips': s.get('AvailableIpAddressCount', 0),
+                    'name': next((t['Value'] for t in (s.get('Tags') or []) if t['Key'] == 'Name'), ''),
+                }
+                for s in subnets_resp.get('Subnets', [])
+            ]
+            # Internet Gateway
+            igw_resp = self.ec2_client.describe_internet_gateways(
+                Filters=[{'Name': 'attachment.vpc-id', 'Values': [vpc_id]}]
+            )
+            igws = igw_resp.get('InternetGateways', [])
+            igw_id = igws[0].get('InternetGatewayId', '—') if igws else '—'
+            return {
+                'success': True,
+                'enable_dns_support': enable_dns_support,
+                'enable_dns_hostnames': enable_dns_hostnames,
+                'tenancy': vpc.get('InstanceTenancy', '—'),
+                'subnets': subnets,
+                'igw_id': igw_id,
+                'tags': tags,
+            }
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"get_vpc_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
     # ── Connection test ───────────────────────────────────────────────────────
 
     async def test_connection(self) -> Dict:

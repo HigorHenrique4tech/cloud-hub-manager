@@ -15,6 +15,8 @@ import CreateEC2Form from '../../components/create/CreateEC2Form';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import awsService from '../../services/awsservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { instance_type: 't3.micro', associate_public_ip: false, volumes: [], security_group_ids: [], tags: {}, tags_list: [] };
 
@@ -34,6 +36,7 @@ const AwsEC2 = () => {
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchErrors, setBatchErrors] = useState([]);
+  const [detailTarget, setDetailTarget] = useState(null);
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-ec2'],
@@ -167,6 +170,7 @@ const AwsEC2 = () => {
           onStart={handleStart}
           onStop={handleStop}
           onDelete={(instance) => setDeleteTarget(instance)}
+          onRowClick={setDetailTarget}
           selectedIds={selectedIds}
           onToggleSelect={toggleSelect}
           onToggleAll={toggleAll}
@@ -183,6 +187,7 @@ const AwsEC2 = () => {
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="ec2" form={form} />}
+        templateBar={<TemplateBar provider="aws" resourceType="ec2" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateEC2Form ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -217,6 +222,43 @@ const AwsEC2 = () => {
         resources={selectedInstances.map(i => ({ id: i.instance_id, name: i.name || i.instance_id }))}
         isLoading={batchLoading}
         errors={batchErrors}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name || detailTarget?.instance_id}
+        subtitle="EC2 Instance"
+        statusText={detailTarget?.state}
+        statusColor={detailTarget?.state === 'running' ? 'green' : detailTarget?.state === 'stopped' ? 'red' : 'yellow'}
+        queryKey={['aws-ec2-detail', detailTarget?.instance_id]}
+        queryFn={detailTarget ? () => awsService.getEC2InstanceDetail(detailTarget.instance_id) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Instance ID', value: detailTarget?.instance_id, mono: true },
+            { label: 'Tipo', value: detailTarget?.instance_type },
+            { label: 'AMI', value: detail?.ami_id, mono: true },
+            { label: 'Arquitetura', value: detail?.architecture },
+            { label: 'Virtualização', value: detail?.virtualization_type },
+            { label: 'Monitoramento', value: detail?.monitoring_state },
+          ]},
+          { title: 'Rede', fields: [
+            { label: 'IP Público', value: detailTarget?.public_ip || '—' },
+            { label: 'VPC', value: detail?.vpc_id, mono: true },
+            { label: 'Subnet', value: detail?.subnet_id, mono: true },
+            { label: 'Grupos de Segurança', value: detail?.security_groups?.map(sg => sg.name).join(', ') },
+          ]},
+          { title: 'Armazenamento', fields: [
+            { label: 'Root Device', value: detail?.root_device_type },
+            { label: 'Root Device Name', value: detail?.root_device_name, mono: true },
+            { label: 'Volumes EBS', value: detail?.volumes?.length != null ? String(detail.volumes.length) : undefined },
+          ]},
+          { title: 'Identidade', fields: [
+            { label: 'Key Pair', value: detail?.key_name || '—' },
+            { label: 'IAM Profile', value: detail?.iam_instance_profile || '—' },
+            { label: 'Zona', value: detailTarget?.availability_zone },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

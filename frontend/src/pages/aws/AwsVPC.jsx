@@ -11,6 +11,8 @@ import CreateVPCForm from '../../components/create/CreateVPCForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import awsService from '../../services/awsservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { name: '', cidr_block: '10.0.0.0/16', enable_dns_support: true, enable_dns_hostnames: true, tenancy: 'default', subnets: [], tags: {}, tags_list: [] };
 
@@ -22,6 +24,7 @@ const AwsVPC = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
   const formRef = useRef();
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -103,7 +106,7 @@ const AwsVPC = () => {
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {vpcs.map(v => (
-                <tr key={v.vpc_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <tr key={v.vpc_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(v)}>
                   <td className="px-6 py-4 text-sm font-mono text-gray-500 dark:text-gray-400 whitespace-nowrap">{v.vpc_id}</td>
                   <td className="px-6 py-4 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{v.name || '—'}</td>
                   <td className="px-6 py-4 text-sm font-mono text-gray-900 dark:text-gray-100 whitespace-nowrap">{v.cidr || '—'}</td>
@@ -114,7 +117,7 @@ const AwsVPC = () => {
                     {v.is_default ? <span className="badge-gray">Padrão</span> : '—'}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{v.subnets_count ?? 0}</td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <PermissionGate permission="resources.delete">
                       <button
                         onClick={() => setDeleteTarget(v)}
@@ -141,6 +144,7 @@ const AwsVPC = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        templateBar={<TemplateBar provider="aws" resourceType="vpc" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateVPCForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -154,6 +158,34 @@ const AwsVPC = () => {
         confirmText={deleteTarget?.name || deleteTarget?.vpc_id}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name || detailTarget?.vpc_id}
+        subtitle="VPC"
+        statusText={detailTarget?.state}
+        statusColor={detailTarget?.state === 'available' ? 'green' : 'yellow'}
+        queryKey={['aws-vpc-detail', detailTarget?.vpc_id]}
+        queryFn={detailTarget ? () => awsService.getVPCDetail(detailTarget.vpc_id) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'VPC ID', value: detailTarget?.vpc_id, mono: true },
+            { label: 'CIDR', value: detailTarget?.cidr, mono: true },
+            { label: 'Estado', value: detailTarget?.state },
+            { label: 'Padrão', value: detailTarget?.is_default ? 'Sim' : 'Não' },
+            { label: 'Tenancy', value: detail?.tenancy },
+          ]},
+          { title: 'DNS', fields: [
+            { label: 'DNS Support', value: detail?.enable_dns_support != null ? (detail.enable_dns_support ? 'Ativado' : 'Desativado') : undefined },
+            { label: 'DNS Hostnames', value: detail?.enable_dns_hostnames != null ? (detail.enable_dns_hostnames ? 'Ativado' : 'Desativado') : undefined },
+          ]},
+          { title: 'Rede', fields: [
+            { label: 'Internet Gateway', value: detail?.igw_id || '—', mono: true },
+            { label: 'Subnets', value: detail?.subnets?.length != null ? String(detail.subnets.length) : String(detailTarget?.subnets_count ?? '—') },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

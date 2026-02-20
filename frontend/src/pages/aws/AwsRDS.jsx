@@ -12,6 +12,8 @@ import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import CostEstimatePanel from '../../components/common/CostEstimatePanel';
 import awsService from '../../services/awsservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { db_instance_identifier: '', engine: 'mysql', engine_version: '', db_instance_class: 'db.t3.micro', allocated_storage: 20, storage_type: 'gp2', db_name: '', master_username: '', master_password: '', security_group_ids: [], db_subnet_group: '', multi_az: false, publicly_accessible: false, backup_retention: 7, storage_encrypted: false, deletion_protection: false, tags: {}, tags_list: [] };
 
@@ -29,6 +31,7 @@ const AwsRDS = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
   const formRef = useRef();
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -110,7 +113,7 @@ const AwsRDS = () => {
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {instances.map(i => (
-                <tr key={i.db_instance_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <tr key={i.db_instance_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(i)}>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.db_instance_id}</td>
                   <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.engine}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.engine_version || '—'}</td>
@@ -120,7 +123,7 @@ const AwsRDS = () => {
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.availability_zone || '—'}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.multi_az ? 'Sim' : 'Não'}</td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.storage_gb ?? '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <PermissionGate permission="resources.delete">
                       <button
                         onClick={() => setDeleteTarget(i)}
@@ -148,6 +151,7 @@ const AwsRDS = () => {
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="rds" form={form} />}
+        templateBar={<TemplateBar provider="aws" resourceType="rds" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateRDSForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -161,6 +165,40 @@ const AwsRDS = () => {
         confirmText={deleteTarget?.db_instance_id}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.db_instance_id}
+        subtitle="RDS Instance"
+        statusText={detailTarget?.status}
+        statusColor={detailTarget?.status === 'available' ? 'green' : detailTarget?.status === 'stopped' ? 'red' : 'yellow'}
+        queryKey={['aws-rds-detail', detailTarget?.db_instance_id]}
+        queryFn={detailTarget ? () => awsService.getRDSInstanceDetail(detailTarget.db_instance_id) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'ID', value: detailTarget?.db_instance_id },
+            { label: 'Engine', value: detailTarget?.engine },
+            { label: 'Versão', value: detailTarget?.engine_version },
+            { label: 'Classe', value: detailTarget?.db_instance_class },
+            { label: 'Storage (GB)', value: String(detailTarget?.storage_gb ?? '—') },
+          ]},
+          { title: 'Configuração', fields: [
+            { label: 'Parameter Group', value: detail?.parameter_group },
+            { label: 'Subnet Group', value: detail?.subnet_group },
+            { label: 'Retenção Backup (d)', value: detail?.backup_retention != null ? String(detail.backup_retention) : undefined },
+            { label: 'Janela Backup', value: detail?.preferred_backup_window },
+            { label: 'Janela Manutenção', value: detail?.preferred_maintenance_window },
+          ]},
+          { title: 'Rede e Segurança', fields: [
+            { label: 'Endpoint', value: detailTarget?.endpoint, mono: true },
+            { label: 'VPC Security Groups', value: detail?.vpc_security_groups?.join(', ') },
+            { label: 'Multi-AZ', value: detailTarget?.multi_az ? 'Sim' : 'Não' },
+            { label: 'Acesso Público', value: detail?.publicly_accessible ? 'Sim' : 'Não' },
+            { label: 'Storage Criptografado', value: detail?.storage_encrypted ? 'Sim' : 'Não' },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

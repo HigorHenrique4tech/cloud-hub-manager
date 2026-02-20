@@ -12,6 +12,7 @@ const CreateResourceModal = ({
   error = '',
   success = '',
   estimate = null,
+  templateBar = null,
   children,
 }) => {
   useEffect(() => {
@@ -46,6 +47,11 @@ const CreateResourceModal = ({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          {templateBar && (
+            <div className="pb-4 border-b border-gray-200 dark:border-gray-700">
+              {templateBar}
+            </div>
+          )}
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
               {error}

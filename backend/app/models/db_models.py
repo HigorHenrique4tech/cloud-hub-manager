@@ -314,3 +314,21 @@ class FinOpsAnomaly(Base):
     deviation_pct  = Column(Float, nullable=False)
     status         = Column(String(20), nullable=False, default="open")  # open | acknowledged | resolved
     created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+# ── Resource Templates ──────────────────────────────────────────────────────
+
+
+class ResourceTemplate(Base):
+    __tablename__ = "resource_templates"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id  = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    provider      = Column(String(50), nullable=False)    # aws | azure
+    resource_type = Column(String(100), nullable=False)   # ec2 | s3 | rds | lambda | vpc | vm | storage | vnet | sql | app_service
+    name          = Column(String(255), nullable=False)
+    description   = Column(Text, nullable=True)
+    form_config   = Column(JSONB, nullable=False)          # serialized form state
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

@@ -11,6 +11,8 @@ import CreateLambdaForm from '../../components/create/CreateLambdaForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import awsService from '../../services/awsservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { function_name: '', runtime: 'python3.11', handler: 'handler.lambda_handler', role_arn: '', code_source: 'zip', description: '', memory_size: 128, timeout: 30, environment_variables: [], tags: {}, tags_list: [] };
 
@@ -22,6 +24,7 @@ const AwsLambda = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
   const formRef = useRef();
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -103,7 +106,7 @@ const AwsLambda = () => {
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {fns.map(f => (
-                <tr key={f.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <tr key={f.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(f)}>
                   <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{f.name}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <span className="badge-gray text-xs">{f.runtime || '—'}</span>
@@ -117,7 +120,7 @@ const AwsLambda = () => {
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
                     {f.last_modified ? new Date(f.last_modified).toLocaleDateString('pt-BR') : '—'}
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap">
+                  <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <PermissionGate permission="resources.delete">
                       <button
                         onClick={() => setDeleteTarget(f)}
@@ -144,6 +147,7 @@ const AwsLambda = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        templateBar={<TemplateBar provider="aws" resourceType="lambda" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateLambdaForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -157,6 +161,41 @@ const AwsLambda = () => {
         confirmText={deleteTarget?.name}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="Lambda Function"
+        queryKey={['aws-lambda-detail', detailTarget?.name]}
+        queryFn={detailTarget ? () => awsService.getLambdaFunctionDetail(detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Runtime', value: detailTarget?.runtime },
+            { label: 'Handler', value: detailTarget?.handler, mono: true },
+            { label: 'Memória (MB)', value: String(detailTarget?.memory_mb ?? '—') },
+            { label: 'Timeout (s)', value: String(detailTarget?.timeout_sec ?? '—') },
+            { label: 'Código (KB)', value: detailTarget?.code_size_bytes ? String(Math.round(detailTarget.code_size_bytes / 1024)) : undefined },
+          ]},
+          { title: 'Configuração', fields: [
+            { label: 'Descrição', value: detail?.description || '—' },
+            { label: 'Role ARN', value: detail?.role_arn, mono: true },
+            { label: 'Tracing', value: detail?.tracing_mode },
+            { label: 'Package Type', value: detail?.package_type },
+            { label: 'Architectures', value: detail?.architectures?.join(', ') },
+            { label: 'Estado', value: detail?.state },
+          ]},
+          { title: 'Variáveis de Ambiente', fields: detail?.env_var_keys?.length > 0
+            ? detail.env_var_keys.map(k => ({ label: k, value: '(oculto)' }))
+            : [{ label: '—', value: 'Nenhuma variável configurada' }]
+          },
+          { title: 'Rede', fields: [
+            { label: 'VPC', value: detail?.vpc_id, mono: true },
+            { label: 'Subnets', value: detail?.vpc_subnets_count != null ? String(detail.vpc_subnets_count) : undefined },
+            { label: 'Security Groups', value: detail?.vpc_sgs_count != null ? String(detail.vpc_sgs_count) : undefined },
+          ]},
+        ]}
       />
     </Layout>
   );

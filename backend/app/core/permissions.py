@@ -49,6 +49,10 @@ class Permission(str, Enum):
     FINOPS_EXECUTE   = "finops.execute"   # apply / dismiss / rollback actions
     FINOPS_BUDGET    = "finops.budget"    # create / edit budgets
 
+    # Resource Templates
+    TEMPLATES_VIEW   = "templates.view"   # see and load templates
+    TEMPLATES_MANAGE = "templates.manage" # create / edit / delete templates
+
 
 _ALL_PERMISSIONS: Set[str] = {p.value for p in Permission}
 
@@ -66,12 +70,15 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
         Permission.FINOPS_RECOMMEND,
+        Permission.TEMPLATES_VIEW,
+        Permission.TEMPLATES_MANAGE,
     },
 
     "viewer": {
         Permission.RESOURCES_VIEW,
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
+        Permission.TEMPLATES_VIEW,
     },
 
     "billing": {
@@ -81,6 +88,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
         Permission.FINOPS_RECOMMEND,
+        Permission.TEMPLATES_VIEW,
     },
 }
 

@@ -16,6 +16,8 @@ import CreateAzureVMForm from '../../components/create/CreateAzureVMForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { name: '', resource_group: '', location: '', vm_size: 'Standard_B1s', image_publisher: '', image_offer: '', image_sku: '', image_version: 'latest', admin_username: '', admin_password: '', create_public_ip: false, os_disk_type: 'Standard_LRS', data_disks: [], tags: {}, tags_list: [] };
 
@@ -41,6 +43,7 @@ const AzureVMs = () => {
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchErrors, setBatchErrors] = useState([]);
+  const [detailTarget, setDetailTarget] = useState(null);
 
   const fetchVMs = async (isRefresh = false) => {
     try {
@@ -216,6 +219,7 @@ const AzureVMs = () => {
             onStart={handleStart}
             onStop={handleStop}
             onDelete={(vm) => setDeleteTarget(vm)}
+            onRowClick={setDetailTarget}
             loading={refreshing}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
@@ -238,6 +242,7 @@ const AzureVMs = () => {
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="azure-vm" form={form} />}
+        templateBar={<TemplateBar provider="azure" resourceType="vm" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateAzureVMForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -272,6 +277,46 @@ const AzureVMs = () => {
         resources={selectedVMs.map(v => ({ id: v.vm_id, name: v.name }))}
         isLoading={batchLoading}
         errors={batchErrors}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="Azure Virtual Machine"
+        statusText={detailTarget?.power_state}
+        statusColor={detailTarget?.power_state === 'running' ? 'green' : ['deallocated', 'stopped'].includes(detailTarget?.power_state) ? 'red' : 'yellow'}
+        queryKey={['azure-vm-detail', detailTarget?.resource_group, detailTarget?.name]}
+        queryFn={detailTarget ? () => azureService.getVMDetail(detailTarget.resource_group, detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Resource Group', value: detailTarget?.resource_group },
+            { label: 'Localização', value: detailTarget?.location },
+            { label: 'Tamanho', value: detailTarget?.vm_size },
+            { label: 'Sistema Operacional', value: detailTarget?.os_type },
+            { label: 'Zonas', value: detail?.zones?.join(', ') || '—' },
+          ]},
+          { title: 'SO e Imagem', fields: [
+            { label: 'Admin Username', value: detail?.admin_username },
+            { label: 'Publisher', value: detail?.image?.publisher },
+            { label: 'Offer', value: detail?.image?.offer },
+            { label: 'SKU', value: detail?.image?.sku },
+          ]},
+          { title: 'Armazenamento', fields: [
+            { label: 'OS Disk', value: detail?.os_disk?.name },
+            { label: 'OS Disk Tipo', value: detail?.os_disk?.type },
+            { label: 'OS Disk Tamanho', value: detail?.os_disk?.size_gb != null ? `${detail.os_disk.size_gb} GB` : undefined },
+            { label: 'Data Disks', value: detail?.data_disks?.length != null ? String(detail.data_disks.length) : undefined },
+          ]},
+          { title: 'Rede', fields: detail?.network_interfaces?.length > 0
+            ? detail.network_interfaces.map((nic, i) => ({
+                label: `NIC ${i + 1}`,
+                value: [nic.private_ip, nic.public_ip].filter(Boolean).join(' / ') || '—'
+              }))
+            : [{ label: 'IPs', value: '—' }]
+          },
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

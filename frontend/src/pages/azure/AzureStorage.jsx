@@ -10,6 +10,8 @@ import CreateAzureStorageForm from '../../components/create/CreateAzureStorageFo
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { name: '', resource_group: '', location: '', sku: 'Standard_LRS', kind: 'StorageV2', access_tier: 'Hot', enable_https_only: true, allow_blob_public_access: false, min_tls_version: 'TLS1_2', tags: {}, tags_list: [] };
 
@@ -23,6 +25,7 @@ const AzureStorage = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
   const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
@@ -117,7 +120,7 @@ const AzureStorage = () => {
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {filtered.map(a => (
-                  <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(a)}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <HardDrive className="w-4 h-4 text-sky-500 flex-shrink-0" />
@@ -135,7 +138,7 @@ const AzureStorage = () => {
                           : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-800 dark:text-yellow-100'
                       }`}>{a.provisioning_state || '—'}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <PermissionGate permission="resources.delete">
                         <button
                           onClick={() => setDeleteTarget(a)}
@@ -163,6 +166,7 @@ const AzureStorage = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        templateBar={<TemplateBar provider="azure" resourceType="storage" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateAzureStorageForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -176,6 +180,39 @@ const AzureStorage = () => {
         confirmText={deleteTarget?.name}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="Storage Account"
+        statusText={detailTarget?.provisioning_state}
+        statusColor={detailTarget?.provisioning_state === 'Succeeded' ? 'green' : 'yellow'}
+        queryKey={['azure-storage-detail', detailTarget?.resource_group, detailTarget?.name]}
+        queryFn={detailTarget ? () => azureService.getStorageAccountDetail(detailTarget.resource_group, detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Resource Group', value: detailTarget?.resource_group },
+            { label: 'Localização', value: detailTarget?.location },
+            { label: 'Replicação', value: detailTarget?.sku || detail?.sku },
+            { label: 'Tipo', value: detailTarget?.kind || detail?.kind },
+            { label: 'Access Tier', value: detail?.access_tier },
+            { label: 'Criado em', value: detail?.creation_time ? new Date(detail.creation_time).toLocaleDateString('pt-BR') : undefined },
+          ]},
+          { title: 'Segurança', fields: [
+            { label: 'HTTPS Only', value: detail?.https_only != null ? (detail.https_only ? 'Sim' : 'Não') : undefined },
+            { label: 'TLS Mínimo', value: detail?.min_tls_version },
+            { label: 'Blob Público', value: detail?.allow_blob_public_access != null ? (detail.allow_blob_public_access ? 'Permitido' : 'Bloqueado') : undefined },
+          ]},
+          { title: 'Endpoints', fields: [
+            { label: 'Blob', value: detail?.endpoints?.blob, mono: true },
+            { label: 'File', value: detail?.endpoints?.file, mono: true },
+            { label: 'Queue', value: detail?.endpoints?.queue, mono: true },
+            { label: 'Table', value: detail?.endpoints?.table, mono: true },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

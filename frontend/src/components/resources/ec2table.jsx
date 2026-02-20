@@ -3,7 +3,7 @@ import StatusBadge from '../common/statusbadge';
 import { formatDate } from '../../utils/formatters';
 import PermissionGate from '../common/PermissionGate';
 
-const EC2Table = ({ instances = [], onStart, onStop, onDelete, loading = false, selectedIds, onToggleSelect, onToggleAll }) => {
+const EC2Table = ({ instances = [], onStart, onStop, onDelete, onRowClick, loading = false, selectedIds, onToggleSelect, onToggleAll }) => {
   if (!instances || instances.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -58,8 +58,12 @@ const EC2Table = ({ instances = [], onStart, onStop, onDelete, loading = false, 
         </thead>
         <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
           {instances.map((instance) => (
-            <tr key={instance.instance_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-              <td className="px-3 py-4">
+            <tr
+              key={instance.instance_id}
+              className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+              onClick={() => onRowClick?.(instance)}
+            >
+              <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
                 <input
                   type="checkbox"
                   checked={selectedIds?.has(instance.instance_id) ?? false}
@@ -96,7 +100,7 @@ const EC2Table = ({ instances = [], onStart, onStop, onDelete, loading = false, 
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 {formatDate(instance.launch_time)}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium" onClick={(e) => e.stopPropagation()}>
                 <div className="flex space-x-2">
                   <PermissionGate permission="resources.start_stop">
                     {instance.state === 'stopped' && (

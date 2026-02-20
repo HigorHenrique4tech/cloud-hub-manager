@@ -10,6 +10,8 @@ import CreateAzureVNetForm from '../../components/create/CreateAzureVNetForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { name: '', resource_group: '', location: '', address_prefixes: ['10.0.0.0/16'], subnets: [], tags: {}, tags_list: [] };
 
@@ -23,6 +25,7 @@ const AzureVNets = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
   const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
@@ -117,7 +120,7 @@ const AzureVNets = () => {
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {filtered.map(v => (
-                  <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                  <tr key={v.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(v)}>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center gap-2">
                         <Network className="w-4 h-4 text-sky-500 flex-shrink-0" />
@@ -141,7 +144,7 @@ const AzureVNets = () => {
                           : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-800 dark:text-yellow-100'
                       }`}>{v.provisioning_state || '—'}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <PermissionGate permission="resources.delete">
                         <button
                           onClick={() => setDeleteTarget(v)}
@@ -169,6 +172,7 @@ const AzureVNets = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        templateBar={<TemplateBar provider="azure" resourceType="vnet" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateAzureVNetForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -182,6 +186,33 @@ const AzureVNets = () => {
         confirmText={deleteTarget?.name}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="Virtual Network"
+        statusText={detailTarget?.provisioning_state}
+        statusColor={detailTarget?.provisioning_state === 'Succeeded' ? 'green' : 'yellow'}
+        queryKey={['azure-vnet-detail', detailTarget?.resource_group, detailTarget?.name]}
+        queryFn={detailTarget ? () => azureService.getVNetDetail(detailTarget.resource_group, detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Resource Group', value: detailTarget?.resource_group },
+            { label: 'Localização', value: detailTarget?.location },
+            { label: 'Espaço de Endereço', value: (detail?.address_space || detailTarget?.address_space || []).join(', ') || '—' },
+            { label: 'Peerings', value: detail?.peerings_count != null ? String(detail.peerings_count) : undefined },
+          ]},
+          { title: 'DNS', fields: [
+            { label: 'Servidores DNS', value: detail?.dns_servers?.join(', ') || '—' },
+          ]},
+          { title: 'Subnets', fields: detail?.subnets?.length > 0
+            ? detail.subnets.map(s => ({ label: s.name, value: s.address_prefix, mono: true }))
+            : [{ label: '—', value: `${detailTarget?.subnets_count ?? 0} subnet(s)` }]
+          },
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

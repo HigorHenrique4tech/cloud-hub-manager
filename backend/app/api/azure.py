@@ -369,6 +369,78 @@ async def ws_list_subscriptions(
     return await svc.list_subscriptions()
 
 
+# ── Detail ──────────────────────────────────────────────────────────────────
+
+@ws_router.get("/vms/{resource_group}/{vm_name}")
+async def ws_get_vm_detail(
+    resource_group: str,
+    vm_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.get_vm_detail(resource_group, vm_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da VM'))
+    return result
+
+
+@ws_router.get("/databases/{resource_group}/{server_name}")
+async def ws_get_sql_server_detail(
+    resource_group: str,
+    server_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.get_sql_server_detail(resource_group, server_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe do servidor SQL'))
+    return result
+
+
+@ws_router.get("/app-services/{resource_group}/{app_name}")
+async def ws_get_app_service_detail(
+    resource_group: str,
+    app_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.get_app_service_detail(resource_group, app_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe do App Service'))
+    return result
+
+
+@ws_router.get("/storage-accounts/{resource_group}/{account_name}")
+async def ws_get_storage_account_detail(
+    resource_group: str,
+    account_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.get_storage_account_detail(resource_group, account_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da Storage Account'))
+    return result
+
+
+@ws_router.get("/vnets/{resource_group}/{vnet_name}")
+async def ws_get_vnet_detail(
+    resource_group: str,
+    vnet_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await svc.get_vnet_detail(resource_group, vnet_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da VNet'))
+    return result
+
+
 # ── Delete ──────────────────────────────────────────────────────────────────
 
 @ws_router.delete("/vms/{resource_group}/{vm_name}")

@@ -13,6 +13,8 @@ import CreateAzureAppServiceForm from '../../components/create/CreateAzureAppSer
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { name: '', resource_group: '', location: '', runtime: 'PYTHON|3.11', plan_name: '', plan_sku: 'B1', always_on: false, tags: {}, tags_list: [] };
 
@@ -37,6 +39,7 @@ const AzureAppServices = () => {
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchErrors, setBatchErrors] = useState([]);
+  const [detailTarget, setDetailTarget] = useState(null);
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -219,8 +222,8 @@ const AzureAppServices = () => {
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {filtered.map(app => (
-                  <tr key={app.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td className="px-3 py-4">
+                  <tr key={app.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(app)}>
+                    <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.has(app.id)}
@@ -250,7 +253,7 @@ const AzureAppServices = () => {
                           : 'bg-red-100 text-red-700 dark:bg-red-800 dark:text-red-100'
                       }`}>{app.state || '—'}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-2">
                         <PermissionGate permission="resources.start_stop">
                           {app.state !== 'Running' && (
@@ -295,6 +298,7 @@ const AzureAppServices = () => {
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="azure-app-service" form={form} />}
+        templateBar={<TemplateBar provider="azure" resourceType="app_service" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateAzureAppServiceForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -329,6 +333,39 @@ const AzureAppServices = () => {
         resources={selectedApps.map(a => ({ id: a.id, name: a.name }))}
         isLoading={batchLoading}
         errors={batchErrors}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="App Service"
+        statusText={detailTarget?.state}
+        statusColor={detailTarget?.state === 'Running' ? 'green' : 'red'}
+        queryKey={['azure-app-detail', detailTarget?.resource_group, detailTarget?.name]}
+        queryFn={detailTarget ? () => azureService.getAppServiceDetail(detailTarget.resource_group, detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Resource Group', value: detailTarget?.resource_group },
+            { label: 'Localização', value: detailTarget?.location },
+            { label: 'Runtime', value: detailTarget?.runtime || detail?.runtime },
+            { label: 'Plano', value: detailTarget?.app_service_plan },
+            { label: 'Estado', value: detailTarget?.state },
+          ]},
+          { title: 'URLs', fields: [
+            { label: 'Host Padrão', value: detail?.default_host_name, mono: true },
+            { label: 'IPs de Saída', value: detail?.outbound_ip_addresses },
+            { label: 'Domínios Customizados', value: detail?.custom_domains?.join(', ') || '—' },
+          ]},
+          { title: 'Configuração', fields: [
+            { label: 'Always On', value: detail?.always_on != null ? (detail.always_on ? 'Ativado' : 'Desativado') : undefined },
+            { label: 'HTTPS Only', value: detail?.https_only != null ? (detail.https_only ? 'Sim' : 'Não') : undefined },
+            { label: 'TLS Mínimo', value: detail?.min_tls_version },
+            { label: 'FTPS State', value: detail?.ftps_state },
+            { label: 'HTTP/2', value: detail?.http20_enabled != null ? (detail.http20_enabled ? 'Ativado' : 'Desativado') : undefined },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

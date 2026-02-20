@@ -11,6 +11,8 @@ import CreateS3Form from '../../components/create/CreateS3Form';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import awsService from '../../services/awsservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { name: '', region: 'us-east-1', versioning: false, encryption: 'AES256', kms_key_id: '', block_public_acls: true, ignore_public_acls: true, block_public_policy: true, restrict_public_buckets: true, tags: {}, tags_list: [] };
 
@@ -22,6 +24,7 @@ const AwsS3 = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
   const formRef = useRef();
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -103,7 +106,7 @@ const AwsS3 = () => {
             </thead>
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {buckets.map(b => (
-                <tr key={b.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <tr key={b.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(b)}>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-2">
                       <HardDrive className="w-4 h-4 text-yellow-500 flex-shrink-0" />
@@ -127,7 +130,7 @@ const AwsS3 = () => {
                       </span>
                     )}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
+                  <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <PermissionGate permission="resources.delete">
                       <button
                         onClick={() => setDeleteTarget(b)}
@@ -154,6 +157,7 @@ const AwsS3 = () => {
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        templateBar={<TemplateBar provider="aws" resourceType="s3" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
         <CreateS3Form ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
@@ -167,6 +171,27 @@ const AwsS3 = () => {
         confirmText={deleteTarget?.name}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="S3 Bucket"
+        queryKey={['aws-s3-detail', detailTarget?.name]}
+        queryFn={detailTarget ? () => awsService.getS3BucketDetail(detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Região', value: detail?.region || detailTarget?.region },
+            { label: 'Criado em', value: detailTarget?.creation_date ? new Date(detailTarget.creation_date).toLocaleDateString('pt-BR') : '—' },
+          ]},
+          { title: 'Segurança', fields: [
+            { label: 'Versionamento', value: detail?.versioning_status || '—' },
+            { label: 'Criptografia', value: detail?.encryption_type || '—' },
+            { label: 'Acesso Público', value: detailTarget?.public_access === null ? '—' : detailTarget?.public_access ? 'Público' : 'Bloqueado' },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );
