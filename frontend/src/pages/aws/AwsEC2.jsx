@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { AlertCircle, Plus } from 'lucide-react';
@@ -26,6 +26,7 @@ const AwsEC2 = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const formRef = useRef();
 
   // Batch state
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -176,13 +177,14 @@ const AwsEC2 = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createInstance(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
         title="Criar Instância EC2"
         isLoading={creating}
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="ec2" form={form} />}
       >
-        <CreateEC2Form form={form} setForm={setForm} />
+        <CreateEC2Form ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal

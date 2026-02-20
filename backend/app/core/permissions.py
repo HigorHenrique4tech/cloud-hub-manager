@@ -43,6 +43,12 @@ class Permission(str, Enum):
     # Activity logs
     LOGS_VIEW = "logs.view"
 
+    # FinOps
+    FINOPS_VIEW      = "finops.view"      # see recommendations and dashboard
+    FINOPS_RECOMMEND = "finops.recommend" # see full detail + reasoning
+    FINOPS_EXECUTE   = "finops.execute"   # apply / dismiss / rollback actions
+    FINOPS_BUDGET    = "finops.budget"    # create / edit budgets
+
 
 _ALL_PERMISSIONS: Set[str] = {p.value for p in Permission}
 
@@ -58,11 +64,14 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.RESOURCES_CREATE,
         Permission.RESOURCES_START_STOP,
         Permission.LOGS_VIEW,
+        Permission.FINOPS_VIEW,
+        Permission.FINOPS_RECOMMEND,
     },
 
     "viewer": {
         Permission.RESOURCES_VIEW,
         Permission.LOGS_VIEW,
+        Permission.FINOPS_VIEW,
     },
 
     "billing": {
@@ -70,6 +79,8 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.ALERTS_VIEW,
         Permission.ALERTS_MANAGE,
         Permission.LOGS_VIEW,
+        Permission.FINOPS_VIEW,
+        Permission.FINOPS_RECOMMEND,
     },
 }
 

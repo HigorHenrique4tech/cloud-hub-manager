@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { AlertCircle, Plus, Trash2 } from 'lucide-react';
@@ -29,6 +29,7 @@ const AwsRDS = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const formRef = useRef();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-rds'],
@@ -141,13 +142,14 @@ const AwsRDS = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createInstance(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
         title="Criar Instância RDS"
         isLoading={creating}
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="rds" form={form} />}
       >
-        <CreateRDSForm form={form} setForm={setForm} />
+        <CreateRDSForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal

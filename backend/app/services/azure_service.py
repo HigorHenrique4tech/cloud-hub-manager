@@ -193,6 +193,7 @@ class AzureService:
 
     async def create_virtual_machine(self, params: dict) -> Dict:
         try:
+            import asyncio
             from azure.mgmt.network.models import (
                 NetworkInterface, NetworkInterfaceIPConfiguration,
                 PublicIPAddress, IPAllocationMethod,
@@ -203,6 +204,7 @@ class AzureService:
                 ManagedDiskParameters, LinuxConfiguration, SshConfiguration, SshPublicKey, DataDisk,
                 DiskCreateOptionTypes,
             )
+            loop = asyncio.get_event_loop()
 
             rg = params['resource_group']
             location = params['location']
@@ -225,7 +227,7 @@ class AzureService:
                     rg, pip_name,
                     PublicIPAddress(location=location, sku={'name': 'Standard'}, public_ip_allocation_method='Static'),
                 )
-                pip_result = pip_poller.result()
+                pip_result = await loop.run_in_executor(None, pip_poller.result)
                 ip_config_kwargs['public_ip_address'] = {'id': pip_result.id}
 
             nic_poller = self.network_client.network_interfaces.begin_create_or_update(
@@ -235,7 +237,7 @@ class AzureService:
                     ip_configurations=[NetworkInterfaceIPConfiguration(**ip_config_kwargs)],
                 ),
             )
-            nic_result = nic_poller.result()
+            nic_result = await loop.run_in_executor(None, nic_poller.result)
 
             # OS Profile
             os_profile_kwargs = {
@@ -295,7 +297,7 @@ class AzureService:
             )
 
             poller = self.compute_client.virtual_machines.begin_create_or_update(rg, vm_name, vm_params)
-            result = poller.result()
+            result = await loop.run_in_executor(None, poller.result)
             return {'success': True, 'vm_name': result.name, 'vm_id': result.id}
         except Exception as e:
             logger.error(f"create_virtual_machine error: {e}")
@@ -395,6 +397,10 @@ class AzureService:
                     'location': vnet.location,
                     'address_space': address_spaces,
                     'subnets_count': len(vnet.subnets) if vnet.subnets else 0,
+                    'subnets': [
+                        {'name': s.name, 'address_prefix': s.address_prefix or ''}
+                        for s in (vnet.subnets or [])
+                    ],
                     'provisioning_state': vnet.provisioning_state,
                     'tags': vnet.tags or {},
                 })
@@ -456,7 +462,9 @@ class AzureService:
 
     async def create_sql_database(self, params: dict) -> Dict:
         try:
+            import asyncio
             from azure.mgmt.sql.models import Server, Database, Sku
+            loop = asyncio.get_event_loop()
             server_params = Server(
                 location=params['location'],
                 administrator_login=params['admin_login'],
@@ -466,7 +474,7 @@ class AzureService:
             server_poller = self.sql_client.servers.begin_create_or_update(
                 params['resource_group'], params['server_name'], server_params
             )
-            server_result = server_poller.result()
+            server_result = await loop.run_in_executor(None, server_poller.result)
 
             db_params = Database(
                 location=params['location'],
@@ -479,7 +487,7 @@ class AzureService:
             db_poller = self.sql_client.databases.begin_create_or_update(
                 params['resource_group'], params['server_name'], params['database_name'], db_params
             )
-            db_result = db_poller.result()
+            db_result = await loop.run_in_executor(None, db_poller.result)
             return {
                 'success': True,
                 'server_name': server_result.name,
@@ -488,7 +496,14 @@ class AzureService:
             }
         except Exception as e:
             logger.error(f"create_sql_database error: {e}")
-            return {'success': False, 'error': str(e)}
+            error_msg = str(e)
+            if 'RegionDoesNotAllowProvisioning' in error_msg:
+                return {
+                    'success': False,
+                    'error': 'Esta região não aceita criação de novos servidores SQL no momento. Tente Brazil South, East US 2, West US 2 ou West Europe.',
+                    'code': 'REGION_NOT_ALLOWED',
+                }
+            return {'success': False, 'error': error_msg}
 
     # ── App Services ──────────────────────────────────────────────────────────
 
@@ -531,7 +546,9 @@ class AzureService:
 
     async def create_app_service(self, params: dict) -> Dict:
         try:
+            import asyncio
             from azure.mgmt.web.models import AppServicePlan, SkuDescription, Site, SiteConfig
+            loop = asyncio.get_event_loop()
             rg = params['resource_group']
             location = params['location']
             app_name = params['name']
@@ -549,7 +566,7 @@ class AzureService:
                 reserved=True,
             )
             plan_poller = self.web_client.app_service_plans.begin_create_or_update(rg, plan_name, plan_params)
-            plan_result = plan_poller.result()
+            plan_result = await loop.run_in_executor(None, plan_poller.result)
 
             site_config = SiteConfig(linux_fx_version=params.get('runtime', 'NODE|18-lts'))
             if params.get('always_on') and sku_name not in ('F1', 'D1'):
@@ -562,7 +579,7 @@ class AzureService:
                 tags=params.get('tags', {}),
             )
             site_poller = self.web_client.web_apps.begin_create_or_update(rg, app_name, site_params)
-            site_result = site_poller.result()
+            site_result = await loop.run_in_executor(None, site_poller.result)
             return {'success': True, 'name': site_result.name, 'default_host_name': site_result.default_host_name}
         except Exception as e:
             logger.error(f"create_app_service error: {e}")

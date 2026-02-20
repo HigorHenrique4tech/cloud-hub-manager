@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
+import FieldError from '../common/FieldError';
 import azureService from '../../services/azureservices';
 import { AZURE_LOCATIONS, AZURE_VM_SIZES, VM_OS_PRESETS } from '../../data/azureConstants';
+import useFormValidation from '../../hooks/useFormValidation';
 
 const DISK_TYPES = [
   { value: 'Standard_LRS',    label: 'HDD Standard (Standard_LRS)' },
@@ -19,18 +21,55 @@ const toggleCls = 'w-4 h-4 text-primary accent-primary';
 const defaultDataDisk = (lun) => ({ name: `data-disk-${lun}`, disk_size_gb: 32, lun, storage_account_type: 'Standard_LRS' });
 
 const PRESET_GROUPS = [...new Set(VM_OS_PRESETS.map((p) => p.group))];
+const FORBIDDEN_USERNAMES = ['admin', 'administrator', 'root', 'guest', 'user'];
 
-export default function CreateAzureVMForm({ form, setForm }) {
+const CreateAzureVMForm = forwardRef(function CreateAzureVMForm({ form, setForm }, ref) {
   const [apiLocations, setApiLocations] = useState([]);
   const [apiSizes, setApiSizes] = useState([]);
   const [resourceGroups, setResourceGroups] = useState([]);
+  const [allVnets, setAllVnets] = useState([]);
   const [authMode, setAuthMode] = useState('password');
   const [osMode, setOsMode] = useState('preset');
   const [selectedPreset, setSelectedPreset] = useState('Ubuntu 22.04 LTS (Jammy)');
 
+  // Build rules dynamically based on authMode
+  const rules = {
+    name: [
+      { required: true, message: 'Nome da VM é obrigatório' },
+      { maxLength: 64, message: 'Máximo 64 caracteres' },
+      { pattern: /^[a-zA-Z][a-zA-Z0-9\-]*$/, message: 'Deve começar com letra e conter apenas letras, números e hífens' },
+    ],
+    resource_group: [{ required: true, message: 'Resource Group é obrigatório' }],
+    location: [{ required: true, message: 'Localização é obrigatória' }],
+    admin_username: [
+      { required: true, message: 'Usuário admin é obrigatório' },
+      { maxLength: 64, message: 'Máximo 64 caracteres' },
+      { custom: (val) => !FORBIDDEN_USERNAMES.includes(val.toLowerCase()), message: `Nome inválido. Não use: ${FORBIDDEN_USERNAMES.join(', ')}` },
+    ],
+    ...(authMode === 'password' ? {
+      admin_password: [
+        { required: true, message: 'Senha é obrigatória' },
+        { minLength: 12, message: 'Mínimo 12 caracteres' },
+      ],
+    } : {
+      ssh_public_key: [{ required: true, message: 'Chave SSH pública é obrigatória' }],
+    }),
+  };
+
+  const { errors, touched, touch, touchAll, isValid } = useFormValidation(form, rules);
+  useImperativeHandle(ref, () => ({ touchAll, isValid }));
+
   const locations = apiLocations.length > 0 ? apiLocations : AZURE_LOCATIONS;
   const sizes = apiSizes.length > 0 ? apiSizes : AZURE_VM_SIZES;
   const location = form.location || '';
+  const rg = form.resource_group || '';
+
+  const availableVnets = allVnets.filter(v =>
+    (!rg || v.resource_group === rg) &&
+    (!location || v.location === location)
+  );
+  const selectedVnet = allVnets.find(v => v.name === form.vnet_name);
+  const availableSubnets = selectedVnet?.subnets || [];
 
   useEffect(() => {
     azureService.listLocations()
@@ -39,7 +78,9 @@ export default function CreateAzureVMForm({ form, setForm }) {
     azureService.listResourceGroups()
       .then((d) => d?.resource_groups?.length && setResourceGroups(d.resource_groups))
       .catch(() => {});
-    // Apply default preset on mount
+    azureService.listVNets()
+      .then((d) => d?.vnets?.length && setAllVnets(d.vnets))
+      .catch(() => {});
     applyPreset('Ubuntu 22.04 LTS (Jammy)');
   }, []);
 
@@ -49,6 +90,13 @@ export default function CreateAzureVMForm({ form, setForm }) {
       .then((d) => d?.sizes?.length && setApiSizes(d.sizes))
       .catch(() => {});
   }, [location]);
+
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) { mounted.current = true; return; }
+    setForm(p => ({ ...p, vnet_name: '', subnet_name: '' }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rg, location]);
 
   const set = (field, val) => setForm((p) => ({ ...p, [field]: val }));
 
@@ -81,27 +129,52 @@ export default function CreateAzureVMForm({ form, setForm }) {
       <FormSection title="Básico">
         <div>
           <label className={labelCls}>Nome <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="minha-vm" />
+          <input
+            className={`${inputCls} ${touched.name && errors.name ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.name || ''}
+            onChange={(e) => set('name', e.target.value)}
+            onBlur={() => touch('name')}
+            placeholder="minha-vm"
+          />
+          <FieldError message={touched.name ? errors.name : null} />
         </div>
         <div>
           <label className={labelCls}>Resource Group <span className="text-red-500">*</span></label>
           {resourceGroups.length > 0 ? (
-            <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
+            <select
+              className={`${inputCls} ${touched.resource_group && errors.resource_group ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.resource_group || ''}
+              onChange={(e) => set('resource_group', e.target.value)}
+              onBlur={() => touch('resource_group')}
+            >
               <option value="">Selecione...</option>
               {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
             </select>
           ) : (
-            <input className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)} placeholder="meu-resource-group" />
+            <input
+              className={`${inputCls} ${touched.resource_group && errors.resource_group ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.resource_group || ''}
+              onChange={(e) => set('resource_group', e.target.value)}
+              onBlur={() => touch('resource_group')}
+              placeholder="meu-resource-group"
+            />
           )}
+          <FieldError message={touched.resource_group ? errors.resource_group : null} />
         </div>
         <div>
           <label className={labelCls}>Localização <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={location} onChange={(e) => set('location', e.target.value)}>
+          <select
+            className={`${inputCls} ${touched.location && errors.location ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={location}
+            onChange={(e) => set('location', e.target.value)}
+            onBlur={() => touch('location')}
+          >
             <option value="">Selecione...</option>
             {locations.map((l) => (
               <option key={l.name} value={l.name}>{l.display_name || l.name}</option>
             ))}
           </select>
+          <FieldError message={touched.location ? errors.location : null} />
         </div>
       </FormSection>
 
@@ -187,8 +260,17 @@ export default function CreateAzureVMForm({ form, setForm }) {
       <FormSection title="Administrador" description="Credenciais de acesso à VM">
         <div>
           <label className={labelCls}>Usuário Admin <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.admin_username || ''} onChange={(e) => set('admin_username', e.target.value)} placeholder="azureuser" />
-          <p className="text-xs text-gray-400 mt-1">Não use: admin, administrator, root, guest, user.</p>
+          <input
+            className={`${inputCls} ${touched.admin_username && errors.admin_username ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.admin_username || ''}
+            onChange={(e) => set('admin_username', e.target.value)}
+            onBlur={() => touch('admin_username')}
+            placeholder="azureuser"
+          />
+          <FieldError message={touched.admin_username ? errors.admin_username : null} />
+          {!(touched.admin_username && errors.admin_username) && (
+            <p className="text-xs text-gray-400 mt-1">Não use: admin, administrator, root, guest, user.</p>
+          )}
         </div>
         <div className="flex gap-4">
           {[['password', 'Senha'], ['ssh', 'Chave SSH pública']].map(([mode, lbl]) => (
@@ -201,29 +283,81 @@ export default function CreateAzureVMForm({ form, setForm }) {
         {authMode === 'password' ? (
           <div>
             <label className={labelCls}>Senha <span className="text-red-500">*</span></label>
-            <input type="password" className={inputCls} value={form.admin_password || ''} onChange={(e) => set('admin_password', e.target.value)}
-              placeholder="Mín. 12 caracteres com letras, números e símbolos" />
-            <p className="text-xs text-gray-400 mt-1">12–123 caracteres com maiúsculas, minúsculas, números e símbolos.</p>
+            <input
+              type="password"
+              className={`${inputCls} ${touched.admin_password && errors.admin_password ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.admin_password || ''}
+              onChange={(e) => set('admin_password', e.target.value)}
+              onBlur={() => touch('admin_password')}
+              placeholder="Mín. 12 caracteres com letras, números e símbolos"
+            />
+            <FieldError message={touched.admin_password ? errors.admin_password : null} />
+            {!(touched.admin_password && errors.admin_password) && (
+              <p className="text-xs text-gray-400 mt-1">12–123 caracteres com maiúsculas, minúsculas, números e símbolos.</p>
+            )}
           </div>
         ) : (
           <div>
             <label className={labelCls}>Chave Pública SSH <span className="text-red-500">*</span></label>
-            <textarea className={`${inputCls} h-24 resize-none font-mono text-xs`}
-              value={form.ssh_public_key || ''} onChange={(e) => set('ssh_public_key', e.target.value)}
-              placeholder="ssh-rsa AAAAB3NzaC1yc2E..." />
-            <p className="text-xs text-gray-400 mt-1">Cole o conteúdo de ~/.ssh/id_rsa.pub ou id_ed25519.pub.</p>
+            <textarea
+              className={`${inputCls} h-24 resize-none font-mono text-xs ${touched.ssh_public_key && errors.ssh_public_key ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.ssh_public_key || ''}
+              onChange={(e) => set('ssh_public_key', e.target.value)}
+              onBlur={() => touch('ssh_public_key')}
+              placeholder="ssh-rsa AAAAB3NzaC1yc2E..."
+            />
+            <FieldError message={touched.ssh_public_key ? errors.ssh_public_key : null} />
+            {!(touched.ssh_public_key && errors.ssh_public_key) && (
+              <p className="text-xs text-gray-400 mt-1">Cole o conteúdo de ~/.ssh/id_rsa.pub ou id_ed25519.pub.</p>
+            )}
           </div>
         )}
       </FormSection>
 
       <FormSection title="Rede">
         <div>
-          <label className={labelCls}>VNet (nome)</label>
-          <input className={inputCls} value={form.vnet_name || ''} onChange={(e) => set('vnet_name', e.target.value)} placeholder="minha-vnet" />
+          <label className={labelCls}>Virtual Network</label>
+          {availableVnets.length > 0 ? (
+            <select
+              className={inputCls}
+              value={form.vnet_name || ''}
+              onChange={(e) => { set('vnet_name', e.target.value); set('subnet_name', ''); }}
+            >
+              <option value="">Sem VNet (Azure cria automaticamente)</option>
+              {availableVnets.map(v => (
+                <option key={v.id} value={v.name}>
+                  {v.name} ({v.address_space?.[0] || 'sem CIDR'})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input className={inputCls} value={form.vnet_name || ''} onChange={(e) => set('vnet_name', e.target.value)}
+              placeholder={rg && location ? 'Nenhuma VNet encontrada nesta região/RG' : 'Selecione Resource Group e Localização primeiro'} />
+          )}
+          {!rg || !location ? (
+            <p className="text-xs text-amber-500 dark:text-amber-400 mt-1">Selecione o Resource Group e a Localização para ver VNets disponíveis.</p>
+          ) : null}
         </div>
         <div>
-          <label className={labelCls}>Subnet (nome)</label>
-          <input className={inputCls} value={form.subnet_name || ''} onChange={(e) => set('subnet_name', e.target.value)} placeholder="default" />
+          <label className={labelCls}>Subnet</label>
+          {form.vnet_name && availableSubnets.length > 0 ? (
+            <select className={inputCls} value={form.subnet_name || ''} onChange={(e) => set('subnet_name', e.target.value)}>
+              <option value="">Selecione uma subnet...</option>
+              {availableSubnets.map(s => (
+                <option key={s.name} value={s.name}>
+                  {s.name} {s.address_prefix ? `(${s.address_prefix})` : ''}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input
+              className={inputCls}
+              value={form.subnet_name || ''}
+              onChange={(e) => set('subnet_name', e.target.value)}
+              placeholder={form.vnet_name ? 'Nome da subnet' : 'Selecione uma VNet primeiro'}
+              disabled={!form.vnet_name}
+            />
+          )}
         </div>
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" className={toggleCls} checked={form.create_public_ip || false} onChange={(e) => set('create_public_ip', e.target.checked)} />
@@ -292,4 +426,6 @@ export default function CreateAzureVMForm({ form, setForm }) {
       </FormSection>
     </>
   );
-}
+});
+
+export default CreateAzureVMForm;

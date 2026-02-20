@@ -1,15 +1,29 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
+import FieldError from '../common/FieldError';
 import awsService from '../../services/awsservices';
 import { AWS_REGIONS } from '../../data/awsConstants';
+import useFormValidation from '../../hooks/useFormValidation';
 
 const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary';
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const toggleCls = 'w-4 h-4 text-primary accent-primary';
 
-export default function CreateS3Form({ form, setForm }) {
+const RULES = {
+  bucket_name: [
+    { required: true, message: 'Nome do bucket é obrigatório' },
+    { minLength: 3, message: 'Mínimo 3 caracteres' },
+    { maxLength: 63, message: 'Máximo 63 caracteres' },
+    { pattern: /^[a-z0-9][a-z0-9\-.]*[a-z0-9]$/, message: 'Apenas letras minúsculas, números, hífens e pontos (sem começar/terminar com hífen)' },
+  ],
+  region: [{ required: true, message: 'Região é obrigatória' }],
+};
+
+const CreateS3Form = forwardRef(function CreateS3Form({ form, setForm }, ref) {
   const [apiRegions, setApiRegions] = useState([]);
+  const { errors, touched, touch, touchAll, isValid } = useFormValidation(form, RULES);
+  useImperativeHandle(ref, () => ({ touchAll, isValid }));
 
   const regions = apiRegions.length > 0 ? apiRegions : AWS_REGIONS;
 
@@ -24,15 +38,29 @@ export default function CreateS3Form({ form, setForm }) {
       <FormSection title="Identificação" description="Nome e região do bucket">
         <div>
           <label className={labelCls}>Nome do Bucket <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.bucket_name || ''} onChange={(e) => set('bucket_name', e.target.value)}
-            placeholder="meu-bucket-unico-123" />
-          <p className="text-xs text-gray-400 mt-1">Deve ser globalmente único, 3–63 caracteres, somente letras minúsculas, números e hífens.</p>
+          <input
+            className={`${inputCls} ${touched.bucket_name && errors.bucket_name ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.bucket_name || ''}
+            onChange={(e) => set('bucket_name', e.target.value)}
+            onBlur={() => touch('bucket_name')}
+            placeholder="meu-bucket-unico-123"
+          />
+          <FieldError message={touched.bucket_name ? errors.bucket_name : null} />
+          {!(touched.bucket_name && errors.bucket_name) && (
+            <p className="text-xs text-gray-400 mt-1">Deve ser globalmente único, 3–63 caracteres, somente letras minúsculas, números e hífens.</p>
+          )}
         </div>
         <div>
-          <label className={labelCls}>Região</label>
-          <select className={inputCls} value={form.region || 'us-east-1'} onChange={(e) => set('region', e.target.value)}>
+          <label className={labelCls}>Região <span className="text-red-500">*</span></label>
+          <select
+            className={`${inputCls} ${touched.region && errors.region ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.region || 'us-east-1'}
+            onChange={(e) => set('region', e.target.value)}
+            onBlur={() => touch('region')}
+          >
             {regions.map((r) => <option key={r.name} value={r.name}>{r.display_name ? `${r.name} — ${r.display_name}` : r.name}</option>)}
           </select>
+          <FieldError message={touched.region ? errors.region : null} />
         </div>
       </FormSection>
 
@@ -88,4 +116,6 @@ export default function CreateS3Form({ form, setForm }) {
       </FormSection>
     </>
   );
-}
+});
+
+export default CreateS3Form;

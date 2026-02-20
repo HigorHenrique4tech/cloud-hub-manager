@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, HardDrive, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
@@ -23,6 +23,7 @@ const AzureStorage = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -157,12 +158,13 @@ const AzureStorage = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createStorage(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
         title="Criar Storage Account"
         isLoading={creating}
         error={createError}
         success={createSuccess}
       >
-        <CreateAzureStorageForm form={form} setForm={setForm} />
+        <CreateAzureStorageForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal

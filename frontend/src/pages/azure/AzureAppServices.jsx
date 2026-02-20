@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Globe, Play, Square, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
@@ -27,6 +27,7 @@ const AzureAppServices = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -288,13 +289,14 @@ const AzureAppServices = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createApp(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
         title="Criar App Service"
         isLoading={creating}
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="azure-app-service" form={form} />}
       >
-        <CreateAzureAppServiceForm form={form} setForm={setForm} />
+        <CreateAzureAppServiceForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal

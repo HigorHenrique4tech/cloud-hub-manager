@@ -24,6 +24,7 @@ import AwsRDS from './pages/aws/AwsRDS';
 import AwsLambda from './pages/aws/AwsLambda';
 import AwsVPC from './pages/aws/AwsVPC';
 import Logs from './pages/logs';
+import FinOps from './pages/FinOps';
 // Multi-tenant
 import OrgSettings from './pages/OrgSettings';
 import WorkspaceSettings from './pages/WorkspaceSettings';
@@ -81,6 +82,7 @@ function App() {
                 <Route path="/azure/app-services" element={<PR><AzureAppServices /></PR>} />
                 {/* Other */}
                 <Route path="/costs" element={<PR><Costs /></PR>} />
+                <Route path="/finops" element={<PR><FinOps /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
                 {/* Billing */}

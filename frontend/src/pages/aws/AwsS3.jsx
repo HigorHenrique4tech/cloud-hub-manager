@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { HardDrive, ShieldAlert, ShieldCheck, AlertCircle, Plus, Trash2 } from 'lucide-react';
@@ -22,6 +22,7 @@ const AwsS3 = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const formRef = useRef();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-s3'],
@@ -148,12 +149,13 @@ const AwsS3 = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createBucket(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
         title="Criar Bucket S3"
         isLoading={creating}
         error={createError}
         success={createSuccess}
       >
-        <CreateS3Form form={form} setForm={setForm} />
+        <CreateS3Form ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal

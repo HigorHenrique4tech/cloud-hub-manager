@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
+import FieldError from '../common/FieldError';
 import awsService from '../../services/awsservices';
 import { AWS_RDS_INSTANCE_CLASSES, AWS_RDS_ENGINE_VERSIONS } from '../../data/awsConstants';
+import useFormValidation from '../../hooks/useFormValidation';
 
 const ENGINES = [
   { value: 'mysql',              label: 'MySQL' },
@@ -17,11 +19,35 @@ const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gr
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const toggleCls = 'w-4 h-4 text-primary accent-primary';
 
-export default function CreateRDSForm({ form, setForm }) {
+const RULES = {
+  db_instance_identifier: [
+    { required: true, message: 'Identificador é obrigatório' },
+    { maxLength: 63, message: 'Máximo 63 caracteres' },
+    { pattern: /^[a-zA-Z][a-zA-Z0-9-]*$/, message: 'Deve começar com letra e conter apenas letras, números e hífens' },
+  ],
+  engine: [{ required: true, message: 'Engine é obrigatório' }],
+  db_instance_class: [{ required: true, message: 'Classe da instância é obrigatória' }],
+  master_username: [
+    { required: true, message: 'Usuário master é obrigatório' },
+    { maxLength: 16, message: 'Máximo 16 caracteres' },
+  ],
+  master_password: [
+    { required: true, message: 'Senha master é obrigatória' },
+    { minLength: 8, message: 'Mínimo 8 caracteres' },
+  ],
+  allocated_storage_gb: [
+    { required: true, message: 'Tamanho de storage é obrigatório' },
+    { min: 20, message: 'Mínimo 20 GB' },
+  ],
+};
+
+const CreateRDSForm = forwardRef(function CreateRDSForm({ form, setForm }, ref) {
   const [apiVersions, setApiVersions] = useState([]);
   const [apiClasses, setApiClasses] = useState([]);
   const [subnetGroups, setSubnetGroups] = useState([]);
   const [securityGroups, setSecurityGroups] = useState([]);
+  const { errors, touched, touch, touchAll, isValid } = useFormValidation(form, RULES);
+  useImperativeHandle(ref, () => ({ touchAll, isValid }));
 
   const engine = form.engine || 'mysql';
   const versions = apiVersions.length > 0 ? apiVersions : (AWS_RDS_ENGINE_VERSIONS[engine] || []);
@@ -54,13 +80,26 @@ export default function CreateRDSForm({ form, setForm }) {
       <FormSection title="Identificação e Engine" description="Configurações principais do banco">
         <div>
           <label className={labelCls}>Identificador da Instância <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.db_instance_identifier || ''} onChange={(e) => set('db_instance_identifier', e.target.value)} placeholder="meu-banco-prod" />
+          <input
+            className={`${inputCls} ${touched.db_instance_identifier && errors.db_instance_identifier ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.db_instance_identifier || ''}
+            onChange={(e) => set('db_instance_identifier', e.target.value)}
+            onBlur={() => touch('db_instance_identifier')}
+            placeholder="meu-banco-prod"
+          />
+          <FieldError message={touched.db_instance_identifier ? errors.db_instance_identifier : null} />
         </div>
         <div>
           <label className={labelCls}>Engine <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={engine} onChange={(e) => { set('engine', e.target.value); set('engine_version', ''); }}>
+          <select
+            className={`${inputCls} ${touched.engine && errors.engine ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={engine}
+            onChange={(e) => { set('engine', e.target.value); set('engine_version', ''); }}
+            onBlur={() => touch('engine')}
+          >
             {ENGINES.map((e) => <option key={e.value} value={e.value}>{e.label}</option>)}
           </select>
+          <FieldError message={touched.engine ? errors.engine : null} />
         </div>
         <div>
           <label className={labelCls}>Versão</label>
@@ -70,18 +109,32 @@ export default function CreateRDSForm({ form, setForm }) {
           </select>
         </div>
         <div>
-          <label className={labelCls}>Classe da Instância</label>
-          <select className={inputCls} value={form.db_instance_class || 'db.t3.micro'} onChange={(e) => set('db_instance_class', e.target.value)}>
+          <label className={labelCls}>Classe da Instância <span className="text-red-500">*</span></label>
+          <select
+            className={`${inputCls} ${touched.db_instance_class && errors.db_instance_class ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.db_instance_class || 'db.t3.micro'}
+            onChange={(e) => set('db_instance_class', e.target.value)}
+            onBlur={() => touch('db_instance_class')}
+          >
             {classes.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
+          <FieldError message={touched.db_instance_class ? errors.db_instance_class : null} />
         </div>
       </FormSection>
 
       <FormSection title="Storage" description="Configurações de armazenamento">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className={labelCls}>Tamanho (GB)</label>
-            <input type="number" className={inputCls} value={form.allocated_storage_gb || 20} onChange={(e) => set('allocated_storage_gb', +e.target.value)} min={20} />
+            <label className={labelCls}>Tamanho (GB) <span className="text-red-500">*</span></label>
+            <input
+              type="number"
+              className={`${inputCls} ${touched.allocated_storage_gb && errors.allocated_storage_gb ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.allocated_storage_gb || 20}
+              onChange={(e) => set('allocated_storage_gb', +e.target.value)}
+              onBlur={() => touch('allocated_storage_gb')}
+              min={20}
+            />
+            <FieldError message={touched.allocated_storage_gb ? errors.allocated_storage_gb : null} />
           </div>
           <div>
             <label className={labelCls}>Tipo de Storage</label>
@@ -111,11 +164,25 @@ export default function CreateRDSForm({ form, setForm }) {
         </div>
         <div>
           <label className={labelCls}>Usuário Master <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.master_username || ''} onChange={(e) => set('master_username', e.target.value)} placeholder="admin" />
+          <input
+            className={`${inputCls} ${touched.master_username && errors.master_username ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.master_username || ''}
+            onChange={(e) => set('master_username', e.target.value)}
+            onBlur={() => touch('master_username')}
+            placeholder="admin"
+          />
+          <FieldError message={touched.master_username ? errors.master_username : null} />
         </div>
         <div>
           <label className={labelCls}>Senha Master <span className="text-red-500">*</span></label>
-          <input type="password" className={inputCls} value={form.master_password || ''} onChange={(e) => set('master_password', e.target.value)} />
+          <input
+            type="password"
+            className={`${inputCls} ${touched.master_password && errors.master_password ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.master_password || ''}
+            onChange={(e) => set('master_password', e.target.value)}
+            onBlur={() => touch('master_password')}
+          />
+          <FieldError message={touched.master_password ? errors.master_password : null} />
         </div>
       </FormSection>
 
@@ -178,4 +245,6 @@ export default function CreateRDSForm({ form, setForm }) {
       </FormSection>
     </>
   );
-}
+});
+
+export default CreateRDSForm;

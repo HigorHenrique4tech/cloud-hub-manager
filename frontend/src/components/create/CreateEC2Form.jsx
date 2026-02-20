@@ -1,9 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
+import FieldError from '../common/FieldError';
 import awsService from '../../services/awsservices';
 import { AWS_EC2_INSTANCE_TYPES } from '../../data/awsConstants';
+import useFormValidation from '../../hooks/useFormValidation';
+
+const RULES = {
+  name: [
+    { required: true, message: 'Nome é obrigatório' },
+    { maxLength: 255, message: 'Máximo 255 caracteres' },
+    { pattern: /^[a-zA-Z0-9\-_.]+$/, message: 'Apenas letras, números, hífens, pontos e underscores' },
+  ],
+  image_id: [{ required: true, message: 'Selecione ou insira um AMI ID' }],
+  instance_type: [{ required: true, message: 'Tipo de instância é obrigatório' }],
+};
 
 const VOLUME_TYPES = [
   { value: 'gp3', label: 'gp3 — SSD de propósito geral v3 (recomendado)' },
@@ -28,7 +40,9 @@ const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gr
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const toggleCls = 'w-4 h-4 text-primary accent-primary';
 
-export default function CreateEC2Form({ form, setForm }) {
+const CreateEC2Form = forwardRef(function CreateEC2Form({ form, setForm }, ref) {
+  const { errors, touched, touch, touchAll, isValid } = useFormValidation(form, RULES);
+  useImperativeHandle(ref, () => ({ touchAll, isValid }));
   const [amis, setAmis] = useState([]);
   const [amiSearch, setAmiSearch] = useState('');
   const [apiInstanceTypes, setApiInstanceTypes] = useState([]);
@@ -84,7 +98,14 @@ export default function CreateEC2Form({ form, setForm }) {
       <FormSection title="Básico" description="Nome, imagem e tipo da instância">
         <div>
           <label className={labelCls}>Nome <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="minha-instancia" />
+          <input
+            className={`${inputCls} ${touched.name && errors.name ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.name || ''}
+            onChange={(e) => set('name', e.target.value)}
+            onBlur={() => touch('name')}
+            placeholder="minha-instancia"
+          />
+          <FieldError message={touched.name ? errors.name : null} />
         </div>
         <div>
           <label className={labelCls}>Buscar AMI</label>
@@ -93,21 +114,39 @@ export default function CreateEC2Form({ form, setForm }) {
         </div>
         <div>
           <label className={labelCls}>AMI ID <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={form.image_id || ''} onChange={(e) => set('image_id', e.target.value)}>
+          <select
+            className={`${inputCls} ${touched.image_id && errors.image_id ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.image_id || ''}
+            onChange={(e) => set('image_id', e.target.value)}
+            onBlur={() => touch('image_id')}
+          >
             <option value="">Selecione uma AMI</option>
             {amis.map((a) => (
               <option key={a.image_id} value={a.image_id}>{a.name || a.image_id} ({a.image_id})</option>
             ))}
           </select>
-          <input className={`${inputCls} mt-2`} value={form.image_id || ''} onChange={(e) => set('image_id', e.target.value)} placeholder="Ou insira o AMI ID manualmente (ex: ami-0abcdef...)" />
+          <input
+            className={`${inputCls} mt-2 ${touched.image_id && errors.image_id ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.image_id || ''}
+            onChange={(e) => set('image_id', e.target.value)}
+            onBlur={() => touch('image_id')}
+            placeholder="Ou insira o AMI ID manualmente (ex: ami-0abcdef...)"
+          />
+          <FieldError message={touched.image_id ? errors.image_id : null} />
         </div>
         <div>
-          <label className={labelCls}>Tipo de Instância</label>
-          <select className={inputCls} value={form.instance_type || 't3.micro'} onChange={(e) => set('instance_type', e.target.value)}>
+          <label className={labelCls}>Tipo de Instância <span className="text-red-500">*</span></label>
+          <select
+            className={`${inputCls} ${touched.instance_type && errors.instance_type ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.instance_type || 't3.micro'}
+            onChange={(e) => set('instance_type', e.target.value)}
+            onBlur={() => touch('instance_type')}
+          >
             {loading.types ? <option>Carregando...</option> : instanceTypes.map((t) => (
               <option key={t.name} value={t.name}>{t.label || `${t.name} — ${t.vcpus} vCPU, ${Math.round(t.memory_mb / 1024)} GB RAM`}</option>
             ))}
           </select>
+          <FieldError message={touched.instance_type ? errors.instance_type : null} />
         </div>
       </FormSection>
 
@@ -229,4 +268,6 @@ export default function CreateEC2Form({ form, setForm }) {
       </FormSection>
     </>
   );
-}
+});
+
+export default CreateEC2Form;

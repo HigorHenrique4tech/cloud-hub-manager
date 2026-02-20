@@ -14,7 +14,7 @@ export const azureService = {
   listVMs: async () => (await api.get(wsUrl('/azure/vms'))).data,
   startVM: async (resourceGroup, vmName) => (await api.post(wsUrl(`/azure/vms/${resourceGroup}/${vmName}/start`))).data,
   stopVM: async (resourceGroup, vmName) => (await api.post(wsUrl(`/azure/vms/${resourceGroup}/${vmName}/stop`))).data,
-  createVM: async (data) => (await api.post(wsUrl('/azure/vms'), data)).data,
+  createVM: async (data) => (await api.post(wsUrl('/azure/vms'), data, { timeout: 120000 })).data,
 
   // Resource Groups
   listResourceGroups: async () => (await api.get(wsUrl('/azure/resource-groups'))).data,
@@ -30,13 +30,13 @@ export const azureService = {
 
   // Databases
   listDatabases: async () => (await api.get(wsUrl('/azure/databases'))).data,
-  createSQLDatabase: async (data) => (await api.post(wsUrl('/azure/databases'), data)).data,
+  createSQLDatabase: async (data) => (await api.post(wsUrl('/azure/databases'), data, { timeout: 120000 })).data,
 
   // App Services
   listAppServices: async () => (await api.get(wsUrl('/azure/app-services'))).data,
   startAppService: async (resourceGroup, appName) => (await api.post(wsUrl(`/azure/app-services/${resourceGroup}/${appName}/start`))).data,
   stopAppService: async (resourceGroup, appName) => (await api.post(wsUrl(`/azure/app-services/${resourceGroup}/${appName}/stop`))).data,
-  createAppService: async (data) => (await api.post(wsUrl('/azure/app-services'), data)).data,
+  createAppService: async (data) => (await api.post(wsUrl('/azure/app-services'), data, { timeout: 120000 })).data,
 
   // Subscriptions
   listSubscriptions: async () => (await api.get(wsUrl('/azure/subscriptions'))).data,

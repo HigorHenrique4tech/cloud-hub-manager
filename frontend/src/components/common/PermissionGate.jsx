@@ -9,9 +9,9 @@ const ROLE_PERMISSIONS = {
     'resources.view', 'resources.create', 'resources.start_stop', 'resources.delete',
     'costs.view', 'alerts.view', 'alerts.manage', 'logs.view',
   ]),
-  operator: new Set(['resources.view', 'resources.create', 'resources.start_stop', 'logs.view']),
-  viewer: new Set(['resources.view', 'logs.view']),
-  billing: new Set(['costs.view', 'alerts.view', 'alerts.manage', 'logs.view']),
+  operator: new Set(['resources.view', 'resources.create', 'resources.start_stop', 'logs.view', 'finops.view', 'finops.recommend']),
+  viewer: new Set(['resources.view', 'logs.view', 'finops.view']),
+  billing: new Set(['costs.view', 'alerts.view', 'alerts.manage', 'logs.view', 'finops.view', 'finops.recommend']),
 };
 
 export function hasPermission(role, permission) {

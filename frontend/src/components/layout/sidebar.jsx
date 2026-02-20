@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Server, Cloud, DollarSign, Settings, FileText, Building2, Layers, CreditCard } from 'lucide-react';
+import { LayoutDashboard, Server, Cloud, DollarSign, Settings, FileText, Building2, Layers, CreditCard, Zap } from 'lucide-react';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import PermissionGate from '../common/PermissionGate';
 
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/aws', label: 'AWS', icon: Server, permission: 'resources.view' },
   { to: '/azure', label: 'Azure', icon: Cloud, permission: 'resources.view' },
   { to: '/costs', label: 'Custos', icon: DollarSign, permission: 'costs.view' },
+  { to: '/finops', label: 'FinOps', icon: Zap, permission: 'finops.view' },
   { to: '/logs', label: 'Logs', icon: FileText, permission: 'logs.view' },
   { to: '/settings', label: 'Configurações', icon: Settings },
 ];

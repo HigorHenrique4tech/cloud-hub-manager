@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { AlertCircle, Plus, Trash2 } from 'lucide-react';
@@ -22,6 +22,7 @@ const AwsLambda = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const formRef = useRef();
 
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ['aws-lambda'],
@@ -138,12 +139,13 @@ const AwsLambda = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createFunction(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
         title="Criar Função Lambda"
         isLoading={creating}
         error={createError}
         success={createSuccess}
       >
-        <CreateLambdaForm form={form} setForm={setForm} />
+        <CreateLambdaForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal

@@ -289,7 +289,8 @@ async def ws_create_sql_database(
     svc = _get_single_azure_service(member, db)
     result = await svc.create_sql_database(body.model_dump())
     if not result.get('success'):
-        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar banco de dados SQL'))
+        status_code = 400 if result.get('code') == 'REGION_NOT_ALLOWED' else 500
+        raise HTTPException(status_code=status_code, detail=result.get('error', 'Erro ao criar banco de dados SQL'))
     log_activity(db, member.user, 'sql.create', 'SQLDatabase',
                  resource_name=f"{body.server_name}/{body.database_name}", provider='azure',
                  detail=f"Resource group: {body.resource_group}",

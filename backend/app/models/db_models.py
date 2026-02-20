@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text, Float, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.database import Base
 
@@ -235,3 +235,82 @@ class Payment(Base):
 
     organization = relationship("Organization")
     user         = relationship("User")
+
+
+# ── FinOps ─────────────────────────────────────────────────────────────────
+
+
+class FinOpsRecommendation(Base):
+    __tablename__ = "finops_recommendations"
+
+    id                      = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id            = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    cloud_account_id        = Column(UUID(as_uuid=True), ForeignKey("cloud_accounts.id", ondelete="SET NULL"), nullable=True)
+    provider                = Column(String(20), nullable=False)   # aws | azure
+    resource_id             = Column(String(255), nullable=False)
+    resource_name           = Column(String(255), nullable=False)
+    resource_type           = Column(String(100), nullable=False)  # ec2 | ebs | elastic_ip | rds | snapshot | lambda | vm | managed_disk | public_ip | sql | app_service
+    region                  = Column(String(100), nullable=True)
+    recommendation_type     = Column(String(50), nullable=False)   # right_size | stop | delete | schedule | reserve
+    severity                = Column(String(20), nullable=False, default="medium")  # high | medium | low
+    estimated_saving_monthly = Column(Float, nullable=False, default=0.0)
+    current_monthly_cost    = Column(Float, nullable=False, default=0.0)
+    reasoning               = Column(Text, nullable=False)
+    current_spec            = Column(JSONB, nullable=True)    # {"instance_type": "m5.xlarge"}
+    recommended_spec        = Column(JSONB, nullable=True)    # {"instance_type": "m5.large"}
+    status                  = Column(String(20), nullable=False, default="pending", index=True)  # pending | applied | dismissed | failed
+    detected_at             = Column(DateTime, default=datetime.utcnow, nullable=False)
+    applied_at              = Column(DateTime, nullable=True)
+    applied_by              = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class FinOpsBudget(Base):
+    __tablename__ = "finops_budgets"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name            = Column(String(255), nullable=False)
+    provider        = Column(String(20), nullable=False, default="all")  # aws | azure | all
+    amount          = Column(Float, nullable=False)
+    period          = Column(String(20), nullable=False, default="monthly")  # monthly | quarterly | annual
+    start_date      = Column(DateTime, nullable=False, default=datetime.utcnow)
+    alert_threshold = Column(Float, nullable=False, default=0.8)  # 0.8 = alert at 80%
+    is_active       = Column(Boolean, default=True, nullable=False)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
+class FinOpsAction(Base):
+    __tablename__ = "finops_actions"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id      = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    recommendation_id = Column(UUID(as_uuid=True), ForeignKey("finops_recommendations.id", ondelete="SET NULL"), nullable=True)
+    action_type       = Column(String(50), nullable=False)   # right_size | stop | delete | release_ip | rollback
+    provider          = Column(String(20), nullable=False)
+    resource_id       = Column(String(255), nullable=False)
+    resource_name     = Column(String(255), nullable=False)
+    resource_type     = Column(String(100), nullable=False)
+    estimated_saving  = Column(Float, nullable=False, default=0.0)
+    status            = Column(String(30), nullable=False, default="executed", index=True)  # executed | failed | rolled_back
+    executed_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    executed_by       = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    rollback_data     = Column(JSONB, nullable=True)   # data to reverse the action
+    error_message     = Column(Text, nullable=True)
+
+    recommendation = relationship("FinOpsRecommendation", foreign_keys=[recommendation_id])
+
+
+class FinOpsAnomaly(Base):
+    __tablename__ = "finops_anomalies"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id   = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider       = Column(String(20), nullable=False)
+    service_name   = Column(String(255), nullable=False)
+    detected_date  = Column(DateTime, nullable=False)
+    baseline_cost  = Column(Float, nullable=False)
+    actual_cost    = Column(Float, nullable=False)
+    deviation_pct  = Column(Float, nullable=False)
+    status         = Column(String(20), nullable=False, default="open")  # open | acknowledged | resolved
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)

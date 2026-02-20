@@ -1,17 +1,31 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
+import FieldError from '../common/FieldError';
 import awsService from '../../services/awsservices';
+import useFormValidation from '../../hooks/useFormValidation';
 
 const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary';
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const toggleCls = 'w-4 h-4 text-primary accent-primary';
 
+const CIDR_PATTERN = /^(\d{1,3}\.){3}\d{1,3}\/\d{1,2}$/;
+
 const defaultSubnet = () => ({ cidr_block: '', availability_zone: '', name: '', is_public: false });
 
-export default function CreateVPCForm({ form, setForm }) {
+const RULES = {
+  name: [{ required: true, message: 'Nome da VPC é obrigatório' }],
+  cidr_block: [
+    { required: true, message: 'CIDR block é obrigatório' },
+    { pattern: CIDR_PATTERN, message: 'Formato inválido. Use o formato: 10.0.0.0/16' },
+  ],
+};
+
+const CreateVPCForm = forwardRef(function CreateVPCForm({ form, setForm }, ref) {
   const [azs, setAzs] = useState([]);
+  const { errors, touched, touch, touchAll, isValid } = useFormValidation(form, RULES);
+  useImperativeHandle(ref, () => ({ touchAll, isValid }));
 
   useEffect(() => {
     awsService.listAvailabilityZones().then((d) => d?.availability_zones && setAzs(d.availability_zones)).catch(() => {});
@@ -29,11 +43,25 @@ export default function CreateVPCForm({ form, setForm }) {
       <FormSection title="Configuração da VPC">
         <div>
           <label className={labelCls}>Nome <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="minha-vpc" />
+          <input
+            className={`${inputCls} ${touched.name && errors.name ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.name || ''}
+            onChange={(e) => set('name', e.target.value)}
+            onBlur={() => touch('name')}
+            placeholder="minha-vpc"
+          />
+          <FieldError message={touched.name ? errors.name : null} />
         </div>
         <div>
-          <label className={labelCls}>CIDR Block</label>
-          <input className={inputCls} value={form.cidr_block || '10.0.0.0/16'} onChange={(e) => set('cidr_block', e.target.value)} placeholder="10.0.0.0/16" />
+          <label className={labelCls}>CIDR Block <span className="text-red-500">*</span></label>
+          <input
+            className={`${inputCls} ${touched.cidr_block && errors.cidr_block ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.cidr_block || '10.0.0.0/16'}
+            onChange={(e) => set('cidr_block', e.target.value)}
+            onBlur={() => touch('cidr_block')}
+            placeholder="10.0.0.0/16"
+          />
+          <FieldError message={touched.cidr_block ? errors.cidr_block : null} />
         </div>
         <div>
           <label className={labelCls}>Tenancy</label>
@@ -108,4 +136,6 @@ export default function CreateVPCForm({ form, setForm }) {
       </FormSection>
     </>
   );
-}
+});
+
+export default CreateVPCForm;

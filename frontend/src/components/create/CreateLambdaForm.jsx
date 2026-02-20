@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
+import FieldError from '../common/FieldError';
 import awsService from '../../services/awsservices';
+import useFormValidation from '../../hooks/useFormValidation';
 
 const RUNTIMES = [
   'python3.12', 'python3.11', 'python3.10',
@@ -15,10 +17,26 @@ const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gr
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const toggleCls = 'w-4 h-4 text-primary accent-primary';
 
-export default function CreateLambdaForm({ form, setForm }) {
+const RULES = {
+  function_name: [
+    { required: true, message: 'Nome da função é obrigatório' },
+    { maxLength: 64, message: 'Máximo 64 caracteres' },
+    { pattern: /^[a-zA-Z0-9\-_]+$/, message: 'Apenas letras, números, hífens e underscores' },
+  ],
+  runtime: [{ required: true, message: 'Runtime é obrigatório' }],
+  handler: [{ required: true, message: 'Handler é obrigatório' }],
+  role_arn: [
+    { required: true, message: 'IAM Role ARN é obrigatório' },
+    { pattern: /^arn:aws:iam::\d{12}:role\/.+$/, message: 'Formato inválido. Use: arn:aws:iam::123456789012:role/NomeDoRole' },
+  ],
+};
+
+const CreateLambdaForm = forwardRef(function CreateLambdaForm({ form, setForm }, ref) {
   const [roles, setRoles] = useState([]);
   const [codeSource, setCodeSource] = useState('zip');
   const fileRef = useRef();
+  const { errors, touched, touch, touchAll, isValid } = useFormValidation(form, RULES);
+  useImperativeHandle(ref, () => ({ touchAll, isValid }));
 
   useEffect(() => {
     awsService.listIAMRoles('lambda').then((d) => d?.roles && setRoles(d.roles)).catch(() => {});
@@ -47,7 +65,14 @@ export default function CreateLambdaForm({ form, setForm }) {
       <FormSection title="Identificação">
         <div>
           <label className={labelCls}>Nome da Função <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.function_name || ''} onChange={(e) => set('function_name', e.target.value)} placeholder="minha-funcao" />
+          <input
+            className={`${inputCls} ${touched.function_name && errors.function_name ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.function_name || ''}
+            onChange={(e) => set('function_name', e.target.value)}
+            onBlur={() => touch('function_name')}
+            placeholder="minha-funcao"
+          />
+          <FieldError message={touched.function_name ? errors.function_name : null} />
         </div>
         <div>
           <label className={labelCls}>Descrição</label>
@@ -55,21 +80,45 @@ export default function CreateLambdaForm({ form, setForm }) {
         </div>
         <div>
           <label className={labelCls}>Runtime <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={form.runtime || 'python3.12'} onChange={(e) => set('runtime', e.target.value)}>
+          <select
+            className={`${inputCls} ${touched.runtime && errors.runtime ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.runtime || 'python3.12'}
+            onChange={(e) => set('runtime', e.target.value)}
+            onBlur={() => touch('runtime')}
+          >
             {RUNTIMES.map((r) => <option key={r} value={r}>{r}</option>)}
           </select>
+          <FieldError message={touched.runtime ? errors.runtime : null} />
         </div>
         <div>
           <label className={labelCls}>Handler <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.handler || 'lambda_function.lambda_handler'} onChange={(e) => set('handler', e.target.value)} />
+          <input
+            className={`${inputCls} ${touched.handler && errors.handler ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.handler || 'lambda_function.lambda_handler'}
+            onChange={(e) => set('handler', e.target.value)}
+            onBlur={() => touch('handler')}
+          />
+          <FieldError message={touched.handler ? errors.handler : null} />
         </div>
         <div>
           <label className={labelCls}>IAM Role ARN <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={form.role_arn || ''} onChange={(e) => set('role_arn', e.target.value)}>
+          <select
+            className={`${inputCls} ${touched.role_arn && errors.role_arn ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.role_arn || ''}
+            onChange={(e) => set('role_arn', e.target.value)}
+            onBlur={() => touch('role_arn')}
+          >
             <option value="">Selecione um role</option>
             {roles.map((r) => <option key={r.arn} value={r.arn}>{r.name}</option>)}
           </select>
-          <input className={`${inputCls} mt-2`} value={form.role_arn || ''} onChange={(e) => set('role_arn', e.target.value)} placeholder="Ou insira o ARN manualmente" />
+          <input
+            className={`${inputCls} mt-2 ${touched.role_arn && errors.role_arn ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.role_arn || ''}
+            onChange={(e) => set('role_arn', e.target.value)}
+            onBlur={() => touch('role_arn')}
+            placeholder="Ou insira o ARN manualmente"
+          />
+          <FieldError message={touched.role_arn ? errors.role_arn : null} />
         </div>
       </FormSection>
 
@@ -150,4 +199,6 @@ export default function CreateLambdaForm({ form, setForm }) {
       </FormSection>
     </>
   );
-}
+});
+
+export default CreateLambdaForm;
