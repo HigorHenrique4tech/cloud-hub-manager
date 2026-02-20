@@ -18,6 +18,7 @@ from app.services.oauth_service import google_get_user_info, github_get_user_inf
 from app.services.email_service import send_verification_email
 from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
+from app.core.limiter import limiter
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ def _ensure_personal_org(db: Session, user: User) -> Organization:
 
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@limiter.limit("3/minute")
 def register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Register a new user"""
     existing = db.query(User).filter(User.email == payload.email).first()
@@ -154,6 +156,7 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
 
 
 @router.post("/login", response_model=TokenResponse)
+@limiter.limit("5/minute")
 def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     """Login with email and password"""
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
@@ -185,6 +188,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@limiter.limit("10/minute")
 def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get_db)):
     """Exchange a refresh token for a new access + refresh token pair."""
     try:
@@ -474,6 +478,7 @@ def _oauth_login_or_register(
 
 
 @router.post("/google/callback", response_model=TokenResponse)
+@limiter.limit("5/minute")
 async def google_callback(
     payload: OAuthCallback,
     request: Request,
@@ -497,6 +502,7 @@ async def google_callback(
 
 
 @router.post("/github/callback", response_model=TokenResponse)
+@limiter.limit("5/minute")
 async def github_callback(
     payload: OAuthCallback,
     request: Request,

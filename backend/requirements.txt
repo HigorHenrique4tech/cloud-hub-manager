@@ -42,6 +42,9 @@ httpx==0.26.0
 # Production server
 gunicorn==21.2.0
 
+# Rate limiting
+slowapi==0.1.9
+
 # Monitoring
 prometheus-fastapi-instrumentator==7.0.0
 

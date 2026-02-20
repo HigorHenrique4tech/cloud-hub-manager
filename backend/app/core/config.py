@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import List
 
 
@@ -46,6 +47,7 @@ class Settings(BaseSettings):
     # AbacatePay
     ABACATEPAY_API_KEY: str = ""
     ABACATEPAY_API_URL: str = "https://api.abacatepay.com/v1"
+    ABACATEPAY_WEBHOOK_SECRET: str = ""
 
     # AWS (global fallback)
     AWS_ACCESS_KEY_ID: str = ""
@@ -57,6 +59,27 @@ class Settings(BaseSettings):
     AZURE_TENANT_ID: str = ""
     AZURE_CLIENT_ID: str = ""
     AZURE_CLIENT_SECRET: str = ""
+
+    @model_validator(mode='after')
+    def validate_production_secrets(self) -> 'Settings':
+        """Prevent the app from starting with insecure defaults in production."""
+        if not self.DEBUG:
+            errors = []
+            if self.SECRET_KEY.startswith("changeme"):
+                errors.append(
+                    "SECRET_KEY está com o valor padrão inseguro. "
+                    "Gere uma chave com: openssl rand -hex 32"
+                )
+            if not self.ENCRYPTION_KEY:
+                errors.append(
+                    "ENCRYPTION_KEY está vazia. Gere uma com: "
+                    "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+                )
+            if errors:
+                raise ValueError(
+                    "Configuração de produção inválida:\n" + "\n".join(f"  - {e}" for e in errors)
+                )
+        return self
 
     class Config:
         env_file = ".env"

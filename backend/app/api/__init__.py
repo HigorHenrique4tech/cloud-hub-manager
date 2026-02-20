@@ -9,7 +9,7 @@ from .resource_templates import ws_router as templates_ws_router
 from .orgs import router as orgs_router
 from .workspaces import router as workspaces_router
 from .cloud_accounts import router as cloud_accounts_router
-from .billing import router as billing_router
+from .billing import router as billing_router, webhook_router as billing_webhook_router
 
 api_router = APIRouter()
 
@@ -20,6 +20,7 @@ api_router.include_router(auth_router)
 api_router.include_router(orgs_router)
 api_router.include_router(workspaces_router)
 api_router.include_router(billing_router)
+api_router.include_router(billing_webhook_router)
 
 # Workspace-scoped (multi-tenant)
 api_router.include_router(cloud_accounts_router)

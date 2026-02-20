@@ -1,10 +1,11 @@
 cloudatlas.app.br {
-    # API + backend endpoints
+    # Block internal/sensitive endpoints — never expose publicly
+    @blocked path /docs /redoc /openapi.json /metrics
+    respond @blocked 403
+
+    # API backend
     reverse_proxy /api/* backend:8000
     reverse_proxy /health backend:8000
-    reverse_proxy /metrics backend:8000
-    reverse_proxy /docs backend:8000
-    reverse_proxy /openapi.json backend:8000
 
     # Frontend (nginx serving static SPA)
     reverse_proxy /* frontend:80

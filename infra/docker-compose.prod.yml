@@ -74,6 +74,7 @@ services:
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
       # Payments
       - ABACATEPAY_API_KEY=${ABACATEPAY_API_KEY:-}
+      - ABACATEPAY_WEBHOOK_SECRET=${ABACATEPAY_WEBHOOK_SECRET:-}
     networks:
       - cloudatlas-network
     depends_on:
