@@ -26,6 +26,7 @@ O CloudAtlas permite que times de infraestrutura e engenharia visualizem e opere
 | Gráficos | Recharts |
 | Ícones | lucide-react |
 | Queries assíncronas | @tanstack/react-query |
+| Drag-and-drop | @dnd-kit/core + @dnd-kit/sortable |
 | Monitoramento | Prometheus + Grafana |
 | Proxy / SSL | Caddy (auto HTTPS) |
 | Containerização | Docker + Docker Compose |
@@ -118,11 +119,29 @@ Organization (org)
 - **App Services** — listar, iniciar, parar; criar app (plano, runtime, região)
 - Custos via Azure Cost Management
 
-### Dashboard
-- Cards KPI (total recursos, em execução, custo do mês)
-- Gráfico de custo 30 dias (AWS + Azure)
-- Atividades recentes (audit log real)
-- Distribuição de recursos por provedor
+### Dashboard Customizável
+- **6 widgets independentes**, cada um com seus próprios dados:
+  - **Estatísticas Cloud** — contagens de VMs, contas e instâncias por cloud
+  - **Custo & Forecast** — gráfico 30 dias (AWS + Azure) com projeção
+  - **Resumo FinOps** — economia potencial, recomendações e anomalias em destaque
+  - **Alertas de Custo** — últimos 5 eventos de alerta com link para detalhes
+  - **Próximos Agendamentos** — próximas 5 ações agendadas por `next_run_at` (Pro)
+  - **Atividade Recente** — últimas 8 entradas do audit log
+- **Reordenação por drag-and-drop** (dnd-kit) com handle visível ao passar o mouse
+- **Ativar/desativar widgets** via painel lateral "Personalizar"
+- **Preferências salvas no banco** por usuário + workspace — sincroniza entre dispositivos
+- Restaurar layout padrão com 1 clique
+
+### Agendamentos (`/schedules`) — Pro+
+
+Automação de start/stop de recursos por horário, sem necessidade de cron externo:
+
+- **Criação de agendamentos** com seletor de recurso real (busca EC2, VMs, App Services existentes no workspace)
+- Tipos: diário, dias úteis (Seg–Sex), fins de semana (Sáb–Dom)
+- Horário em UTC com exibição do fuso configurável
+- **Habilitar / desabilitar** agendamento sem excluir
+- **Histórico de execuções** com status (sucesso / falha) e próxima execução prevista
+- Integração com FinOps: recomendação `schedule` para recursos rodando 24/7 cria automaticamente par START + STOP
 
 ### Análise de Custos (`/costs`)
 - Período customizável (30d / 90d / 6m / 1 ano)
@@ -215,6 +234,8 @@ cloud-hub-manager/
 │   │   │   ├── alerts.py          # Alertas de custo
 │   │   │   ├── logs.py            # Auditoria
 │   │   │   ├── finops.py          # Recomendações, scan, orçamentos, ações, anomalias
+│   │   │   ├── schedules.py       # CRUD agendamentos + APScheduler jobs
+│   │   │   ├── dashboard_config.py # GET/PUT config de widgets por user+workspace
 │   │   │   └── billing.py         # Planos e pagamentos (AbacatePay)
 │   │   ├── core/
 │   │   │   ├── config.py          # Settings (env vars)
@@ -229,6 +250,7 @@ cloud-hub-manager/
 │   │   │   ├── aws_service.py     # boto3: todos os recursos AWS
 │   │   │   ├── azure_service.py   # Azure SDK: todos os recursos Azure
 │   │   │   ├── finops_service.py  # Scanners de desperdício (AWS + Azure)
+│   │   │   ├── scheduler_service.py # APScheduler 3.10 + SQLAlchemyJobStore
 │   │   │   └── log_service.py     # log_activity() — auditoria non-fatal
 │   │   ├── database.py            # Engine, SessionLocal, run_migrations()
 │   │   └── main.py
@@ -242,7 +264,8 @@ cloud-hub-manager/
 │       ├── contexts/
 │       │   ├── AuthContext.jsx        # Estado global de autenticação
 │       │   ├── OrgWorkspaceContext.jsx # Org + workspace selecionados
-│       │   └── ThemeContext.jsx       # Dark/light mode
+│       │   ├── ThemeContext.jsx       # Dark/light mode
+│       │   └── DashboardConfigContext.jsx # Widgets visíveis + ordem (dnd-kit)
 │       ├── components/
 │       │   ├── common/
 │       │   │   ├── ProtectedRoute.jsx
@@ -251,19 +274,33 @@ cloud-hub-manager/
 │       │   │   ├── CreateResourceModal.jsx
 │       │   │   ├── FormSection.jsx
 │       │   │   └── TagEditor.jsx
+│       │   ├── dashboard/
+│       │   │   ├── SortableWidget.jsx  # Wrapper dnd-kit com drag handle
+│       │   │   ├── DashboardCustomizer.jsx # Slide-over: toggles + reset
+│       │   │   └── widgets/
+│       │   │       ├── StatsWidget.jsx     # KPI cards + instâncias por cloud
+│       │   │       ├── CostWidget.jsx      # Gráfico 30d AWS+Azure+Total
+│       │   │       ├── ActivityWidget.jsx  # Últimas 8 entradas de auditoria
+│       │   │       ├── FinOpsWidget.jsx    # Resumo FinOps (Pro inline gate)
+│       │   │       ├── AlertsWidget.jsx    # Últimos 5 alertas de custo
+│       │   │       └── SchedulesWidget.jsx # Próximos agendamentos (Pro gate)
 │       │   ├── finops/
 │       │   │   ├── RecommendationCard.jsx
 │       │   │   ├── WasteSummary.jsx
 │       │   │   └── ActionTimeline.jsx
+│       │   ├── schedules/
+│       │   │   ├── ScheduleCard.jsx        # Card com toggle e delete
+│       │   │   └── ScheduleFormModal.jsx   # Modal criar/editar + resource picker
 │       │   └── layout/
 │       │       ├── layout.jsx
 │       │       ├── sidebar.jsx
 │       │       ├── header.jsx
 │       │       └── WorkspaceSwitcher.jsx
 │       ├── pages/
-│       │   ├── dashboard.jsx
+│       │   ├── dashboard.jsx      # Customizável: DndContext + DashboardConfigProvider
 │       │   ├── costs.jsx
 │       │   ├── FinOps.jsx
+│       │   ├── Schedules.jsx      # Listagem e gestão de agendamentos
 │       │   ├── logs.jsx
 │       │   ├── Billing.jsx
 │       │   ├── OrgSettings.jsx
@@ -271,12 +308,14 @@ cloud-hub-manager/
 │       │   ├── aws/          # Overview, EC2, S3, RDS, Lambda, VPC
 │       │   └── azure/        # Overview, VMs, Storage, VNets, Databases, AppServices
 │       ├── services/
-│       │   ├── api.js            # Axios + interceptor 401 + wsUrl helper
+│       │   ├── api.js                   # Axios + interceptor 401 + wsUrl helper
 │       │   ├── authService.js
 │       │   ├── orgService.js
 │       │   ├── costService.js
 │       │   ├── alertService.js
 │       │   ├── finopsService.js
+│       │   ├── scheduleService.js       # CRUD agendamentos
+│       │   ├── dashboardConfigService.js # GET/PUT config de widgets
 │       │   └── logsService.js
 │       └── hooks/
 └── infra/
@@ -392,7 +431,14 @@ O Caddy gerencia SSL automaticamente via Let's Encrypt.
 
 ## Roadmap
 
-- [ ] Scan FinOps agendado (APScheduler — sem clique manual)
+### Concluído recentemente
+- [x] Dashboard customizável com drag-and-drop e persistência por usuário
+- [x] Agendamentos automáticos de start/stop (APScheduler + SQLAlchemyJobStore)
+- [x] Seletor de recurso real no modal de agendamento (busca EC2, VMs, App Services)
+- [x] Integração FinOps → Schedules (recomendação `schedule` cria par START+STOP)
+
+### Próximos
+- [ ] Scan FinOps agendado recorrente (sem clique manual)
 - [ ] Approval workflow para ações FinOps (Enterprise)
 - [ ] Chargeback por tag (Enterprise)
 - [ ] Export de recomendações CSV/PDF
