@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect, useMemo } from 'react';
+import { X, Loader2, AlertCircle } from 'lucide-react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import scheduleService from '../../services/scheduleService';
+import awsService from '../../services/awsservices';
+import azureService from '../../services/azureservices';
 
 const TIMEZONES = [
   'America/Sao_Paulo',
@@ -36,16 +38,52 @@ const empty = {
   is_enabled: true,
 };
 
-/**
- * ScheduleFormModal
- *
- * Props:
- *   isOpen        — boolean
- *   onClose       — () => void
- *   initialData   — partial schedule object (for pre-fill from FinOps recommendation or edit)
- *
- * Internally handles both create and update based on initialData.id presence.
- */
+/* ── Fetch resources based on provider + type ───────────────── */
+async function fetchResources(provider, resource_type) {
+  if (provider === 'aws' && resource_type === 'ec2') {
+    return awsService.listEC2Instances();
+  }
+  if (provider === 'azure' && resource_type === 'vm') {
+    return azureService.listVMs();
+  }
+  if (provider === 'azure' && resource_type === 'app_service') {
+    return azureService.listAppServices();
+  }
+  return null;
+}
+
+/* ── Normalize API response into common option list ────────── */
+function toOptions(provider, resource_type, data) {
+  if (!data) return [];
+  if (provider === 'aws' && resource_type === 'ec2') {
+    return (data.instances || []).map((i) => ({
+      resource_id:   i.instance_id,
+      resource_name: i.name || i.instance_id,
+      label:         i.name || i.instance_id,
+      sublabel:      `${i.instance_type} · ${i.state}`,
+    }));
+  }
+  if (provider === 'azure' && resource_type === 'vm') {
+    return (data.virtual_machines || []).map((v) => ({
+      resource_id:   `${v.resource_group}/${v.name}`,
+      resource_name: v.name,
+      label:         v.name,
+      sublabel:      `${v.resource_group} · ${v.power_state || v.status || ''}`,
+    }));
+  }
+  if (provider === 'azure' && resource_type === 'app_service') {
+    const items = data.app_services || data.apps || (Array.isArray(data) ? data : []);
+    return items.map((a) => ({
+      resource_id:   `${a.resource_group}/${a.name}`,
+      resource_name: a.name,
+      label:         a.name,
+      sublabel:      `${a.resource_group} · ${a.state || a.status || ''}`,
+    }));
+  }
+  return [];
+}
+
+/* ── Main component ─────────────────────────────────────────── */
 const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
   const queryClient = useQueryClient();
   const isEdit = Boolean(initialData?.id);
@@ -56,34 +94,63 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
   useEffect(() => {
     if (isOpen) {
       setError('');
-      if (initialData) {
-        setForm({ ...empty, ...initialData });
-      } else {
-        setForm(empty);
-      }
+      setForm(initialData ? { ...empty, ...initialData } : empty);
     }
   }, [isOpen, initialData]);
 
+  /* Reset resource fields when provider or type changes */
+  const handleProviderChange = (e) => {
+    const provider = e.target.value;
+    const resource_type = provider === 'aws' ? 'ec2' : 'vm';
+    setForm((f) => ({ ...f, provider, resource_type, resource_id: '', resource_name: '' }));
+  };
+
+  const handleTypeChange = (e) => {
+    setForm((f) => ({ ...f, resource_type: e.target.value, resource_id: '', resource_name: '' }));
+  };
+
+  /* Fetch resource list */
+  const {
+    data: resourceData,
+    isLoading: resourcesLoading,
+    isError: resourcesError,
+  } = useQuery({
+    queryKey: ['resources-picker', form.provider, form.resource_type],
+    queryFn: () => fetchResources(form.provider, form.resource_type),
+    enabled: isOpen && !isEdit,
+    staleTime: 30 * 1000,
+    retry: 1,
+  });
+
+  const options = useMemo(
+    () => toOptions(form.provider, form.resource_type, resourceData),
+    [form.provider, form.resource_type, resourceData],
+  );
+
+  const handleResourceSelect = (e) => {
+    const selected = options.find((o) => o.resource_id === e.target.value);
+    if (selected) {
+      setForm((f) => ({
+        ...f,
+        resource_id:   selected.resource_id,
+        resource_name: selected.resource_name,
+      }));
+    } else {
+      setForm((f) => ({ ...f, resource_id: '', resource_name: '' }));
+    }
+  };
+
+  /* Mutations */
   const createMutation = useMutation({
     mutationFn: (data) => scheduleService.createSchedule(data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['schedules']);
-      onClose();
-    },
-    onError: (err) => {
-      setError(err?.response?.data?.detail || 'Erro ao criar agendamento');
-    },
+    onSuccess: () => { queryClient.invalidateQueries(['schedules']); onClose(); },
+    onError:   (err) => setError(err?.response?.data?.detail || 'Erro ao criar agendamento'),
   });
 
   const updateMutation = useMutation({
     mutationFn: (data) => scheduleService.updateSchedule(initialData.id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries(['schedules']);
-      onClose();
-    },
-    onError: (err) => {
-      setError(err?.response?.data?.detail || 'Erro ao atualizar agendamento');
-    },
+    onSuccess: () => { queryClient.invalidateQueries(['schedules']); onClose(); },
+    onError:   (err) => setError(err?.response?.data?.detail || 'Erro ao atualizar agendamento'),
   });
 
   const isLoading = createMutation.isPending || updateMutation.isPending;
@@ -95,9 +162,9 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
       updateMutation.mutate({
         schedule_type: form.schedule_type,
         schedule_time: form.schedule_time,
-        timezone: form.timezone,
+        timezone:      form.timezone,
         resource_name: form.resource_name,
-        is_enabled: form.is_enabled,
+        is_enabled:    form.is_enabled,
       });
     } else {
       createMutation.mutate(form);
@@ -124,15 +191,17 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
-          {/* Provider + resource type (create only) */}
+
+          {/* ── Create-only fields ───────────────────────────────── */}
           {!isEdit && (
             <>
+              {/* Provider + type */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-400 mb-1">Provedor</label>
                   <select
                     value={form.provider}
-                    onChange={set('provider')}
+                    onChange={handleProviderChange}
                     className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
                   >
                     <option value="aws">AWS</option>
@@ -143,7 +212,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                   <label className="block text-xs font-medium text-slate-400 mb-1">Tipo</label>
                   <select
                     value={form.resource_type}
-                    onChange={set('resource_type')}
+                    onChange={handleTypeChange}
                     className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
                   >
                     {form.provider === 'aws'
@@ -157,25 +226,63 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                 </div>
               </div>
 
+              {/* Resource picker */}
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">
-                  Resource ID
-                  {form.provider === 'azure' && <span className="text-slate-500 ml-1">(resource_group/nome)</span>}
-                </label>
-                <input
-                  type="text"
-                  value={form.resource_id}
-                  onChange={set('resource_id')}
-                  required
-                  placeholder={form.provider === 'aws' ? 'i-0abc12345' : 'meu-rg/minha-vm'}
-                  className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
-                />
+                <label className="block text-xs font-medium text-slate-400 mb-1">Recurso</label>
+
+                {resourcesLoading ? (
+                  <div className="flex items-center gap-2 h-10 px-3 rounded-lg border border-slate-600 bg-slate-800 text-slate-500 text-sm">
+                    <Loader2 size={14} className="animate-spin" />
+                    Carregando recursos…
+                  </div>
+                ) : resourcesError || options.length === 0 ? (
+                  /* Fallback: manual text input */
+                  <div className="space-y-2">
+                    {resourcesError && (
+                      <div className="flex items-center gap-1.5 text-xs text-yellow-400">
+                        <AlertCircle size={12} />
+                        Não foi possível listar recursos. Insira manualmente.
+                      </div>
+                    )}
+                    {options.length === 0 && !resourcesError && (
+                      <p className="text-xs text-slate-500">Nenhum recurso encontrado. Insira o ID manualmente.</p>
+                    )}
+                    <input
+                      type="text"
+                      value={form.resource_id}
+                      onChange={set('resource_id')}
+                      required
+                      placeholder={form.provider === 'aws' ? 'i-0abc12345' : 'meu-rg/minha-vm'}
+                      className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+                    />
+                  </div>
+                ) : (
+                  <select
+                    value={form.resource_id}
+                    onChange={handleResourceSelect}
+                    required
+                    className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  >
+                    <option value="">Selecionar recurso…</option>
+                    {options.map((o) => (
+                      <option key={o.resource_id} value={o.resource_id}>
+                        {o.label}{o.sublabel ? ` — ${o.sublabel}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
             </>
           )}
 
+          {/* Resource name — auto-filled on select, editable */}
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Nome do Recurso</label>
+            <label className="block text-xs font-medium text-slate-400 mb-1">
+              Nome do Recurso
+              {!isEdit && form.resource_id && (
+                <span className="ml-1 text-slate-600">(editável)</span>
+              )}
+            </label>
             <input
               type="text"
               value={form.resource_name}
@@ -235,7 +342,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
           {/* Time + timezone */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Horário (UTC)</label>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Horário</label>
               <input
                 type="time"
                 value={form.schedule_time}
@@ -264,7 +371,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
             </p>
           )}
 
-          {/* Actions */}
+          {/* Submit */}
           <div className="flex justify-end gap-2 pt-1">
             <button
               type="button"

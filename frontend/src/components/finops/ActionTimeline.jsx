@@ -40,7 +40,7 @@ const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 
 
   if (actions.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+      <div className="flex flex-col items-center justify-center py-12 text-gray-400 dark:text-slate-500">
         <CheckCircle2 size={32} className="mb-2 opacity-30" />
         <p className="text-sm">Nenhuma ação executada ainda.</p>
         <p className="text-xs mt-1">Aplique recomendações para ver o histórico aqui.</p>
@@ -53,14 +53,14 @@ const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 
       {actions.map((action) => (
         <div
           key={action.id}
-          className="flex items-start gap-3 rounded-lg border border-slate-700 bg-slate-800/40 p-3 hover:border-slate-600 transition-colors"
+          className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800/40 p-3 hover:border-gray-300 dark:hover:border-slate-600 transition-colors"
         >
           {STATUS_ICON[action.status] || <AlertTriangle size={16} className="text-yellow-400 shrink-0 mt-0.5" />}
 
           <div className="flex-1 min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-slate-200 truncate">{action.resource_name}</span>
-              <span className="text-xs text-slate-400">({action.resource_type})</span>
+              <span className="text-sm font-medium text-gray-800 dark:text-slate-200 truncate">{action.resource_name}</span>
+              <span className="text-xs text-gray-500 dark:text-slate-400">({action.resource_type})</span>
               <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
                 action.provider === 'aws' ? 'bg-orange-500/20 text-orange-300' : 'bg-sky-500/20 text-sky-300'
               }`}>
@@ -68,18 +68,18 @@ const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 
               </span>
             </div>
 
-            <p className="mt-0.5 text-xs text-slate-400">
+            <p className="mt-0.5 text-xs text-gray-500 dark:text-slate-400">
               {TYPE_LABEL[action.action_type] || action.action_type}
               {action.estimated_saving > 0 && (
-                <span className="ml-2 text-green-400 font-medium">→ {fmtUSD(action.estimated_saving)}/mês economizado</span>
+                <span className="ml-2 text-green-600 dark:text-green-400 font-medium">→ {fmtUSD(action.estimated_saving)}/mês economizado</span>
               )}
             </p>
 
             {action.error_message && (
-              <p className="mt-1 text-xs text-red-400 truncate">{action.error_message}</p>
+              <p className="mt-1 text-xs text-red-500 dark:text-red-400 truncate">{action.error_message}</p>
             )}
 
-            <p className="mt-0.5 text-xs text-slate-600">{fmtDate(action.executed_at)}</p>
+            <p className="mt-0.5 text-xs text-gray-400 dark:text-slate-600">{fmtDate(action.executed_at)}</p>
           </div>
 
           {/* Rollback button — only for executed actions within 24h */}
@@ -89,7 +89,7 @@ const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 
                 <button
                   onClick={() => onRollback(action.id)}
                   disabled={rollbackLoading === action.id}
-                  className="shrink-0 inline-flex items-center gap-1 rounded border border-slate-600 px-2.5 py-1 text-xs font-medium text-slate-300 hover:border-slate-400 hover:text-white disabled:opacity-50 transition-colors"
+                  className="shrink-0 inline-flex items-center gap-1 rounded border border-gray-300 dark:border-slate-600 px-2.5 py-1 text-xs font-medium text-gray-600 dark:text-slate-300 hover:border-gray-400 dark:hover:border-slate-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 transition-colors"
                 >
                   <RotateCcw size={12} />
                   {rollbackLoading === action.id ? 'Revertendo…' : 'Desfazer'}

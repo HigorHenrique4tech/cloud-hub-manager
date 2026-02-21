@@ -54,8 +54,8 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
   return (
     <div className={`rounded-xl border transition-colors ${
       isLocked
-        ? 'border-slate-700/50 bg-slate-900/30 opacity-60'
-        : 'border-slate-700 bg-slate-800/60 hover:border-slate-600'
+        ? 'border-gray-200 bg-gray-50/50 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/30'
+        : 'border-gray-200 bg-white hover:border-gray-300 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
     }`}>
       {/* Header row */}
       <div
@@ -72,17 +72,17 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
             <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${PROVIDER_BADGE[rec.provider] || 'bg-slate-700 text-slate-300'}`}>
               {rec.provider?.toUpperCase()}
             </span>
-            <span className="text-sm font-semibold text-slate-100 truncate">{rec.resource_name}</span>
-            <span className="text-xs text-slate-400">({rec.resource_type})</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{rec.resource_name}</span>
+            <span className="text-xs text-gray-500 dark:text-slate-400">({rec.resource_type})</span>
             {rec.region && (
-              <span className="text-xs text-slate-500">{rec.region}</span>
+              <span className="text-xs text-gray-400 dark:text-slate-500">{rec.region}</span>
             )}
           </div>
 
           {/* Recommendation summary */}
           <div className="mt-1 flex items-center gap-1.5 text-sm text-slate-300">
             <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
-              isScheduleType ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-700 text-slate-300'
+              isScheduleType ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300' : 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300'
             }`}>
               {TYPE_ICON[rec.recommendation_type]}
               {TYPE_LABEL[rec.recommendation_type] || rec.recommendation_type}
@@ -102,7 +102,7 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
           </div>
 
           {!isLocked && (
-            <p className="mt-1.5 text-xs text-slate-400 line-clamp-2">{rec.reasoning}</p>
+            <p className="mt-1.5 text-xs text-gray-500 dark:text-slate-400 line-clamp-2">{rec.reasoning}</p>
           )}
         </div>
 
@@ -139,25 +139,25 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
 
       {/* Expanded details */}
       {expanded && !isLocked && (
-        <div className="border-t border-slate-700 px-4 py-3 space-y-3">
+        <div className="border-t border-gray-200 dark:border-slate-700 px-4 py-3 space-y-3">
           {/* Spec comparison */}
           {(rec.current_spec || rec.recommended_spec) && (
             <div className="grid grid-cols-2 gap-3 text-xs">
               {rec.current_spec && (
-                <div className="rounded bg-slate-900/60 p-2">
-                  <p className="mb-1 font-semibold text-slate-400">Atual</p>
+                <div className="rounded bg-gray-100 dark:bg-slate-900/60 p-2">
+                  <p className="mb-1 font-semibold text-gray-500 dark:text-slate-400">Atual</p>
                   {Object.entries(rec.current_spec).map(([k, v]) => (
-                    <p key={k} className="text-slate-300">
-                      <span className="text-slate-500">{k}:</span> {String(v)}
+                    <p key={k} className="text-gray-700 dark:text-slate-300">
+                      <span className="text-gray-400 dark:text-slate-500">{k}:</span> {String(v)}
                     </p>
                   ))}
                 </div>
               )}
               {rec.recommended_spec && (
-                <div className="rounded bg-green-900/20 border border-green-800/30 p-2">
-                  <p className="mb-1 font-semibold text-green-400">Recomendado</p>
+                <div className="rounded bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800/30 p-2">
+                  <p className="mb-1 font-semibold text-green-600 dark:text-green-400">Recomendado</p>
                   {Object.entries(rec.recommended_spec).map(([k, v]) => (
-                    <p key={k} className="text-green-300">
+                    <p key={k} className="text-green-700 dark:text-green-300">
                       <span className="text-green-500">{k}:</span> {String(v)}
                     </p>
                   ))}
@@ -167,9 +167,9 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
           )}
 
           {/* Cost row */}
-          <div className="flex items-center gap-6 text-xs text-slate-400">
-            <span>Custo atual: <strong className="text-slate-200">{fmtUSD(rec.current_monthly_cost)}/mês</strong></span>
-            <span>Economia estimada: <strong className="text-green-400">{fmtUSD(rec.estimated_saving_monthly)}/mês</strong></span>
+          <div className="flex items-center gap-6 text-xs text-gray-500 dark:text-slate-400">
+            <span>Custo atual: <strong className="text-gray-800 dark:text-slate-200">{fmtUSD(rec.current_monthly_cost)}/mês</strong></span>
+            <span>Economia estimada: <strong className="text-green-600 dark:text-green-400">{fmtUSD(rec.estimated_saving_monthly)}/mês</strong></span>
           </div>
 
           {/* Action buttons */}
@@ -178,7 +178,7 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
               <PermissionGate
                 permission="finops.execute"
                 fallback={
-                  <span className="text-xs text-slate-500 flex items-center gap-1">
+                  <span className="text-xs text-gray-400 dark:text-slate-500 flex items-center gap-1">
                     <Lock size={12} /> Sem permissão para aplicar
                   </span>
                 }

@@ -5,19 +5,19 @@ const fmtUSD = (v) =>
 
 const KpiCard = ({ icon: Icon, label, value, sub, color }) => {
   const colors = {
-    green:  { bg: 'from-green-900/30 to-green-800/10',  icon: 'text-green-400',  border: 'border-green-800/30' },
-    yellow: { bg: 'from-yellow-900/30 to-yellow-800/10', icon: 'text-yellow-400', border: 'border-yellow-800/30' },
-    blue:   { bg: 'from-blue-900/30 to-blue-800/10',    icon: 'text-blue-400',   border: 'border-blue-800/30' },
-    red:    { bg: 'from-red-900/30 to-red-800/10',      icon: 'text-red-400',    border: 'border-red-800/30' },
-  }[color] || { bg: 'from-slate-800 to-slate-800', icon: 'text-slate-400', border: 'border-slate-700' };
+    green:  { bg: 'from-green-50 to-green-100/50 dark:from-green-900/30 dark:to-green-800/10',   icon: 'text-green-500 dark:text-green-400',   border: 'border-green-200 dark:border-green-800/30' },
+    yellow: { bg: 'from-yellow-50 to-yellow-100/50 dark:from-yellow-900/30 dark:to-yellow-800/10', icon: 'text-yellow-500 dark:text-yellow-400', border: 'border-yellow-200 dark:border-yellow-800/30' },
+    blue:   { bg: 'from-blue-50 to-blue-100/50 dark:from-blue-900/30 dark:to-blue-800/10',       icon: 'text-blue-500 dark:text-blue-400',     border: 'border-blue-200 dark:border-blue-800/30' },
+    red:    { bg: 'from-red-50 to-red-100/50 dark:from-red-900/30 dark:to-red-800/10',           icon: 'text-red-500 dark:text-red-400',       border: 'border-red-200 dark:border-red-800/30' },
+  }[color] || { bg: 'from-gray-50 to-gray-100 dark:from-slate-800 dark:to-slate-800', icon: 'text-gray-400 dark:text-slate-400', border: 'border-gray-200 dark:border-slate-700' };
 
   return (
     <div className={`rounded-xl border ${colors.border} bg-gradient-to-br ${colors.bg} p-5`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-slate-400">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-slate-100">{value}</p>
-          {sub && <p className="mt-1 text-xs text-slate-500">{sub}</p>}
+          <p className="text-sm text-gray-500 dark:text-slate-400">{label}</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-slate-100">{value}</p>
+          {sub && <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{sub}</p>}
         </div>
         <Icon className={`${colors.icon} opacity-60`} size={28} />
       </div>
