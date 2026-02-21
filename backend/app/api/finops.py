@@ -24,6 +24,7 @@ from app.models.db_models import (
     FinOpsBudget,
     FinOpsRecommendation,
     Organization,
+    ScheduledAction,
     Workspace,
 )
 from app.services.auth_service import decrypt_credential
@@ -532,6 +533,68 @@ async def apply_recommendation(
         raise HTTPException(status_code=404, detail="Recomendação não encontrada.")
     if rec.status != "pending":
         raise HTTPException(status_code=400, detail=f"Status atual é '{rec.status}', não pode ser aplicada.")
+
+    # Handle schedule type separately (no cloud API call needed — just create ScheduledActions)
+    if rec.recommendation_type == "schedule":
+        from app.services.scheduler_service import register_schedule
+        spec = rec.recommended_spec or {}
+        created_ids = []
+        for action in ("start", "stop"):
+            time_key = "suggested_start" if action == "start" else "suggested_stop"
+            schedule_time = spec.get(time_key, "08:00" if action == "start" else "19:00")
+            s = ScheduledAction(
+                workspace_id=member.workspace_id,
+                provider=rec.provider,
+                resource_id=rec.resource_id,
+                resource_name=rec.resource_name,
+                resource_type=rec.resource_type,
+                action=action,
+                schedule_type=spec.get("schedule_type", "weekdays"),
+                schedule_time=schedule_time,
+                timezone=spec.get("timezone", "America/Sao_Paulo"),
+                is_enabled=True,
+                created_by=member.user.id,
+                created_at=datetime.utcnow(),
+            )
+            db.add(s)
+            db.flush()
+            register_schedule(s)
+            created_ids.append(str(s.id))
+
+        rec.status = "applied"
+        rec.applied_at = datetime.utcnow()
+        rec.applied_by = member.user.id
+
+        finops_action = FinOpsAction(
+            workspace_id=member.workspace_id,
+            recommendation_id=rec.id,
+            action_type="schedule",
+            provider=rec.provider,
+            resource_id=rec.resource_id,
+            resource_name=rec.resource_name,
+            resource_type=rec.resource_type,
+            estimated_saving=rec.estimated_saving_monthly,
+            status="executed",
+            executed_by=member.user.id,
+            rollback_data={"scheduled_action_ids": created_ids},
+        )
+        db.add(finops_action)
+        db.commit()
+        db.refresh(finops_action)
+
+        log_activity(
+            db=db, user=member.user,
+            action="finops.schedule_recommendation",
+            resource_type=rec.resource_type,
+            resource_id=rec.resource_id,
+            resource_name=rec.resource_name,
+            provider=rec.provider,
+            status="executed",
+            detail=json.dumps({"saving_monthly": rec.estimated_saving_monthly, "schedules": created_ids}),
+            organization_id=member.organization_id,
+            workspace_id=member.workspace_id,
+        )
+        return {"action": _action_to_dict(finops_action), "recommendation": _rec_to_dict(rec)}
 
     # Build scanner for the right provider
     rollback_data: dict = {}

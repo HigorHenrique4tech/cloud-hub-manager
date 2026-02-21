@@ -25,6 +25,7 @@ import AwsLambda from './pages/aws/AwsLambda';
 import AwsVPC from './pages/aws/AwsVPC';
 import Logs from './pages/logs';
 import FinOps from './pages/FinOps';
+import Schedules from './pages/Schedules';
 // Multi-tenant
 import OrgSettings from './pages/OrgSettings';
 import WorkspaceSettings from './pages/WorkspaceSettings';
@@ -83,6 +84,7 @@ function App() {
                 {/* Other */}
                 <Route path="/costs" element={<PR><Costs /></PR>} />
                 <Route path="/finops" element={<PR><FinOps /></PR>} />
+                <Route path="/schedules" element={<PR><Schedules /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
                 {/* Billing */}

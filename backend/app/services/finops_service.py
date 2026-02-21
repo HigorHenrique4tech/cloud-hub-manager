@@ -336,6 +336,74 @@ class AWSFinOpsScanner:
             logger.warning(f"Snapshot scan error: {e}")
         return findings
 
+    # ── Always-on dev/test resources ─────────────────────────────────────────
+
+    _DEV_KEYWORDS = {"dev", "test", "staging", "hml", "sandbox", "homolog", "qa"}
+
+    def _is_dev_resource(self, name: str, tags: list) -> bool:
+        """Return True if the resource name or tags suggest a dev/test environment."""
+        name_lower = (name or "").lower()
+        if any(kw in name_lower for kw in self._DEV_KEYWORDS):
+            return True
+        env_tag = next(
+            (t["Value"] for t in (tags or []) if t["Key"].lower() in ("environment", "env")),
+            None,
+        )
+        return (env_tag or "").lower() in self._DEV_KEYWORDS
+
+    def scan_always_on(self) -> List[dict]:
+        """
+        Detect running EC2 instances that appear to be dev/test but run 24/7.
+        Recommends a weekday schedule (08:00–19:00) to save ~54% monthly.
+        """
+        findings = []
+        try:
+            ec2 = self._client("ec2")
+            resp = ec2.describe_instances(
+                Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
+            )
+            for r in resp.get("Reservations", []):
+                for i in r.get("Instances", []):
+                    instance_id = i["InstanceId"]
+                    instance_type = i.get("InstanceType", "unknown")
+                    tags = i.get("Tags") or []
+                    name = next((t["Value"] for t in tags if t["Key"] == "Name"), instance_id)
+                    az = i.get("Placement", {}).get("AvailabilityZone", self.region)
+
+                    if not self._is_dev_resource(name, tags):
+                        continue
+
+                    current_cost = self._estimate_ec2_monthly_cost(instance_type)
+                    # Schedule off 13h/day on weekdays + full weekends ≈ 54% saving
+                    saving = round(current_cost * 0.54, 2)
+
+                    findings.append({
+                        "provider": "aws",
+                        "resource_id": instance_id,
+                        "resource_name": name,
+                        "resource_type": "ec2",
+                        "region": az,
+                        "recommendation_type": "schedule",
+                        "severity": "medium",
+                        "estimated_saving_monthly": saving,
+                        "current_monthly_cost": current_cost,
+                        "reasoning": (
+                            f"Instância EC2 de desenvolvimento '{name}' rodando 24/7. "
+                            f"Agendar desligamento fora do horário comercial (Seg–Sex 08:00–19:00) "
+                            f"pode economizar ~54% do custo mensal (${saving:.2f}/mês)."
+                        ),
+                        "current_spec": {"instance_type": instance_type},
+                        "recommended_spec": {
+                            "suggested_start": "08:00",
+                            "suggested_stop": "19:00",
+                            "timezone": "America/Sao_Paulo",
+                            "schedule_type": "weekdays",
+                        },
+                    })
+        except ClientError as e:
+            logger.warning(f"Always-on EC2 scan error: {e}")
+        return findings
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_ec2_idle())
@@ -343,6 +411,7 @@ class AWSFinOpsScanner:
         findings.extend(self.scan_elastic_ips())
         findings.extend(self.scan_rds_idle())
         findings.extend(self.scan_old_snapshots())
+        findings.extend(self.scan_always_on())
         return findings
 
 
@@ -539,11 +608,80 @@ class AzureFinOpsScanner:
             logger.warning(f"Azure public IP scan error: {e}")
         return findings
 
+    # ── Always-on dev/test resources ─────────────────────────────────────────
+
+    _DEV_KEYWORDS = {"dev", "test", "staging", "hml", "sandbox", "homolog", "qa"}
+
+    def _is_dev_resource_azure(self, name: str, tags: dict) -> bool:
+        name_lower = (name or "").lower()
+        if any(kw in name_lower for kw in self._DEV_KEYWORDS):
+            return True
+        env_tag = (tags or {}).get("Environment") or (tags or {}).get("environment", "")
+        return (env_tag or "").lower() in self._DEV_KEYWORDS
+
+    def scan_always_on(self) -> List[dict]:
+        """
+        Detect running Azure VMs that appear to be dev/test but run 24/7.
+        Recommends a weekday schedule (08:00–19:00) to save ~54% monthly.
+        """
+        findings = []
+        try:
+            compute = self._compute()
+            for vm in compute.virtual_machines.list_all():
+                # Check power state
+                rg = vm.id.split("/")[4]
+                try:
+                    iv = compute.virtual_machines.instance_view(rg, vm.name)
+                    statuses = [s.code for s in (iv.statuses or [])]
+                    if "PowerState/running" not in statuses:
+                        continue
+                except Exception:
+                    continue
+
+                if not self._is_dev_resource_azure(vm.name, vm.tags):
+                    continue
+
+                vm_size = (vm.hardware_profile.vm_size if vm.hardware_profile else "unknown") or "unknown"
+                ratio = AZURE_VM_FAMILY_RATIO.get(vm_size, 4.0)
+                current_cost = round(8.5 * ratio, 2)
+                saving = round(current_cost * 0.54, 2)
+
+                # resource_id stored as "resource_group/vm_name" for scheduler
+                resource_id = f"{rg}/{vm.name}"
+
+                findings.append({
+                    "provider": "azure",
+                    "resource_id": resource_id,
+                    "resource_name": vm.name,
+                    "resource_type": "vm",
+                    "region": vm.location,
+                    "recommendation_type": "schedule",
+                    "severity": "medium",
+                    "estimated_saving_monthly": saving,
+                    "current_monthly_cost": current_cost,
+                    "reasoning": (
+                        f"VM Azure de desenvolvimento '{vm.name}' rodando 24/7. "
+                        f"Agendar desligamento fora do horário comercial (Seg–Sex 08:00–19:00) "
+                        f"pode economizar ~54% do custo mensal (${saving:.2f}/mês)."
+                    ),
+                    "current_spec": {"vm_size": vm_size, "resource_group": rg},
+                    "recommended_spec": {
+                        "suggested_start": "08:00",
+                        "suggested_stop": "19:00",
+                        "timezone": "America/Sao_Paulo",
+                        "schedule_type": "weekdays",
+                    },
+                })
+        except Exception as e:
+            logger.warning(f"Azure always-on VM scan error: {e}")
+        return findings
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_vm_idle())
         findings.extend(self.scan_managed_disks())
         findings.extend(self.scan_public_ips())
+        findings.extend(self.scan_always_on())
         return findings
 
 

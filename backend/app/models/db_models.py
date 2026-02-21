@@ -319,6 +319,55 @@ class FinOpsAnomaly(Base):
 # ── Resource Templates ──────────────────────────────────────────────────────
 
 
+# ── Scheduled Actions ────────────────────────────────────────────────────────
+
+
+class ScheduledAction(Base):
+    __tablename__ = "scheduled_actions"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider        = Column(String(20), nullable=False)       # "aws" | "azure"
+    resource_id     = Column(String(500), nullable=False)      # "i-0abc" or "rg/vm_name"
+    resource_name   = Column(String(255), nullable=False)
+    resource_type   = Column(String(50), nullable=False)       # "ec2" | "vm" | "app_service"
+    action          = Column(String(10), nullable=False)       # "start" | "stop"
+    schedule_type   = Column(String(20), nullable=False, default="weekdays")  # "daily"|"weekdays"|"weekends"
+    schedule_time   = Column(String(5), nullable=False)        # "08:00" HH:MM UTC
+    timezone        = Column(String(50), nullable=False, default="America/Sao_Paulo")
+    is_enabled      = Column(Boolean, default=True, nullable=False)
+    last_run_at     = Column(DateTime, nullable=True)
+    last_run_status = Column(String(10), nullable=True)        # "success" | "failed"
+    last_run_error  = Column(String(500), nullable=True)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace  = relationship("Workspace")
+    creator    = relationship("User", foreign_keys=[created_by])
+
+
+# ── User Dashboard Config ────────────────────────────────────────────────────
+
+
+class UserDashboardConfig(Base):
+    __tablename__ = "user_dashboard_configs"
+    __table_args__ = (
+        UniqueConstraint("user_id", "workspace_id", name="uq_user_dashboard_ws"),
+    )
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    config       = Column(JSONB, nullable=False)   # [{id, visible, order}]
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user      = relationship("User", foreign_keys=[user_id])
+    workspace = relationship("Workspace", foreign_keys=[workspace_id])
+
+
+# ── Resource Templates ──────────────────────────────────────────────────────
+
+
 class ResourceTemplate(Base):
     __tablename__ = "resource_templates"
 

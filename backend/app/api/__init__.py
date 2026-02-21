@@ -10,6 +10,8 @@ from .orgs import router as orgs_router
 from .workspaces import router as workspaces_router
 from .cloud_accounts import router as cloud_accounts_router
 from .billing import router as billing_router, webhook_router as billing_webhook_router
+from .schedules import ws_router as schedules_ws_router
+from .dashboard_config import ws_router as dashboard_config_ws_router
 
 api_router = APIRouter()
 
@@ -30,5 +32,7 @@ api_router.include_router(alerts_ws_router)
 api_router.include_router(logs_ws_router)
 api_router.include_router(finops_ws_router)
 api_router.include_router(templates_ws_router)
+api_router.include_router(schedules_ws_router)
+api_router.include_router(dashboard_config_ws_router)
 
 __all__ = ["api_router"]

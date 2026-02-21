@@ -115,10 +115,27 @@ async def startup_event():
         run_migrations()
         logger.info("Database migrations applied")
 
+    # Start APScheduler and load all enabled scheduled actions from DB
+    from app.services.scheduler_service import scheduler, load_all_schedules
+    from app.database import SessionLocal
+    try:
+        scheduler.start()
+        with SessionLocal() as db:
+            count = load_all_schedules(db)
+            logger.info(f"APScheduler started — {count} scheduled actions loaded")
+    except Exception as exc:
+        logger.error(f"APScheduler startup failed: {exc}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
     """Run on application shutdown"""
+    from app.services.scheduler_service import scheduler
+    try:
+        scheduler.shutdown(wait=False)
+        logger.info("APScheduler stopped")
+    except Exception:
+        pass
     logger.info(f"Shutting down {settings.APP_NAME}")
 
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   ChevronDown, ChevronUp, Zap, Trash2, StopCircle,
-  ArrowRight, Lock, AlertTriangle, CheckCircle2, XCircle,
+  ArrowRight, Lock, AlertTriangle, CheckCircle2, XCircle, Clock,
 } from 'lucide-react';
 import PermissionGate from '../common/PermissionGate';
 import PlanGate from '../common/PlanGate';
@@ -19,7 +19,7 @@ const TYPE_ICON = {
   right_size: <ArrowRight size={14} />,
   stop:       <StopCircle size={14} />,
   delete:     <Trash2 size={14} />,
-  schedule:   <Zap size={14} />,
+  schedule:   <Clock size={14} />,
   reserve:    <Zap size={14} />,
 };
 
@@ -46,6 +46,7 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
   const [expanded, setExpanded] = useState(false);
   const isLocked = rec._locked;
   const isPending = rec.status === 'pending';
+  const isScheduleType = rec.recommendation_type === 'schedule';
 
   const canApply  = !isLocked && isPending;
   const planOk    = ['pro', 'enterprise'].includes((planTier || 'free').toLowerCase());
@@ -80,7 +81,9 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
 
           {/* Recommendation summary */}
           <div className="mt-1 flex items-center gap-1.5 text-sm text-slate-300">
-            <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium bg-slate-700 text-slate-300`}>
+            <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
+              isScheduleType ? 'bg-purple-500/20 text-purple-300' : 'bg-slate-700 text-slate-300'
+            }`}>
               {TYPE_ICON[rec.recommendation_type]}
               {TYPE_LABEL[rec.recommendation_type] || rec.recommendation_type}
             </span>
@@ -89,6 +92,12 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
             )}
             {rec.recommended_spec?.vm_size && (
               <span className="text-xs text-slate-400">→ {rec.recommended_spec.vm_size}</span>
+            )}
+            {isScheduleType && rec.recommended_spec?.suggested_start && (
+              <span className="text-xs text-purple-400">
+                {rec.recommended_spec.suggested_start}–{rec.recommended_spec.suggested_stop},{' '}
+                {rec.recommended_spec.schedule_type === 'weekdays' ? 'Seg–Sex' : 'Diário'}
+              </span>
             )}
           </div>
 
@@ -175,13 +184,24 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
                 }
               >
                 {planOk ? (
-                  <button
-                    onClick={() => onApply(rec.id)}
-                    disabled={applyLoading}
-                    className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
-                  >
-                    {applyLoading ? 'Aplicando…' : 'Aplicar'}
-                  </button>
+                  isScheduleType ? (
+                    <button
+                      onClick={() => onApply(rec.id)}
+                      disabled={applyLoading}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
+                    >
+                      <Clock size={12} />
+                      {applyLoading ? 'Agendando…' : 'Agendar'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => onApply(rec.id)}
+                      disabled={applyLoading}
+                      className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
+                    >
+                      {applyLoading ? 'Aplicando…' : 'Aplicar'}
+                    </button>
+                  )
                 ) : (
                   <PlanGate minPlan="pro" feature="Aplicar recomendações" inline />
                 )}
@@ -212,6 +232,7 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
           </a>
         </div>
       )}
+
     </div>
   );
 };
