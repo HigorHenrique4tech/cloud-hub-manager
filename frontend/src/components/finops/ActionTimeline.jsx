@@ -53,7 +53,7 @@ const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 
       {actions.map((action) => (
         <div
           key={action.id}
-          className="flex items-start gap-3 rounded-lg border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800/40 p-3 hover:border-gray-300 dark:hover:border-slate-600 transition-colors"
+          className="flex items-start gap-3 rounded-lg border border-gray-300 bg-white dark:border-slate-700 dark:bg-slate-800/40 p-3 hover:border-gray-400 dark:hover:border-slate-600 transition-colors"
         >
           {STATUS_ICON[action.status] || <AlertTriangle size={16} className="text-yellow-400 shrink-0 mt-0.5" />}
 

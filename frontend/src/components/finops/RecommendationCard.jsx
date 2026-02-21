@@ -55,7 +55,7 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
     <div className={`rounded-xl border transition-colors ${
       isLocked
         ? 'border-gray-200 bg-gray-50/50 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/30'
-        : 'border-gray-200 bg-white hover:border-gray-300 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
+        : 'border-gray-300 bg-white hover:border-gray-400 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
     }`}>
       {/* Header row */}
       <div

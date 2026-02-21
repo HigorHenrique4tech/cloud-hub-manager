@@ -55,8 +55,8 @@ const ScheduleCard = ({ schedule, onEdit }) => {
   return (
     <div className={`rounded-xl border transition-colors ${
       schedule.is_enabled
-        ? 'border-gray-200 bg-white hover:border-gray-300 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
-        : 'border-gray-100 bg-gray-50/50 opacity-60 dark:border-slate-700/40 dark:bg-slate-900/30'
+        ? 'border-gray-300 bg-white hover:border-gray-400 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
+        : 'border-gray-200 bg-gray-50/50 opacity-60 dark:border-slate-700/40 dark:bg-slate-900/30'
     }`}>
       <div className="flex items-start gap-3 p-4">
         {/* Action badge */}
