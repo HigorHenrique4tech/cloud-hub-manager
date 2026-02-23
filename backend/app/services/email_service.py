@@ -135,6 +135,50 @@ def send_invite_email(
     return _send_email(to_email, f"CloudAtlas — Convite para {org_name}", html)
 
 
+def send_org_member_added_email(
+    to_email: str,
+    user_name: str,
+    org_name: str,
+    role: str,
+    inviter_name: str,
+) -> bool:
+    """Notify an existing user that they were added to an organization."""
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured. Org added notification not sent to %s.", to_email)
+        return True
+
+    role_labels = {
+        "owner": "Owner",
+        "admin": "Administrador",
+        "operator": "Operador",
+        "viewer": "Visualizador",
+        "billing": "Faturamento",
+    }
+    role_label = role_labels.get(role, role)
+    dashboard_url = f"{settings.FRONTEND_URL}/dashboard"
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Você foi adicionado a uma organização!</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        <strong>{inviter_name}</strong> adicionou você à organização
+        <strong>{org_name}</strong> no CloudAtlas como <strong>{role_label}</strong>.
+      </p>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="{dashboard_url}"
+           style="display: inline-block; padding: 12px 32px; background-color: #3b82f6;
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Acessar o CloudAtlas
+        </a>
+      </div>
+      {_FOOTER}
+    </div>
+    """
+    return _send_email(to_email, f"CloudAtlas — Você foi adicionado a {org_name}", html)
+
+
 def send_alert_email(
     to_email: str,
     user_name: str,
