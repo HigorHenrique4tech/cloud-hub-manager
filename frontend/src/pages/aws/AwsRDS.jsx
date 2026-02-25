@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, Plus, Trash2, Database } from 'lucide-react';
 import Layout from '../../components/layout/layout';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateRDSForm from '../../components/create/CreateRDSForm';
@@ -59,8 +60,6 @@ const AwsRDS = () => {
     }
   };
 
-  if (isLoading) return <Layout><LoadingSpinner text="Carregando instâncias RDS..." /></Layout>;
-
   if (error?.response?.status === 400) {
     return <Layout><NoCredentialsMessage provider="aws" /></Layout>;
   }
@@ -76,7 +75,7 @@ const AwsRDS = () => {
     );
   }
 
-  const instances = (data?.instances || []).filter(i =>
+  const instances = isLoading ? [] : (data?.instances || []).filter(i =>
     !q || i.db_instance_id?.toLowerCase().includes(q) || i.engine?.toLowerCase().includes(q)
   );
 
@@ -86,7 +85,7 @@ const AwsRDS = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">RDS — Banco de Dados</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Região: {data?.region || 'N/A'} · {instances.length} instância(s){q && ` · filtrado por "${q}"`}
+            {isLoading ? 'Carregando...' : `Região: ${data?.region || 'N/A'} · ${instances.length} instância(s)${q ? ` · filtrado por "${q}"` : ''}`}
           </p>
         </div>
         <PermissionGate permission="resources.create">
@@ -99,45 +98,63 @@ const AwsRDS = () => {
         </PermissionGate>
       </div>
 
-      <div className="card overflow-x-auto">
-        {instances.length === 0 ? (
-          <p className="text-center py-8 text-gray-500 dark:text-gray-400">Nenhuma instância RDS encontrada</p>
+      <div className="card">
+        {isLoading ? (
+          <SkeletonTable columns={9} rows={5} />
+        ) : instances.length === 0 ? (
+          <EmptyState
+            icon={Database}
+            title="Nenhuma instância RDS"
+            description="Crie seu primeiro banco de dados gerenciado na AWS."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar Instância
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : (
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900/50">
-              <tr>
-                {['ID', 'Engine', 'Versão', 'Classe', 'Status', 'Endpoint', 'AZ', 'Multi-AZ', 'Storage (GB)', 'Ações'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {instances.map(i => (
-                <tr key={i.db_instance_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(i)}>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.db_instance_id}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.engine}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.engine_version || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.db_instance_class}</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><span className={statusClass(i.status)}>{i.status}</span></td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono text-xs">{i.endpoint || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.availability_zone || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.multi_az ? 'Sim' : 'Não'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.storage_gb ?? '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <PermissionGate permission="resources.delete">
-                      <button
-                        onClick={() => setDeleteTarget(i)}
-                        className="text-red-400 hover:text-red-600 transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </PermissionGate>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
+                <tr>
+                  {['ID', 'Engine', 'Versão', 'Classe', 'Status', 'Endpoint', 'AZ', 'Multi-AZ', 'Storage (GB)', 'Ações'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {instances.map(i => (
+                  <tr key={i.db_instance_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(i)}>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.db_instance_id}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.engine}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.engine_version || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.db_instance_class}</td>
+                    <td className="px-4 py-3 whitespace-nowrap"><span className={statusClass(i.status)}>{i.status}</span></td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono text-xs">{i.endpoint || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.availability_zone || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.multi_az ? 'Sim' : 'Não'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.storage_gb ?? '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <PermissionGate permission="resources.delete">
+                        <button
+                          onClick={() => setDeleteTarget(i)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </PermissionGate>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

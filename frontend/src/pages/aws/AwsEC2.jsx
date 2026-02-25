@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus } from 'lucide-react';
+import { AlertCircle, Plus, Server } from 'lucide-react';
 import Layout from '../../components/layout/layout';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import EC2Table from '../../components/resources/ec2table';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
@@ -97,8 +98,6 @@ const AwsEC2 = () => {
     refetch();
   };
 
-  if (isLoading) return <Layout><LoadingSpinner text="Carregando instâncias EC2..." /></Layout>;
-
   if (error?.response?.status === 400) {
     return <Layout><NoCredentialsMessage provider="aws" /></Layout>;
   }
@@ -114,7 +113,7 @@ const AwsEC2 = () => {
     );
   }
 
-  const instances = (data?.instances || []).filter(i =>
+  const instances = isLoading ? [] : (data?.instances || []).filter(i =>
     !q || i.name?.toLowerCase().includes(q) || i.instance_id?.toLowerCase().includes(q) || i.instance_type?.toLowerCase().includes(q)
   );
 
@@ -150,8 +149,7 @@ const AwsEC2 = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">EC2 — Instâncias</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Região: {data?.region || 'N/A'} · {instances.length} instância(s)
-            {q && ` · filtrado por "${q}"`}
+            {isLoading ? 'Carregando...' : `Região: ${data?.region || 'N/A'} · ${instances.length} instância(s)${q ? ` · filtrado por "${q}"` : ''}`}
           </p>
         </div>
         <PermissionGate permission="resources.create">
@@ -165,16 +163,36 @@ const AwsEC2 = () => {
       </div>
 
       <div className="card">
-        <EC2Table
-          instances={instances}
-          onStart={handleStart}
-          onStop={handleStop}
-          onDelete={(instance) => setDeleteTarget(instance)}
-          onRowClick={setDetailTarget}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleSelect}
-          onToggleAll={toggleAll}
-        />
+        {isLoading ? (
+          <SkeletonTable columns={8} rows={5} hasCheckbox />
+        ) : instances.length === 0 ? (
+          <EmptyState
+            icon={Server}
+            title="Nenhuma instância EC2"
+            description="Crie sua primeira instância para começar a gerenciar sua infraestrutura AWS."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar Instância
+                </button>
+              </PermissionGate>
+            }
+          />
+        ) : (
+          <EC2Table
+            instances={instances}
+            onStart={handleStart}
+            onStop={handleStop}
+            onDelete={(instance) => setDeleteTarget(instance)}
+            onRowClick={setDetailTarget}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelect}
+            onToggleAll={toggleAll}
+          />
+        )}
       </div>
 
       <CreateResourceModal

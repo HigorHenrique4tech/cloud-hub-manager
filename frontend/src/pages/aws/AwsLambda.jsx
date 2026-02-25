@@ -1,10 +1,11 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { AlertCircle, Plus, Trash2, Zap } from 'lucide-react';
 import Layout from '../../components/layout/layout';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateLambdaForm from '../../components/create/CreateLambdaForm';
@@ -52,8 +53,6 @@ const AwsLambda = () => {
     }
   };
 
-  if (isLoading) return <Layout><LoadingSpinner text="Carregando funções Lambda..." /></Layout>;
-
   if (error?.response?.status === 400) {
     return <Layout><NoCredentialsMessage provider="aws" /></Layout>;
   }
@@ -69,7 +68,7 @@ const AwsLambda = () => {
     );
   }
 
-  const fns = (data?.functions || []).filter(f =>
+  const fns = isLoading ? [] : (data?.functions || []).filter(f =>
     !q || f.name?.toLowerCase().includes(q) || f.runtime?.toLowerCase().includes(q)
   );
 
@@ -79,7 +78,7 @@ const AwsLambda = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Lambda — Funções</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Região: {data?.region || 'N/A'} · {fns.length} função(ões){q && ` · filtrado por "${q}"`}
+            {isLoading ? 'Carregando...' : `Região: ${data?.region || 'N/A'} · ${fns.length} função(ões)${q ? ` · filtrado por "${q}"` : ''}`}
           </p>
         </div>
         <PermissionGate permission="resources.create">
@@ -92,49 +91,67 @@ const AwsLambda = () => {
         </PermissionGate>
       </div>
 
-      <div className="card overflow-x-auto">
-        {fns.length === 0 ? (
-          <p className="text-center py-8 text-gray-500 dark:text-gray-400">Nenhuma função Lambda encontrada</p>
+      <div className="card">
+        {isLoading ? (
+          <SkeletonTable columns={7} rows={5} />
+        ) : fns.length === 0 ? (
+          <EmptyState
+            icon={Zap}
+            title="Nenhuma função Lambda"
+            description="Crie sua primeira função serverless para executar código sem gerenciar servidores."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar Função
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : (
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900/50">
-              <tr>
-                {['Nome', 'Runtime', 'Handler', 'Memória (MB)', 'Timeout (s)', 'Código (KB)', 'Última modificação', 'Ações'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {fns.map(f => (
-                <tr key={f.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(f)}>
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{f.name}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <span className="badge-gray text-xs">{f.runtime || '—'}</span>
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono text-xs whitespace-nowrap">{f.handler || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{f.memory_mb ?? '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{f.timeout_sec ?? '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {f.code_size_bytes ? Math.round(f.code_size_bytes / 1024) : '—'}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                    {f.last_modified ? new Date(f.last_modified).toLocaleDateString('pt-BR') : '—'}
-                  </td>
-                  <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <PermissionGate permission="resources.delete">
-                      <button
-                        onClick={() => setDeleteTarget(f)}
-                        className="text-red-400 hover:text-red-600 transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </PermissionGate>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
+                <tr>
+                  {['Nome', 'Runtime', 'Handler', 'Memória (MB)', 'Timeout (s)', 'Código (KB)', 'Última modificação', 'Ações'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {fns.map(f => (
+                  <tr key={f.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(f)}>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{f.name}</td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="badge-gray text-xs">{f.runtime || '—'}</span>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono text-xs whitespace-nowrap">{f.handler || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{f.memory_mb ?? '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{f.timeout_sec ?? '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {f.code_size_bytes ? Math.round(f.code_size_bytes / 1024) : '—'}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                      {f.last_modified ? new Date(f.last_modified).toLocaleDateString('pt-BR') : '—'}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <PermissionGate permission="resources.delete">
+                        <button
+                          onClick={() => setDeleteTarget(f)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </PermissionGate>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

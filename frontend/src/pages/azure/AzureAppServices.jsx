@@ -2,8 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Globe, Play, Square, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import BatchActionBar from '../../components/common/BatchActionBar';
@@ -128,7 +129,7 @@ const AzureAppServices = () => {
     fetchData(true);
   };
 
-  const filtered = query
+  const filtered = loading ? [] : query
     ? apps.filter(a =>
         a.name?.toLowerCase().includes(query) ||
         a.resource_group?.toLowerCase().includes(query) ||
@@ -160,7 +161,6 @@ const AzureAppServices = () => {
     setBatchDeleteOpen(false);
   };
 
-  if (loading) return <Layout><LoadingSpinner text="Carregando App Services..." /></Layout>;
   if (noCredentials) return <Layout><NoCredentialsMessage provider="azure" /></Layout>;
 
   return (
@@ -169,7 +169,7 @@ const AzureAppServices = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">App Services</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            {filtered.length} de {apps.length} app(s){query && ` para "${query}"`}
+            {loading ? 'Carregando...' : `${filtered.length} de ${apps.length} app(s)${query ? ` para "${query}"` : ''}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -196,11 +196,24 @@ const AzureAppServices = () => {
       )}
 
       <div className="card overflow-hidden p-0">
-        {filtered.length === 0 ? (
-          <div className="text-center py-12">
-            <Globe className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-            <p className="text-gray-500 dark:text-gray-400">Nenhum App Service encontrado</p>
-          </div>
+        {loading ? (
+          <SkeletonTable columns={7} rows={5} hasCheckbox />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Globe}
+            title="Nenhum App Service"
+            description="Crie seu primeiro App Service para hospedar aplicações web na Azure."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar App Service
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">

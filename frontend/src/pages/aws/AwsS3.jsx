@@ -3,8 +3,9 @@ import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { HardDrive, ShieldAlert, ShieldCheck, AlertCircle, Plus, Trash2 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateS3Form from '../../components/create/CreateS3Form';
@@ -52,8 +53,6 @@ const AwsS3 = () => {
     }
   };
 
-  if (isLoading) return <Layout><LoadingSpinner text="Carregando buckets S3..." /></Layout>;
-
   if (error?.response?.status === 400) {
     return <Layout><NoCredentialsMessage provider="aws" /></Layout>;
   }
@@ -69,7 +68,7 @@ const AwsS3 = () => {
     );
   }
 
-  const buckets = (data?.buckets || []).filter(b =>
+  const buckets = isLoading ? [] : (data?.buckets || []).filter(b =>
     !q || b.name?.toLowerCase().includes(q) || b.region?.toLowerCase().includes(q)
   );
 
@@ -79,7 +78,7 @@ const AwsS3 = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">S3 — Buckets</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {buckets.length} bucket(s){q && ` · filtrado por "${q}"`}
+            {isLoading ? 'Carregando...' : `${buckets.length} bucket(s)${q ? ` · filtrado por "${q}"` : ''}`}
           </p>
         </div>
         <PermissionGate permission="resources.create">
@@ -92,59 +91,77 @@ const AwsS3 = () => {
         </PermissionGate>
       </div>
 
-      <div className="card overflow-x-auto">
-        {buckets.length === 0 ? (
-          <p className="text-center py-8 text-gray-500 dark:text-gray-400">Nenhum bucket encontrado</p>
+      <div className="card">
+        {isLoading ? (
+          <SkeletonTable columns={4} rows={5} />
+        ) : buckets.length === 0 ? (
+          <EmptyState
+            icon={HardDrive}
+            title="Nenhum bucket S3"
+            description="Crie seu primeiro bucket para armazenar objetos na AWS."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar Bucket
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : (
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900/50">
-              <tr>
-                {['Nome', 'Região', 'Criado em', 'Acesso Público', 'Ações'].map(h => (
-                  <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {buckets.map(b => (
-                <tr key={b.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(b)}>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <HardDrive className="w-4 h-4 text-yellow-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{b.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{b.region || 'N/A'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {b.creation_date ? new Date(b.creation_date).toLocaleDateString('pt-BR') : '—'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {b.public_access === null ? (
-                      <span className="text-xs text-gray-400">—</span>
-                    ) : b.public_access ? (
-                      <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
-                        <ShieldAlert className="w-3.5 h-3.5" /> Público
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                        <ShieldCheck className="w-3.5 h-3.5" /> Bloqueado
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <PermissionGate permission="resources.delete">
-                      <button
-                        onClick={() => setDeleteTarget(b)}
-                        className="text-red-400 hover:text-red-600 transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </PermissionGate>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
+                <tr>
+                  {['Nome', 'Região', 'Criado em', 'Acesso Público', 'Ações'].map(h => (
+                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {buckets.map(b => (
+                  <tr key={b.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(b)}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <HardDrive className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{b.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{b.region || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {b.creation_date ? new Date(b.creation_date).toLocaleDateString('pt-BR') : '—'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {b.public_access === null ? (
+                        <span className="text-xs text-gray-400">—</span>
+                      ) : b.public_access ? (
+                        <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
+                          <ShieldAlert className="w-3.5 h-3.5" /> Público
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                          <ShieldCheck className="w-3.5 h-3.5" /> Bloqueado
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <PermissionGate permission="resources.delete">
+                        <button
+                          onClick={() => setDeleteTarget(b)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </PermissionGate>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 

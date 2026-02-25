@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
-import { RefreshCw, Plus } from 'lucide-react';
+import { RefreshCw, Plus, Monitor } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import AzureVMTable from '../../components/resources/azurevmtable';
 import ResourceCard from '../../components/resources/resourcecard';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import ErrorMessage from '../../components/common/errormessage';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import BatchActionBar from '../../components/common/BatchActionBar';
@@ -135,7 +136,7 @@ const AzureVMs = () => {
     fetchVMs(true);
   };
 
-  const filtered = query
+  const filtered = loading ? [] : query
     ? vms.filter(v =>
         v.name?.toLowerCase().includes(query) ||
         v.resource_group?.toLowerCase().includes(query) ||
@@ -163,9 +164,8 @@ const AzureVMs = () => {
     setBatchDeleteOpen(false);
   };
 
-  if (loading) return <Layout><LoadingSpinner text="Carregando VMs Azure..." /></Layout>;
   if (noCredentials) return <Layout><NoCredentialsMessage provider="azure" /></Layout>;
-  if (error && vms.length === 0) return <Layout><ErrorMessage message={error} onRetry={fetchVMs} /></Layout>;
+  if (error && vms.length === 0 && !loading) return <Layout><ErrorMessage message={error} onRetry={fetchVMs} /></Layout>;
 
   return (
     <Layout>
@@ -173,7 +173,7 @@ const AzureVMs = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Azure — Virtual Machines</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            {filtered.length} de {vms.length} VM(s){query && ` para "${query}"`}
+            {loading ? 'Carregando...' : `${filtered.length} de ${vms.length} VM(s)${query ? ` para "${query}"` : ''}`}
           </p>
         </div>
         <PermissionGate permission="resources.create">
@@ -211,8 +211,24 @@ const AzureVMs = () => {
       </div>
 
       <div className="card">
-        {filtered.length === 0 ? (
-          <p className="text-center py-12 text-gray-500 dark:text-gray-400">Nenhuma VM encontrada</p>
+        {loading ? (
+          <SkeletonTable columns={6} rows={5} hasCheckbox />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Monitor}
+            title="Nenhuma VM Azure"
+            description="Crie sua primeira Virtual Machine para começar a gerenciar sua infraestrutura Azure."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar VM
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : viewType === 'table' ? (
           <AzureVMTable
             vms={filtered}
