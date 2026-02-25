@@ -83,7 +83,9 @@ export const AzureIcon = ({ className }) => (
 );
 
 /**
- * Google Cloud Platform — the iconic 4-color arrangement (Google brand colors)
+ * Google Cloud Platform — cloud silhouette with Google brand color arc
+ * Outer cloud: divided into 4 Google colors (red/blue top, yellow/green bottom)
+ * Inner cloud: white fill creating the colored ring effect
  */
 export const GcpIcon = ({ className }) => (
   <svg
@@ -93,9 +95,26 @@ export const GcpIcon = ({ className }) => (
     className={className}
     aria-label="Google Cloud Platform"
   >
-    <rect x="2"  y="2"  width="9" height="9" rx="2" fill="#EA4335" />
-    <rect x="13" y="2"  width="9" height="9" rx="2" fill="#4285F4" />
-    <rect x="2"  y="13" width="9" height="9" rx="2" fill="#FBBC05" />
-    <rect x="13" y="13" width="9" height="9" rx="2" fill="#34A853" />
+    <defs>
+      <clipPath id="gcp-cloud-outer">
+        {/* Outer cloud silhouette */}
+        <path d="M20.5 9.8C20 6.7 17.4 4.3 14.2 4.3c-1.9 0-3.7.9-4.9 2.3C8.7 6.1 8 5.8 7.2 5.8 5.1 5.8 3.4 7.4 3.4 9.5c0 .2 0 .5.1.7C2 10.8 1.2 12.2 1.2 13.7c0 2.5 2 4.5 4.5 4.5h13.2c2.1 0 3.8-1.7 3.8-3.8 0-1.8-1.2-3.3-2.9-3.7-.1-.3-.2-.6-.3-.9z" />
+      </clipPath>
+    </defs>
+
+    {/* Red — top-left */}
+    <rect x="0" y="0" width="12" height="11" fill="#EA4335" clipPath="url(#gcp-cloud-outer)" />
+    {/* Blue — top-right */}
+    <rect x="12" y="0" width="12" height="11" fill="#4285F4" clipPath="url(#gcp-cloud-outer)" />
+    {/* Yellow — bottom-left */}
+    <rect x="0" y="11" width="12" height="13" fill="#FBBC05" clipPath="url(#gcp-cloud-outer)" />
+    {/* Green — bottom-right */}
+    <rect x="12" y="11" width="12" height="13" fill="#34A853" clipPath="url(#gcp-cloud-outer)" />
+
+    {/* White inner cloud — creates the colored ring/border effect */}
+    <path
+      d="M18.8 11.7c-.5-2.3-2.6-4-5-4-1.6 0-3.1.8-4 2.1-.5-.2-1-.4-1.6-.4-1.8 0-3.2 1.4-3.2 3.2 0 .2 0 .4.1.5C3.9 13.6 3 14.7 3 16c0 1.6 1.3 2.8 2.9 2.8h11.3c1.6 0 2.9-1.3 2.9-2.9 0-1.4-.9-2.5-2.2-2.8-.1-.2-.1-.3-.1-.4z"
+      fill="white"
+    />
   </svg>
 );

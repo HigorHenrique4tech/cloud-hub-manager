@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Settings, ArrowRight } from 'lucide-react';
+import { AwsIcon, AzureIcon, GcpIcon } from './CloudProviderIcons';
 
 const NoCredentialsMessage = ({ provider }) => {
   const providerLabel = {
@@ -11,18 +12,18 @@ const NoCredentialsMessage = ({ provider }) => {
 
   const icon = {
     aws: (
-      <div className="w-16 h-16 rounded-2xl bg-orange-50 border border-orange-200 flex items-center justify-center mx-auto mb-6">
-        <span className="text-3xl font-bold text-orange-500">AWS</span>
+      <div className="w-20 h-14 rounded-2xl bg-orange-50 border border-orange-200 flex items-center justify-center mx-auto mb-6">
+        <AwsIcon className="w-14 h-9" />
       </div>
     ),
     azure: (
       <div className="w-16 h-16 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-center mx-auto mb-6">
-        <span className="text-2xl font-bold text-sky-500">Az</span>
+        <AzureIcon className="w-9 h-9" />
       </div>
     ),
     gcp: (
-      <div className="w-16 h-16 rounded-2xl bg-green-50 border border-green-200 flex items-center justify-center mx-auto mb-6">
-        <span className="text-2xl font-bold text-green-600">GCP</span>
+      <div className="w-16 h-16 rounded-2xl bg-white border border-gray-200 flex items-center justify-center mx-auto mb-6">
+        <GcpIcon className="w-10 h-10" />
       </div>
     ),
     costs: (
