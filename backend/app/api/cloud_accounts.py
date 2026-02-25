@@ -178,4 +178,18 @@ async def test_account_connection(
         )
         return await svc.test_connection()
 
+    if account.provider == "gcp":
+        from app.services.gcp_service import GCPService
+        svc = GCPService(
+            project_id=data.get("project_id", ""),
+            client_email=data.get("client_email", ""),
+            private_key=data.get("private_key", ""),
+            private_key_id=data.get("private_key_id", ""),
+        )
+        try:
+            buckets = svc.list_buckets()
+            return {"success": True, "project_id": svc.project_id, "bucket_count": len(buckets)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Falha na conexão GCP: {exc}")
+
     raise HTTPException(status_code=400, detail="Provider desconhecido")

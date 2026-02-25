@@ -5,6 +5,7 @@ const NoCredentialsMessage = ({ provider }) => {
   const providerLabel = {
     aws: 'Amazon Web Services (AWS)',
     azure: 'Microsoft Azure',
+    gcp: 'Google Cloud Platform (GCP)',
     costs: 'nenhuma cloud',
   }[provider] ?? provider;
 
@@ -17,6 +18,11 @@ const NoCredentialsMessage = ({ provider }) => {
     azure: (
       <div className="w-16 h-16 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-center mx-auto mb-6">
         <span className="text-2xl font-bold text-sky-500">Az</span>
+      </div>
+    ),
+    gcp: (
+      <div className="w-16 h-16 rounded-2xl bg-green-50 border border-green-200 flex items-center justify-center mx-auto mb-6">
+        <span className="text-2xl font-bold text-green-600">GCP</span>
       </div>
     ),
     costs: (
