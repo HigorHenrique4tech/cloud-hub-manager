@@ -60,6 +60,12 @@ class Settings(BaseSettings):
     AZURE_CLIENT_ID: str = ""
     AZURE_CLIENT_SECRET: str = ""
 
+    # GCP (global fallback)
+    GCP_PROJECT_ID: str = ""
+    GCP_CLIENT_EMAIL: str = ""
+    GCP_PRIVATE_KEY: str = ""
+    GCP_PRIVATE_KEY_ID: str = ""
+
     @model_validator(mode='after')
     def validate_production_secrets(self) -> 'Settings':
         """Prevent the app from starting with insecure defaults in production."""

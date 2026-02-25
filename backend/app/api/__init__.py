@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from .aws import ws_router as aws_ws_router
 from .azure import ws_router as azure_ws_router
+from .gcp import ws_router as gcp_ws_router
 from .auth import router as auth_router
 from .alerts import ws_router as alerts_ws_router
 from .logs import ws_router as logs_ws_router
@@ -28,6 +29,7 @@ api_router.include_router(billing_webhook_router)
 api_router.include_router(cloud_accounts_router)
 api_router.include_router(aws_ws_router)
 api_router.include_router(azure_ws_router)
+api_router.include_router(gcp_ws_router)
 api_router.include_router(alerts_ws_router)
 api_router.include_router(logs_ws_router)
 api_router.include_router(finops_ws_router)

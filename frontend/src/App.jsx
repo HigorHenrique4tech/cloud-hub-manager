@@ -16,6 +16,13 @@ import AzureStorage from './pages/azure/AzureStorage';
 import AzureVNets from './pages/azure/AzureVNets';
 import AzureDatabases from './pages/azure/AzureDatabases';
 import AzureAppServices from './pages/azure/AzureAppServices';
+// GCP
+import GcpOverview from './pages/gcp/GcpOverview';
+import GcpComputeEngine from './pages/gcp/GcpComputeEngine';
+import GcpStorage from './pages/gcp/GcpStorage';
+import GcpCloudSQL from './pages/gcp/GcpCloudSQL';
+import GcpFunctions from './pages/gcp/GcpFunctions';
+import GcpVPC from './pages/gcp/GcpVPC';
 // AWS
 import AwsOverview from './pages/aws/AwsOverview';
 import AwsEC2 from './pages/aws/AwsEC2';
@@ -74,6 +81,13 @@ function App() {
                 <Route path="/aws/rds" element={<PR><AwsRDS /></PR>} />
                 <Route path="/aws/lambda" element={<PR><AwsLambda /></PR>} />
                 <Route path="/aws/vpc" element={<PR><AwsVPC /></PR>} />
+                {/* GCP */}
+                <Route path="/gcp" element={<PR><GcpOverview /></PR>} />
+                <Route path="/gcp/compute" element={<PR><GcpComputeEngine /></PR>} />
+                <Route path="/gcp/storage" element={<PR><GcpStorage /></PR>} />
+                <Route path="/gcp/sql" element={<PR><GcpCloudSQL /></PR>} />
+                <Route path="/gcp/functions" element={<PR><GcpFunctions /></PR>} />
+                <Route path="/gcp/networks" element={<PR><GcpVPC /></PR>} />
                 {/* Azure */}
                 <Route path="/azure" element={<PR><AzureOverview /></PR>} />
                 <Route path="/azure/vms" element={<PR><AzureVMs /></PR>} />
