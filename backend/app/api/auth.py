@@ -354,6 +354,11 @@ def toggle_mfa(
     db: Session = Depends(get_db),
 ):
     """Enable or disable MFA for the current user (requires password confirmation)."""
+    if current_user.oauth_provider:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="MFA não está disponível para contas OAuth. A segurança é gerenciada pelo provedor de identidade.",
+        )
     if not verify_password(payload.password, current_user.hashed_password):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Senha incorreta")
 

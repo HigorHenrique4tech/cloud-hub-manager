@@ -290,6 +290,22 @@ const Settings = () => {
       </div>
 
       {/* ── MFA ───────────────────────────────────────────── */}
+      {user?.oauth_provider ? (
+        <div className="card mb-6 bg-gray-50 dark:bg-gray-800/50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-lg bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
+              <ShieldCheck className="w-5 h-5 text-gray-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Autenticação em Dois Fatores</h2>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                MFA não está disponível para contas {user.oauth_provider === 'google' ? 'Google' : 'GitHub'}.
+                A segurança é gerenciada pelo provedor de identidade.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="card mb-6">
         <div className="flex items-center gap-3 mb-5">
           <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${user?.mfa_enabled ? 'bg-green-500/10' : 'bg-gray-100 dark:bg-gray-700'}`}>
@@ -366,6 +382,7 @@ const Settings = () => {
           </div>
         </form>
       </div>
+      )}
 
       {/* ── Info cloud accounts ───────────────────────────── */}
       <div className="card bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
