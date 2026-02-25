@@ -1,3 +1,4 @@
+import hmac
 import json
 import logging
 import hashlib
@@ -71,6 +72,44 @@ def decrypt_credential(encrypted: str) -> dict:
     """Decrypt an encrypted credential string back to a dict."""
     f = _get_fernet()
     return json.loads(f.decrypt(encrypted.encode()).decode())
+
+
+# ── MFA / OTP ─────────────────────────────────────────────────────────────────
+
+def generate_otp() -> str:
+    """Gera OTP de 6 dígitos com zero-padding."""
+    return str(secrets.randbelow(1_000_000)).zfill(6)
+
+
+def hash_otp(otp: str) -> str:
+    """SHA-256 do OTP para armazenamento seguro no DB."""
+    return hashlib.sha256(otp.encode()).hexdigest()
+
+
+def verify_otp_hash(otp: str, stored_hash: str) -> bool:
+    """Comparação segura contra timing attacks."""
+    return hmac.compare_digest(hash_otp(otp), stored_hash)
+
+
+def create_mfa_token(user_id: str) -> str:
+    """JWT de 10 minutos com type='mfa' para identificar o fluxo pendente."""
+    expire = datetime.utcnow() + timedelta(minutes=10)
+    return jwt.encode(
+        {"sub": user_id, "type": "mfa", "exp": expire},
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+
+def decode_mfa_token(token: str) -> Optional[str]:
+    """Retorna user_id ou None se inválido/expirado/tipo errado."""
+    try:
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        if payload.get("type") != "mfa":
+            return None
+        return payload.get("sub")
+    except JWTError:
+        return None
 
 
 # ── Refresh tokens ───────────────────────────────────────────────────────────

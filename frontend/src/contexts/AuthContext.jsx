@@ -27,6 +27,8 @@ export const AuthProvider = ({ children }) => {
 
   const login = async (email, password) => {
     const data = await authService.login(email, password);
+    // MFA required — return early so login.jsx can handle the OTP step
+    if (data.mfa_required) return data;
     localStorage.setItem('token', data.access_token);
     if (data.refresh_token) {
       localStorage.setItem('refreshToken', data.refresh_token);

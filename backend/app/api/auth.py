@@ -1,6 +1,6 @@
 import logging
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -9,13 +9,17 @@ from app.database import get_db
 from app.models.db_models import (
     User, Organization, OrganizationMember, Workspace, PendingInvitation,
 )
-from app.models.schemas import UserCreate, UserLogin, UserResponse, TokenResponse, UserUpdate, PasswordChange
+from app.models.schemas import (
+    UserCreate, UserLogin, UserResponse, TokenResponse, UserUpdate, PasswordChange,
+    MFARequiredResponse, MFAVerifyRequest, MFAToggleRequest,
+)
 from app.services.auth_service import (
     hash_password, verify_password, create_access_token,
     create_refresh_token, validate_refresh_token, revoke_refresh_token,
+    generate_otp, hash_otp, verify_otp_hash, create_mfa_token, decode_mfa_token,
 )
 from app.services.oauth_service import google_get_user_info, github_get_user_info
-from app.services.email_service import send_verification_email
+from app.services.email_service import send_verification_email, send_otp_email
 from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
 from app.core.limiter import limiter
@@ -155,10 +159,10 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
     )
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login")
 @limiter.limit("5/minute")
 def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
-    """Login with email and password"""
+    """Login with email and password. Returns TokenResponse or MFARequiredResponse."""
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
 
     if not user or not verify_password(payload.password, user.hashed_password):
@@ -167,7 +171,17 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
             detail="Email ou senha incorretos",
         )
 
-    # Ensure personal org exists (migration for pre-existing users)
+    # MFA check — if enabled, issue a short-lived mfa_token and send OTP
+    if user.mfa_enabled:
+        otp = generate_otp()
+        user.mfa_otp_hash = hash_otp(otp)
+        user.mfa_otp_expires_at = datetime.utcnow() + timedelta(minutes=5)
+        user.mfa_otp_attempts = 0
+        db.commit()
+        send_otp_email(user.email, user.name, otp)
+        return {"mfa_required": True, "mfa_token": create_mfa_token(str(user.id))}
+
+    # Normal flow (MFA not enabled)
     _ensure_personal_org(db, user)
     db.refresh(user)
 
@@ -255,6 +269,109 @@ def change_password(
     current_user.hashed_password = hash_password(payload.new_password)
     db.commit()
     return {"detail": "Senha alterada com sucesso"}
+
+
+# ── MFA ──────────────────────────────────────────────────────────────────────
+
+
+@router.post("/mfa/verify", response_model=TokenResponse)
+@limiter.limit("10/minute")
+def verify_mfa(payload: MFAVerifyRequest, request: Request, db: Session = Depends(get_db)):
+    """Verify OTP and complete MFA login. Returns full TokenResponse."""
+    user_id = decode_mfa_token(payload.mfa_token)
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token MFA inválido ou expirado")
+
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not user or not user.mfa_otp_hash:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Sessão MFA inválida")
+
+    if not user.mfa_otp_expires_at or datetime.utcnow() > user.mfa_otp_expires_at:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Código expirado. Faça login novamente")
+
+    if user.mfa_otp_attempts >= 3:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Muitas tentativas. Faça login novamente")
+
+    if not verify_otp_hash(payload.otp, user.mfa_otp_hash):
+        user.mfa_otp_attempts += 1
+        db.commit()
+        remaining = 3 - user.mfa_otp_attempts
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Código incorreto. {remaining} tentativa(s) restante(s)",
+        )
+
+    # Success — clear OTP fields
+    user.mfa_otp_hash = None
+    user.mfa_otp_expires_at = None
+    user.mfa_otp_attempts = 0
+    db.commit()
+
+    _ensure_personal_org(db, user)
+    db.refresh(user)
+
+    log_activity(db, user, 'auth.login', 'User', resource_id=str(user.id),
+                 resource_name=user.email, provider='system', detail='mfa=true')
+
+    access_token = create_access_token(str(user.id))
+    refresh_token = create_refresh_token(
+        db, user.id,
+        user_agent=request.headers.get("user-agent"),
+        ip_address=request.client.host if request.client else None,
+    )
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=UserResponse.model_validate(user),
+    )
+
+
+@router.post("/mfa/resend")
+@limiter.limit("3/minute")
+def resend_mfa(payload: dict, request: Request, db: Session = Depends(get_db)):
+    """Resend OTP for a pending MFA session."""
+    user_id = decode_mfa_token(payload.get("mfa_token", ""))
+    if not user_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token MFA inválido ou expirado")
+
+    user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
+
+    otp = generate_otp()
+    user.mfa_otp_hash = hash_otp(otp)
+    user.mfa_otp_expires_at = datetime.utcnow() + timedelta(minutes=5)
+    user.mfa_otp_attempts = 0
+    db.commit()
+    send_otp_email(user.email, user.name, otp)
+    return {"ok": True}
+
+
+@router.put("/me/mfa")
+def toggle_mfa(
+    payload: MFAToggleRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Enable or disable MFA for the current user (requires password confirmation)."""
+    if not verify_password(payload.password, current_user.hashed_password):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Senha incorreta")
+
+    current_user.mfa_enabled = payload.enabled
+    if not payload.enabled:
+        current_user.mfa_otp_hash = None
+        current_user.mfa_otp_expires_at = None
+        current_user.mfa_otp_attempts = 0
+    db.commit()
+
+    log_activity(
+        db, current_user, 'auth.mfa_toggle', 'User',
+        resource_id=str(current_user.id),
+        resource_name=current_user.email,
+        detail=f"enabled={payload.enabled}",
+        provider='system',
+    )
+    return {"mfa_enabled": current_user.mfa_enabled}
 
 
 # ── Email Verification ──────────────────────────────────────────────────────

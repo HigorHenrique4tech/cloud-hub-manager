@@ -62,6 +62,22 @@ const authService = {
     return data;
   },
 
+  // MFA
+  verifyMFA: async (mfaToken, otp) => {
+    const { data } = await api.post('/auth/mfa/verify', { mfa_token: mfaToken, otp });
+    return data;
+  },
+
+  resendMFA: async (mfaToken) => {
+    const { data } = await api.post('/auth/mfa/resend', { mfa_token: mfaToken });
+    return data;
+  },
+
+  toggleMFA: async (enabled, password) => {
+    const { data } = await api.put('/auth/me/mfa', { enabled, password });
+    return data;
+  },
+
   // OAuth
   googleCallback: async (code, redirectUri) => {
     const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri });

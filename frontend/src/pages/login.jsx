@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Mail, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, LogIn, Eye, EyeOff, ShieldCheck, ArrowLeft, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import authService from '../services/authService';
 import OAuthButtons from '../components/auth/OAuthButtons';
 
 /* ── Animated cloud network SVG ─────────────────────────────────── */
@@ -115,28 +116,99 @@ const inputClass =
 
 /* ── Login page ──────────────────────────────────────────────────── */
 const Login = () => {
+  // Credentials step
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+
+  // MFA step
+  const [step, setStep] = useState('credentials'); // 'credentials' | 'otp'
+  const [mfaToken, setMfaToken] = useState('');
+  const [otp, setOtp] = useState('');
+  const [otpError, setOtpError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownRef = useRef(null);
+  const otpInputRef = useRef(null);
+
+  const { login, loginWithTokens } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const inviteToken = searchParams.get('invite');
+
+  const startCooldown = () => {
+    setResendCooldown(60);
+    clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((v) => {
+        if (v <= 1) { clearInterval(cooldownRef.current); return 0; }
+        return v - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => clearInterval(cooldownRef.current), []);
+
+  useEffect(() => {
+    if (step === 'otp') setTimeout(() => otpInputRef.current?.focus(), 50);
+  }, [step]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      const inviteToken = searchParams.get('invite');
-      navigate(inviteToken ? `/invite/${inviteToken}` : '/');
+      const data = await login(email, password);
+      if (data.mfa_required) {
+        setMfaToken(data.mfa_token);
+        setStep('otp');
+        startCooldown();
+      } else {
+        navigate(inviteToken ? `/invite/${inviteToken}` : '/');
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao fazer login');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault();
+    setOtpError('');
+    setLoading(true);
+    try {
+      const data = await authService.verifyMFA(mfaToken, otp);
+      loginWithTokens(data);
+      navigate(inviteToken ? `/invite/${inviteToken}` : '/');
+    } catch (err) {
+      setOtpError(err.response?.data?.detail || 'Código inválido');
+      setOtp('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await authService.resendMFA(mfaToken);
+      setOtpError('');
+      setOtp('');
+      startCooldown();
+    } catch (err) {
+      setOtpError(err.response?.data?.detail || 'Erro ao reenviar código');
+    }
+  };
+
+  const handleBack = () => {
+    setStep('credentials');
+    setOtp('');
+    setOtpError('');
+    setMfaToken('');
+    clearInterval(cooldownRef.current);
+    setResendCooldown(0);
   };
 
   return (
@@ -152,76 +224,154 @@ const Login = () => {
           <p className="text-gray-500 text-sm">Gerenciamento multi-cloud centralizado</p>
         </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Bem-vindo de volta</h1>
-        <p className="text-gray-500 mb-8">Entre com suas credenciais para continuar</p>
+        {step === 'credentials' ? (
+          <>
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Bem-vindo de volta</h1>
+            <p className="text-gray-500 mb-8">Entre com suas credenciais para continuar</p>
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {error}
-          </div>
-        )}
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {error}
+              </div>
+            )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@email.com"
-                className={inputClass}
-              />
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="seu@email.com"
+                    className={inputClass}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                    className={inputClass}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    tabIndex={-1}
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <LogIn className="w-4 h-4" />
+                )}
+                {loading ? 'Entrando...' : 'Entrar'}
+              </button>
+            </form>
+
+            <p className="mt-6 text-center text-sm text-gray-500">
+              Não tem uma conta?{' '}
+              <Link to="/register" className="text-primary font-medium hover:underline">
+                Criar conta
+              </Link>
+            </p>
+
+            <OAuthButtons />
+          </>
+        ) : (
+          <>
+            {/* OTP step */}
+            <div className="flex flex-col items-center text-center mb-8">
+              <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
+                <ShieldCheck className="w-8 h-8 text-primary" />
+              </div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-2">Verificação em dois fatores</h1>
+              <p className="text-gray-500 text-sm">
+                Enviamos um código de 6 dígitos para<br />
+                <span className="font-medium text-gray-700">{email}</span>
+              </p>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className={inputClass}
-              />
+            {otpError && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm text-center">
+                {otpError}
+              </div>
+            )}
+
+            <form onSubmit={handleVerifyOTP} className="space-y-5">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1 text-center">
+                  Código de verificação
+                </label>
+                <input
+                  ref={otpInputRef}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  required
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  placeholder="000000"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 font-mono text-2xl text-center tracking-[0.5em] placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading || otp.length !== 6}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {loading ? (
+                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4" />
+                )}
+                {loading ? 'Verificando...' : 'Verificar'}
+              </button>
+            </form>
+
+            <div className="mt-5 flex flex-col items-center gap-3">
               <button
                 type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                tabIndex={-1}
+                onClick={handleResend}
+                disabled={resendCooldown > 0}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-primary disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
               >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                <RefreshCw className="w-3.5 h-3.5" />
+                {resendCooldown > 0 ? `Reenviar em ${resendCooldown}s` : 'Reenviar código'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleBack}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                Voltar
               </button>
             </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <LogIn className="w-4 h-4" />
-            )}
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          Não tem uma conta?{' '}
-          <Link to="/register" className="text-primary font-medium hover:underline">
-            Criar conta
-          </Link>
-        </p>
-
-        <OAuthButtons />
+          </>
+        )}
       </div>
 
       {/* Right panel – animation */}

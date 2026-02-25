@@ -108,6 +108,7 @@ class UserResponse(BaseModel):
     default_org_id: Optional[UUID] = None
     oauth_provider: Optional[str] = None
     avatar_url: Optional[str] = None
+    mfa_enabled: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -118,6 +119,23 @@ class TokenResponse(BaseModel):
     refresh_token: Optional[str] = None
     token_type: str = "bearer"
     user: UserResponse
+
+
+# ── MFA schemas ─────────────────────────────────────────────────────────────
+
+class MFARequiredResponse(BaseModel):
+    mfa_required: bool = True
+    mfa_token: str
+
+
+class MFAVerifyRequest(BaseModel):
+    mfa_token: str
+    otp: str  # 6 dígitos como string
+
+
+class MFAToggleRequest(BaseModel):
+    enabled: bool
+    password: str  # senha atual para confirmar
 
 
 # ── Profile update schemas ───────────────────────────────────────────────────

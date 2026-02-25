@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Save, Eye, EyeOff, Check, AlertCircle, User as UserIcon, Lock } from 'lucide-react';
+import { LogOut, Save, Eye, EyeOff, Check, AlertCircle, User as UserIcon, Lock, ShieldCheck } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
@@ -85,6 +85,35 @@ const Settings = () => {
   };
 
   const profileChanged = name !== user?.name || email !== user?.email;
+
+  // ── MFA state ──────────────────────────────────────────────────────────────
+  const [mfaPwd, setMfaPwd] = useState('');
+  const [showMfaPwd, setShowMfaPwd] = useState(false);
+  const [mfaMsg, setMfaMsg] = useState(null);
+
+  const mfaMutation = useMutation({
+    mutationFn: ({ enabled }) => authService.toggleMFA(enabled, mfaPwd),
+    onSuccess: (res) => {
+      setUser((u) => ({ ...u, mfa_enabled: res.mfa_enabled }));
+      setMfaMsg({
+        type: 'success',
+        text: res.mfa_enabled
+          ? 'Autenticação em dois fatores ativada com sucesso!'
+          : 'Autenticação em dois fatores desativada.',
+      });
+      setMfaPwd('');
+      setTimeout(() => setMfaMsg(null), 4000);
+    },
+    onError: (err) => {
+      setMfaMsg({ type: 'error', text: err.response?.data?.detail || 'Erro ao alterar MFA' });
+    },
+  });
+
+  const handleMfaToggle = (e) => {
+    e.preventDefault();
+    setMfaMsg(null);
+    mfaMutation.mutate({ enabled: !user?.mfa_enabled });
+  };
 
   return (
     <Layout>
@@ -255,6 +284,84 @@ const Settings = () => {
             >
               <Lock className="w-4 h-4" />
               {pwdMutation.isPending ? 'Alterando...' : 'Alterar Senha'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* ── MFA ───────────────────────────────────────────── */}
+      <div className="card mb-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${user?.mfa_enabled ? 'bg-green-500/10' : 'bg-gray-100 dark:bg-gray-700'}`}>
+            <ShieldCheck className={`w-5 h-5 ${user?.mfa_enabled ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`} />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Autenticação em Dois Fatores</h2>
+              {user?.mfa_enabled ? (
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">Ativo</span>
+              ) : (
+                <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400">Inativo</span>
+              )}
+            </div>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {user?.mfa_enabled
+                ? 'Um código será enviado ao seu email a cada login.'
+                : 'Adicione uma camada extra de segurança à sua conta.'}
+            </p>
+          </div>
+        </div>
+
+        {mfaMsg && (
+          <div className={`flex items-center gap-2 p-3 rounded-lg mb-4 text-sm ${
+            mfaMsg.type === 'success'
+              ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+              : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+          }`}>
+            {mfaMsg.type === 'success' ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+            {mfaMsg.text}
+          </div>
+        )}
+
+        <form onSubmit={handleMfaToggle} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Confirme sua senha atual
+            </label>
+            <div className="relative">
+              <input
+                type={showMfaPwd ? 'text' : 'password'}
+                value={mfaPwd}
+                onChange={(e) => setMfaPwd(e.target.value)}
+                className={inputClass + ' pr-10'}
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowMfaPwd(!showMfaPwd)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              >
+                {showMfaPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="submit"
+              disabled={!mfaPwd || mfaMutation.isPending}
+              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                user?.mfa_enabled
+                  ? 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-800'
+                  : 'btn-primary'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              {mfaMutation.isPending
+                ? 'Salvando...'
+                : user?.mfa_enabled
+                  ? 'Desativar MFA'
+                  : 'Ativar MFA'}
             </button>
           </div>
         </form>

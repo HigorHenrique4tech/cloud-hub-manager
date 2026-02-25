@@ -155,6 +155,10 @@ class User(Base):
     oauth_provider     = Column(String(50), nullable=True)    # "google" | "github" | None
     oauth_id           = Column(String(255), nullable=True)   # Provider's user ID
     avatar_url         = Column(String(500), nullable=True)
+    mfa_enabled        = Column(Boolean, default=False, nullable=False)
+    mfa_otp_hash       = Column(String(64), nullable=True)    # SHA-256 do OTP temporário
+    mfa_otp_expires_at = Column(DateTime, nullable=True)
+    mfa_otp_attempts   = Column(Integer, default=0, nullable=False)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

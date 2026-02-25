@@ -186,6 +186,33 @@ def send_org_member_added_email(
     return _send_email(to_email, f"CloudAtlas — Você foi adicionado a {org_name}", html)
 
 
+def send_otp_email(to_email: str, user_name: str, otp_code: str) -> bool:
+    """Send a 6-digit OTP code for MFA login verification."""
+    subject = "Seu código de verificação — CloudAtlas"
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Verificação em dois fatores</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        Use o código abaixo para completar seu login no CloudAtlas:
+      </p>
+      <div style="text-align: center; margin: 32px 0;">
+        <div style="display: inline-block; font-size: 40px; font-weight: bold; letter-spacing: 12px;
+                    color: #1d4ed8; background: #eff6ff; padding: 20px 32px;
+                    border-radius: 12px; border: 1px solid #bfdbfe;">
+          {otp_code}
+        </div>
+      </div>
+      <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+        Este código expira em <strong>5 minutos</strong>.<br/>
+        Se não foi você quem tentou fazer login, ignore este email.
+      </p>
+      {_FOOTER}
+    </div>
+    """
+    return _send_email(to_email, subject, html)
+
+
 def send_alert_email(
     to_email: str,
     user_name: str,
