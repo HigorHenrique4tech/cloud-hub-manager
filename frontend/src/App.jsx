@@ -43,6 +43,7 @@ import VerifyEmail from './pages/VerifyEmail';
 import VerifyCallback from './pages/VerifyCallback';
 import Billing from './pages/Billing';
 import BillingSuccess from './pages/BillingSuccess';
+import AdminPanel from './pages/AdminPanel';
 import OAuthCallback from './pages/OAuthCallback';
 import './styles/index.css';
 
@@ -108,6 +109,7 @@ function App() {
                 {/* Multi-tenant settings */}
                 <Route path="/org/settings" element={<PR><OrgSettings /></PR>} />
                 <Route path="/org/managed" element={<PR><ManagedOrgsPage /></PR>} />
+                <Route path="/admin" element={<PR><AdminPanel /></PR>} />
                 <Route path="/workspace/settings" element={<PR><WorkspaceSettings /></PR>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

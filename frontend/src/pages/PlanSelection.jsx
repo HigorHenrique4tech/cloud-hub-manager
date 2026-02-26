@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, ArrowRight, Sparkles, Building2, ChevronRight } from 'lucide-react';
+import { Check, ArrowRight, Sparkles, ChevronRight, X, Phone, Building2, MessageSquare } from 'lucide-react';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
+import { useAuth } from '../contexts/AuthContext';
 import orgService from '../services/orgService';
 import billingService from '../services/billingService';
+import adminService from '../services/adminService';
 
 const plans = [
   {
@@ -59,20 +61,173 @@ const plans = [
   },
 ];
 
+/* ── Sales Contact Modal ──────────────────────────────────────────────────── */
+
+const SalesModal = ({ onClose, userEmail, orgSlug }) => {
+  const [form, setForm] = useState({
+    name: '',
+    email: userEmail || '',
+    company: '',
+    phone: '',
+    message: '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState('');
+
+  const set = (field) => (e) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const handleSubmit = async () => {
+    if (!form.name.trim() || !form.email.trim()) return;
+    setSaving(true);
+    setError('');
+    try {
+      await adminService.submitLead({ ...form, org_slug: orgSlug });
+      setSuccess(true);
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Erro ao enviar. Tente novamente.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-white">Fale com nosso time de vendas</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+
+        {success ? (
+          <div className="px-5 py-8 text-center">
+            <div className="w-14 h-14 rounded-full bg-green-500/10 border border-green-500/20 flex items-center justify-center mx-auto mb-4">
+              <Check className="w-7 h-7 text-green-400" />
+            </div>
+            <h3 className="text-white font-semibold mb-2">Solicitação enviada!</h3>
+            <p className="text-slate-400 text-sm mb-5">
+              Recebemos sua mensagem. Entraremos em contato em até 24h.
+            </p>
+            <button
+              onClick={onClose}
+              className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90"
+            >
+              Fechar
+            </button>
+          </div>
+        ) : (
+          <div className="px-5 py-4 space-y-3">
+            <p className="text-slate-400 text-sm">
+              Nos conte mais sobre sua necessidade e entraremos em contato em até 24h.
+            </p>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Nome *</label>
+                <input
+                  value={form.name}
+                  onChange={set('name')}
+                  placeholder="Seu nome"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">E-mail *</label>
+                <input
+                  type="email"
+                  value={form.email}
+                  onChange={set('email')}
+                  placeholder="seu@email.com"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">
+                  <span className="flex items-center gap-1"><Building2 size={10} /> Empresa</span>
+                </label>
+                <input
+                  value={form.company}
+                  onChange={set('company')}
+                  placeholder="Nome da empresa"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">
+                  <span className="flex items-center gap-1"><Phone size={10} /> Telefone</span>
+                </label>
+                <input
+                  value={form.phone}
+                  onChange={set('phone')}
+                  placeholder="(11) 99999-9999"
+                  className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                <span className="flex items-center gap-1"><MessageSquare size={10} /> Mensagem</span>
+              </label>
+              <textarea
+                value={form.message}
+                onChange={set('message')}
+                rows={3}
+                placeholder="Conte-nos sobre sua necessidade..."
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-white focus:border-primary focus:outline-none resize-none"
+              />
+            </div>
+
+            {error && <p className="text-red-400 text-xs">{error}</p>}
+
+            <div className="flex justify-end gap-2 pt-1">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg border border-slate-600 text-sm text-slate-300 hover:text-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSubmit}
+                disabled={saving || !form.name.trim() || !form.email.trim()}
+                className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-1.5"
+              >
+                {saving ? (
+                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                ) : (
+                  <>Enviar solicitação <ArrowRight size={14} /></>
+                )}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ── Main Page ───────────────────────────────────────────────────────────── */
+
 const PlanSelection = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { currentOrg, refreshOrgs } = useOrgWorkspace();
+  const { user } = useAuth();
   const [loading, setLoading] = useState(null);
+  const [error, setError] = useState('');
+  const [showSalesModal, setShowSalesModal] = useState(false);
+  const [enterpriseSent, setEnterpriseSent] = useState(false);
 
   const inviteToken = searchParams.get('invite');
 
-  const [error, setError] = useState('');
-
   const handleSelect = async (planId) => {
     if (planId === 'enterprise') {
-      // Enterprise: contact sales (not yet implemented)
-      handleSkip();
+      setShowSalesModal(true);
       return;
     }
 
@@ -85,7 +240,6 @@ const PlanSelection = () => {
     setError('');
     try {
       if (planId === 'free') {
-        // Free plan: just update directly
         await orgService.updatePlan(currentOrg.slug, planId);
         await refreshOrgs();
         if (inviteToken) {
@@ -97,7 +251,6 @@ const PlanSelection = () => {
         // Paid plan: create checkout via AbacatePay
         const result = await billingService.checkout(currentOrg.slug, planId);
         if (result.payment_url) {
-          // Save payment_id so BillingSuccess can verify after redirect
           localStorage.setItem('pending_payment_id', result.payment_id);
           localStorage.setItem('pending_payment_org', currentOrg.slug);
           window.location.href = result.payment_url;
@@ -130,7 +283,6 @@ const PlanSelection = () => {
           <span className="text-2xl font-bold text-white">CloudAtlas</span>
         </div>
 
-        {/* Steps indicator */}
         <div className="flex items-center justify-center gap-2 text-sm mb-8">
           <span className="text-slate-500 flex items-center gap-1.5">
             <span className="w-6 h-6 rounded-full bg-primary/20 text-primary text-xs font-bold flex items-center justify-center border border-primary/30">
@@ -149,7 +301,7 @@ const PlanSelection = () => {
 
         <h1 className="text-3xl font-bold text-white mb-3">Escolha seu plano</h1>
         <p className="text-slate-400 text-sm max-w-md mx-auto">
-          Comece grátis e escale conforme sua necessidade. Todos os planos incluem acesso a AWS e Azure.
+          Comece grátis e escale conforme sua necessidade. Todos os planos incluem acesso a AWS, Azure e GCP.
         </p>
       </div>
 
@@ -203,24 +355,30 @@ const PlanSelection = () => {
                 ))}
               </ul>
 
-              <button
-                onClick={() => handleSelect(plan.id)}
-                disabled={loading !== null}
-                className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
-                  plan.highlight
-                    ? 'bg-primary text-white hover:bg-primary/90'
-                    : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
-                }`}
-              >
-                {loading === plan.id ? (
-                  <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <>
-                    {plan.cta}
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
+              {plan.id === 'enterprise' && enterpriseSent ? (
+                <div className="w-full py-2.5 rounded-lg bg-green-500/10 border border-green-500/20 text-green-400 text-sm font-medium text-center">
+                  ✓ Solicitação enviada! Em breve entraremos em contato.
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleSelect(plan.id)}
+                  disabled={loading !== null}
+                  className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-lg font-medium text-sm transition-colors disabled:opacity-50 ${
+                    plan.highlight
+                      ? 'bg-primary text-white hover:bg-primary/90'
+                      : 'bg-slate-700 text-slate-200 hover:bg-slate-600'
+                  }`}
+                >
+                  {loading === plan.id ? (
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      {plan.cta}
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -236,6 +394,17 @@ const PlanSelection = () => {
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {showSalesModal && (
+        <SalesModal
+          userEmail={user?.email}
+          orgSlug={currentOrg?.slug}
+          onClose={() => {
+            setShowSalesModal(false);
+            setEnterpriseSent(true);
+          }}
+        />
+      )}
     </div>
   );
 };

@@ -105,6 +105,7 @@ class UserResponse(BaseModel):
     name: str
     is_active: bool
     is_verified: bool = False
+    is_admin: bool = False
     default_org_id: Optional[UUID] = None
     oauth_provider: Optional[str] = None
     avatar_url: Optional[str] = None

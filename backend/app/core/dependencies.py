@@ -157,3 +157,10 @@ def require_org_permission(*permissions: str):
                 )
         return member
     return _dependency
+
+
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    """Require the current user to be a platform admin (is_admin=True)."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
+    return user

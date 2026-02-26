@@ -162,6 +162,7 @@ class User(Base):
     mfa_otp_hash       = Column(String(64), nullable=True)    # SHA-256 do OTP temporário
     mfa_otp_expires_at = Column(DateTime, nullable=True)
     mfa_otp_attempts   = Column(Integer, default=0, nullable=False)
+    is_admin           = Column(Boolean, default=False, nullable=False)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -412,3 +413,25 @@ class ResourceTemplate(Base):
     form_config   = Column(JSONB, nullable=False)          # serialized form state
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ── Enterprise Leads ──────────────────────────────────────────────────────────
+
+
+class EnterpriseLead(Base):
+    __tablename__ = "enterprise_leads"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    org_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    name       = Column(String(200), nullable=False)
+    email      = Column(String(200), nullable=False)
+    company    = Column(String(200), nullable=True)
+    phone      = Column(String(50), nullable=True)
+    message    = Column(Text, nullable=True)
+    status     = Column(String(30), nullable=False, default="new")  # new | contacted | converted | lost
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    org  = relationship("Organization", foreign_keys=[org_id])
