@@ -10,6 +10,7 @@ from app.models.db_models import Organization, Payment
 from app.core.dependencies import get_current_member, require_org_permission
 from app.core.auth_context import MemberContext
 from app.core.config import settings
+from app.core.limiter import limiter
 from app.services.payment_service import create_billing, check_billing_status
 from app.services.plan_service import get_plan_price
 from app.services.log_service import log_activity
@@ -36,7 +37,9 @@ class CheckoutRequest(BaseModel):
 
 
 @router.post("/checkout")
+@limiter.limit("5/minute")
 async def checkout(
+    request: Request,
     payload: CheckoutRequest,
     member: MemberContext = Depends(require_org_permission("org.settings.edit")),
     db: Session = Depends(get_db),
@@ -119,12 +122,10 @@ async def verify_payment(
     status = await check_billing_status(payment.abacate_billing_id)
 
     if status == "PAID" and payment.status != "PAID":
+        # Activate plan and mark payment as paid in a single atomic transaction
+        org = db.query(Organization).filter(Organization.id == member.organization_id).first()
         payment.status = "PAID"
         payment.paid_at = datetime.utcnow()
-        db.commit()
-
-        # Activate the plan
-        org = db.query(Organization).filter(Organization.id == member.organization_id).first()
         org.plan_tier = payment.plan_tier
         db.commit()
 

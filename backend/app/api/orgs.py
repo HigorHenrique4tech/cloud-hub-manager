@@ -2,7 +2,7 @@ import re
 import secrets
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Path
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel
 from typing import Optional
 
@@ -237,23 +237,24 @@ async def list_members(
     """List all members of the organization."""
     memberships = (
         db.query(OrganizationMember)
+        .options(joinedload(OrganizationMember.user))
         .filter(
             OrganizationMember.organization_id == member.organization_id,
             OrganizationMember.is_active == True,
         )
         .all()
     )
-    result = []
-    for m in memberships:
-        user = db.query(User).filter(User.id == m.user_id).first()
-        if user:
-            result.append({
-                "user_id": str(user.id),
-                "email": user.email,
-                "name": user.name,
-                "role": m.role,
-                "joined_at": m.joined_at.isoformat() if m.joined_at else None,
-            })
+    result = [
+        {
+            "user_id": str(m.user.id),
+            "email": m.user.email,
+            "name": m.user.name,
+            "role": m.role,
+            "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+        }
+        for m in memberships
+        if m.user
+    ]
     return {"members": result}
 
 

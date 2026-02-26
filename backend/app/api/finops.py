@@ -1055,7 +1055,7 @@ def upsert_scan_schedule(
     db: Session = Depends(get_db),
 ):
     """Create or update the FinOps auto-scan schedule. Pro-only."""
-    _require_plan(db, member.org_id, "pro")
+    _require_plan(_get_org_plan(member, db), "pro", "Análise automática agendada")
 
     import re
     if not re.match(r"^\d{2}:\d{2}$", payload.schedule_time):
@@ -1097,12 +1097,12 @@ def upsert_scan_schedule(
         unregister_finops_scan(str(member.workspace_id))
 
     next_run = get_finops_scan_next_run(str(member.workspace_id)) if payload.is_enabled else None
-    log_activity(db, member.user, "finops.scan_schedule.upsert", "FinOpsScanSchedule", str(sched.id), {
-        "schedule_type": payload.schedule_type,
-        "schedule_time": payload.schedule_time,
-        "provider": payload.provider,
-        "is_enabled": payload.is_enabled,
-    })
+    log_activity(
+        db, member.user, "finops.scan_schedule.upsert", "FinOpsScanSchedule",
+        resource_id=str(sched.id),
+        detail=f"type={payload.schedule_type} time={payload.schedule_time} provider={payload.provider} enabled={payload.is_enabled}",
+        provider="system",
+    )
     return _scan_schedule_to_dict(sched, next_run)
 
 
@@ -1112,7 +1112,7 @@ def delete_scan_schedule(
     db: Session = Depends(get_db),
 ):
     """Remove the FinOps auto-scan schedule. Pro-only."""
-    _require_plan(db, member.org_id, "pro")
+    _require_plan(_get_org_plan(member, db), "pro", "Análise automática agendada")
 
     sched = db.query(FinOpsScanSchedule).filter(
         FinOpsScanSchedule.workspace_id == member.workspace_id,

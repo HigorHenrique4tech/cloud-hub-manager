@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Users, Building2, ChevronDown, Search, Check } from 'lucide-react';
+import { ShieldCheck, Users, Building2, ChevronDown, ChevronUp, Search, Check, Phone, MessageSquare, Mail, Calendar } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import adminService from '../services/adminService';
 
@@ -25,6 +25,7 @@ const LeadsTab = () => {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [openMenu, setOpenMenu] = useState(null);
+  const [expandedLead, setExpandedLead] = useState(null);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-leads', statusFilter],
@@ -40,6 +41,8 @@ const LeadsTab = () => {
   });
 
   const leads = data?.leads || [];
+
+  const toggleExpand = (id) => setExpandedLead((prev) => (prev === id ? null : id));
 
   return (
     <div className="space-y-4">
@@ -69,12 +72,12 @@ const LeadsTab = () => {
           <p className="text-sm">Nenhum lead encontrado</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                <th className="w-6 py-3 px-4" />
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Nome</th>
-                <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">E-mail</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Empresa</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Org</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Data</th>
@@ -85,56 +88,98 @@ const LeadsTab = () => {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
               {leads.map((lead) => {
                 const badge = LEAD_STATUS[lead.status] || LEAD_STATUS.new;
+                const isExpanded = expandedLead === lead.id;
                 return (
-                  <tr key={lead.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
-                    <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100">{lead.name}</td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{lead.email}</td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{lead.company || '—'}</td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{lead.org_name || '—'}</td>
-                    <td className="py-3 px-4 text-gray-500 dark:text-gray-500 text-xs">
-                      {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : '—'}
-                    </td>
-                    <td className="py-3 px-4">
-                      <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 relative">
-                      <button
-                        onClick={() => setOpenMenu(openMenu === lead.id ? null : lead.id)}
-                        className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 transition-colors"
-                      >
-                        Alterar <ChevronDown size={12} />
-                      </button>
-                      {openMenu === lead.id && (
-                        <div className="absolute right-4 top-8 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg min-w-[140px]">
-                          {Object.entries(LEAD_STATUS).map(([key, val]) => (
-                            <button
-                              key={key}
-                              onClick={() => updateMut.mutate({ id: lead.id, status: key })}
-                              disabled={lead.status === key || updateMut.isPending}
-                              className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg"
-                            >
-                              {lead.status === key && <Check size={12} />}
-                              {val.label}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                  </tr>
+                  <>
+                    <tr
+                      key={lead.id}
+                      onClick={() => toggleExpand(lead.id)}
+                      className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer"
+                    >
+                      <td className="py-3 px-4 text-gray-400 dark:text-gray-500">
+                        {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                      </td>
+                      <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100">{lead.name}</td>
+                      <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{lead.company || '—'}</td>
+                      <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{lead.org_name || '—'}</td>
+                      <td className="py-3 px-4 text-gray-500 dark:text-gray-500 text-xs">
+                        {lead.created_at ? new Date(lead.created_at).toLocaleDateString('pt-BR') : '—'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>
+                          {badge.label}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 relative" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => setOpenMenu(openMenu === lead.id ? null : lead.id)}
+                          className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 transition-colors"
+                        >
+                          Alterar <ChevronDown size={12} />
+                        </button>
+                        {openMenu === lead.id && (
+                          <div className="absolute right-4 top-8 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg min-w-[140px]">
+                            {Object.entries(LEAD_STATUS).map(([key, val]) => (
+                              <button
+                                key={key}
+                                onClick={() => updateMut.mutate({ id: lead.id, status: key })}
+                                disabled={lead.status === key || updateMut.isPending}
+                                className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 flex items-center gap-2 first:rounded-t-lg last:rounded-b-lg"
+                              >
+                                {lead.status === key && <Check size={12} />}
+                                {val.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Expanded detail row */}
+                    {isExpanded && (
+                      <tr key={`${lead.id}-detail`} className="bg-gray-50 dark:bg-gray-700/20">
+                        <td colSpan={7} className="px-6 py-4">
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                                <Mail size={11} /> E-mail
+                              </p>
+                              <p className="text-sm text-gray-800 dark:text-gray-200">{lead.email}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                                <Phone size={11} /> Telefone
+                              </p>
+                              <p className="text-sm text-gray-800 dark:text-gray-200">{lead.phone || <span className="text-gray-400 dark:text-gray-500">Não informado</span>}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                                <Calendar size={11} /> Enviado em
+                              </p>
+                              <p className="text-sm text-gray-800 dark:text-gray-200">
+                                {lead.created_at ? new Date(lead.created_at).toLocaleString('pt-BR') : '—'}
+                              </p>
+                            </div>
+                            {lead.message && (
+                              <div className="md:col-span-3 space-y-1">
+                                <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide flex items-center gap-1">
+                                  <MessageSquare size={11} /> Mensagem
+                                </p>
+                                <p className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">
+                                  {lead.message}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
                 );
               })}
             </tbody>
           </table>
         </div>
-      )}
-
-      {/* Message preview panel */}
-      {leads.some((l) => l.message) && (
-        <p className="text-xs text-gray-400 dark:text-gray-500">
-          Passe o mouse sobre um lead para ver a mensagem completa.
-        </p>
       )}
     </div>
   );

@@ -1,8 +1,9 @@
 import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, Query
-from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from sqlalchemy import func
+from sqlalchemy.orm import Session, joinedload
+from pydantic import BaseModel, EmailStr
 
 from app.database import get_db
 from app.models.db_models import User, Organization, OrganizationMember, EnterpriseLead
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 class LeadCreate(BaseModel):
     name: str
-    email: str
+    email: EmailStr
     company: Optional[str] = None
     phone: Optional[str] = None
     message: Optional[str] = None
@@ -82,28 +83,29 @@ admin_router = APIRouter(prefix="/admin", tags=["Admin"])
 @admin_router.get("/leads")
 def list_leads(
     status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """List all Enterprise leads. Admin only."""
-    q = db.query(EnterpriseLead)
+    """List all Enterprise leads with pagination. Admin only."""
+    q = (
+        db.query(EnterpriseLead)
+        .options(joinedload(EnterpriseLead.user), joinedload(EnterpriseLead.org))
+    )
     if status:
         q = q.filter(EnterpriseLead.status == status)
-    leads = q.order_by(EnterpriseLead.created_at.desc()).all()
 
-    result = []
-    for lead in leads:
-        org_name = None
-        if lead.org_id:
-            org = db.query(Organization).filter(Organization.id == lead.org_id).first()
-            org_name = org.name if org else None
+    total = q.count()
+    leads = (
+        q.order_by(EnterpriseLead.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
+        .all()
+    )
 
-        user_email = None
-        if lead.user_id:
-            u = db.query(User).filter(User.id == lead.user_id).first()
-            user_email = u.email if u else None
-
-        result.append({
+    result = [
+        {
             "id": str(lead.id),
             "name": lead.name,
             "email": lead.email,
@@ -111,12 +113,14 @@ def list_leads(
             "phone": lead.phone,
             "message": lead.message,
             "status": lead.status,
-            "org_name": org_name,
-            "user_email": user_email,
+            "org_name": lead.org.name if lead.org else None,
+            "user_email": lead.user.email if lead.user else None,
             "created_at": lead.created_at.isoformat() if lead.created_at else None,
-        })
+        }
+        for lead in leads
+    ]
 
-    return {"leads": result, "total": len(result)}
+    return {"leads": result, "total": total, "page": page, "page_size": page_size}
 
 
 @admin_router.put("/leads/{lead_id}")
@@ -142,31 +146,46 @@ def update_lead_status(
 
 @admin_router.get("/orgs")
 def list_all_orgs(
+    search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """List all organizations. Admin only."""
-    orgs = db.query(Organization).order_by(Organization.created_at.desc()).all()
+    """List all organizations with pagination. Admin only."""
+    # Single query to get all active member counts (avoids N+1)
+    member_counts = dict(
+        db.query(OrganizationMember.organization_id, func.count(OrganizationMember.id))
+        .filter(OrganizationMember.is_active == True)
+        .group_by(OrganizationMember.organization_id)
+        .all()
+    )
 
-    result = []
-    for org in orgs:
-        members_count = db.query(OrganizationMember).filter(
-            OrganizationMember.organization_id == org.id,
-            OrganizationMember.is_active == True,
-        ).count()
+    q = db.query(Organization)
+    if search:
+        term = f"%{search.lower()}%"
+        q = q.filter(
+            func.lower(Organization.name).like(term) | func.lower(Organization.slug).like(term)
+        )
 
-        result.append({
+    total = q.count()
+    orgs = q.order_by(Organization.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+
+    result = [
+        {
             "id": str(org.id),
             "name": org.name,
             "slug": org.slug,
             "plan_tier": org.plan_tier,
             "org_type": org.org_type,
             "is_active": org.is_active,
-            "members_count": members_count,
+            "members_count": member_counts.get(org.id, 0),
             "created_at": org.created_at.isoformat() if org.created_at else None,
-        })
+        }
+        for org in orgs
+    ]
 
-    return {"orgs": result, "total": len(result)}
+    return {"orgs": result, "total": total, "page": page, "page_size": page_size}
 
 
 @admin_router.put("/orgs/{org_slug}/plan")
