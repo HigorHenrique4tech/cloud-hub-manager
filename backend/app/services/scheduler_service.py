@@ -216,3 +216,128 @@ def get_next_run(schedule_id: str) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+# ── FinOps Scan Schedule ──────────────────────────────────────────────────────
+
+def execute_finops_scan(workspace_id: str) -> None:
+    """
+    Called by APScheduler at the configured cron time.
+    Runs FinOps scan for all active cloud accounts in the workspace.
+    """
+    from app.database import SessionLocal
+    from app.models.db_models import FinOpsScanSchedule, CloudAccount
+    from app.services.auth_service import decrypt_credential
+    from app.services.finops_service import AWSFinOpsScanner, AzureFinOpsScanner
+
+    db = SessionLocal()
+    sched = None
+    try:
+        sched = db.query(FinOpsScanSchedule).filter(
+            FinOpsScanSchedule.workspace_id == workspace_id,
+            FinOpsScanSchedule.is_enabled == True,
+        ).first()
+        if not sched:
+            return
+
+        accounts = db.query(CloudAccount).filter(
+            CloudAccount.workspace_id == workspace_id,
+            CloudAccount.is_active == True,
+        ).all()
+
+        findings = []
+        for account in accounts:
+            if sched.provider != "all" and account.provider != sched.provider:
+                continue
+            creds = decrypt_credential(account.encrypted_data)
+            try:
+                if account.provider == "aws":
+                    scanner = AWSFinOpsScanner(
+                        access_key=creds.get("access_key_id", ""),
+                        secret_key=creds.get("secret_access_key", ""),
+                        region=creds.get("region", "us-east-1"),
+                    )
+                    findings.extend(scanner.scan_all())
+                elif account.provider == "azure":
+                    scanner = AzureFinOpsScanner(
+                        subscription_id=creds.get("subscription_id", ""),
+                        tenant_id=creds.get("tenant_id", ""),
+                        client_id=creds.get("client_id", ""),
+                        client_secret=creds.get("client_secret", ""),
+                    )
+                    findings.extend(scanner.scan_all())
+            except Exception as exc:
+                logger.error(f"FinOps scan error for account {account.id}: {exc}")
+
+        from app.api.finops import _persist_findings
+        _persist_findings(db, str(workspace_id), findings)
+
+        _record_finops_scan_run(db, sched, "success", None)
+        logger.info(f"FinOps auto-scan: {len(findings)} findings for workspace {workspace_id}")
+
+    except Exception as exc:
+        logger.error(f"execute_finops_scan failed for workspace {workspace_id}: {exc}")
+        if sched:
+            try:
+                _record_finops_scan_run(db, sched, "failed", str(exc)[:500])
+            except Exception:
+                pass
+    finally:
+        db.close()
+
+
+def _record_finops_scan_run(db, sched, status: str, error: Optional[str]) -> None:
+    sched.last_run_at = datetime.utcnow()
+    sched.last_run_status = status
+    sched.last_run_error = error
+    db.commit()
+
+
+def register_finops_scan(sched) -> None:
+    """Add or replace APScheduler job for a FinOpsScanSchedule."""
+    try:
+        scheduler.add_job(
+            execute_finops_scan,
+            trigger=_build_trigger(sched.schedule_type, sched.schedule_time, sched.timezone),
+            id=f"finops_scan_{sched.workspace_id}",
+            args=[str(sched.workspace_id)],
+            replace_existing=True,
+        )
+        logger.info(f"FinOps scan schedule registered for workspace {sched.workspace_id} at {sched.schedule_time}")
+    except Exception as exc:
+        logger.error(f"Failed to register finops scan schedule: {exc}")
+
+
+def unregister_finops_scan(workspace_id: str) -> None:
+    """Remove APScheduler job for a FinOps scan schedule (silently if not found)."""
+    try:
+        scheduler.remove_job(f"finops_scan_{workspace_id}")
+        logger.info(f"FinOps scan schedule unregistered for workspace {workspace_id}")
+    except Exception:
+        pass
+
+
+def load_finops_scan_schedules(db) -> int:
+    """Load all enabled FinOpsScanSchedule rows into APScheduler. Returns count."""
+    from app.models.db_models import FinOpsScanSchedule
+
+    schedules = db.query(FinOpsScanSchedule).filter(FinOpsScanSchedule.is_enabled == True).all()
+    count = 0
+    for s in schedules:
+        try:
+            register_finops_scan(s)
+            count += 1
+        except Exception as exc:
+            logger.warning(f"Could not register finops scan schedule {s.id}: {exc}")
+    return count
+
+
+def get_finops_scan_next_run(workspace_id: str) -> Optional[str]:
+    """Return the next finops scan run time as ISO string, or None."""
+    try:
+        job = scheduler.get_job(f"finops_scan_{workspace_id}")
+        if job and job.next_run_time:
+            return job.next_run_time.isoformat()
+    except Exception:
+        pass
+    return None

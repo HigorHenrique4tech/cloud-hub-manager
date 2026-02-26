@@ -13,16 +13,19 @@ from app.database import Base
 class Organization(Base):
     __tablename__ = "organizations"
 
-    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name       = Column(String(255), nullable=False)
-    slug       = Column(String(100), unique=True, nullable=False, index=True)
-    plan_tier  = Column(String(50), nullable=False, default="free")  # free | pro | enterprise
-    is_active  = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name          = Column(String(255), nullable=False)
+    slug          = Column(String(100), unique=True, nullable=False, index=True)
+    plan_tier     = Column(String(50), nullable=False, default="free")  # free | pro | enterprise
+    org_type      = Column(String(20), nullable=False, default="standalone")  # standalone | master | partner
+    parent_org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_active     = Column(Boolean, default=True, nullable=False)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     members    = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
     workspaces = relationship("Workspace", back_populates="organization", cascade="all, delete-orphan")
+    parent_org = relationship("Organization", remote_side="Organization.id", foreign_keys="Organization.parent_org_id", backref="child_orgs")
 
 
 class OrganizationMember(Base):
@@ -348,6 +351,30 @@ class ScheduledAction(Base):
 
     workspace  = relationship("Workspace")
     creator    = relationship("User", foreign_keys=[created_by])
+
+
+# ── FinOps Scan Schedule ─────────────────────────────────────────────────────
+
+
+class FinOpsScanSchedule(Base):
+    __tablename__ = "finops_scan_schedules"
+    __table_args__ = (UniqueConstraint("workspace_id", name="uq_finops_scan_ws"),)
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_enabled      = Column(Boolean, default=True, nullable=False)
+    schedule_type   = Column(String(20), nullable=False, default="daily")  # "daily"|"weekdays"|"weekends"
+    schedule_time   = Column(String(5), nullable=False)        # "HH:MM"
+    timezone        = Column(String(50), nullable=False, default="America/Sao_Paulo")
+    provider        = Column(String(20), nullable=False, default="all")  # "all"|"aws"|"azure"
+    last_run_at     = Column(DateTime, nullable=True)
+    last_run_status = Column(String(10), nullable=True)        # "success"|"failed"
+    last_run_error  = Column(String(500), nullable=True)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    creator   = relationship("User", foreign_keys=[created_by])
 
 
 # ── User Dashboard Config ────────────────────────────────────────────────────

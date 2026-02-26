@@ -23,6 +23,7 @@ from app.models.db_models import (
     FinOpsAnomaly,
     FinOpsBudget,
     FinOpsRecommendation,
+    FinOpsScanSchedule,
     Organization,
     ScheduledAction,
     Workspace,
@@ -1001,3 +1002,127 @@ async def acknowledge_anomaly(
     anomaly.status = "acknowledged"
     db.commit()
     return _anomaly_to_dict(anomaly)
+
+
+# ── FinOps Scan Schedule ──────────────────────────────────────────────────────
+
+
+class ScanScheduleRequest(BaseModel):
+    schedule_type: str = "daily"   # "daily"|"weekdays"|"weekends"
+    schedule_time: str             # "HH:MM"
+    timezone: str = "America/Sao_Paulo"
+    provider: str = "all"          # "all"|"aws"|"azure"
+    is_enabled: bool = True
+
+
+def _scan_schedule_to_dict(s: FinOpsScanSchedule, next_run: Optional[str] = None) -> dict:
+    return {
+        "id": str(s.id),
+        "workspace_id": str(s.workspace_id),
+        "is_enabled": s.is_enabled,
+        "schedule_type": s.schedule_type,
+        "schedule_time": s.schedule_time,
+        "timezone": s.timezone,
+        "provider": s.provider,
+        "last_run_at": s.last_run_at.isoformat() if s.last_run_at else None,
+        "last_run_status": s.last_run_status,
+        "last_run_error": s.last_run_error,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+        "next_run_at": next_run,
+    }
+
+
+@ws_router.get("/scan-schedule")
+def get_scan_schedule(
+    member: MemberContext = Depends(require_permission("finops.view")),
+    db: Session = Depends(get_db),
+):
+    """Return the current FinOps auto-scan schedule for this workspace."""
+    sched = db.query(FinOpsScanSchedule).filter(
+        FinOpsScanSchedule.workspace_id == member.workspace_id,
+    ).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Nenhum agendamento de scan configurado.")
+    from app.services.scheduler_service import get_finops_scan_next_run
+    next_run = get_finops_scan_next_run(str(member.workspace_id))
+    return _scan_schedule_to_dict(sched, next_run)
+
+
+@ws_router.post("/scan-schedule", status_code=200)
+def upsert_scan_schedule(
+    payload: ScanScheduleRequest,
+    member: MemberContext = Depends(require_permission("finops.recommend")),
+    db: Session = Depends(get_db),
+):
+    """Create or update the FinOps auto-scan schedule. Pro-only."""
+    _require_plan(db, member.org_id, "pro")
+
+    import re
+    if not re.match(r"^\d{2}:\d{2}$", payload.schedule_time):
+        raise HTTPException(status_code=422, detail="schedule_time must be HH:MM format")
+    if payload.schedule_type not in ("daily", "weekdays", "weekends"):
+        raise HTTPException(status_code=422, detail="schedule_type must be daily, weekdays or weekends")
+    if payload.provider not in ("all", "aws", "azure"):
+        raise HTTPException(status_code=422, detail="provider must be all, aws or azure")
+
+    sched = db.query(FinOpsScanSchedule).filter(
+        FinOpsScanSchedule.workspace_id == member.workspace_id,
+    ).first()
+
+    if sched:
+        sched.is_enabled = payload.is_enabled
+        sched.schedule_type = payload.schedule_type
+        sched.schedule_time = payload.schedule_time
+        sched.timezone = payload.timezone
+        sched.provider = payload.provider
+    else:
+        sched = FinOpsScanSchedule(
+            workspace_id=member.workspace_id,
+            is_enabled=payload.is_enabled,
+            schedule_type=payload.schedule_type,
+            schedule_time=payload.schedule_time,
+            timezone=payload.timezone,
+            provider=payload.provider,
+            created_by=member.user.id,
+        )
+        db.add(sched)
+
+    db.commit()
+    db.refresh(sched)
+
+    from app.services.scheduler_service import register_finops_scan, unregister_finops_scan, get_finops_scan_next_run
+    if payload.is_enabled:
+        register_finops_scan(sched)
+    else:
+        unregister_finops_scan(str(member.workspace_id))
+
+    next_run = get_finops_scan_next_run(str(member.workspace_id)) if payload.is_enabled else None
+    log_activity(db, member.user, "finops.scan_schedule.upsert", "FinOpsScanSchedule", str(sched.id), {
+        "schedule_type": payload.schedule_type,
+        "schedule_time": payload.schedule_time,
+        "provider": payload.provider,
+        "is_enabled": payload.is_enabled,
+    })
+    return _scan_schedule_to_dict(sched, next_run)
+
+
+@ws_router.delete("/scan-schedule", status_code=204)
+def delete_scan_schedule(
+    member: MemberContext = Depends(require_permission("finops.recommend")),
+    db: Session = Depends(get_db),
+):
+    """Remove the FinOps auto-scan schedule. Pro-only."""
+    _require_plan(db, member.org_id, "pro")
+
+    sched = db.query(FinOpsScanSchedule).filter(
+        FinOpsScanSchedule.workspace_id == member.workspace_id,
+    ).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Nenhum agendamento de scan configurado.")
+
+    from app.services.scheduler_service import unregister_finops_scan
+    unregister_finops_scan(str(member.workspace_id))
+    db.delete(sched)
+    db.commit()
+    log_activity(db, member.user, "finops.scan_schedule.delete", "FinOpsScanSchedule", str(sched.id), {})
+    return None

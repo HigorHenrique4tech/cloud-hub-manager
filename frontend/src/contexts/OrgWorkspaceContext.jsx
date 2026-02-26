@@ -73,7 +73,15 @@ export const OrgWorkspaceProvider = ({ children }) => {
   };
 
   const switchOrg = useCallback(async (orgSlug) => {
-    const org = orgs.find((o) => o.slug === orgSlug);
+    let org = orgs.find((o) => o.slug === orgSlug);
+    if (!org) {
+      // May be a newly created partner org — refresh list first
+      try {
+        const { organizations } = await orgService.listOrgs();
+        setOrgs(organizations || []);
+        org = organizations.find((o) => o.slug === orgSlug);
+      } catch (_) {}
+    }
     if (!org) return;
     setCurrentOrg(org);
     localStorage.setItem('selectedOrg', org.slug);
@@ -104,6 +112,9 @@ export const OrgWorkspaceProvider = ({ children }) => {
     }
   }, [currentOrg]);
 
+  const isMasterOrg = currentOrg?.org_type === 'master';
+  const isPartnerOrg = currentOrg?.org_type === 'partner';
+
   return (
     <OrgWorkspaceContext.Provider
       value={{
@@ -112,6 +123,8 @@ export const OrgWorkspaceProvider = ({ children }) => {
         currentOrg,
         currentWorkspace,
         loading,
+        isMasterOrg,
+        isPartnerOrg,
         switchOrg,
         switchWorkspace,
         refreshOrgs,

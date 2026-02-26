@@ -36,6 +36,7 @@ import Schedules from './pages/Schedules';
 // Multi-tenant
 import OrgSettings from './pages/OrgSettings';
 import WorkspaceSettings from './pages/WorkspaceSettings';
+import ManagedOrgsPage from './pages/ManagedOrgsPage';
 import InviteAccept from './pages/InviteAccept';
 import PlanSelection from './pages/PlanSelection';
 import VerifyEmail from './pages/VerifyEmail';
@@ -106,6 +107,7 @@ function App() {
                 <Route path="/billing/success" element={<PR><BillingSuccess /></PR>} />
                 {/* Multi-tenant settings */}
                 <Route path="/org/settings" element={<PR><OrgSettings /></PR>} />
+                <Route path="/org/managed" element={<PR><ManagedOrgsPage /></PR>} />
                 <Route path="/workspace/settings" element={<PR><WorkspaceSettings /></PR>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

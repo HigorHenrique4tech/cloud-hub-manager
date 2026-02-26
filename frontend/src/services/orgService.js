@@ -45,6 +45,16 @@ export const orgService = {
   removeWorkspaceMemberOverride: async (slug, wsId, userId) =>
     (await api.delete(`/orgs/${slug}/workspaces/${wsId}/members/${userId}`)).data,
 
+  // ── Managed Orgs (MSP / Enterprise) ─────────────────────────────────────
+  listManagedOrgs: async (slug) =>
+    (await api.get(`/orgs/${slug}/managed-orgs`)).data,
+  getManagedOrgsSummary: async (slug) =>
+    (await api.get(`/orgs/${slug}/managed-orgs/summary`)).data,
+  createManagedOrg: async (slug, name) =>
+    (await api.post(`/orgs/${slug}/managed-orgs`, { name })).data,
+  removeManagedOrg: async (slug, partnerSlug) =>
+    (await api.delete(`/orgs/${slug}/managed-orgs/${partnerSlug}`)).data,
+
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {
     const params = provider ? { provider } : {};

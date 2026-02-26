@@ -81,6 +81,22 @@ const finopsService = {
     const { data } = await api.post(wsUrl(`/finops/anomalies/${anomalyId}/acknowledge`));
     return data;
   },
+
+  // ── Scan Schedule ─────────────────────────────────────────────────────────
+
+  getScanSchedule: async () => {
+    const { data } = await api.get(wsUrl('/finops/scan-schedule'));
+    return data;
+  },
+
+  upsertScanSchedule: async (payload) => {
+    const { data } = await api.post(wsUrl('/finops/scan-schedule'), payload);
+    return data;
+  },
+
+  deleteScanSchedule: async () => {
+    await api.delete(wsUrl('/finops/scan-schedule'));
+  },
 };
 
 export default finopsService;

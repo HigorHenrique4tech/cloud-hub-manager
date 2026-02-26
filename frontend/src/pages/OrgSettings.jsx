@@ -12,7 +12,7 @@ import orgService from '../services/orgService';
 const ROLES = ['owner', 'admin', 'operator', 'viewer', 'billing'];
 
 const OrgSettings = () => {
-  const { currentOrg, refreshOrgs } = useOrgWorkspace();
+  const { currentOrg, refreshOrgs, isPartnerOrg } = useOrgWorkspace();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const slug = currentOrg?.slug;
@@ -101,6 +101,21 @@ const OrgSettings = () => {
             <Building2 className="w-6 h-6 text-primary" />
             Configurações da Organização
           </h1>
+
+          {/* Partner org banner */}
+          {isPartnerOrg && (
+            <div className="flex items-center gap-3 rounded-xl border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-4 py-3">
+              <Building2 size={18} className="text-indigo-500 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">
+                  Organização gerenciada
+                </p>
+                <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-0.5">
+                  Esta organização faz parte de um contrato Enterprise. O plano é herdado e gerenciado pelo parceiro master.
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* Org Info */}
           <RoleGate allowed={['owner', 'admin']}>

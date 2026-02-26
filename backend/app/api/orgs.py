@@ -16,7 +16,7 @@ from app.core.dependencies import (
 from app.core.auth_context import MemberContext
 from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
-from app.services.plan_service import check_member_limit, get_org_usage
+from app.services.plan_service import check_member_limit, check_managed_org_limit, get_org_usage, PLAN_PRICES
 from app.services.email_service import send_invite_email, send_org_member_added_email
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
@@ -47,6 +47,10 @@ class MemberRoleUpdate(BaseModel):
     role: str
 
 
+class ManagedOrgCreate(BaseModel):
+    name: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -61,6 +65,8 @@ def _org_to_dict(org: Organization, role: str = None):
         "name": org.name,
         "slug": org.slug,
         "plan_tier": org.plan_tier,
+        "org_type": org.org_type,
+        "parent_org_id": str(org.parent_org_id) if org.parent_org_id else None,
         "is_active": org.is_active,
         "created_at": org.created_at.isoformat() if org.created_at else None,
     }
@@ -484,4 +490,216 @@ async def cancel_invitation(
         raise HTTPException(status_code=404, detail="Convite não encontrado")
     db.delete(invite)
     db.commit()
+    return None
+
+
+# ── Managed Organizations (MSP / Enterprise) ─────────────────────────────────
+
+
+def _managed_org_to_dict(org: Organization, db: Session) -> dict:
+    """Return org dict enriched with usage counts for the managed-orgs panel."""
+    from app.models.db_models import Workspace, CloudAccount, OrganizationMember
+    ws_count = db.query(Workspace).filter(
+        Workspace.organization_id == org.id,
+        Workspace.is_active == True,
+    ).count()
+    acc_count = (
+        db.query(CloudAccount)
+        .join(Workspace, CloudAccount.workspace_id == Workspace.id)
+        .filter(
+            Workspace.organization_id == org.id,
+            CloudAccount.is_active == True,
+        )
+        .count()
+    )
+    mem_count = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id,
+        OrganizationMember.is_active == True,
+    ).count()
+    return {
+        "id": str(org.id),
+        "name": org.name,
+        "slug": org.slug,
+        "plan_tier": org.plan_tier,
+        "org_type": org.org_type,
+        "is_active": org.is_active,
+        "created_at": org.created_at.isoformat() if org.created_at else None,
+        "workspaces_count": ws_count,
+        "cloud_accounts_count": acc_count,
+        "members_count": mem_count,
+    }
+
+
+@router.get("/{org_slug}/managed-orgs")
+async def list_managed_orgs(
+    member: MemberContext = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """List partner orgs managed by this Enterprise master org."""
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.org_type not in ("master", "standalone") or master_org.plan_tier != "enterprise":
+        raise HTTPException(status_code=403, detail="Apenas organizações Enterprise podem gerenciar parceiros.")
+    child_orgs = db.query(Organization).filter(
+        Organization.parent_org_id == master_org.id,
+    ).order_by(Organization.created_at.asc()).all()
+    return {"managed_orgs": [_managed_org_to_dict(o, db) for o in child_orgs]}
+
+
+@router.get("/{org_slug}/managed-orgs/summary")
+async def managed_orgs_summary(
+    member: MemberContext = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Consolidated stats across all partner orgs (Enterprise master only)."""
+    from app.models.db_models import Workspace, CloudAccount, OrganizationMember
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.plan_tier != "enterprise":
+        raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
+
+    child_orgs = db.query(Organization).filter(
+        Organization.parent_org_id == master_org.id,
+    ).all()
+    child_ids = [o.id for o in child_orgs]
+
+    total_ws = db.query(Workspace).filter(
+        Workspace.organization_id.in_(child_ids),
+        Workspace.is_active == True,
+    ).count() if child_ids else 0
+
+    total_acc = (
+        db.query(CloudAccount)
+        .join(Workspace, CloudAccount.workspace_id == Workspace.id)
+        .filter(
+            Workspace.organization_id.in_(child_ids),
+            CloudAccount.is_active == True,
+        )
+        .count()
+    ) if child_ids else 0
+
+    total_mem = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id.in_(child_ids),
+        OrganizationMember.is_active == True,
+    ).count() if child_ids else 0
+
+    base_orgs = PLAN_PRICES.get("enterprise_base_orgs", 5)
+    extra_orgs = max(0, len(child_orgs) - base_orgs)
+    extra_cost_centavos = extra_orgs * PLAN_PRICES.get("enterprise_extra_org", 39700)
+
+    return {
+        "total_partners": len(child_orgs),
+        "total_workspaces": total_ws,
+        "total_cloud_accounts": total_acc,
+        "total_members": total_mem,
+        "base_included_orgs": base_orgs,
+        "extra_orgs": extra_orgs,
+        "extra_cost_brl": extra_cost_centavos / 100,
+    }
+
+
+@router.post("/{org_slug}/managed-orgs", status_code=201)
+async def create_managed_org(
+    payload: ManagedOrgCreate,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Create a partner org under this Enterprise master. Caller auto-added as owner."""
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.plan_tier != "enterprise":
+        raise HTTPException(status_code=403, detail="Criação de organizações parceiras requer plano Enterprise.")
+
+    allowed, current, max_orgs = check_managed_org_limit(db, master_org.id, master_org.plan_tier)
+    # enterprise has None limit → always allowed
+    if not allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Limite de organizações gerenciadas atingido (máx {max_orgs}).",
+        )
+
+    slug = _slugify(payload.name)
+    if not slug:
+        raise HTTPException(status_code=400, detail="Nome inválido para slug")
+    base_slug = slug
+    counter = 1
+    while db.query(Organization).filter(Organization.slug == slug).first():
+        slug = f"{base_slug}-{counter}"
+        counter += 1
+
+    # Create partner org
+    partner_org = Organization(
+        name=payload.name,
+        slug=slug,
+        plan_tier="enterprise",
+        org_type="partner",
+        parent_org_id=master_org.id,
+    )
+    db.add(partner_org)
+    db.flush()
+
+    # Auto-add calling user as owner of the new partner org
+    membership = OrganizationMember(
+        organization_id=partner_org.id,
+        user_id=member.user.id,
+        role="owner",
+        invited_by=member.user.id,
+    )
+    db.add(membership)
+
+    # Create default workspace in partner org
+    ws = Workspace(
+        organization_id=partner_org.id,
+        name="Default",
+        slug="default",
+    )
+    db.add(ws)
+
+    # Promote master org type if needed
+    if master_org.org_type == "standalone":
+        master_org.org_type = "master"
+
+    db.commit()
+    db.refresh(partner_org)
+
+    log_activity(db, member.user, "org.managed.create", "Organization",
+                 resource_id=str(partner_org.id), resource_name=partner_org.name,
+                 detail=f"master={master_org.slug}")
+
+    return _managed_org_to_dict(partner_org, db)
+
+
+@router.delete("/{org_slug}/managed-orgs/{partner_slug}", status_code=204)
+async def remove_managed_org(
+    partner_slug: str,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Unlink a partner org from the master. Partner reverts to standalone/free."""
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.org_type != "master":
+        raise HTTPException(status_code=403, detail="Esta organização não possui parceiras.")
+
+    partner_org = db.query(Organization).filter(
+        Organization.slug == partner_slug,
+        Organization.parent_org_id == master_org.id,
+    ).first()
+    if not partner_org:
+        raise HTTPException(status_code=404, detail="Organização parceira não encontrada.")
+
+    partner_org.parent_org_id = None
+    partner_org.org_type = "standalone"
+    partner_org.plan_tier = "free"
+
+    # If master has no more children, revert to standalone
+    remaining = db.query(Organization).filter(
+        Organization.parent_org_id == master_org.id,
+    ).count()
+    # remaining still includes this org until flush, so check <= 1
+    if remaining <= 1:
+        master_org.org_type = "standalone"
+
+    db.commit()
+
+    log_activity(db, member.user, "org.managed.remove", "Organization",
+                 resource_id=str(partner_org.id), resource_name=partner_org.name,
+                 detail=f"master={master_org.slug}")
+
     return None

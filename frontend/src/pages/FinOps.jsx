@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Zap, TrendingDown, History, Wallet, AlertTriangle, Plus, Trash2, X } from 'lucide-react';
+import { Zap, TrendingDown, History, Wallet, AlertTriangle, Plus, Trash2, X, Clock, CheckCircle, XCircle } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
 import PermissionGate from '../components/common/PermissionGate';
@@ -118,6 +118,167 @@ const BudgetModal = ({ onClose, onSave, saving }) => {
   );
 };
 
+/* ── Scan Schedule Modal ──────────────────────────────────────────────────── */
+
+const TIMEZONES = [
+  'America/Sao_Paulo', 'America/New_York', 'America/Chicago',
+  'America/Denver', 'America/Los_Angeles', 'Europe/London',
+  'Europe/Paris', 'Europe/Berlin', 'Asia/Tokyo', 'Asia/Singapore',
+  'Australia/Sydney', 'UTC',
+];
+
+const SCHED_TYPES = [
+  { value: 'daily',    label: 'Diário' },
+  { value: 'weekdays', label: 'Seg–Sex' },
+  { value: 'weekends', label: 'Sáb–Dom' },
+];
+
+const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleting }) => {
+  const [form, setForm] = useState({
+    is_enabled:    existing?.is_enabled    ?? true,
+    schedule_type: existing?.schedule_type ?? 'daily',
+    schedule_time: existing?.schedule_time ?? '02:00',
+    timezone:      existing?.timezone      ?? 'America/Sao_Paulo',
+    provider:      existing?.provider      ?? 'all',
+  });
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const fmtDate = (iso) => iso ? new Date(iso).toLocaleString('pt-BR') : '—';
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-indigo-400" />
+            <h2 className="text-base font-semibold text-slate-100">Análise Automática</h2>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={18} /></button>
+        </div>
+
+        <div className="space-y-4 px-5 py-4">
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-slate-200">Ativar análise automática</span>
+            <button
+              onClick={() => set('is_enabled', !form.is_enabled)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_enabled ? 'bg-indigo-600' : 'bg-slate-600'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.is_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {/* Frequency */}
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">Frequência</label>
+            <div className="flex gap-2">
+              {SCHED_TYPES.map(({ value, label }) => (
+                <button
+                  key={value}
+                  onClick={() => set('schedule_type', value)}
+                  className={`flex-1 rounded-lg border py-1.5 text-xs font-medium transition-colors ${
+                    form.schedule_type === value
+                      ? 'border-indigo-500 bg-indigo-600/20 text-indigo-300'
+                      : 'border-slate-600 text-slate-400 hover:border-slate-500'
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Time + Timezone */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Horário</label>
+              <input
+                type="time"
+                value={form.schedule_time}
+                onChange={(e) => set('schedule_time', e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-400 mb-1">Fuso horário</label>
+              <select
+                value={form.timezone}
+                onChange={(e) => set('timezone', e.target.value)}
+                className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+              >
+                {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Provider */}
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1">Provider</label>
+            <select
+              value={form.provider}
+              onChange={(e) => set('provider', e.target.value)}
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100"
+            >
+              <option value="all">Todos</option>
+              <option value="aws">AWS</option>
+              <option value="azure">Azure</option>
+              <option value="gcp">GCP</option>
+            </select>
+          </div>
+
+          {/* Last run info */}
+          {existing && (
+            <div className="rounded-lg border border-slate-700 bg-slate-800/50 px-3 py-2 space-y-1 text-xs">
+              <div className="flex items-center justify-between text-slate-400">
+                <span>Último scan</span>
+                <span className="flex items-center gap-1">
+                  {existing.last_run_status === 'success' && <CheckCircle size={11} className="text-green-400" />}
+                  {existing.last_run_status === 'failed' && <XCircle size={11} className="text-red-400" />}
+                  {fmtDate(existing.last_run_at)}
+                </span>
+              </div>
+              {existing.next_run_at && (
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Próxima execução</span>
+                  <span>{fmtDate(existing.next_run_at)}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex items-center justify-between pt-1">
+            {existing ? (
+              <button
+                onClick={onDelete}
+                disabled={deleting}
+                className="text-xs text-red-400 hover:text-red-300 disabled:opacity-50 transition-colors"
+              >
+                {deleting ? 'Removendo…' : 'Remover agendamento'}
+              </button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <button
+                onClick={onClose}
+                className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:text-white transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => onSave(form)}
+                disabled={saving}
+                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors"
+              >
+                {saving ? 'Salvando…' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── Main Page ────────────────────────────────────────────────────────────── */
 
 const FinOps = () => {
@@ -130,6 +291,7 @@ const FinOps = () => {
   const [filterProvider, setFilterProvider] = useState('');
   const [filterSeverity, setFilterSeverity] = useState('');
   const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [showScanScheduleModal, setShowScanScheduleModal] = useState(false);
   const [applyingId, setApplyingId]   = useState(null);
   const [dismissingId, setDismissingId] = useState(null);
   const [rollbackId, setRollbackId]   = useState(null);
@@ -169,6 +331,13 @@ const FinOps = () => {
   const anomaliesQ = useQuery({
     queryKey: ['finops-anomalies'],
     queryFn: finopsService.getAnomalies,
+    enabled: isPro,
+  });
+
+  const scanScheduleQ = useQuery({
+    queryKey: ['finops-scan-schedule'],
+    queryFn: finopsService.getScanSchedule,
+    retry: false,
     enabled: isPro,
   });
 
@@ -227,6 +396,22 @@ const FinOps = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['finops-budgets'] }),
   });
 
+  const upsertScanScheduleMut = useMutation({
+    mutationFn: finopsService.upsertScanSchedule,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['finops-scan-schedule'] });
+      setShowScanScheduleModal(false);
+    },
+  });
+
+  const deleteScanScheduleMut = useMutation({
+    mutationFn: finopsService.deleteScanSchedule,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['finops-scan-schedule'] });
+      setShowScanScheduleModal(false);
+    },
+  });
+
   /* ── Handlers ── */
 
   const handleApply = (id) => {
@@ -250,14 +435,31 @@ const FinOps = () => {
     <Layout>
       <div className="px-4 py-6 sm:px-6 lg:px-8 space-y-6">
         {/* Page header */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600/20">
-            <Zap size={22} className="text-indigo-400" />
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600/20">
+              <Zap size={22} className="text-indigo-400" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">FinOps</h1>
+              <p className="text-sm text-gray-500 dark:text-slate-400">Detecte desperdício e aplique economias reais na sua infraestrutura</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">FinOps</h1>
-            <p className="text-sm text-gray-500 dark:text-slate-400">Detecte desperdício e aplique economias reais na sua infraestrutura</p>
-          </div>
+          <PlanGate minPlan="pro" feature="Análise Automática">
+            <button
+              onClick={() => setShowScanScheduleModal(true)}
+              className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                scanScheduleQ.data?.is_enabled
+                  ? 'border-indigo-500/50 bg-indigo-600/10 text-indigo-400 hover:bg-indigo-600/20'
+                  : 'border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700'
+              }`}
+            >
+              <Clock size={15} />
+              {scanScheduleQ.data?.is_enabled
+                ? `Agendado · ${scanScheduleQ.data.schedule_time}`
+                : 'Agendar Análise'}
+            </button>
+          </PlanGate>
         </div>
 
         {/* Hero summary */}
@@ -491,6 +693,18 @@ const FinOps = () => {
             onClose={() => setShowBudgetModal(false)}
             onSave={(payload) => createBudgetMut.mutate(payload)}
             saving={createBudgetMut.isPending}
+          />
+        )}
+
+        {/* Scan schedule modal */}
+        {showScanScheduleModal && (
+          <ScanScheduleModal
+            onClose={() => setShowScanScheduleModal(false)}
+            existing={scanScheduleQ.data ?? null}
+            onSave={(payload) => upsertScanScheduleMut.mutate(payload)}
+            onDelete={() => deleteScanScheduleMut.mutate()}
+            saving={upsertScanScheduleMut.isPending}
+            deleting={deleteScanScheduleMut.isPending}
           />
         )}
       </div>

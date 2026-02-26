@@ -1,8 +1,9 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, DollarSign, Settings, FileText, Building2, Layers, CreditCard, Zap, Clock } from 'lucide-react';
+import { LayoutDashboard, DollarSign, Settings, FileText, Building2, Layers, CreditCard, Zap, Clock, Network } from 'lucide-react';
 import { AwsIcon, AzureIcon, GcpIcon } from '../common/CloudProviderIcons';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import PermissionGate from '../common/PermissionGate';
+import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -40,6 +41,9 @@ const NavItem = ({ to, label, icon: Icon, end }) => (
 );
 
 const Sidebar = () => {
+  const { isMasterOrg, currentOrg } = useOrgWorkspace();
+  const isEnterprise = currentOrg?.plan_tier === 'enterprise';
+
   return (
     <aside className="w-56 min-h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4 flex-shrink-0">
       {/* Workspace switcher */}
@@ -72,6 +76,10 @@ const Sidebar = () => {
             }
             return item;
           })}
+          {/* MSP: show only for Enterprise master orgs */}
+          {isEnterprise && (isMasterOrg || currentOrg?.org_type === 'standalone') && (
+            <NavItem to="/org/managed" label="Orgs Gerenciadas" icon={Network} />
+          )}
         </div>
       </nav>
 
