@@ -27,6 +27,7 @@ SUPPORTED_EVENTS = frozenset({
     "org.member.added",
     "schedule.executed",
     "schedule.failed",
+    "budget.threshold_crossed",
     "test.ping",
 })
 

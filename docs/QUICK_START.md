@@ -1,191 +1,169 @@
-# 🚀 Guia de Início Rápido - Cloud Hub Manager
+# Guia de Início Rápido — Cloud Hub Manager
 
-## Passo 1: Pré-requisitos
+## Pré-requisitos
 
-Certifique-se de ter instalado:
 - Docker & Docker Compose
 - Git
-- Credenciais AWS (Access Key ID e Secret Access Key)
+- Credenciais de pelo menos uma cloud (AWS, Azure ou GCP)
 
-## Passo 2: Clone e Configure
+---
+
+## 1. Clone e Configure
 
 ```bash
-# Clone o repositório (ou use o diretório atual)
 cd cloud-hub-manager
 
-# Copie o arquivo de exemplo de variáveis de ambiente
+# Copie o arquivo de variáveis de ambiente
 cp .env.example .env
-
-# Edite o .env com suas credenciais AWS
-nano .env  # ou use seu editor preferido
 ```
 
-**Configuração mínima necessária no `.env`:**
+Edite o `.env` com as configurações mínimas:
+
 ```env
-AWS_ACCESS_KEY_ID=sua_access_key_aqui
-AWS_SECRET_ACCESS_KEY=sua_secret_key_aqui
+# Obrigatórios
+SECRET_KEY=sua-chave-secreta-longa-e-aleatoria
+DATABASE_URL=postgresql://cloudatl_prod_db:senha@postgres:5432/cloudatlas_db
+ENCRYPTION_KEY=chave-fernet-base64-32-bytes
+
+# Email (para verificação de conta e MFA)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=seu@email.com
+SMTP_PASSWORD=sua-senha-app
+
+# Opcional: credenciais globais AWS (fallback se usuário não configurou as próprias)
+AWS_ACCESS_KEY_ID=...
+AWS_SECRET_ACCESS_KEY=...
 AWS_DEFAULT_REGION=us-east-1
 ```
 
-## Passo 3: Inicie o Backend
+---
+
+## 2. Suba os Containers
 
 ```bash
-# Suba o container do backend
-docker-compose up -d backend
+docker-compose up -d
 
-# Visualize os logs
+# Acompanhe os logs
 docker-compose logs -f backend
 ```
 
-## Passo 4: Teste a API
+O backend sobe em `http://localhost:8000` e o frontend em `http://localhost:3000`.
+As migrations Alembic rodam automaticamente na inicialização.
 
-Aguarde alguns segundos para o container iniciar, então:
+---
 
-### Opção 1: Navegador
-Abra em seu navegador:
-- **Documentação interativa**: http://localhost:8000/docs
-- **Health check**: http://localhost:8000/health
+## 3. Crie sua Conta
 
-### Opção 2: curl
-```bash
-# Health check
-curl http://localhost:8000/health
+Acesse `http://localhost:3000` → **Criar conta** → preencha nome, e-mail e senha.
 
-# Testar conexão AWS
-curl http://localhost:8000/api/v1/aws/test-connection
+Após o registro você será direcionado para a tela de seleção de plano:
 
-# Listar instâncias EC2
-curl http://localhost:8000/api/v1/aws/ec2/instances
+| Plano | Preço | Recursos |
+|---|---|---|
+| **Free** | Grátis | Dashboard, 1 workspace, visualização básica |
+| **Pro** | R$497/mês | FinOps, Agendamentos, Webhooks, Alertas ilimitados |
+| **Enterprise** | R$2.497/mês | MSP (múltiplas orgs), tudo do Pro |
+
+---
+
+## 4. Adicione Credenciais de Cloud
+
+Vá em **Configurações → Credenciais** e adicione sua(s) conta(s):
+
+### AWS
+- Access Key ID
+- Secret Access Key
+- Região padrão (ex.: `us-east-1`)
+
+### Azure
+- Subscription ID
+- Tenant ID
+- Client ID
+- Client Secret
+
+### GCP
+- Project ID
+- Client Email (service account)
+- Private Key
+- Private Key ID
+
+---
+
+## 5. Explore o Dashboard
+
+Após adicionar credenciais, o dashboard exibe automaticamente:
+
+- **Instâncias EC2 / VMs Azure / Compute Engine GCP** — status, start/stop
+- **Custos estimados** — AWS Cost Explorer + Azure Cost Management
+- **Alertas de custo** — notifique quando ultrapassar limites
+- **FinOps** (Pro) — recomendações de economia com aplicação em 1 clique
+- **Agendamentos** (Pro) — ligar/desligar recursos por horário
+- **Webhooks** (Pro) — notificações em tempo real via HTTP
+
+---
+
+## 6. Configurar como Admin
+
+Para acessar o painel administrativo (gerenciar leads Enterprise, alterar planos de orgs):
+
+```sql
+-- Execute direto no banco PostgreSQL
+UPDATE users SET is_admin = true WHERE email = 'seu@email.com';
 ```
 
-### Opção 3: Python
-```python
-import requests
+Após relogar, o link **Admin** aparece no rodapé da sidebar.
 
-# Health check
-response = requests.get('http://localhost:8000/health')
-print(response.json())
-
-# Listar EC2
-response = requests.get('http://localhost:8000/api/v1/aws/ec2/instances')
-print(response.json())
-```
-
-## Passo 5: Desenvolvimento Local (Opcional)
-
-Se preferir rodar sem Docker:
-
-```bash
-# Entre no diretório do backend
-cd backend
-
-# Crie um ambiente virtual
-python -m venv venv
-source venv/bin/activate  # No Windows: venv\Scripts\activate
-
-# Instale as dependências
-pip install -r requirements.txt
-
-# Configure as variáveis de ambiente
-export AWS_ACCESS_KEY_ID="sua_key"
-export AWS_SECRET_ACCESS_KEY="sua_secret"
-export AWS_DEFAULT_REGION="us-east-1"
-
-# Execute a aplicação
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-```
-
-## Passo 6: Execute os Testes
-
-```bash
-# Com Docker
-docker-compose exec backend pytest
-
-# Ou localmente
-cd backend
-pytest -v
-```
-
-## Troubleshooting
-
-### Erro: "AWS credentials not configured"
-- Verifique se o arquivo `.env` está na raiz do projeto
-- Confirme que as credenciais estão corretas
-- Reinicie o container: `docker-compose restart backend`
-
-### Erro: "Port 8000 already in use"
-- Altere a porta no `.env`: `API_PORT=8001`
-- Ou pare o processo usando a porta 8000
-
-### Erro de permissão no Docker
-```bash
-# Adicione seu usuário ao grupo docker
-sudo usermod -aG docker $USER
-# Faça logout e login novamente
-```
-
-### Container não inicia
-```bash
-# Veja os logs detalhados
-docker-compose logs backend
-
-# Reconstrua a imagem
-docker-compose build --no-cache backend
-docker-compose up -d backend
-```
-
-## Próximos Passos
-
-1. ✅ Backend funcionando com AWS EC2
-2. 🔜 Criar o frontend React
-3. 🔜 Adicionar visualização de custos
-4. 🔜 Implementar outras clouds (Azure, GCP)
-5. 🔜 Sistema de alertas
-
-## Estrutura de Endpoints
-
-### Disponíveis agora:
-- `GET /` - Health check
-- `GET /health` - Status da aplicação
-- `GET /docs` - Documentação Swagger
-- `GET /api/v1/aws/test-connection` - Testa conexão AWS
-- `GET /api/v1/aws/ec2/instances` - Lista instâncias EC2
-
-### Em desenvolvimento:
-- `GET /api/v1/aws/ec2/instances/{id}` - Detalhes de uma instância
-- `POST /api/v1/aws/ec2/instances/{id}/start` - Inicia instância
-- `POST /api/v1/aws/ec2/instances/{id}/stop` - Para instância
-- `GET /api/v1/aws/costs` - Visualiza custos
+---
 
 ## Comandos Úteis
 
 ```bash
-# Parar containers
-docker-compose down
+# Ver todos os containers
+docker-compose ps
 
-# Parar e remover volumes
-docker-compose down -v
-
-# Reconstruir e reiniciar
-docker-compose up -d --build
+# Reiniciar backend
+docker-compose restart backend
 
 # Ver logs em tempo real
 docker-compose logs -f
 
-# Executar comando no container
-docker-compose exec backend bash
+# Rodar migrations manualmente
+docker-compose exec backend alembic upgrade head
 
-# Limpar tudo
+# Acessar banco de dados
+docker-compose exec postgres psql -U cloudatl_prod_db -d cloudatlas_db
+
+# Parar e remover tudo (preserva volumes)
+docker-compose down
+
+# Remover volumes também (reseta banco)
 docker-compose down -v
-docker system prune -a
 ```
 
-## Suporte
+---
 
-Se encontrar problemas, verifique:
-1. Logs do container: `docker-compose logs backend`
-2. Configuração do `.env`
-3. Conectividade com AWS
-4. Issues no GitHub
+## Troubleshooting
 
-Bom desenvolvimento! 🚀
+### Backend não inicia
+```bash
+docker-compose logs backend
+# Verifique DATABASE_URL, SECRET_KEY e ENCRYPTION_KEY no .env
+```
+
+### Erro de credenciais cloud
+- As credenciais são criptografadas com Fernet antes de serem salvas
+- Verifique se `ENCRYPTION_KEY` é uma chave Fernet válida (32 bytes base64)
+- Gere uma nova: `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+
+### Porta já em uso
+```bash
+# Altere no .env ou docker-compose.yml
+API_PORT=8001
+```
+
+### Migrations com erro
+```bash
+docker-compose exec backend alembic history
+docker-compose exec backend alembic current
+```

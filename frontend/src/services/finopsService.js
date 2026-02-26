@@ -97,6 +97,29 @@ const finopsService = {
   deleteScanSchedule: async () => {
     await api.delete(wsUrl('/finops/scan-schedule'));
   },
+
+  // ── Budget Evaluation ─────────────────────────────────────────────────────
+
+  evaluateBudgets: async () => {
+    const { data } = await api.post(wsUrl('/finops/budgets/evaluate'));
+    return data;
+  },
+
+  // ── Report Schedule ───────────────────────────────────────────────────────
+
+  getReportSchedule: async () => {
+    const { data } = await api.get(wsUrl('/finops/report-schedule'));
+    return data;
+  },
+
+  upsertReportSchedule: async (payload) => {
+    const { data } = await api.post(wsUrl('/finops/report-schedule'), payload);
+    return data;
+  },
+
+  deleteReportSchedule: async () => {
+    await api.delete(wsUrl('/finops/report-schedule'));
+  },
 };
 
 export default finopsService;

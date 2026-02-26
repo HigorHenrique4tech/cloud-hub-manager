@@ -116,14 +116,20 @@ async def startup_event():
         logger.info("Database migrations applied")
 
     # Start APScheduler and load all enabled scheduled actions from DB
-    from app.services.scheduler_service import scheduler, load_all_schedules, load_finops_scan_schedules
+    from app.services.scheduler_service import (
+        scheduler, load_all_schedules, load_finops_scan_schedules, load_report_schedules,
+    )
     from app.database import SessionLocal
     try:
         scheduler.start()
         with SessionLocal() as db:
             count = load_all_schedules(db)
             scan_count = load_finops_scan_schedules(db)
-            logger.info(f"APScheduler started — {count} scheduled actions + {scan_count} finops scan schedules loaded")
+            report_count = load_report_schedules(db)
+            logger.info(
+                f"APScheduler started — {count} scheduled actions + "
+                f"{scan_count} finops scan schedules + {report_count} report schedules loaded"
+            )
     except Exception as exc:
         logger.error(f"APScheduler startup failed: {exc}")
 

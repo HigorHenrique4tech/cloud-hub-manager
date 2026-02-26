@@ -283,9 +283,12 @@ class FinOpsBudget(Base):
     amount          = Column(Float, nullable=False)
     period          = Column(String(20), nullable=False, default="monthly")  # monthly | quarterly | annual
     start_date      = Column(DateTime, nullable=False, default=datetime.utcnow)
-    alert_threshold = Column(Float, nullable=False, default=0.8)  # 0.8 = alert at 80%
-    is_active       = Column(Boolean, default=True, nullable=False)
-    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    alert_threshold   = Column(Float, nullable=False, default=0.8)  # 0.8 = alert at 80%
+    is_active         = Column(Boolean, default=True, nullable=False)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_spend        = Column(Float, nullable=True)
+    last_evaluated_at = Column(DateTime(timezone=True), nullable=True)
+    alert_sent_at     = Column(DateTime(timezone=True), nullable=True)
 
 
 class FinOpsAction(Base):
@@ -473,3 +476,31 @@ class WebhookDelivery(Base):
     created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     webhook = relationship("WebhookEndpoint", back_populates="deliveries")
+
+
+# ── Report Schedules ──────────────────────────────────────────────────────────
+
+
+class ReportSchedule(Base):
+    __tablename__ = "report_schedules"
+    __table_args__ = (UniqueConstraint("workspace_id", name="uq_report_schedule_workspace"),)
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name            = Column(String(200), nullable=False)
+    schedule_type   = Column(String(20), nullable=False)           # weekly | monthly
+    send_day        = Column(Integer, nullable=False)               # 0-6 (mon-sun) for weekly; 1-28 for monthly
+    send_time       = Column(String(5), nullable=False)            # HH:MM
+    timezone        = Column(String(64), nullable=False, default="America/Sao_Paulo")
+    recipients      = Column(JSONB, nullable=False, default=list)  # list of email strings
+    include_budgets = Column(Boolean, nullable=False, default=True)
+    include_finops  = Column(Boolean, nullable=False, default=True)
+    include_costs   = Column(Boolean, nullable=False, default=True)
+    is_enabled      = Column(Boolean, nullable=False, default=True)
+    last_run_at     = Column(DateTime(timezone=True), nullable=True)
+    last_run_status = Column(String(20), nullable=True)            # success | error
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    creator   = relationship("User", foreign_keys=[created_by])

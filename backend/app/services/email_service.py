@@ -252,3 +252,169 @@ def send_alert_email(
     </div>
     """
     return _send_email(to_email, f"CloudAtlas — Alerta: {alert_name}", html)
+
+
+def send_budget_alert_email(
+    to_email: str,
+    user_name: str,
+    budget_name: str,
+    provider: str,
+    current_spend: float,
+    budget_amount: float,
+    pct: float,
+) -> bool:
+    """Send a budget threshold alert email."""
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured. Budget alert '%s' not emailed.", budget_name)
+        return True
+
+    pct_display = f"{pct * 100:.1f}%"
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #dc2626; margin-bottom: 8px;">Limite de Orçamento Atingido</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        O orçamento <strong>{budget_name}</strong> atingiu o limite de alerta configurado:
+      </p>
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="color: #991b1b; font-size: 14px; margin: 0;">
+          <strong>Provider:</strong> {provider.upper()}<br/>
+          <strong>Gasto atual:</strong> ${current_spend:,.2f}<br/>
+          <strong>Orçamento definido:</strong> ${budget_amount:,.2f}<br/>
+          <strong>Percentual utilizado:</strong> {pct_display}
+        </p>
+      </div>
+      <div style="background: #f1f5f9; border-radius: 8px; padding: 12px; margin: 16px 0;">
+        <div style="background: #e2e8f0; border-radius: 4px; height: 12px; overflow: hidden;">
+          <div style="background: #dc2626; height: 12px; width: {min(pct * 100, 100):.0f}%;"></div>
+        </div>
+        <p style="color: #64748b; font-size: 11px; margin: 4px 0 0 0; text-align: right;">{pct_display} do orçamento utilizado</p>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/finops"
+           style="display: inline-block; padding: 12px 32px; background-color: #3b82f6;
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Ver Orçamentos no FinOps
+        </a>
+      </div>
+      {_FOOTER}
+    </div>
+    """
+    return _send_email(to_email, f"CloudAtlas — Orçamento '{budget_name}' em alerta ({pct_display})", html)
+
+
+def send_report_email(
+    to_email: str,
+    org_name: str,
+    ws_name: str,
+    period_label: str,
+    report_data: dict,
+) -> bool:
+    """Send a weekly/monthly cost report email.
+
+    report_data keys:
+      costs           – dict[provider, float]  (optional, shown if include_costs)
+      budgets         – list[dict]              (optional, shown if include_budgets)
+      finops_savings  – float                   (optional)
+      top_recs        – list[dict(title, saving)] (optional, shown if include_finops)
+    """
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured. Report email to %s not sent.", to_email)
+        return True
+
+    costs = report_data.get("costs", {})
+    budgets = report_data.get("budgets", [])
+    finops_savings = report_data.get("finops_savings", 0.0)
+    top_recs = report_data.get("top_recs", [])
+
+    # Build costs section
+    costs_html = ""
+    if costs:
+        rows = "".join(
+            f"<tr><td style='padding:6px 12px;border-bottom:1px solid #e2e8f0'>{p.upper()}</td>"
+            f"<td style='padding:6px 12px;border-bottom:1px solid #e2e8f0;text-align:right'>${v:,.2f}</td></tr>"
+            for p, v in costs.items()
+        )
+        total = sum(costs.values())
+        costs_html = f"""
+        <h3 style="color:#1e293b;font-size:15px;margin:24px 0 8px">Custos por Provedor</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;color:#475569">
+          <thead><tr style="background:#f8fafc">
+            <th style="padding:6px 12px;text-align:left;border-bottom:2px solid #e2e8f0">Provedor</th>
+            <th style="padding:6px 12px;text-align:right;border-bottom:2px solid #e2e8f0">Gasto</th>
+          </tr></thead>
+          <tbody>{rows}</tbody>
+          <tfoot><tr style="background:#f8fafc;font-weight:bold">
+            <td style="padding:6px 12px">Total</td>
+            <td style="padding:6px 12px;text-align:right">${total:,.2f}</td>
+          </tr></tfoot>
+        </table>
+        """
+
+    # Build budgets section
+    budgets_html = ""
+    if budgets:
+        budget_items = ""
+        for b in budgets:
+            pct = b.get("pct", 0.0)
+            pct_display = f"{pct * 100:.1f}%"
+            color = "#16a34a" if pct < 0.75 else ("#d97706" if pct < 0.90 else "#dc2626")
+            bar_pct = min(pct * 100, 100)
+            budget_items += f"""
+            <div style="margin-bottom:12px;padding:10px;border:1px solid #e2e8f0;border-radius:6px">
+              <div style="display:flex;justify-content:space-between;font-size:13px;color:#1e293b;margin-bottom:4px">
+                <strong>{b.get('name','')}</strong>
+                <span style="color:{color}">{pct_display}</span>
+              </div>
+              <div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">
+                <div style="background:{color};height:8px;width:{bar_pct:.0f}%"></div>
+              </div>
+              <div style="font-size:11px;color:#94a3b8;margin-top:3px">
+                ${b.get('last_spend') or 0:,.2f} de ${b.get('amount',0):,.2f} ({b.get('period','monthly')})
+              </div>
+            </div>
+            """
+        budgets_html = f"""
+        <h3 style="color:#1e293b;font-size:15px;margin:24px 0 8px">Status dos Orçamentos</h3>
+        {budget_items}
+        """
+
+    # Build FinOps section
+    finops_html = ""
+    if top_recs:
+        recs_html = "".join(
+            f"<li style='margin-bottom:6px;color:#475569;font-size:13px'>"
+            f"{r.get('title','')} — <strong style='color:#16a34a'>economia estimada: ${r.get('saving',0):,.2f}/mês</strong></li>"
+            for r in top_recs[:3]
+        )
+        finops_html = f"""
+        <h3 style="color:#1e293b;font-size:15px;margin:24px 0 8px">Top Recomendações FinOps</h3>
+        <p style="color:#64748b;font-size:13px;margin:0 0 8px">
+          Economia total identificada: <strong style="color:#16a34a">${finops_savings:,.2f}/mês</strong>
+        </p>
+        <ul style="margin:0;padding-left:20px">{recs_html}</ul>
+        """
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 540px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 4px;">Relatório de Custos Cloud</h2>
+      <p style="color: #94a3b8; font-size: 12px; margin: 0 0 8px;">
+        {org_name} · {ws_name} · {period_label}
+      </p>
+      <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 16px 0;" />
+      {costs_html}
+      {budgets_html}
+      {finops_html}
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="{settings.FRONTEND_URL}/finops"
+           style="display: inline-block; padding: 12px 32px; background-color: #3b82f6;
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Abrir CloudAtlas
+        </a>
+      </div>
+      {_FOOTER}
+    </div>
+    """
+    return _send_email(to_email, f"CloudAtlas — Relatório {period_label} · {org_name}", html)

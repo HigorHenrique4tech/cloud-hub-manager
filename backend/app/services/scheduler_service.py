@@ -363,3 +363,381 @@ def get_finops_scan_next_run(workspace_id: str) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+# ── Budget Evaluation ─────────────────────────────────────────────────────────
+
+def execute_budget_eval() -> None:
+    """
+    Daily job (08:00 UTC) — evaluates all active budgets across all workspaces.
+    Fetches current MTD spend and fires email/webhook if threshold is crossed.
+    Deduplicates alerts using alert_sent_at (24h cooldown).
+    """
+    from datetime import timedelta
+    from app.database import SessionLocal
+    from app.models.db_models import FinOpsBudget, CloudAccount, Workspace, Organization
+    from app.services.auth_service import decrypt_credential
+    from app.services.email_service import send_budget_alert_email
+    from app.services.webhook_service import fire_event as _fire
+
+    db = SessionLocal()
+    try:
+        budgets = db.query(FinOpsBudget).filter(FinOpsBudget.is_active == True).all()
+        logger.info(f"Budget eval: checking {len(budgets)} active budgets")
+
+        for budget in budgets:
+            try:
+                spend = _fetch_budget_spend(db, budget)
+                if spend is None:
+                    continue
+
+                budget.last_spend = spend
+                budget.last_evaluated_at = datetime.utcnow()
+
+                pct = spend / budget.amount if budget.amount else 0.0
+                already_alerted = (
+                    budget.alert_sent_at and
+                    (datetime.utcnow() - budget.alert_sent_at) < timedelta(hours=24)
+                )
+
+                if pct >= budget.alert_threshold and not already_alerted:
+                    # Get creator email for alert
+                    from app.models.db_models import User
+                    creator = db.query(User).filter(User.id == budget.created_by).first()
+                    if creator:
+                        send_budget_alert_email(
+                            to_email=creator.email,
+                            user_name=creator.name,
+                            budget_name=budget.name,
+                            provider=budget.provider,
+                            current_spend=spend,
+                            budget_amount=budget.amount,
+                            pct=pct,
+                        )
+                    _fire(db, budget.workspace_id, "budget.threshold_crossed", {
+                        "budget_id":    str(budget.id),
+                        "budget_name":  budget.name,
+                        "provider":     budget.provider,
+                        "current_spend": spend,
+                        "budget_amount": budget.amount,
+                        "pct":          round(pct, 4),
+                    })
+                    budget.alert_sent_at = datetime.utcnow()
+
+                db.commit()
+
+            except Exception as exc:
+                logger.error(f"Budget eval failed for budget {budget.id}: {exc}")
+                db.rollback()
+
+    except Exception as exc:
+        logger.error(f"execute_budget_eval failed: {exc}")
+    finally:
+        db.close()
+
+
+def _fetch_budget_spend(db, budget) -> Optional[float]:
+    """Fetch current month-to-date spend for a budget's provider in a workspace."""
+    from app.models.db_models import CloudAccount
+    from app.services.auth_service import decrypt_credential
+
+    accounts = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == budget.workspace_id,
+        CloudAccount.is_active == True,
+    ).all()
+
+    total_spend = 0.0
+    found_any = False
+
+    for account in accounts:
+        if budget.provider != "all" and account.provider != budget.provider:
+            continue
+        try:
+            creds = decrypt_credential(account.encrypted_data)
+            if account.provider == "aws":
+                spend = _fetch_aws_spend(creds)
+            elif account.provider == "azure":
+                spend = _fetch_azure_spend(creds)
+            else:
+                continue
+            if spend is not None:
+                total_spend += spend
+                found_any = True
+        except Exception as exc:
+            logger.warning(f"Could not fetch spend for account {account.id}: {exc}")
+
+    return total_spend if found_any else None
+
+
+def _fetch_aws_spend(creds: dict) -> Optional[float]:
+    """Fetch current month-to-date cost from AWS Cost Explorer."""
+    try:
+        import boto3
+        from datetime import date
+
+        client = boto3.client(
+            "ce",
+            aws_access_key_id=creds.get("access_key_id", ""),
+            aws_secret_access_key=creds.get("secret_access_key", ""),
+            region_name=creds.get("region", "us-east-1"),
+        )
+        today = date.today()
+        start = today.replace(day=1).isoformat()
+        end = today.isoformat()
+        result = client.get_cost_and_usage(
+            TimePeriod={"Start": start, "End": end},
+            Granularity="MONTHLY",
+            Metrics=["UnblendedCost"],
+        )
+        total = sum(
+            float(r["Total"]["UnblendedCost"]["Amount"])
+            for r in result.get("ResultsByTime", [])
+        )
+        return total
+    except Exception as exc:
+        logger.warning(f"AWS spend fetch failed: {exc}")
+        return None
+
+
+def _fetch_azure_spend(creds: dict) -> Optional[float]:
+    """Fetch current month-to-date cost from Azure Cost Management."""
+    try:
+        from azure.identity import ClientSecretCredential
+        from azure.mgmt.costmanagement import CostManagementClient
+        from azure.mgmt.costmanagement.models import (
+            QueryDefinition, QueryTimePeriod, QueryDataset, QueryAggregation,
+            TimeframeType, ExportType,
+        )
+        from datetime import date
+
+        credential = ClientSecretCredential(
+            tenant_id=creds.get("tenant_id", ""),
+            client_id=creds.get("client_id", ""),
+            client_secret=creds.get("client_secret", ""),
+        )
+        sub_id = creds.get("subscription_id", "")
+        client = CostManagementClient(credential)
+
+        today = date.today()
+        start = today.replace(day=1).isoformat()
+
+        scope = f"/subscriptions/{sub_id}"
+        query = QueryDefinition(
+            type=ExportType.ACTUAL_COST,
+            timeframe=TimeframeType.CUSTOM,
+            time_period=QueryTimePeriod(from_property=f"{start}T00:00:00Z",
+                                        to=f"{today.isoformat()}T23:59:59Z"),
+            dataset=QueryDataset(
+                granularity="None",
+                aggregation={"totalCost": QueryAggregation(name="Cost", function="Sum")}
+            ),
+        )
+        result = client.query.usage(scope=scope, parameters=query)
+        rows = result.rows or []
+        return float(rows[0][0]) if rows else 0.0
+    except Exception as exc:
+        logger.warning(f"Azure spend fetch failed: {exc}")
+        return None
+
+
+# ── Report Schedules ──────────────────────────────────────────────────────────
+
+def execute_report(report_schedule_id: str) -> None:
+    """
+    Called by APScheduler at the configured cron time for a ReportSchedule.
+    Collects cost/budget/FinOps data and sends email to all recipients.
+    """
+    from app.database import SessionLocal
+    from app.models.db_models import (
+        ReportSchedule, FinOpsBudget, FinOpsRecommendation, CloudAccount,
+        Organization, Workspace,
+    )
+    from app.services.email_service import send_report_email
+    from app.services.auth_service import decrypt_credential
+
+    db = SessionLocal()
+    try:
+        sched = db.query(ReportSchedule).filter(ReportSchedule.id == report_schedule_id).first()
+        if not sched or not sched.is_enabled:
+            return
+
+        ws = db.query(Workspace).filter(Workspace.id == sched.workspace_id).first()
+        org = db.query(Organization).filter(Organization.id == ws.org_id).first() if ws else None
+        org_name = org.name if org else "Organização"
+        ws_name = ws.name if ws else "Workspace"
+
+        # Build period label
+        from datetime import date
+        today = date.today()
+        if sched.schedule_type == "weekly":
+            period_label = f"Semana de {today.strftime('%d/%m/%Y')}"
+        else:
+            period_label = today.strftime("%B %Y")
+
+        report_data: dict = {}
+
+        # Costs per provider
+        if sched.include_costs:
+            accounts = db.query(CloudAccount).filter(
+                CloudAccount.workspace_id == sched.workspace_id,
+                CloudAccount.is_active == True,
+            ).all()
+            costs: dict = {}
+            for account in accounts:
+                try:
+                    creds = decrypt_credential(account.encrypted_data)
+                    if account.provider == "aws":
+                        spend = _fetch_aws_spend(creds)
+                    elif account.provider == "azure":
+                        spend = _fetch_azure_spend(creds)
+                    else:
+                        spend = None
+                    if spend is not None:
+                        costs[account.provider] = costs.get(account.provider, 0.0) + spend
+                except Exception as exc:
+                    logger.warning(f"Cost fetch for report failed (account {account.id}): {exc}")
+            report_data["costs"] = costs
+
+        # Budgets
+        if sched.include_budgets:
+            budgets = db.query(FinOpsBudget).filter(
+                FinOpsBudget.workspace_id == sched.workspace_id,
+                FinOpsBudget.is_active == True,
+            ).all()
+            report_data["budgets"] = [
+                {
+                    "name": b.name,
+                    "amount": b.amount,
+                    "period": b.period,
+                    "last_spend": b.last_spend,
+                    "pct": round((b.last_spend or 0) / b.amount, 4) if b.amount else 0.0,
+                }
+                for b in budgets
+            ]
+
+        # FinOps recommendations
+        if sched.include_finops:
+            recs = (
+                db.query(FinOpsRecommendation)
+                .filter(
+                    FinOpsRecommendation.workspace_id == sched.workspace_id,
+                    FinOpsRecommendation.status == "open",
+                )
+                .order_by(FinOpsRecommendation.estimated_saving.desc())
+                .limit(5)
+                .all()
+            )
+            total_savings = sum(r.estimated_saving for r in recs)
+            report_data["finops_savings"] = total_savings
+            report_data["top_recs"] = [
+                {"title": r.title, "saving": r.estimated_saving}
+                for r in recs[:3]
+            ]
+
+        # Send to all recipients
+        success_count = 0
+        for email in (sched.recipients or []):
+            try:
+                send_report_email(
+                    to_email=email,
+                    org_name=org_name,
+                    ws_name=ws_name,
+                    period_label=period_label,
+                    report_data=report_data,
+                )
+                success_count += 1
+            except Exception as exc:
+                logger.error(f"Failed to send report to {email}: {exc}")
+
+        sched.last_run_at = datetime.utcnow()
+        sched.last_run_status = "success" if success_count > 0 else "error"
+        db.commit()
+        logger.info(f"Report sent to {success_count}/{len(sched.recipients or [])} recipients for schedule {report_schedule_id}")
+
+    except Exception as exc:
+        logger.error(f"execute_report failed for schedule {report_schedule_id}: {exc}")
+        try:
+            if sched:
+                sched.last_run_at = datetime.utcnow()
+                sched.last_run_status = "error"
+                db.commit()
+        except Exception:
+            pass
+    finally:
+        db.close()
+
+
+def register_report_schedule(sched) -> None:
+    """Add or replace APScheduler cron job for a ReportSchedule."""
+    try:
+        h, m = map(int, sched.send_time.split(":"))
+        if sched.schedule_type == "weekly":
+            # send_day: 0=Monday, 6=Sunday
+            trigger = CronTrigger(
+                day_of_week=sched.send_day, hour=h, minute=m,
+                timezone=sched.timezone,
+            )
+        else:  # monthly
+            trigger = CronTrigger(
+                day=sched.send_day, hour=h, minute=m,
+                timezone=sched.timezone,
+            )
+        scheduler.add_job(
+            execute_report,
+            trigger=trigger,
+            args=[str(sched.id)],
+            id=f"report_{sched.id}",
+            replace_existing=True,
+        )
+        logger.info(f"Report schedule registered: {sched.id} ({sched.schedule_type} at {sched.send_time})")
+    except Exception as exc:
+        logger.error(f"Failed to register report schedule {sched.id}: {exc}")
+
+
+def unregister_report_schedule(schedule_id: str) -> None:
+    """Remove APScheduler job for a report schedule (silently if not found)."""
+    try:
+        scheduler.remove_job(f"report_{schedule_id}")
+        logger.info(f"Report schedule unregistered: {schedule_id}")
+    except Exception:
+        pass
+
+
+def load_report_schedules(db) -> int:
+    """Load all enabled ReportSchedule rows into APScheduler. Returns count."""
+    from app.models.db_models import ReportSchedule
+
+    schedules = db.query(ReportSchedule).filter(ReportSchedule.is_enabled == True).all()
+    count = 0
+    for s in schedules:
+        try:
+            register_report_schedule(s)
+            count += 1
+        except Exception as exc:
+            logger.warning(f"Could not register report schedule {s.id}: {exc}")
+
+    # Also register the daily budget eval job
+    try:
+        scheduler.add_job(
+            execute_budget_eval,
+            CronTrigger(hour=8, minute=0),
+            id="budget_eval_daily",
+            replace_existing=True,
+        )
+        logger.info("Daily budget evaluation job registered")
+    except Exception as exc:
+        logger.error(f"Failed to register budget_eval_daily job: {exc}")
+
+    logger.info(f"Loaded {count} report schedules into APScheduler")
+    return count
+
+
+def get_report_next_run(schedule_id: str) -> Optional[str]:
+    """Return the next report run time as ISO string, or None."""
+    try:
+        job = scheduler.get_job(f"report_{schedule_id}")
+        if job and job.next_run_time:
+            return job.next_run_time.isoformat()
+    except Exception:
+        pass
+    return None

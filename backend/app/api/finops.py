@@ -25,6 +25,7 @@ from app.models.db_models import (
     FinOpsRecommendation,
     FinOpsScanSchedule,
     Organization,
+    ReportSchedule,
     ScheduledAction,
     Workspace,
 )
@@ -54,6 +55,19 @@ class BudgetUpdate(BaseModel):
 
 class DismissRequest(BaseModel):
     reason: Optional[str] = None
+
+
+class ReportScheduleUpsert(BaseModel):
+    name: str
+    schedule_type: str              # weekly | monthly
+    send_day: int                   # 0-6 (mon=0) for weekly; 1-28 for monthly
+    send_time: str                  # HH:MM
+    timezone: str = "America/Sao_Paulo"
+    recipients: List[str] = []     # list of email addresses
+    include_budgets: bool = True
+    include_finops: bool = True
+    include_costs: bool = True
+    is_enabled: bool = True
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -109,6 +123,8 @@ def _action_to_dict(a: FinOpsAction) -> dict:
 
 
 def _budget_to_dict(b: FinOpsBudget) -> dict:
+    last_spend = b.last_spend
+    pct = round(last_spend / b.amount, 4) if last_spend is not None and b.amount else 0.0
     return {
         "id": str(b.id),
         "workspace_id": str(b.workspace_id),
@@ -120,6 +136,9 @@ def _budget_to_dict(b: FinOpsBudget) -> dict:
         "alert_threshold": b.alert_threshold,
         "is_active": b.is_active,
         "created_at": b.created_at.isoformat() if b.created_at else None,
+        "last_spend": last_spend,
+        "last_evaluated_at": b.last_evaluated_at.isoformat() if b.last_evaluated_at else None,
+        "pct": pct,
     }
 
 
@@ -1125,4 +1144,303 @@ def delete_scan_schedule(
     db.delete(sched)
     db.commit()
     log_activity(db, member.user, "finops.scan_schedule.delete", "FinOpsScanSchedule", str(sched.id), {})
+    return None
+
+
+# ── Budget Evaluation ─────────────────────────────────────────────────────────
+
+
+@ws_router.post("/budgets/evaluate", status_code=200)
+async def evaluate_budgets(
+    member: MemberContext = Depends(require_permission("finops.budget")),
+    db: Session = Depends(get_db),
+):
+    """
+    Fetch current MTD spend for each active budget and update last_spend / pct.
+    Fires email + webhook alert when the configured threshold is crossed.
+    Returns the updated list of budgets.  Pro-only.
+    """
+    plan = _get_org_plan(member, db)
+    _require_plan(plan, "pro", "Orçamentos")
+
+    from datetime import date
+    from app.services.email_service import send_budget_alert_email
+    from app.services.webhook_service import fire_event as _fire
+
+    budgets = (
+        db.query(FinOpsBudget)
+        .filter(
+            FinOpsBudget.workspace_id == member.workspace_id,
+            FinOpsBudget.is_active == True,
+        )
+        .all()
+    )
+
+    if not budgets:
+        return []
+
+    accounts = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.is_active == True,
+    ).all()
+
+    # Pre-fetch spend per provider for this workspace
+    provider_spend: dict = {}
+    for account in accounts:
+        try:
+            from app.services.auth_service import decrypt_credential
+            creds = decrypt_credential(account.encrypted_data)
+            spend = _fetch_provider_spend(account.provider, creds)
+            if spend is not None:
+                provider_spend[account.provider] = (
+                    provider_spend.get(account.provider, 0.0) + spend
+                )
+        except Exception as exc:
+            logger.warning(f"Spend fetch failed for account {account.id}: {exc}")
+
+    now = datetime.utcnow()
+    cooldown = timedelta(hours=24)
+
+    for budget in budgets:
+        if budget.provider == "all":
+            spend = sum(provider_spend.values())
+        else:
+            spend = provider_spend.get(budget.provider, 0.0)
+
+        budget.last_spend = spend
+        budget.last_evaluated_at = now
+
+        pct = spend / budget.amount if budget.amount else 0.0
+        already_alerted = (
+            budget.alert_sent_at is not None and
+            (now - budget.alert_sent_at) < cooldown
+        )
+
+        if pct >= budget.alert_threshold and not already_alerted:
+            from app.models.db_models import User
+            creator = db.query(User).filter(User.id == budget.created_by).first()
+            if creator:
+                send_budget_alert_email(
+                    to_email=creator.email,
+                    user_name=creator.name,
+                    budget_name=budget.name,
+                    provider=budget.provider,
+                    current_spend=spend,
+                    budget_amount=budget.amount,
+                    pct=pct,
+                )
+            _fire(db, member.workspace_id, "budget.threshold_crossed", {
+                "budget_id":     str(budget.id),
+                "budget_name":   budget.name,
+                "provider":      budget.provider,
+                "current_spend": spend,
+                "budget_amount": budget.amount,
+                "pct":           round(pct, 4),
+            })
+            budget.alert_sent_at = now
+
+    db.commit()
+    for b in budgets:
+        db.refresh(b)
+
+    return [_budget_to_dict(b) for b in budgets]
+
+
+def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
+    """Fetch current MTD spend for a given provider using stored credentials."""
+    try:
+        if provider == "aws":
+            import boto3
+            from datetime import date
+
+            client = boto3.client(
+                "ce",
+                aws_access_key_id=creds.get("access_key_id", ""),
+                aws_secret_access_key=creds.get("secret_access_key", ""),
+                region_name=creds.get("region", "us-east-1"),
+            )
+            today = date.today()
+            result = client.get_cost_and_usage(
+                TimePeriod={
+                    "Start": today.replace(day=1).isoformat(),
+                    "End": today.isoformat(),
+                },
+                Granularity="MONTHLY",
+                Metrics=["UnblendedCost"],
+            )
+            return sum(
+                float(r["Total"]["UnblendedCost"]["Amount"])
+                for r in result.get("ResultsByTime", [])
+            )
+
+        elif provider == "azure":
+            from azure.identity import ClientSecretCredential
+            from azure.mgmt.costmanagement import CostManagementClient
+            from azure.mgmt.costmanagement.models import (
+                QueryDefinition, QueryTimePeriod, QueryDataset, QueryAggregation,
+                TimeframeType, ExportType,
+            )
+            from datetime import date
+
+            credential = ClientSecretCredential(
+                tenant_id=creds.get("tenant_id", ""),
+                client_id=creds.get("client_id", ""),
+                client_secret=creds.get("client_secret", ""),
+            )
+            sub_id = creds.get("subscription_id", "")
+            client = CostManagementClient(credential)
+            today = date.today()
+            scope = f"/subscriptions/{sub_id}"
+            query = QueryDefinition(
+                type=ExportType.ACTUAL_COST,
+                timeframe=TimeframeType.CUSTOM,
+                time_period=QueryTimePeriod(
+                    from_property=f"{today.replace(day=1).isoformat()}T00:00:00Z",
+                    to=f"{today.isoformat()}T23:59:59Z",
+                ),
+                dataset=QueryDataset(
+                    granularity="None",
+                    aggregation={"totalCost": QueryAggregation(name="Cost", function="Sum")},
+                ),
+            )
+            result = client.query.usage(scope=scope, parameters=query)
+            rows = result.rows or []
+            return float(rows[0][0]) if rows else 0.0
+
+    except Exception as exc:
+        logger.warning(f"_fetch_provider_spend({provider}) failed: {exc}")
+    return None
+
+
+# ── Report Schedule ───────────────────────────────────────────────────────────
+
+
+def _report_schedule_to_dict(s: ReportSchedule, next_run: Optional[str] = None) -> dict:
+    return {
+        "id": str(s.id),
+        "workspace_id": str(s.workspace_id),
+        "name": s.name,
+        "schedule_type": s.schedule_type,
+        "send_day": s.send_day,
+        "send_time": s.send_time,
+        "timezone": s.timezone,
+        "recipients": s.recipients or [],
+        "include_budgets": s.include_budgets,
+        "include_finops": s.include_finops,
+        "include_costs": s.include_costs,
+        "is_enabled": s.is_enabled,
+        "last_run_at": s.last_run_at.isoformat() if s.last_run_at else None,
+        "last_run_status": s.last_run_status,
+        "created_at": s.created_at.isoformat() if s.created_at else None,
+        "next_run_at": next_run,
+    }
+
+
+@ws_router.get("/report-schedule")
+def get_report_schedule(
+    member: MemberContext = Depends(require_permission("finops.budget")),
+    db: Session = Depends(get_db),
+):
+    """Return the current report schedule for this workspace, or null."""
+    sched = db.query(ReportSchedule).filter(
+        ReportSchedule.workspace_id == member.workspace_id,
+    ).first()
+    if not sched:
+        return {"schedule": None}
+    from app.services.scheduler_service import get_report_next_run
+    next_run = get_report_next_run(str(sched.id))
+    return {"schedule": _report_schedule_to_dict(sched, next_run)}
+
+
+@ws_router.post("/report-schedule", status_code=200)
+def upsert_report_schedule(
+    payload: ReportScheduleUpsert,
+    member: MemberContext = Depends(require_permission("finops.budget")),
+    db: Session = Depends(get_db),
+):
+    """Create or update the report schedule for this workspace. Pro-only."""
+    import re
+    plan = _get_org_plan(member, db)
+    _require_plan(plan, "pro", "Relatórios automáticos")
+
+    if payload.schedule_type not in ("weekly", "monthly"):
+        raise HTTPException(status_code=422, detail="schedule_type must be 'weekly' or 'monthly'")
+    if not re.match(r"^\d{2}:\d{2}$", payload.send_time):
+        raise HTTPException(status_code=422, detail="send_time must be HH:MM format")
+    if payload.schedule_type == "weekly" and not (0 <= payload.send_day <= 6):
+        raise HTTPException(status_code=422, detail="For weekly schedules, send_day must be 0 (Mon) to 6 (Sun)")
+    if payload.schedule_type == "monthly" and not (1 <= payload.send_day <= 28):
+        raise HTTPException(status_code=422, detail="For monthly schedules, send_day must be 1-28")
+    if not payload.recipients:
+        raise HTTPException(status_code=422, detail="At least one recipient email is required")
+
+    sched = db.query(ReportSchedule).filter(
+        ReportSchedule.workspace_id == member.workspace_id,
+    ).first()
+
+    if sched:
+        sched.name = payload.name
+        sched.schedule_type = payload.schedule_type
+        sched.send_day = payload.send_day
+        sched.send_time = payload.send_time
+        sched.timezone = payload.timezone
+        sched.recipients = payload.recipients
+        sched.include_budgets = payload.include_budgets
+        sched.include_finops = payload.include_finops
+        sched.include_costs = payload.include_costs
+        sched.is_enabled = payload.is_enabled
+    else:
+        sched = ReportSchedule(
+            workspace_id=member.workspace_id,
+            created_by=member.user.id,
+            name=payload.name,
+            schedule_type=payload.schedule_type,
+            send_day=payload.send_day,
+            send_time=payload.send_time,
+            timezone=payload.timezone,
+            recipients=payload.recipients,
+            include_budgets=payload.include_budgets,
+            include_finops=payload.include_finops,
+            include_costs=payload.include_costs,
+            is_enabled=payload.is_enabled,
+        )
+        db.add(sched)
+
+    db.commit()
+    db.refresh(sched)
+
+    from app.services.scheduler_service import register_report_schedule, unregister_report_schedule, get_report_next_run
+    if payload.is_enabled:
+        register_report_schedule(sched)
+    else:
+        unregister_report_schedule(str(sched.id))
+
+    next_run = get_report_next_run(str(sched.id)) if payload.is_enabled else None
+    log_activity(
+        db, member.user, "finops.report_schedule.upsert", "ReportSchedule",
+        resource_id=str(sched.id),
+        detail=f"type={payload.schedule_type} day={payload.send_day} time={payload.send_time} enabled={payload.is_enabled}",
+        provider="system",
+    )
+    return _report_schedule_to_dict(sched, next_run)
+
+
+@ws_router.delete("/report-schedule", status_code=204)
+def delete_report_schedule(
+    member: MemberContext = Depends(require_permission("finops.budget")),
+    db: Session = Depends(get_db),
+):
+    """Remove the report schedule for this workspace."""
+    sched = db.query(ReportSchedule).filter(
+        ReportSchedule.workspace_id == member.workspace_id,
+    ).first()
+    if not sched:
+        raise HTTPException(status_code=404, detail="Nenhum agendamento de relatório configurado.")
+
+    from app.services.scheduler_service import unregister_report_schedule
+    unregister_report_schedule(str(sched.id))
+    sched_id = str(sched.id)
+    db.delete(sched)
+    db.commit()
+    log_activity(db, member.user, "finops.report_schedule.delete", "ReportSchedule", sched_id, {})
     return None
