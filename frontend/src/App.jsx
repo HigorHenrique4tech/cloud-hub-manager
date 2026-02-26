@@ -44,6 +44,7 @@ import VerifyCallback from './pages/VerifyCallback';
 import Billing from './pages/Billing';
 import BillingSuccess from './pages/BillingSuccess';
 import AdminPanel from './pages/AdminPanel';
+import Webhooks from './pages/Webhooks';
 import OAuthCallback from './pages/OAuthCallback';
 import './styles/index.css';
 
@@ -101,6 +102,7 @@ function App() {
                 <Route path="/costs" element={<PR><Costs /></PR>} />
                 <Route path="/finops" element={<PR><FinOps /></PR>} />
                 <Route path="/schedules" element={<PR><Schedules /></PR>} />
+                <Route path="/webhooks" element={<PR><Webhooks /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
                 {/* Billing */}

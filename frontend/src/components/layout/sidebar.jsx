@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, DollarSign, Settings, FileText, Building2, Layers, CreditCard, Zap, Clock, Network, ShieldCheck } from 'lucide-react';
+import { LayoutDashboard, DollarSign, Settings, FileText, Building2, Layers, CreditCard, Zap, Clock, Network, ShieldCheck, Webhook } from 'lucide-react';
 import { AwsIcon, AzureIcon, GcpIcon } from '../common/CloudProviderIcons';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import PermissionGate from '../common/PermissionGate';
@@ -14,6 +14,7 @@ const navItems = [
   { to: '/costs', label: 'Custos', icon: DollarSign, permission: 'costs.view' },
   { to: '/finops', label: 'FinOps', icon: Zap, permission: 'finops.view' },
   { to: '/schedules', label: 'Agendamentos', icon: Clock, permission: 'resources.view' },
+  { to: '/webhooks', label: 'Webhooks', icon: Webhook, permission: 'webhooks.view' },
   { to: '/logs', label: 'Logs', icon: FileText, permission: 'logs.view' },
   { to: '/settings', label: 'Configurações', icon: Settings },
 ];

@@ -260,4 +260,16 @@ async def ws_evaluate_alerts(
             triggered.append({'alert_id': str(alert.id), 'message': message})
 
     db.commit()
+
+    # Fire webhook events for each triggered alert
+    if triggered:
+        from app.services.webhook_service import fire_event as _fire
+        for t in triggered:
+            _fire(db, member.workspace_id, "alert.triggered", {
+                "alert_id":      t["alert_id"],
+                "message":       t["message"],
+                "provider":      payload.provider,
+                "current_value": payload.current_value,
+            })
+
     return {'triggered': len(triggered), 'events': triggered}

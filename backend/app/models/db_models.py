@@ -435,3 +435,41 @@ class EnterpriseLead(Base):
 
     user = relationship("User", foreign_keys=[user_id])
     org  = relationship("Organization", foreign_keys=[org_id])
+
+
+# ── Webhooks ──────────────────────────────────────────────────────────────────
+
+
+class WebhookEndpoint(Base):
+    __tablename__ = "webhook_endpoints"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name         = Column(String(200), nullable=False)
+    url          = Column(String(500), nullable=False)
+    events       = Column(JSONB, nullable=False, default=list)   # ["alert.triggered", "billing.paid", ...]
+    secret       = Column(String(100), nullable=False)           # HMAC-SHA256 signing secret
+    is_active    = Column(Boolean, default=True, nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace  = relationship("Workspace")
+    creator    = relationship("User", foreign_keys=[created_by])
+    deliveries = relationship("WebhookDelivery", back_populates="webhook", cascade="all, delete-orphan")
+
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    webhook_id    = Column(UUID(as_uuid=True), ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type    = Column(String(100), nullable=False)
+    payload       = Column(JSONB, nullable=True)
+    status        = Column(String(20), nullable=False, default="pending")  # pending | delivered | failed
+    http_status   = Column(Integer, nullable=True)
+    response_body = Column(Text, nullable=True)
+    attempt_count = Column(Integer, default=1, nullable=False)
+    delivered_at  = Column(DateTime, nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    webhook = relationship("WebhookEndpoint", back_populates="deliveries")

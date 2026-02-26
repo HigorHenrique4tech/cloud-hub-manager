@@ -53,6 +53,10 @@ class Permission(str, Enum):
     TEMPLATES_VIEW   = "templates.view"   # see and load templates
     TEMPLATES_MANAGE = "templates.manage" # create / edit / delete templates
 
+    # Webhooks
+    WEBHOOKS_VIEW   = "webhooks.view"   # list webhooks and delivery history
+    WEBHOOKS_MANAGE = "webhooks.manage" # create / edit / delete / test webhooks
+
 
 _ALL_PERMISSIONS: Set[str] = {p.value for p in Permission}
 
@@ -72,6 +76,8 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.FINOPS_RECOMMEND,
         Permission.TEMPLATES_VIEW,
         Permission.TEMPLATES_MANAGE,
+        Permission.WEBHOOKS_VIEW,
+        Permission.WEBHOOKS_MANAGE,
     },
 
     "viewer": {
@@ -79,6 +85,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
         Permission.TEMPLATES_VIEW,
+        Permission.WEBHOOKS_VIEW,
     },
 
     "billing": {
