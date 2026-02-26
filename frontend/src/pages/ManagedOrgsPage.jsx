@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud, AlertTriangle } from 'lucide-react';
+import { Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud, AlertTriangle, Grid3x3, CheckCircle, XCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import orgService from '../services/orgService';
+import m365Service from '../services/m365Service';
 
 /* ── Add Partner Modal ───────────────────────────────────────────────────── */
 
@@ -152,6 +153,100 @@ const PartnerCard = ({ org, onAccess, onRemove }) => {
   );
 };
 
+/* ── M365 Tenants Tab ────────────────────────────────────────────────────── */
+
+const M365TenantsTab = ({ orgSlug, onAccess }) => {
+  const tenantsQ = useQuery({
+    queryKey: ['m365-tenants-summary', orgSlug],
+    queryFn: () => m365Service.getTenantsSummary(orgSlug),
+    enabled: Boolean(orgSlug),
+    retry: false,
+  });
+
+  if (tenantsQ.isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
+  if (tenantsQ.isError) {
+    return (
+      <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-4 text-sm text-red-300">
+        Erro ao carregar tenants M365.
+      </div>
+    );
+  }
+
+  const tenants = tenantsQ.data?.tenants || [];
+  const connectedCount = tenants.filter((t) => t.connected).length;
+
+  if (tenants.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-slate-500">
+        <Grid3x3 size={48} className="mb-4 opacity-20" />
+        <p className="text-base font-medium">Nenhuma organização parceira encontrada</p>
+        <p className="text-sm mt-1">Adicione parceiros para visualizar seus tenants M365</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-500 dark:text-slate-400">
+        {connectedCount} de {tenants.length} workspace(s) com M365 conectado
+      </p>
+      <div className="card rounded-2xl overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+          <thead className="bg-gray-50 dark:bg-slate-800/60">
+            <tr>
+              {['Organização', 'Workspace', 'Tenant', 'Usuários', 'Licenças', 'Equipes', 'Status'].map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+            {tenants.map((t, i) => (
+              <tr key={i} className="hover:bg-gray-50 dark:hover:bg-slate-800/40">
+                <td className="px-4 py-3">
+                  <button
+                    onClick={() => onAccess(t.org_slug)}
+                    className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                  >
+                    {t.org_name}
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-slate-400">{t.workspace_name}</td>
+                <td className="px-4 py-3 text-xs text-gray-400 dark:text-slate-500 font-mono">
+                  {t.tenant_domain || '—'}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">
+                  {t.overview?.total_users ?? '—'}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">
+                  {t.overview
+                    ? `${t.overview.assigned_licenses} / ${t.overview.total_licenses}`
+                    : '—'}
+                </td>
+                <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">
+                  {t.overview?.total_teams ?? '—'}
+                </td>
+                <td className="px-4 py-3">
+                  {t.error ? (
+                    <span className="flex items-center gap-1 text-xs text-red-500">
+                      <XCircle size={12} /> Erro
+                    </span>
+                  ) : t.connected ? (
+                    <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                      <CheckCircle size={12} /> Conectado
+                    </span>
+                  ) : (
+                    <span className="text-xs text-gray-400 dark:text-slate-500">Não configurado</span>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 
 const ManagedOrgsPage = () => {
@@ -159,6 +254,7 @@ const ManagedOrgsPage = () => {
   const navigate = useNavigate();
   const { currentOrg, switchOrg, refreshOrgs } = useOrgWorkspace();
 
+  const [activeView, setActiveView] = useState('orgs');
   const [showAddModal, setShowAddModal] = useState(false);
   const [removeTarget, setRemoveTarget] = useState(null);
 
@@ -213,6 +309,16 @@ const ManagedOrgsPage = () => {
     );
   }
 
+  const handleAccessPartner = async (orgSlug) => {
+    await switchOrg(orgSlug);
+    navigate('/');
+  };
+
+  const handleAccessM365 = async (orgSlug) => {
+    await switchOrg(orgSlug);
+    navigate('/m365');
+  };
+
   return (
     <Layout>
       <div className="px-4 py-6 sm:px-6 lg:px-8 space-y-6">
@@ -229,17 +335,39 @@ const ManagedOrgsPage = () => {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
-          >
-            <Plus size={16} />
-            Adicionar Parceira
-          </button>
+          {activeView === 'orgs' && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+            >
+              <Plus size={16} />
+              Adicionar Parceira
+            </button>
+          )}
         </div>
 
-        {/* Summary bar */}
-        {summary && (
+        {/* View tabs */}
+        <div className="flex gap-1 border-b border-gray-200 dark:border-slate-700">
+          {[
+            { id: 'orgs', label: 'Organizações Parceiras', icon: Building2 },
+            { id: 'm365', label: 'Tenants M365', icon: Grid3x3 },
+          ].map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveView(id)}
+              className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeView === id
+                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
+              }`}
+            >
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Summary bar (orgs view only) */}
+        {activeView === 'orgs' && summary && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
               { label: 'Organizações', value: summary.total_partners, sub: `${summary.base_included_orgs} incluídas no plano` },
@@ -257,7 +385,7 @@ const ManagedOrgsPage = () => {
         )}
 
         {/* Add-on pricing info */}
-        {summary && summary.extra_orgs > 0 && (
+        {activeView === 'orgs' && summary && summary.extra_orgs > 0 && (
           <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
             <strong>{summary.extra_orgs}</strong> org{summary.extra_orgs > 1 ? 's' : ''} adicional{summary.extra_orgs > 1 ? 'is' : ''} além das {summary.base_included_orgs} incluídas
             {' '}· <strong>R$ {summary.extra_cost_brl.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</strong> em add-ons
@@ -265,35 +393,42 @@ const ManagedOrgsPage = () => {
         )}
 
         {/* Orgs grid */}
-        {orgsQ.isLoading ? (
-          <div className="flex justify-center py-16"><LoadingSpinner /></div>
-        ) : managedOrgs.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-slate-500">
-            <Building2 size={48} className="mb-4 opacity-20" />
-            <p className="text-base font-medium">Nenhuma organização parceira ainda</p>
-            <p className="text-sm mt-1 mb-4">Adicione parceiros para gerenciar suas infraestruturas centralizadamente</p>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
-            >
-              <Plus size={15} />
-              Adicionar primeira parceira
-            </button>
-          </div>
-        ) : (
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {managedOrgs.map((org) => (
-              <PartnerCard
-                key={org.id}
-                org={org}
-                onAccess={async (o) => {
-                  await switchOrg(o.slug);
-                  navigate('/');
-                }}
-                onRemove={setRemoveTarget}
-              />
-            ))}
-          </div>
+        {activeView === 'orgs' && (
+          orgsQ.isLoading ? (
+            <div className="flex justify-center py-16"><LoadingSpinner /></div>
+          ) : managedOrgs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-slate-500">
+              <Building2 size={48} className="mb-4 opacity-20" />
+              <p className="text-base font-medium">Nenhuma organização parceira ainda</p>
+              <p className="text-sm mt-1 mb-4">Adicione parceiros para gerenciar suas infraestruturas centralizadamente</p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+              >
+                <Plus size={15} />
+                Adicionar primeira parceira
+              </button>
+            </div>
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {managedOrgs.map((org) => (
+                <PartnerCard
+                  key={org.id}
+                  org={org}
+                  onAccess={async (o) => handleAccessPartner(o.slug)}
+                  onRemove={setRemoveTarget}
+                />
+              ))}
+            </div>
+          )
+        )}
+
+        {/* M365 tenants tab */}
+        {activeView === 'm365' && (
+          <M365TenantsTab
+            orgSlug={currentOrg?.slug}
+            onAccess={handleAccessM365}
+          />
         )}
       </div>
 

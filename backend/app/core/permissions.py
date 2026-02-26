@@ -57,6 +57,10 @@ class Permission(str, Enum):
     WEBHOOKS_VIEW   = "webhooks.view"   # list webhooks and delivery history
     WEBHOOKS_MANAGE = "webhooks.manage" # create / edit / delete / test webhooks
 
+    # Microsoft 365
+    M365_VIEW   = "m365.view"   # view M365 tenant data (users, licenses, teams, security)
+    M365_MANAGE = "m365.manage" # save / delete M365 credentials, configure integration
+
 
 _ALL_PERMISSIONS: Set[str] = {p.value for p in Permission}
 
@@ -78,6 +82,8 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.TEMPLATES_MANAGE,
         Permission.WEBHOOKS_VIEW,
         Permission.WEBHOOKS_MANAGE,
+        Permission.M365_VIEW,
+        Permission.M365_MANAGE,
     },
 
     "viewer": {
@@ -86,6 +92,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.FINOPS_VIEW,
         Permission.TEMPLATES_VIEW,
         Permission.WEBHOOKS_VIEW,
+        Permission.M365_VIEW,
     },
 
     "billing": {
@@ -96,6 +103,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.FINOPS_VIEW,
         Permission.FINOPS_RECOMMEND,
         Permission.TEMPLATES_VIEW,
+        Permission.M365_VIEW,
     },
 }
 

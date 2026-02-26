@@ -15,6 +15,7 @@ from .schedules import ws_router as schedules_ws_router
 from .dashboard_config import ws_router as dashboard_config_ws_router
 from .admin import admin_router, leads_router
 from .webhooks import ws_router as webhooks_ws_router
+from .m365 import ws_router as m365_ws_router, org_router as m365_org_router
 
 api_router = APIRouter()
 
@@ -43,5 +44,7 @@ api_router.include_router(templates_ws_router)
 api_router.include_router(schedules_ws_router)
 api_router.include_router(dashboard_config_ws_router)
 api_router.include_router(webhooks_ws_router)
+api_router.include_router(m365_ws_router)
+api_router.include_router(m365_org_router)
 
 __all__ = ["api_router"]

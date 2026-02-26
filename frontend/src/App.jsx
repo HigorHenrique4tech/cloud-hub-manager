@@ -46,6 +46,7 @@ import BillingSuccess from './pages/BillingSuccess';
 import AdminPanel from './pages/AdminPanel';
 import Webhooks from './pages/Webhooks';
 import OAuthCallback from './pages/OAuthCallback';
+import M365Dashboard from './pages/m365/M365Dashboard';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -103,6 +104,7 @@ function App() {
                 <Route path="/finops" element={<PR><FinOps /></PR>} />
                 <Route path="/schedules" element={<PR><Schedules /></PR>} />
                 <Route path="/webhooks" element={<PR><Webhooks /></PR>} />
+                <Route path="/m365" element={<PR><M365Dashboard /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
                 {/* Billing */}

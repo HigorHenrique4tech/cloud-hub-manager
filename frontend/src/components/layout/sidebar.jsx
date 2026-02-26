@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, DollarSign, Settings, FileText, Building2, Layers, CreditCard, Zap, Clock, Network, ShieldCheck, Webhook } from 'lucide-react';
+import { LayoutDashboard, DollarSign, Settings, FileText, Building2, Layers, CreditCard, Zap, Clock, Network, ShieldCheck, Webhook, Grid3x3 } from 'lucide-react';
 import { AwsIcon, AzureIcon, GcpIcon } from '../common/CloudProviderIcons';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import PermissionGate from '../common/PermissionGate';
@@ -79,6 +79,10 @@ const Sidebar = () => {
             }
             return item;
           })}
+          {/* M365: Enterprise only */}
+          {isEnterprise && (
+            <NavItem to="/m365" label="Microsoft 365" icon={Grid3x3} />
+          )}
           {/* MSP: show only for Enterprise master orgs */}
           {isEnterprise && (isMasterOrg || currentOrg?.org_type === 'standalone') && (
             <NavItem to="/org/managed" label="Orgs Gerenciadas" icon={Network} />

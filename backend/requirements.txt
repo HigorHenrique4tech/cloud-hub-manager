@@ -18,6 +18,9 @@ google-cloud-functions==1.13.3
 google-api-python-client==2.111.0
 google-auth==2.26.1
 
+# Microsoft 365 / Graph API
+msal>=1.28.0
+
 # Azure SDK
 azure-identity==1.15.0
 azure-mgmt-compute==30.5.0
