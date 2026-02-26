@@ -66,6 +66,7 @@ async def checkout(
         completion_url=completion_url,
     )
 
+    # If billing_data has no URL (dev/mock mode), we'll set it after creating the payment record
     payment = Payment(
         organization_id=org.id,
         user_id=member.user.id,
@@ -79,6 +80,9 @@ async def checkout(
     db.commit()
     db.refresh(payment)
 
+    # In dev/mock mode (no AbacatePay URL), redirect straight to success page with real payment UUID
+    payment_url = billing_data.get("url") or f"{settings.FRONTEND_URL}/billing/success?payment_id={str(payment.id)}"
+
     log_activity(
         db, member.user, "billing.checkout", "Payment",
         resource_id=str(payment.id),
@@ -88,7 +92,7 @@ async def checkout(
 
     return {
         "payment_id": str(payment.id),
-        "payment_url": billing_data.get("url"),
+        "payment_url": payment_url,
         "amount": amount,
         "plan_tier": payload.plan_tier,
     }

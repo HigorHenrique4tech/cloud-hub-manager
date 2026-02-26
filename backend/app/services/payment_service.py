@@ -26,7 +26,7 @@ async def create_billing(
         logger.warning("ABACATEPAY_API_KEY not configured — returning mock billing")
         return {
             "id": "bill_mock_dev",
-            "url": f"{settings.FRONTEND_URL}/billing/success?payment_id=mock",
+            "url": None,  # checkout endpoint will build the URL with the real payment UUID
             "amount": amount_cents,
             "status": "PENDING",
         }
