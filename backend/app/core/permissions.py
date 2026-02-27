@@ -72,9 +72,12 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     },
 
     "operator": {
+        Permission.ACCOUNTS_VIEW,
         Permission.RESOURCES_VIEW,
         Permission.RESOURCES_CREATE,
         Permission.RESOURCES_START_STOP,
+        Permission.COSTS_VIEW,
+        Permission.ALERTS_VIEW,
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
         Permission.FINOPS_RECOMMEND,
@@ -87,7 +90,10 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
     },
 
     "viewer": {
+        Permission.ACCOUNTS_VIEW,
         Permission.RESOURCES_VIEW,
+        Permission.COSTS_VIEW,
+        Permission.ALERTS_VIEW,
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
         Permission.TEMPLATES_VIEW,
