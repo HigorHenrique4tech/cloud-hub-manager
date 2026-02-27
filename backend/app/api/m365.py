@@ -339,7 +339,18 @@ async def add_team_member(
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
+        err_str = str(exc)
         logger.error("M365 add team member error for team %s: %s", team_id, exc)
+        # Groups synced from on-premises AD are read-only in the cloud
+        if "403" in err_str or "Forbidden" in err_str:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Não foi possível adicionar o membro. Este grupo pode ser sincronizado "
+                    "a partir do Active Directory local (on-premises) e só pode ser gerenciado "
+                    "diretamente no AD — não via Microsoft Graph."
+                ),
+            )
         raise HTTPException(status_code=502, detail=f"Falha ao adicionar membro: {exc}")
 
 

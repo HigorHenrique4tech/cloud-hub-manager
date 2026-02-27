@@ -367,15 +367,33 @@ class M365Service:
 
     def add_team_member(self, team_id: str, user_id: str, roles: list = None) -> dict:
         """
-        Add a user to a Team.
-        Requires TeamMember.ReadWrite.All application permission.
+        Add a user to a Team or M365 Group.
+        - Teams endpoint (TeamMember.ReadWrite.All): POST /teams/{id}/members
+        - Groups fallback (Group.ReadWrite.All): POST /groups/{id}/members/$ref
+        Falls back to the groups endpoint when the team ID refers to a plain
+        M365 group (i.e. not provisioned as a Microsoft Teams team).
         """
-        body = {
-            "@odata.type": "#microsoft.graph.aadUserConversationMember",
-            "roles": roles or [],
-            "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{user_id}')",
+        # Try Teams endpoint first
+        try:
+            body = {
+                "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                "roles": roles or [],
+                "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{user_id}')",
+            }
+            return self._post(f"/teams/{team_id}/members", body)
+        except Exception as exc:
+            # Only fall back on 403/404 — plain groups don't support /teams endpoint
+            if not any(code in str(exc) for code in ("403", "404", "Forbidden", "NotFound")):
+                raise
+            logger.warning(
+                "POST /teams/%s/members failed (%s) — retrying via /groups/$ref", team_id, exc
+            )
+
+        # Fallback: standard directory group member add (returns 204 No Content)
+        ref_body = {
+            "@odata.id": f"https://graph.microsoft.com/v1.0/directoryObjects/{user_id}"
         }
-        return self._post(f"/teams/{team_id}/members", body)
+        return self._post(f"/groups/{team_id}/members/$ref", ref_body)
 
     def get_security_overview(self) -> dict:
         """
