@@ -5,11 +5,14 @@ Routes are workspace-scoped (org_slug + workspace_id in the path).
 """
 import json
 import logging
+import math
+import threading
+import uuid as uuid_lib
 from datetime import datetime, timedelta
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -30,10 +33,50 @@ from app.models.db_models import (
     Workspace,
 )
 from app.services.auth_service import decrypt_credential
-from app.services.finops_service import AWSFinOpsScanner, AzureFinOpsScanner
+from app.services.finops_service import AWSFinOpsScanner, AzureFinOpsScanner, GCPFinOpsScanner
 from app.services.log_service import log_activity
 
 logger = logging.getLogger(__name__)
+
+# ── In-memory scan job tracker ─────────────────────────────────────────────────
+# { job_id: {"status": queued|running|done|error, "started_at": ..., "finished_at": ...,
+#             "results": {...}, "error": str|None, "workspace_id": UUID} }
+_scan_jobs: dict = {}
+_scan_jobs_lock = threading.Lock()
+
+_JOB_TTL_SECONDS = 3600  # purge finished jobs after 1 hour
+
+
+def _purge_old_jobs():
+    cutoff = datetime.utcnow().timestamp() - _JOB_TTL_SECONDS
+    with _scan_jobs_lock:
+        to_delete = [
+            jid for jid, j in _scan_jobs.items()
+            if j["status"] in ("done", "error")
+            and (j.get("finished_at") or 0) < cutoff
+        ]
+        for jid in to_delete:
+            del _scan_jobs[jid]
+
+
+# ── In-memory spend cache (5-minute TTL) ──────────────────────────────────────
+_spend_cache: dict = {}
+_spend_cache_lock = threading.Lock()
+_SPEND_CACHE_TTL = 300  # seconds
+
+
+def _get_cached_spend(key: str):
+    with _spend_cache_lock:
+        entry = _spend_cache.get(key)
+        if entry and entry[1] > datetime.utcnow().timestamp():
+            return entry[0]
+    return None
+
+
+def _set_cached_spend(key: str, value):
+    with _spend_cache_lock:
+        _spend_cache[key] = (value, datetime.utcnow().timestamp() + _SPEND_CACHE_TTL)
+
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -173,10 +216,10 @@ def _require_plan(plan: str, minimum: str, feature: str):
         )
 
 
-def _get_aws_scanner(member: MemberContext, db: Session,
+def _get_aws_scanner(workspace_id, db: Session,
                      account_id: Optional[str] = None) -> Optional[AWSFinOpsScanner]:
     q = db.query(CloudAccount).filter(
-        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.workspace_id == workspace_id,
         CloudAccount.provider == "aws",
         CloudAccount.is_active == True,
     )
@@ -196,10 +239,10 @@ def _get_aws_scanner(member: MemberContext, db: Session,
     return scanner
 
 
-def _get_azure_scanner(member: MemberContext, db: Session,
+def _get_azure_scanner(workspace_id, db: Session,
                        account_id: Optional[str] = None) -> Optional[AzureFinOpsScanner]:
     q = db.query(CloudAccount).filter(
-        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.workspace_id == workspace_id,
         CloudAccount.provider == "azure",
         CloudAccount.is_active == True,
     )
@@ -218,6 +261,35 @@ def _get_azure_scanner(member: MemberContext, db: Session,
     scanner = AzureFinOpsScanner(
         subscription_id=sub_id, tenant_id=tenant,
         client_id=client, client_secret=secret,
+    )
+    scanner._account_id = account.id
+    return scanner
+
+
+def _get_gcp_scanner(workspace_id, db: Session,
+                     account_id: Optional[str] = None) -> Optional[GCPFinOpsScanner]:
+    q = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == workspace_id,
+        CloudAccount.provider == "gcp",
+        CloudAccount.is_active == True,
+    )
+    if account_id:
+        q = q.filter(CloudAccount.id == account_id)
+    account = q.order_by(CloudAccount.created_at.desc()).first()
+    if not account:
+        return None
+    data = decrypt_credential(account.encrypted_data)
+    project_id    = data.get("project_id", "")
+    client_email  = data.get("client_email", "")
+    private_key   = data.get("private_key", "")
+    private_key_id = data.get("private_key_id", "")
+    if not all([project_id, client_email, private_key]):
+        return None
+    scanner = GCPFinOpsScanner(
+        project_id=project_id,
+        client_email=client_email,
+        private_key=private_key,
+        private_key_id=private_key_id,
     )
     scanner._account_id = account.id
     return scanner
@@ -304,9 +376,12 @@ def _apply_aws(rec: FinOpsRecommendation, scanner: AWSFinOpsScanner) -> dict:
                 raise HTTPException(status_code=400, detail="Tipo de instância recomendado não definido.")
             current_spec = rec.current_spec or {}
             old_type = current_spec.get("instance_type", "unknown")
-            # stop → change → start
+            # stop → wait → change → start
             ec2.stop_instances(InstanceIds=[rec.resource_id])
-            import time; time.sleep(15)
+            ec2.get_waiter("instance_stopped").wait(
+                InstanceIds=[rec.resource_id],
+                WaiterConfig={"Delay": 5, "MaxAttempts": 40},
+            )
             ec2.modify_instance_attribute(
                 InstanceId=rec.resource_id,
                 InstanceType={"Value": new_type},
@@ -335,7 +410,10 @@ def _rollback_aws(action: FinOpsAction, scanner: AWSFinOpsScanner):
         ec2.start_instances(InstanceIds=data.get("instance_ids", []))
     elif act == "restore_type":
         ec2.stop_instances(InstanceIds=[data["instance_id"]])
-        import time; time.sleep(15)
+        ec2.get_waiter("instance_stopped").wait(
+            InstanceIds=[data["instance_id"]],
+            WaiterConfig={"Delay": 5, "MaxAttempts": 40},
+        )
         ec2.modify_instance_attribute(
             InstanceId=data["instance_id"],
             InstanceType={"Value": data["original_type"]},
@@ -404,6 +482,59 @@ def _rollback_azure(action: FinOpsAction, scanner: AzureFinOpsScanner):
         compute.virtual_machines.begin_create_or_update(rg, name, vm_obj).result()
     else:
         raise HTTPException(status_code=400, detail="Rollback não disponível para esta ação.")
+
+
+def _apply_gcp(rec: FinOpsRecommendation, scanner: GCPFinOpsScanner) -> dict:
+    """Execute GCP action for a recommendation. Returns rollback_data."""
+    rtype = rec.recommendation_type
+    rrestype = rec.resource_type
+    spec = rec.current_spec or {}
+    project = scanner.project_id
+
+    if rrestype == "compute_instance" and rtype == "stop":
+        zone = spec.get("zone") or rec.region or ""
+        if not zone:
+            raise HTTPException(status_code=400, detail="Zona da instância GCE não encontrada.")
+        op = scanner._instances_client().stop(project=project, zone=zone, instance=rec.resource_id)
+        op.result()
+        return {"action": "start_instance", "project": project, "zone": zone, "instance": rec.resource_id}
+
+    elif rrestype == "persistent_disk" and rtype == "delete":
+        zone = spec.get("zone") or rec.region or ""
+        if not zone:
+            raise HTTPException(status_code=400, detail="Zona do disco persistente não encontrada.")
+        op = scanner._disks_client().delete(project=project, zone=zone, disk=rec.resource_id)
+        op.result()
+        return {}  # não reversível
+
+    elif rrestype == "static_ip" and rtype == "delete":
+        region = spec.get("region") or rec.region or ""
+        if not region:
+            raise HTTPException(status_code=400, detail="Região do IP estático não encontrada.")
+        op = scanner._addresses_client().delete(project=project, region=region, address=rec.resource_id)
+        op.result()
+        return {}  # não reversível
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ação '{rtype}' para recurso '{rrestype}' (GCP) não suportada ainda.",
+        )
+
+
+def _rollback_gcp(action: FinOpsAction, scanner: GCPFinOpsScanner):
+    data = action.rollback_data or {}
+    act = data.get("action", "")
+
+    if act == "start_instance":
+        op = scanner._instances_client().start(
+            project=data["project"],
+            zone=data["zone"],
+            instance=data["instance"],
+        )
+        op.result()
+    else:
+        raise HTTPException(status_code=400, detail="Rollback não disponível para esta ação GCP.")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -502,8 +633,10 @@ async def get_finops_summary(
 @ws_router.get("/recommendations")
 async def list_recommendations(
     status: Optional[str] = Query(None, description="pending|applied|dismissed|failed"),
-    provider: Optional[str] = Query(None, description="aws|azure"),
+    provider: Optional[str] = Query(None, description="aws|azure|gcp"),
     severity: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     member: MemberContext = Depends(require_permission("finops.view")),
     db: Session = Depends(get_db),
 ):
@@ -520,24 +653,31 @@ async def list_recommendations(
         q = q.filter(FinOpsRecommendation.severity == severity)
 
     q = q.order_by(FinOpsRecommendation.estimated_saving_monthly.desc())
-    recs = q.all()
+    total = q.count()
+    recs = q.offset((page - 1) * page_size).limit(page_size).all()
 
     data = [_rec_to_dict(r) for r in recs]
 
     # Plan gate: free plan sees top 3 only
     if plan == "free" and (not status or status == "pending"):
         for i, item in enumerate(data):
-            if i >= 3:
+            if (page - 1) * page_size + i >= 3:
                 item["_locked"] = True
                 item["reasoning"] = ""
                 item["current_spec"] = None
                 item["recommended_spec"] = None
 
-    return data
+    return {
+        "items": data,
+        "total": total,
+        "page": page,
+        "pages": math.ceil(total / page_size) if total else 1,
+        "page_size": page_size,
+    }
 
 
 @ws_router.post("/recommendations/{rec_id}/apply", status_code=200)
-async def apply_recommendation(
+def apply_recommendation(
     rec_id: UUID,
     member: MemberContext = Depends(require_permission("finops.execute")),
     db: Session = Depends(get_db),
@@ -624,7 +764,7 @@ async def apply_recommendation(
     try:
         if rec.provider == "aws":
             scanner = _get_aws_scanner(
-                member, db,
+                member.workspace_id, db,
                 account_id=str(rec.cloud_account_id) if rec.cloud_account_id else None,
             )
             if not scanner:
@@ -633,12 +773,21 @@ async def apply_recommendation(
 
         elif rec.provider == "azure":
             scanner = _get_azure_scanner(
-                member, db,
+                member.workspace_id, db,
                 account_id=str(rec.cloud_account_id) if rec.cloud_account_id else None,
             )
             if not scanner:
                 raise HTTPException(status_code=400, detail="Nenhuma conta Azure configurada.")
             rollback_data = _apply_azure(rec, scanner)
+
+        elif rec.provider == "gcp":
+            scanner = _get_gcp_scanner(
+                member.workspace_id, db,
+                account_id=str(rec.cloud_account_id) if rec.cloud_account_id else None,
+            )
+            if not scanner:
+                raise HTTPException(status_code=400, detail="Nenhuma conta GCP configurada.")
+            rollback_data = _apply_gcp(rec, scanner)
 
         else:
             raise HTTPException(status_code=400, detail=f"Provider '{rec.provider}' não suportado.")
@@ -736,59 +885,152 @@ async def dismiss_recommendation(
 # ── Scan ──────────────────────────────────────────────────────────────────────
 
 
-@ws_router.post("/scan", status_code=200)
+def _run_scan_job(
+    job_id: str,
+    provider: Optional[str],
+    user_id,           # raw UUID — avoids passing detached ORM objects cross-thread
+    workspace_id,
+    organization_id,
+):
+    """Background worker: runs cloud scans and updates job state in _scan_jobs."""
+    from app.database import SessionLocal  # local import to avoid circular
+    from app.models.db_models import User
+
+    with _scan_jobs_lock:
+        _scan_jobs[job_id]["status"] = "running"
+        _scan_jobs[job_id]["started_at"] = datetime.utcnow().timestamp()
+
+    new_total = 0
+    results: dict = {}
+    error_str: Optional[str] = None
+
+    try:
+        db = SessionLocal()
+        try:
+            # Load user fresh from this session (avoids detached-instance errors)
+            user = db.query(User).filter(User.id == user_id).first()
+
+            if not provider or provider == "aws":
+                scanner = _get_aws_scanner(workspace_id, db)
+                if scanner:
+                    try:
+                        findings = scanner.scan_all()
+                        new_count = _persist_findings(findings, workspace_id, scanner._account_id, db)
+                        new_total += new_count
+                        results["aws"] = {"findings": len(findings), "new": new_count}
+                    except Exception as exc:
+                        logger.warning(f"AWS scan failed: {exc}")
+                        results["aws"] = {"error": str(exc)}
+                else:
+                    results["aws"] = {"skipped": "Nenhuma conta AWS configurada."}
+
+            if not provider or provider == "azure":
+                scanner = _get_azure_scanner(workspace_id, db)
+                if scanner:
+                    try:
+                        findings = scanner.scan_all()
+                        new_count = _persist_findings(findings, workspace_id, scanner._account_id, db)
+                        new_total += new_count
+                        results["azure"] = {"findings": len(findings), "new": new_count}
+                    except Exception as exc:
+                        logger.warning(f"Azure scan failed: {exc}")
+                        results["azure"] = {"error": str(exc)}
+                else:
+                    results["azure"] = {"skipped": "Nenhuma conta Azure configurada."}
+
+            if not provider or provider == "gcp":
+                scanner = _get_gcp_scanner(workspace_id, db)
+                if scanner:
+                    try:
+                        findings = scanner.scan_all()
+                        new_count = _persist_findings(findings, workspace_id, scanner._account_id, db)
+                        new_total += new_count
+                        results["gcp"] = {"findings": len(findings), "new": new_count}
+                    except Exception as exc:
+                        logger.warning(f"GCP scan failed: {exc}")
+                        results["gcp"] = {"error": str(exc)}
+                else:
+                    results["gcp"] = {"skipped": "Nenhuma conta GCP configurada."}
+
+            if user:
+                log_activity(
+                    db=db, user=user,
+                    action="finops.scan",
+                    resource_type="workspace",
+                    provider=provider or "all",
+                    status="success",
+                    detail=json.dumps({"new_findings": new_total, "results": results}),
+                    organization_id=organization_id,
+                    workspace_id=workspace_id,
+                )
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.exception(f"Scan job {job_id} failed: {exc}")
+        error_str = str(exc)
+
+    finished = datetime.utcnow().timestamp()
+    with _scan_jobs_lock:
+        if error_str and not results:
+            _scan_jobs[job_id]["status"] = "error"
+            _scan_jobs[job_id]["error"] = error_str
+        else:
+            _scan_jobs[job_id]["status"] = "done"
+            _scan_jobs[job_id]["results"] = results
+            _scan_jobs[job_id]["new_findings"] = new_total
+        _scan_jobs[job_id]["finished_at"] = finished
+
+    _purge_old_jobs()
+
+
+@ws_router.post("/scan", status_code=202)
 async def trigger_scan(
-    provider: Optional[str] = Query(None, description="aws|azure — omit for both"),
+    background_tasks: BackgroundTasks,
+    provider: Optional[str] = Query(None, description="aws|azure|gcp — omit for all"),
     member: MemberContext = Depends(require_permission("finops.recommend")),
     db: Session = Depends(get_db),
 ):
-    """Trigger a waste detection scan. Returns number of new findings."""
-    new_total = 0
-    results: dict = {}
+    """Enqueue a waste detection scan. Returns job_id immediately; poll GET /scan/status/{job_id}."""
+    job_id = str(uuid_lib.uuid4())
+    with _scan_jobs_lock:
+        _scan_jobs[job_id] = {
+            "status": "queued",
+            "workspace_id": str(member.workspace_id),
+            "provider": provider or "all",
+            "started_at": None,
+            "finished_at": None,
+            "new_findings": None,
+            "results": None,
+            "error": None,
+        }
 
-    if not provider or provider == "aws":
-        scanner = _get_aws_scanner(member, db)
-        if scanner:
-            try:
-                findings = scanner.scan_all()
-                new_count = _persist_findings(
-                    findings, member.workspace_id, scanner._account_id, db
-                )
-                new_total += new_count
-                results["aws"] = {"findings": len(findings), "new": new_count}
-            except Exception as exc:
-                logger.warning(f"AWS scan failed: {exc}")
-                results["aws"] = {"error": str(exc)}
-        else:
-            results["aws"] = {"skipped": "Nenhuma conta AWS configurada."}
-
-    if not provider or provider == "azure":
-        scanner = _get_azure_scanner(member, db)
-        if scanner:
-            try:
-                findings = scanner.scan_all()
-                new_count = _persist_findings(
-                    findings, member.workspace_id, scanner._account_id, db
-                )
-                new_total += new_count
-                results["azure"] = {"findings": len(findings), "new": new_count}
-            except Exception as exc:
-                logger.warning(f"Azure scan failed: {exc}")
-                results["azure"] = {"error": str(exc)}
-        else:
-            results["azure"] = {"skipped": "Nenhuma conta Azure configurada."}
-
-    log_activity(
-        db=db, user=member.user,
-        action="finops.scan",
-        resource_type="workspace",
-        provider=provider or "all",
-        status="success",
-        detail=json.dumps({"new_findings": new_total, "results": results}),
-        organization_id=member.organization_id,
+    background_tasks.add_task(
+        _run_scan_job,
+        job_id=job_id,
+        provider=provider,
+        user_id=member.user.id,
         workspace_id=member.workspace_id,
+        organization_id=member.organization_id,
     )
-    return {"new_findings": new_total, "results": results}
+    return {"job_id": job_id, "status": "queued"}
+
+
+@ws_router.get("/scan/status/{job_id}", status_code=200)
+async def get_scan_status(
+    job_id: str,
+    member: MemberContext = Depends(require_permission("finops.recommend")),
+):
+    """Poll the status of a background scan job."""
+    with _scan_jobs_lock:
+        job = _scan_jobs.get(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job de scan não encontrado ou expirado.")
+
+    if str(job.get("workspace_id")) != str(member.workspace_id):
+        raise HTTPException(status_code=403, detail="Acesso negado a este job.")
+
+    return job
 
 
 # ── Actions ───────────────────────────────────────────────────────────────────
@@ -796,21 +1038,25 @@ async def trigger_scan(
 
 @ws_router.get("/actions")
 async def list_actions(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     member: MemberContext = Depends(require_permission("finops.view")),
     db: Session = Depends(get_db),
 ):
-    actions = (
-        db.query(FinOpsAction)
-        .filter(FinOpsAction.workspace_id == member.workspace_id)
-        .order_by(FinOpsAction.executed_at.desc())
-        .limit(100)
-        .all()
-    )
-    return [_action_to_dict(a) for a in actions]
+    q = db.query(FinOpsAction).filter(FinOpsAction.workspace_id == member.workspace_id)
+    total = q.count()
+    actions = q.order_by(FinOpsAction.executed_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "items": [_action_to_dict(a) for a in actions],
+        "total": total,
+        "page": page,
+        "pages": math.ceil(total / page_size) if total else 1,
+        "page_size": page_size,
+    }
 
 
 @ws_router.post("/actions/{action_id}/rollback", status_code=200)
-async def rollback_action(
+def rollback_action(
     action_id: UUID,
     member: MemberContext = Depends(require_permission("finops.execute")),
     db: Session = Depends(get_db),
@@ -834,15 +1080,20 @@ async def rollback_action(
 
     try:
         if action.provider == "aws":
-            scanner = _get_aws_scanner(member, db)
+            scanner = _get_aws_scanner(member.workspace_id, db)
             if not scanner:
                 raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada.")
             _rollback_aws(action, scanner)
         elif action.provider == "azure":
-            scanner = _get_azure_scanner(member, db)
+            scanner = _get_azure_scanner(member.workspace_id, db)
             if not scanner:
                 raise HTTPException(status_code=400, detail="Nenhuma conta Azure configurada.")
             _rollback_azure(action, scanner)
+        elif action.provider == "gcp":
+            scanner = _get_gcp_scanner(member.workspace_id, db)
+            if not scanner:
+                raise HTTPException(status_code=400, detail="Nenhuma conta GCP configurada.")
+            _rollback_gcp(action, scanner)
     except HTTPException:
         raise
     except Exception as exc:
@@ -990,20 +1241,24 @@ async def delete_budget(
 
 @ws_router.get("/anomalies")
 async def list_anomalies(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     member: MemberContext = Depends(require_permission("finops.view")),
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
     _require_plan(plan, "pro", "Detecção de anomalias")
 
-    anomalies = (
-        db.query(FinOpsAnomaly)
-        .filter(FinOpsAnomaly.workspace_id == member.workspace_id)
-        .order_by(FinOpsAnomaly.created_at.desc())
-        .limit(50)
-        .all()
-    )
-    return [_anomaly_to_dict(a) for a in anomalies]
+    q = db.query(FinOpsAnomaly).filter(FinOpsAnomaly.workspace_id == member.workspace_id)
+    total = q.count()
+    anomalies = q.order_by(FinOpsAnomaly.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "items": [_anomaly_to_dict(a) for a in anomalies],
+        "total": total,
+        "page": page,
+        "pages": math.ceil(total / page_size) if total else 1,
+        "page_size": page_size,
+    }
 
 
 @ws_router.post("/anomalies/{anomaly_id}/acknowledge", status_code=200)
@@ -1081,8 +1336,8 @@ def upsert_scan_schedule(
         raise HTTPException(status_code=422, detail="schedule_time must be HH:MM format")
     if payload.schedule_type not in ("daily", "weekdays", "weekends"):
         raise HTTPException(status_code=422, detail="schedule_type must be daily, weekdays or weekends")
-    if payload.provider not in ("all", "aws", "azure"):
-        raise HTTPException(status_code=422, detail="provider must be all, aws or azure")
+    if payload.provider not in ("all", "aws", "azure", "gcp"):
+        raise HTTPException(status_code=422, detail="provider must be all, aws, azure or gcp")
 
     sched = db.query(FinOpsScanSchedule).filter(
         FinOpsScanSchedule.workspace_id == member.workspace_id,
@@ -1247,8 +1502,14 @@ async def evaluate_budgets(
 
 
 def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
-    """Fetch current MTD spend for a given provider using stored credentials."""
+    """Fetch current MTD spend for a given provider using stored credentials (5-min cache)."""
+    cache_key = f"{provider}:{creds.get('access_key_id') or creds.get('tenant_id', '')}:{creds.get('subscription_id', '')}"
+    cached = _get_cached_spend(cache_key)
+    if cached is not None:
+        return cached
+
     try:
+        spend: Optional[float] = None
         if provider == "aws":
             import boto3
             from datetime import date
@@ -1260,7 +1521,7 @@ def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
                 region_name=creds.get("region", "us-east-1"),
             )
             today = date.today()
-            result = client.get_cost_and_usage(
+            resp = client.get_cost_and_usage(
                 TimePeriod={
                     "Start": today.replace(day=1).isoformat(),
                     "End": today.isoformat(),
@@ -1268,9 +1529,9 @@ def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
                 Granularity="MONTHLY",
                 Metrics=["UnblendedCost"],
             )
-            return sum(
+            spend = sum(
                 float(r["Total"]["UnblendedCost"]["Amount"])
-                for r in result.get("ResultsByTime", [])
+                for r in resp.get("ResultsByTime", [])
             )
 
         elif provider == "azure":
@@ -1305,7 +1566,11 @@ def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
             )
             result = client.query.usage(scope=scope, parameters=query)
             rows = result.rows or []
-            return float(rows[0][0]) if rows else 0.0
+            spend = float(rows[0][0]) if rows else 0.0
+
+        if spend is not None:
+            _set_cached_spend(cache_key, spend)
+        return spend
 
     except Exception as exc:
         logger.warning(f"_fetch_provider_spend({provider}) failed: {exc}")

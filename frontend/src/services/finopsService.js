@@ -34,7 +34,12 @@ const finopsService = {
   triggerScan: async (provider = null) => {
     const params = provider ? { provider } : {};
     const { data } = await api.post(wsUrl('/finops/scan'), null, { params });
-    return data;
+    return data; // { job_id, status: "queued" }
+  },
+
+  getScanStatus: async (jobId) => {
+    const { data } = await api.get(wsUrl(`/finops/scan/status/${jobId}`));
+    return data; // { status, new_findings, results, error }
   },
 
   // ── Actions ───────────────────────────────────────────────────────────────

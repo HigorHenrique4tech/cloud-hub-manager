@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Zap, TrendingDown, History, Wallet, AlertTriangle, Plus, Trash2, X, Clock, CheckCircle, XCircle, Mail, RefreshCw, Pencil } from 'lucide-react';
+import { Zap, TrendingDown, History, Wallet, AlertTriangle, Plus, Trash2, X, Clock, CheckCircle, XCircle, Mail, RefreshCw, Pencil, Bell } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
 import PermissionGate from '../components/common/PermissionGate';
@@ -15,11 +15,12 @@ const TABS = [
   { id: 'recommendations', label: 'Recomendações', icon: TrendingDown },
   { id: 'budgets',         label: 'Orçamentos',     icon: Wallet },
   { id: 'reports',         label: 'Relatórios',     icon: Mail },
+  { id: 'anomalies',       label: 'Anomalias',      icon: Bell },
   { id: 'actions',         label: 'Histórico',      icon: History },
 ];
 
 const FILTER_STATUS   = ['pending', 'applied', 'dismissed'];
-const FILTER_PROVIDER = ['aws', 'azure'];
+const FILTER_PROVIDER = ['aws', 'azure', 'gcp'];
 
 const fmtUSD = (v) =>
   v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -547,6 +548,32 @@ const FinOps = () => {
   const [applyingId, setApplyingId]   = useState(null);
   const [dismissingId, setDismissingId] = useState(null);
   const [rollbackId, setRollbackId]   = useState(null);
+  const [scanJobId, setScanJobId]     = useState(null);
+  const [scanJobStatus, setScanJobStatus] = useState(null); // null | {status,new_findings,results,error}
+
+  /* ── Scan job polling ── */
+  useEffect(() => {
+    if (!scanJobId) return;
+    if (scanJobStatus?.status === 'done' || scanJobStatus?.status === 'error') return;
+
+    const interval = setInterval(async () => {
+      try {
+        const status = await finopsService.getScanStatus(scanJobId);
+        setScanJobStatus(status);
+        if (status.status === 'done') {
+          qc.invalidateQueries({ queryKey: ['finops-recs'] });
+          qc.invalidateQueries({ queryKey: ['finops-summary'] });
+          clearInterval(interval);
+        } else if (status.status === 'error') {
+          clearInterval(interval);
+        }
+      } catch (e) {
+        clearInterval(interval);
+      }
+    }, 2500);
+
+    return () => clearInterval(interval);
+  }, [scanJobId, scanJobStatus?.status]);
 
   /* ── Queries ── */
 
@@ -583,7 +610,7 @@ const FinOps = () => {
   const anomaliesQ = useQuery({
     queryKey: ['finops-anomalies'],
     queryFn: finopsService.getAnomalies,
-    enabled: isPro,
+    enabled: isPro && activeTab === 'anomalies',
   });
 
   const scanScheduleQ = useQuery({
@@ -604,9 +631,11 @@ const FinOps = () => {
 
   const scanMut = useMutation({
     mutationFn: () => finopsService.triggerScan(),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['finops-recs'] });
-      qc.invalidateQueries({ queryKey: ['finops-summary'] });
+    onSuccess: (data) => {
+      if (data?.job_id) {
+        setScanJobId(data.job_id);
+        setScanJobStatus({ status: 'queued' });
+      }
     },
   });
 
@@ -694,6 +723,11 @@ const FinOps = () => {
     },
   });
 
+  const acknowledgeAnomalyMut = useMutation({
+    mutationFn: finopsService.acknowledgeAnomaly,
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['finops-anomalies'] }),
+  });
+
   // Evaluate budgets when user opens the budgets tab
   useEffect(() => {
     if (activeTab === 'budgets' && isPro) {
@@ -759,23 +793,35 @@ const FinOps = () => {
           ) : (
             <WasteSummary
               summary={summaryQ.data}
-              onScan={() => scanMut.mutate()}
-              scanning={scanMut.isPending}
+              onScan={() => { setScanJobId(null); setScanJobStatus(null); scanMut.mutate(); }}
+              scanning={scanMut.isPending || ['queued', 'running'].includes(scanJobStatus?.status)}
             />
           )}
         </PermissionGate>
 
         {/* Scan result toast */}
-        {scanMut.isSuccess && scanMut.data && (
-          <div className="flex items-center gap-2 rounded-lg border border-green-700/40 bg-green-900/20 px-4 py-2.5 text-sm text-green-300">
-            <Zap size={14} />
-            Scan concluído: <strong>{scanMut.data.new_findings}</strong> novos desperdícios detectados.
+        {scanJobStatus?.status === 'queued' && (
+          <div className="flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800/60 px-4 py-2.5 text-sm text-slate-300">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+            Scan na fila, aguardando início...
           </div>
         )}
-        {scanMut.isError && (
+        {scanJobStatus?.status === 'running' && (
+          <div className="flex items-center gap-2 rounded-lg border border-blue-700/40 bg-blue-900/20 px-4 py-2.5 text-sm text-blue-300">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+            Escaneando recursos cloud... isso pode levar até 1 minuto.
+          </div>
+        )}
+        {scanJobStatus?.status === 'done' && (
+          <div className="flex items-center gap-2 rounded-lg border border-green-700/40 bg-green-900/20 px-4 py-2.5 text-sm text-green-300">
+            <Zap size={14} />
+            Scan concluído: <strong>{scanJobStatus.new_findings}</strong> novos desperdícios detectados.
+          </div>
+        )}
+        {(scanMut.isError || scanJobStatus?.status === 'error') && (
           <div className="flex items-center gap-2 rounded-lg border border-red-700/40 bg-red-900/20 px-4 py-2.5 text-sm text-red-300">
             <AlertTriangle size={14} />
-            Erro ao escanear. Verifique as credenciais da conta cloud.
+            {scanJobStatus?.error || 'Erro ao escanear. Verifique as credenciais da conta cloud.'}
           </div>
         )}
 
@@ -794,9 +840,14 @@ const FinOps = () => {
               >
                 <Icon size={15} />
                 {label}
-                {id === 'recommendations' && recsQ.data?.length > 0 && (
+                {id === 'anomalies' && (anomaliesQ.data?.items?.filter((a) => a.status === 'open').length > 0) && (
+                  <span className="ml-1 rounded-full bg-amber-600/30 px-1.5 py-0.5 text-xs font-semibold text-amber-300">
+                    {anomaliesQ.data.items.filter((a) => a.status === 'open').length}
+                  </span>
+                )}
+                {id === 'recommendations' && recsQ.data?.total > 0 && (
                   <span className="ml-1 rounded-full bg-indigo-600/30 px-1.5 py-0.5 text-xs font-semibold text-indigo-300">
-                    {recsQ.data.filter((r) => r.status === 'pending').length}
+                    {recsQ.data.items.filter((r) => r.status === 'pending').length}
                   </span>
                 )}
               </button>
@@ -859,7 +910,7 @@ const FinOps = () => {
               <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-4 text-sm text-red-300">
                 Erro ao carregar recomendações. Verifique as permissões.
               </div>
-            ) : recsQ.data?.length === 0 ? (
+            ) : recsQ.data?.total === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-slate-500">
                 <TrendingDown size={40} className="mb-3 opacity-20" />
                 <p className="text-base font-medium">Nenhuma recomendação encontrada</p>
@@ -867,7 +918,7 @@ const FinOps = () => {
               </div>
             ) : (
               <div className="space-y-3">
-                {recsQ.data.map((rec) => (
+                {(recsQ.data?.items ?? []).map((rec) => (
                   <RecommendationCard
                     key={rec.id}
                     rec={rec}
@@ -1088,6 +1139,103 @@ const FinOps = () => {
           </div>
         )}
 
+        {/* ── Anomalies Tab ── */}
+        {activeTab === 'anomalies' && (
+          <div className="space-y-4">
+            <PlanGate minPlan="pro" feature="Detecção de Anomalias">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-gray-500 dark:text-slate-400">
+                    Picos de custo detectados automaticamente por análise estatística (3σ acima da baseline).
+                  </p>
+                </div>
+              </div>
+
+              {anomaliesQ.isLoading ? (
+                <div className="flex justify-center py-12"><LoadingSpinner /></div>
+              ) : anomaliesQ.isError ? (
+                <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-4 text-sm text-red-300">
+                  Erro ao carregar anomalias. Verifique as permissões.
+                </div>
+              ) : (anomaliesQ.data?.items ?? []).length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-slate-500">
+                  <Bell size={40} className="mb-3 opacity-20" />
+                  <p className="text-base font-medium">Nenhuma anomalia detectada</p>
+                  <p className="text-sm mt-1">As anomalias são detectadas automaticamente durante o scan de custos</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {(anomaliesQ.data?.items ?? []).map((anomaly) => {
+                    const devPct = anomaly.deviation_pct ?? 0;
+                    const isOpen = anomaly.status === 'open';
+                    return (
+                      <div
+                        key={anomaly.id}
+                        className={`rounded-xl border p-4 transition-colors ${
+                          isOpen
+                            ? 'border-amber-500/40 bg-amber-500/5 dark:bg-amber-900/10'
+                            : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800/40 opacity-60'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3">
+                            <div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${isOpen ? 'bg-amber-500/20' : 'bg-gray-100 dark:bg-slate-700'}`}>
+                              <AlertTriangle size={16} className={isOpen ? 'text-amber-400' : 'text-gray-400 dark:text-slate-500'} />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                                  {anomaly.service_name}
+                                </span>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium uppercase ${
+                                  anomaly.provider === 'aws'   ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
+                                  anomaly.provider === 'azure' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
+                                  'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                }`}>
+                                  {anomaly.provider}
+                                </span>
+                                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isOpen ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'}`}>
+                                  {isOpen ? 'Aberta' : 'Reconhecida'}
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                                Detectada em {anomaly.detected_date ? new Date(anomaly.detected_date).toLocaleDateString('pt-BR') : '—'}
+                              </p>
+                              <div className="mt-2 flex flex-wrap gap-4 text-xs">
+                                <span className="text-gray-500 dark:text-slate-400">
+                                  Baseline: <strong className="text-gray-700 dark:text-slate-300">{fmtUSD(anomaly.baseline_cost)}/dia</strong>
+                                </span>
+                                <span className="text-gray-500 dark:text-slate-400">
+                                  Observado: <strong className={devPct >= 100 ? 'text-red-400' : 'text-amber-400'}>{fmtUSD(anomaly.actual_cost)}/dia</strong>
+                                </span>
+                                <span className={`font-semibold ${devPct >= 200 ? 'text-red-400' : devPct >= 100 ? 'text-amber-400' : 'text-yellow-400'}`}>
+                                  +{devPct.toFixed(0)}% acima do normal
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+
+                          {isOpen && (
+                            <PermissionGate permission="finops.recommend">
+                              <button
+                                onClick={() => acknowledgeAnomalyMut.mutate(anomaly.id)}
+                                disabled={acknowledgeAnomalyMut.isPending}
+                                className="flex-shrink-0 rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors"
+                              >
+                                Reconhecer
+                              </button>
+                            </PermissionGate>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </PlanGate>
+          </div>
+        )}
+
         {/* ── Actions Tab ── */}
         {activeTab === 'actions' && (
           <div className="space-y-3">
@@ -1095,7 +1243,7 @@ const FinOps = () => {
               <div className="flex justify-center py-12"><LoadingSpinner /></div>
             ) : (
               <ActionTimeline
-                actions={actionsQ.data || []}
+                actions={actionsQ.data?.items || []}
                 onRollback={handleRollback}
                 rollbackLoading={rollbackId}
                 planTier={planTier}
