@@ -598,6 +598,21 @@ class AzureService:
                     'state': str(sub.state),
                     'tenant_id': sub.tenant_id,
                 })
+
+            # If the SP has only resource-group-level access, list() returns empty.
+            # Fall back to a direct GET using the subscription_id from credentials.
+            if not subs and self.subscription_id:
+                try:
+                    sub = subscription_client.subscriptions.get(self.subscription_id)
+                    subs.append({
+                        'subscription_id': sub.subscription_id,
+                        'display_name': sub.display_name,
+                        'state': str(sub.state),
+                        'tenant_id': sub.tenant_id,
+                    })
+                except Exception:
+                    pass  # Still return empty list — the SP truly has no subscription access
+
             return {'success': True, 'subscriptions': subs}
         except Exception as e:
             logger.error(f"Error listing subscriptions: {e}")
