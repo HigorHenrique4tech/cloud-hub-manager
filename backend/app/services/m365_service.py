@@ -217,22 +217,24 @@ class M365Service:
         except Exception as exc:
             logger.warning("GET /teams failed (%s) — trying /groups fallback", exc)
 
-        # Fallback: M365 Groups that are Teams-enabled
+        # Fallback: M365 Groups that are Teams-enabled.
+        # The Any() lambda filter requires ConsistencyLevel: eventual + $count=true
+        # (Microsoft Graph advanced query requirement).
         if not raw:
             try:
                 url = f"{GRAPH_V1}/groups"
                 params = {
                     "$filter": "resourceProvisioningOptions/Any(x:x eq 'Team')",
                     "$select": "id,displayName,visibility,description",
+                    "$count": "true",
                 }
                 token = self._get_token()
+                headers = {
+                    "Authorization": f"Bearer {token}",
+                    "ConsistencyLevel": "eventual",
+                }
                 while url:
-                    r = requests.get(
-                        url,
-                        headers={"Authorization": f"Bearer {token}"},
-                        params=params,
-                        timeout=30,
-                    )
+                    r = requests.get(url, headers=headers, params=params, timeout=30)
                     r.raise_for_status()
                     data = r.json()
                     raw.extend(data.get("value", []))
