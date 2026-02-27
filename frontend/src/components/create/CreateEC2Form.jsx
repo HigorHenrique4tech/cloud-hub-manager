@@ -117,7 +117,14 @@ const CreateEC2Form = forwardRef(function CreateEC2Form({ form, setForm }, ref) 
           <select
             className={`${inputCls} ${touched.image_id && errors.image_id ? 'border-red-500 dark:border-red-500' : ''}`}
             value={form.image_id || ''}
-            onChange={(e) => set('image_id', e.target.value)}
+            onChange={(e) => {
+              const val = e.target.value;
+              const found = amis.find(a => a.image_id === val);
+              const platform = found
+                ? (/windows/i.test(found.name || '') ? 'windows' : 'linux')
+                : undefined;
+              setForm(p => ({ ...p, image_id: val, ...(platform ? { image_platform: platform } : {}) }));
+            }}
             onBlur={() => touch('image_id')}
           >
             <option value="">Selecione uma AMI</option>
@@ -128,7 +135,7 @@ const CreateEC2Form = forwardRef(function CreateEC2Form({ form, setForm }, ref) 
           <input
             className={`${inputCls} mt-2 ${touched.image_id && errors.image_id ? 'border-red-500 dark:border-red-500' : ''}`}
             value={form.image_id || ''}
-            onChange={(e) => set('image_id', e.target.value)}
+            onChange={(e) => setForm(p => ({ ...p, image_id: e.target.value, image_platform: undefined }))}
             onBlur={() => touch('image_id')}
             placeholder="Ou insira o AMI ID manualmente (ex: ami-0abcdef...)"
           />
