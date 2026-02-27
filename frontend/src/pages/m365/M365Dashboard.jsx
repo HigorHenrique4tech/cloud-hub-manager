@@ -903,10 +903,9 @@ const CreateGroupPanel = () => {
 
 // ── Tab: Usuários ─────────────────────────────────────────────────────────────
 
-const UsersTab = ({ data, isLoading }) => {
+const UsersTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
   const [search, setSearch] = useState('');
   const [filterActive, setFilterActive] = useState('all');
-  const [selectedUser, setSelectedUser] = useState(null);
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -921,7 +920,6 @@ const UsersTab = ({ data, isLoading }) => {
 
   return (
     <>
-      <UserDetailDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
 
       <div className="space-y-4">
         <CreateUserPanel />
@@ -961,7 +959,7 @@ const UsersTab = ({ data, isLoading }) => {
                 return (
                   <tr
                     key={u.id}
-                    onClick={() => setSelectedUser(isSelected ? null : u)}
+                    onClick={() => onSelectUser(isSelected ? null : u)}
                     className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-800/40'}`}
                   >
                     <td className="px-4 py-3">
@@ -1376,31 +1374,79 @@ const TeamsTab = ({ data, isLoading }) => {
 
 // ── Tab: Segurança ────────────────────────────────────────────────────────────
 
-const SecurityTab = ({ data, isLoading }) => {
+const RISK_LEVEL_LABEL = { high: 'Alto', medium: 'Médio', low: 'Baixo' };
+const RISK_STATE_LABEL  = {
+  atRisk:               'Em risco',
+  confirmedCompromised: 'Comprometido',
+  remediated:           'Remediado',
+  dismissed:            'Dispensado',
+};
+
+const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
   if (isLoading) return <LoadingSpinner />;
   if (!data) return null;
 
-  const mfaPct = data.mfa_coverage_pct ?? 0;
+  const mfaPct   = data.mfa_coverage_pct ?? 0;
+  const noData   = data.total_users_checked === 0;
+  const isClean  = !noData && data.risky_users_count === 0 && (data.users_without_mfa?.length ?? 0) === 0;
 
   return (
-    <div className="space-y-6">
-      {/* MFA coverage */}
-      <div className="card rounded-2xl p-5">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Cobertura MFA</p>
-          <span className="text-2xl font-bold text-gray-900 dark:text-slate-100">{Math.round(mfaPct * 100)}%</span>
+    <div className="space-y-5">
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="card rounded-2xl p-4 text-center">
+          <p className="text-2xl font-bold text-red-400">{noData ? '—' : (data.users_without_mfa?.length ?? 0)}</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Sem MFA</p>
         </div>
-        <div className="h-4 w-full rounded-full bg-gray-200 dark:bg-slate-700">
-          <div className={`h-4 rounded-full transition-all ${mfaColor(mfaPct)}`} style={{ width: `${Math.min(mfaPct * 100, 100)}%` }} />
+        <div className="card rounded-2xl p-4 text-center">
+          <p className="text-2xl font-bold text-orange-400">{noData ? '—' : (data.risky_users_count ?? 0)}</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Usuários de risco</p>
         </div>
-        <div className="mt-2 flex justify-between text-xs text-gray-400 dark:text-slate-500">
-          <span>{data.mfa_enabled} com MFA ativado</span>
-          <span>{data.total_users_checked} verificados</span>
+        <div className="card rounded-2xl p-4 text-center">
+          <p className="text-2xl font-bold text-gray-500 dark:text-slate-400">{data.total_users_checked}</p>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Total verificados</p>
         </div>
       </div>
 
+      {/* No data warning */}
+      {noData && (
+        <div className="card rounded-2xl p-5 border border-yellow-400/30 bg-yellow-50/5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="text-yellow-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Sem dados de MFA</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                Nenhum usuário foi verificado. Confira se a permissão{' '}
+                <code className="font-mono bg-gray-100 dark:bg-slate-800 px-1 rounded">Reports.Read.All</code>{' '}
+                foi concedida com admin consent no App Registration do Azure AD.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MFA coverage bar */}
+      {!noData && (
+        <div className="card rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Cobertura MFA</p>
+            <span className={`text-2xl font-bold ${mfaPct >= 0.9 ? 'text-green-400' : mfaPct >= 0.7 ? 'text-yellow-400' : 'text-red-400'}`}>
+              {Math.round(mfaPct * 100)}%
+            </span>
+          </div>
+          <div className="h-3 w-full rounded-full bg-gray-200 dark:bg-slate-700">
+            <div className={`h-3 rounded-full transition-all ${mfaColor(mfaPct)}`} style={{ width: `${Math.min(mfaPct * 100, 100)}%` }} />
+          </div>
+          <div className="mt-2 flex justify-between text-xs text-gray-400 dark:text-slate-500">
+            <span>{data.mfa_enabled} com MFA ativado</span>
+            <span>{data.total_users_checked} verificados</span>
+          </div>
+        </div>
+      )}
+
       {/* Users without MFA */}
-      {data.users_without_mfa?.length > 0 && (
+      {(data.users_without_mfa?.length ?? 0) > 0 && (
         <div className="card rounded-2xl p-5">
           <div className="flex items-center gap-2 mb-4">
             <AlertTriangle size={16} className="text-yellow-500" />
@@ -1408,13 +1454,34 @@ const SecurityTab = ({ data, isLoading }) => {
               Usuários sem MFA ({data.users_without_mfa.length})
             </p>
           </div>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {data.users_without_mfa.map((u, i) => (
-              <div key={i} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-slate-800/50 px-3 py-2">
-                <span className="text-sm text-gray-900 dark:text-slate-100">{u.displayName || u.userPrincipalName}</span>
-                <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">{u.userPrincipalName}</span>
-              </div>
-            ))}
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {data.users_without_mfa.map((u) => {
+              const isSelected = selectedUser?.id === u.id;
+              return (
+                <button
+                  key={u.id || u.userPrincipalName}
+                  onClick={() => onSelectUser?.(isSelected ? null : { ...u, mfaRegistered: false, accountEnabled: true })}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                    isSelected
+                      ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-400/30'
+                      : 'bg-gray-50 dark:bg-slate-800/50 hover:bg-gray-100 dark:hover:bg-slate-800 border border-transparent'
+                  }`}
+                >
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.displayName || u.userPrincipalName)}`}>
+                    {initials(u.displayName || u.userPrincipalName)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate">
+                      {u.displayName || u.userPrincipalName}
+                    </p>
+                    {u.displayName && (
+                      <p className="text-xs text-gray-400 dark:text-slate-500 font-mono truncate">{u.userPrincipalName}</p>
+                    )}
+                  </div>
+                  <XCircle size={14} className="flex-shrink-0 text-red-400" />
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1428,28 +1495,50 @@ const SecurityTab = ({ data, isLoading }) => {
               Usuários de risco ({data.risky_users_count})
             </p>
           </div>
-          <div className="space-y-2 max-h-64 overflow-y-auto">
-            {data.risky_users.map((u) => (
-              <div key={u.id} className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-slate-800/50 px-3 py-2">
-                <span className="text-sm text-gray-900 dark:text-slate-100 font-mono">{u.userPrincipalName}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  u.riskLevel === 'high'   ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400'   :
-                  u.riskLevel === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-600 dark:text-yellow-400' :
-                                             'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400'
-                }`}>
-                  {u.riskLevel}
-                </span>
-              </div>
-            ))}
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {data.risky_users.map((u) => {
+              const isSelected = selectedUser?.id === u.id;
+              const riskCls =
+                u.riskLevel === 'high'   ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700'   :
+                u.riskLevel === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 border-yellow-300 dark:border-yellow-700' :
+                                           'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400 border-gray-200 dark:border-slate-600';
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => onSelectUser?.(isSelected ? null : { id: u.id, userPrincipalName: u.userPrincipalName, displayName: u.userPrincipalName, accountEnabled: true })}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left border transition-colors ${
+                    isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-400/30' : `${riskCls}`
+                  }`}
+                >
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.userPrincipalName)}`}>
+                    {initials(u.userPrincipalName)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate font-mono">{u.userPrincipalName}</p>
+                    {u.riskState && (
+                      <p className="text-xs text-gray-500 dark:text-slate-400">{RISK_STATE_LABEL[u.riskState] || u.riskState}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold border ${riskCls}`}>
+                      {RISK_LEVEL_LABEL[u.riskLevel] || u.riskLevel}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {data.risky_users_count === 0 && data.users_without_mfa?.length === 0 && (
+      {/* Clean state — only when we have real data */}
+      {isClean && (
         <div className="card rounded-2xl p-8 text-center">
           <CheckCircle size={36} className="text-green-400 mx-auto mb-3" />
           <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Nenhum problema de segurança detectado</p>
-          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Todos os usuários verificados têm MFA ativado e nenhum risco foi identificado.</p>
+          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+            Todos os {data.total_users_checked} usuários verificados têm MFA ativado e nenhum risco foi identificado.
+          </p>
         </div>
       )}
     </div>
@@ -1465,6 +1554,7 @@ export default function M365Dashboard() {
 
   const [activeTab, setActiveTab] = useState('visao-geral');
   const [showCredModal, setShowCredModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
 
   const qc = useQueryClient();
 
@@ -1603,7 +1693,7 @@ export default function M365Dashboard() {
               {activeTab === 'usuarios' && (
                 usersQ.isError
                   ? <ApiErrorCard error={usersQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-users'] })} />
-                  : <UsersTab data={usersQ.data} isLoading={usersQ.isLoading} />
+                  : <UsersTab data={usersQ.data} isLoading={usersQ.isLoading} onSelectUser={setSelectedUser} selectedUser={selectedUser} />
               )}
               {activeTab === 'licencas' && (
                 licensesQ.isError
@@ -1616,12 +1706,14 @@ export default function M365Dashboard() {
                   : <TeamsTab data={teamsQ.data} isLoading={teamsQ.isLoading} />
               )}
               {activeTab === 'seguranca' && (
-                <SecurityTab data={securityQ.data} isLoading={securityQ.isLoading} />
+                <SecurityTab data={securityQ.data} isLoading={securityQ.isLoading} onSelectUser={setSelectedUser} selectedUser={selectedUser} />
               )}
             </>
           )}
         </div>
       </PlanGate>
+
+      <UserDetailDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
 
       {showCredModal && (
         <CredentialsModal

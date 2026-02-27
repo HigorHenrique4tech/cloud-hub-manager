@@ -425,8 +425,10 @@ class M365Service:
         mfa_enabled = sum(1 for u in mfa_raw if u.get("isMfaRegistered"))
         users_without_mfa = [
             {
+                "id": u.get("id"),
                 "userPrincipalName": u.get("userPrincipalName"),
                 "displayName": u.get("userDisplayName"),
+                "authMethods": u.get("authMethods", []),
             }
             for u in mfa_raw
             if not u.get("isMfaRegistered")
