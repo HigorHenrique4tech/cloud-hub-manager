@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users, Shield, Grid3x3, Key, Plug, Trash2, X,
   CheckCircle, XCircle, AlertTriangle, RefreshCw, Pencil,
-  MessageSquare, ChevronRight,
+  MessageSquare, ChevronDown, ChevronRight, UserPlus, Search,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
@@ -26,6 +26,7 @@ const REQUIRED_PERMISSIONS = [
   'Organization.Read.All',
   'Reports.Read.All',
   'Team.ReadBasic.All',
+  'TeamMember.ReadWrite.All',
   'Directory.Read.All',
   'IdentityRiskyUser.Read.All',
   'SubscribedSku.Read.All',
@@ -414,46 +415,325 @@ const LicensesTab = ({ data, isLoading }) => {
   );
 };
 
+// ── Add Member Modal ──────────────────────────────────────────────────────────
+
+const AddMemberModal = ({ team, onClose }) => {
+  const [search, setSearch] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [asOwner, setAsOwner] = useState(false);
+  const qc = useQueryClient();
+
+  const usersQ = useQuery({
+    queryKey: ['m365-users-picker'],
+    queryFn: m365Service.getUsers,
+    staleTime: 60_000,
+  });
+
+  const addMut = useMutation({
+    mutationFn: () =>
+      m365Service.addTeamMember(team.id, selectedUserId, asOwner ? ['owner'] : []),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-team-members', team.id] });
+      onClose();
+    },
+  });
+
+  const allUsers = usersQ.data?.users || [];
+  const filtered = allUsers.filter((u) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      u.displayName?.toLowerCase().includes(q) ||
+      u.userPrincipalName?.toLowerCase().includes(q)
+    );
+  });
+
+  const selected = allUsers.find((u) => u.id === selectedUserId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl flex flex-col max-h-[80vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4 shrink-0">
+          <div>
+            <h2 className="text-base font-semibold text-slate-100">Adicionar membro</h2>
+            <p className="text-xs text-slate-400 mt-0.5 truncate">{team.displayName}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={18} /></button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pt-4 shrink-0">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar usuário por nome ou e-mail..."
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 pl-8 pr-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* User list */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1 min-h-0">
+          {usersQ.isLoading && (
+            <p className="text-center text-sm text-slate-400 py-6">Carregando usuários...</p>
+          )}
+          {!usersQ.isLoading && filtered.length === 0 && (
+            <p className="text-center text-sm text-slate-400 py-6">Nenhum usuário encontrado</p>
+          )}
+          {filtered.slice(0, 50).map((u) => (
+            <button
+              key={u.id}
+              onClick={() => setSelectedUserId(u.id === selectedUserId ? null : u.id)}
+              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                u.id === selectedUserId
+                  ? 'bg-blue-600/20 border border-blue-600/40'
+                  : 'hover:bg-slate-800 border border-transparent'
+              }`}
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-slate-300">
+                {(u.displayName || u.userPrincipalName || '?')[0].toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-100 truncate">{u.displayName || '—'}</p>
+                <p className="text-xs text-slate-400 truncate font-mono">{u.userPrincipalName}</p>
+              </div>
+              {u.id === selectedUserId && (
+                <CheckCircle size={16} className="ml-auto shrink-0 text-blue-400" />
+              )}
+            </button>
+          ))}
+          {filtered.length > 50 && (
+            <p className="text-center text-xs text-slate-500 pt-2">
+              Mostrando 50 de {filtered.length} — refine a busca
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-slate-700 px-5 py-4 shrink-0 space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={asOwner}
+              onChange={(e) => setAsOwner(e.target.checked)}
+              className="rounded border-slate-600"
+            />
+            <span className="text-sm text-slate-300">Adicionar como <strong>proprietário</strong> (owner)</span>
+          </label>
+
+          {addMut.isError && (
+            <p className="text-xs text-red-400">
+              {addMut.error?.response?.data?.detail || 'Erro ao adicionar membro'}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => addMut.mutate()}
+              disabled={!selectedUserId || addMut.isPending}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {addMut.isPending
+                ? <RefreshCw size={14} className="animate-spin" />
+                : <UserPlus size={14} />}
+              {selected ? `Adicionar ${selected.displayName?.split(' ')[0] || ''}` : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Team Card (expandable) ────────────────────────────────────────────────────
+
+const TeamCard = ({ team }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const membersQ = useQuery({
+    queryKey: ['m365-team-members', team.id],
+    queryFn: () => m365Service.getTeamMembers(team.id),
+    enabled: expanded,
+  });
+
+  const members = membersQ.data?.members || [];
+
+  return (
+    <>
+      <div className="card rounded-2xl overflow-hidden">
+        {/* Header row */}
+        <button
+          onClick={() => setExpanded((p) => !p)}
+          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 dark:hover:bg-slate-800/40 transition-colors text-left"
+        >
+          {/* Team avatar */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600/20 border border-blue-600/30 text-sm font-bold text-blue-400 select-none">
+            {(team.displayName || '?')[0].toUpperCase()}
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{team.displayName}</p>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                team.visibility === 'public'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400'
+              }`}>
+                {team.visibility === 'public' ? 'Pública' : 'Privada'}
+              </span>
+              {team.isArchived && (
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
+                  Arquivada
+                </span>
+              )}
+            </div>
+            {team.description && (
+              <p className="text-xs text-gray-400 dark:text-slate-500 truncate mt-0.5">{team.description}</p>
+            )}
+          </div>
+
+          {/* Members count + chevron */}
+          <div className="shrink-0 flex items-center gap-3">
+            {team.membersCount != null && (
+              <span className="text-xs text-gray-500 dark:text-slate-400">
+                <Users size={12} className="inline mr-1" />{team.membersCount}
+              </span>
+            )}
+            {expanded
+              ? <ChevronDown size={16} className="text-gray-400 dark:text-slate-400" />
+              : <ChevronRight size={16} className="text-gray-400 dark:text-slate-400" />}
+          </div>
+        </button>
+
+        {/* Expanded panel */}
+        {expanded && (
+          <div className="border-t border-gray-200 dark:border-slate-700 px-5 py-4 space-y-4 bg-gray-50/50 dark:bg-slate-800/30">
+            {/* Members section */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
+                Membros
+              </p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600/10 border border-blue-600/30 px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-600/20 transition-colors"
+              >
+                <UserPlus size={12} /> Adicionar membro
+              </button>
+            </div>
+
+            {membersQ.isLoading && (
+              <div className="flex justify-center py-4">
+                <RefreshCw size={16} className="animate-spin text-slate-400" />
+              </div>
+            )}
+
+            {membersQ.isError && (
+              <p className="text-xs text-red-400 text-center py-2">
+                Falha ao carregar membros — verifique a permissão TeamMember.Read.All
+              </p>
+            )}
+
+            {!membersQ.isLoading && !membersQ.isError && members.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-slate-500 text-center py-2">
+                Nenhum membro encontrado
+              </p>
+            )}
+
+            {members.length > 0 && (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                {members.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-3 py-2"
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {(m.displayName || m.email || '?')[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate">
+                        {m.displayName || '—'}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-slate-500 truncate font-mono">
+                        {m.email || '—'}
+                      </p>
+                    </div>
+                    {m.roles?.includes('owner') && (
+                      <span className="rounded-full bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 text-xs font-medium text-purple-700 dark:text-purple-400 shrink-0">
+                        owner
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showAddModal && (
+        <AddMemberModal team={team} onClose={() => setShowAddModal(false)} />
+      )}
+    </>
+  );
+};
+
 // ── Tab: Equipes ──────────────────────────────────────────────────────────────
 
 const TeamsTab = ({ data, isLoading }) => {
+  const [search, setSearch] = useState('');
+
   if (isLoading) return <LoadingSpinner />;
 
-  const teams = data?.teams || [];
+  const teams = (data?.teams || []).filter((t) =>
+    !search || t.displayName?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
-    <div className="card rounded-2xl overflow-hidden">
-      <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-        <thead className="bg-gray-50 dark:bg-slate-800/60">
-          <tr>
-            {['Nome da Equipe', 'Visibilidade', 'Membros'].map((h) => (
-              <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-          {teams.length === 0 && (
-            <tr><td colSpan={3} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">Nenhuma equipe encontrada</td></tr>
+    <div className="space-y-4">
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar equipe..."
+          className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+
+      {teams.length === 0 && (
+        <div className="card rounded-2xl py-16 text-center">
+          <MessageSquare size={32} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
+          <p className="text-sm text-gray-400 dark:text-slate-500">
+            {search ? 'Nenhuma equipe encontrada para a busca' : 'Nenhuma equipe encontrada'}
+          </p>
+          {!search && (
+            <p className="text-xs text-gray-400 dark:text-slate-600 mt-1">
+              Verifique se a permissão Team.ReadBasic.All foi concedida no Azure AD
+            </p>
           )}
-          {teams.map((t) => (
-            <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/40">
-              <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-slate-100">{t.displayName}</td>
-              <td className="px-4 py-3">
-                <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                  t.visibility === 'public'
-                    ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-                    : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400'
-                }`}>
-                  {t.visibility === 'public' ? 'Pública' : 'Privada'}
-                </span>
-              </td>
-              <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">
-                {t.membersCount != null ? t.membersCount : '—'}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+        </div>
+      )}
+
+      {teams.map((team) => (
+        <TeamCard key={team.id} team={team} />
+      ))}
+
+      {teams.length > 0 && (
+        <p className="text-xs text-gray-400 dark:text-slate-500">{teams.length} equipe(s)</p>
+      )}
     </div>
   );
 };

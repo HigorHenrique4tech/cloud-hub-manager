@@ -92,6 +92,13 @@ class M365Service:
             params = {}  # nextLink already includes query string
         return items
 
+    def _post(self, path: str, body: dict) -> dict:
+        """POST to a Graph URL and return JSON response."""
+        full_url = path if path.startswith("https://") else f"{GRAPH_V1}{path}"
+        r = requests.post(full_url, headers=self._headers(), json=body, timeout=30)
+        r.raise_for_status()
+        return r.json() if r.content else {}
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def get_overview(self) -> dict:
@@ -197,9 +204,43 @@ class M365Service:
     def get_teams(self) -> list:
         """
         List all Teams with member count.
-        Note: fetching member count per team requires one extra call per team.
+        Falls back to the /groups endpoint (filtered for Teams) if /teams is
+        unavailable (e.g. Team.ReadBasic.All not yet consented).
         """
-        raw = self._get_all_pages("/teams", select="id,displayName,visibility")
+        raw: list = []
+
+        # Primary: /teams endpoint
+        try:
+            raw = self._get_all_pages(
+                "/teams", select="id,displayName,visibility,description,isArchived"
+            )
+        except Exception as exc:
+            logger.warning("GET /teams failed (%s) — trying /groups fallback", exc)
+
+        # Fallback: M365 Groups that are Teams-enabled
+        if not raw:
+            try:
+                url = f"{GRAPH_V1}/groups"
+                params = {
+                    "$filter": "resourceProvisioningOptions/Any(x:x eq 'Team')",
+                    "$select": "id,displayName,visibility,description",
+                }
+                token = self._get_token()
+                while url:
+                    r = requests.get(
+                        url,
+                        headers={"Authorization": f"Bearer {token}"},
+                        params=params,
+                        timeout=30,
+                    )
+                    r.raise_for_status()
+                    data = r.json()
+                    raw.extend(data.get("value", []))
+                    url = data.get("@odata.nextLink")
+                    params = {}
+            except Exception as exc2:
+                logger.warning("GET /groups Teams fallback also failed: %s", exc2)
+
         result = []
         for t in raw:
             try:
@@ -212,10 +253,38 @@ class M365Service:
                     "id": t["id"],
                     "displayName": t.get("displayName"),
                     "visibility": t.get("visibility"),
+                    "description": t.get("description"),
+                    "isArchived": t.get("isArchived", False),
                     "membersCount": member_count,
                 }
             )
         return result
+
+    def get_team_members(self, team_id: str) -> list:
+        """Return the full member list for a specific Team."""
+        raw = self._get(f"/teams/{team_id}/members").get("value", [])
+        return [
+            {
+                "id": m["id"],
+                "displayName": m.get("displayName"),
+                "email": m.get("email"),
+                "roles": m.get("roles", []),
+                "userId": m.get("userId"),
+            }
+            for m in raw
+        ]
+
+    def add_team_member(self, team_id: str, user_id: str, roles: list = None) -> dict:
+        """
+        Add a user to a Team.
+        Requires TeamMember.ReadWrite.All application permission.
+        """
+        body = {
+            "@odata.type": "#microsoft.graph.aadUserConversationMember",
+            "roles": roles or [],
+            "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{user_id}')",
+        }
+        return self._post(f"/teams/{team_id}/members", body)
 
     def get_security_overview(self) -> dict:
         """

@@ -32,6 +32,11 @@ class M365CredentialsIn(BaseModel):
     tenant_domain: str = ""   # e.g. contoso.onmicrosoft.com (display only)
 
 
+class AddMemberRequest(BaseModel):
+    user_id: str
+    roles: list = []   # [] = member, ["owner"] = owner
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -264,6 +269,56 @@ async def get_security(
     except Exception as exc:
         logger.error("M365 security error: %s", exc)
         raise HTTPException(status_code=502, detail="Failed to fetch M365 security data")
+
+
+@ws_router.get("/teams/{team_id}/members")
+async def get_team_members(
+    team_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return the member list for a specific Team."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _build_service(acct)
+        return {"members": svc.get_team_members(team_id)}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 team members error for %s: %s", team_id, exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch team members")
+
+
+@ws_router.post("/teams/{team_id}/members")
+async def add_team_member(
+    team_id: str,
+    body: AddMemberRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Add a user to a Team. Requires TeamMember.ReadWrite.All in the Azure AD App."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _build_service(acct)
+        result = svc.add_team_member(team_id, body.user_id, body.roles)
+        return {"detail": "Membro adicionado com sucesso", "member": result}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 add team member error for team %s: %s", team_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao adicionar membro: {exc}")
 
 
 # ── Org-level Router (MSP Master) ─────────────────────────────────────────────

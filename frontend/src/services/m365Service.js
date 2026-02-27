@@ -40,6 +40,16 @@ const m365Service = {
     return data;
   },
 
+  getTeamMembers: async (teamId) => {
+    const { data } = await api.get(wsUrl(`/m365/teams/${teamId}/members`));
+    return data;
+  },
+
+  addTeamMember: async (teamId, userId, roles = []) => {
+    const { data } = await api.post(wsUrl(`/m365/teams/${teamId}/members`), { user_id: userId, roles });
+    return data;
+  },
+
   getSecurity: async () => {
     const { data } = await api.get(wsUrl('/m365/security'));
     return data;
