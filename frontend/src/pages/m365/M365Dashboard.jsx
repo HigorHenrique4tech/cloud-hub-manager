@@ -1386,9 +1386,12 @@ const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
   if (isLoading) return <LoadingSpinner />;
   if (!data) return null;
 
-  const mfaPct   = data.mfa_coverage_pct ?? 0;
-  const noData   = data.total_users_checked === 0;
-  const isClean  = !noData && data.risky_users_count === 0 && (data.users_without_mfa?.length ?? 0) === 0;
+  const mfaPct     = data.mfa_coverage_pct ?? 0;
+  const mfaError   = data.mfa_error;    // "permission_denied" | "error" | null
+  const riskyError = data.risky_error;  // "permission_denied" | "not_available" | "error" | null
+  const noMfaData  = data.total_users_checked === 0;
+  const isClean    = !noMfaData && !mfaError && !riskyError
+    && data.risky_users_count === 0 && (data.users_without_mfa?.length ?? 0) === 0;
 
   return (
     <div className="space-y-5">
@@ -1396,11 +1399,15 @@ const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
       {/* KPI cards */}
       <div className="grid grid-cols-3 gap-4">
         <div className="card rounded-2xl p-4 text-center">
-          <p className="text-2xl font-bold text-red-400">{noData ? '—' : (data.users_without_mfa?.length ?? 0)}</p>
+          <p className={`text-2xl font-bold ${mfaError ? 'text-gray-400 dark:text-slate-600' : 'text-red-400'}`}>
+            {mfaError ? '—' : (data.users_without_mfa?.length ?? 0)}
+          </p>
           <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Sem MFA</p>
         </div>
         <div className="card rounded-2xl p-4 text-center">
-          <p className="text-2xl font-bold text-orange-400">{noData ? '—' : (data.risky_users_count ?? 0)}</p>
+          <p className={`text-2xl font-bold ${riskyError ? 'text-gray-400 dark:text-slate-600' : 'text-orange-400'}`}>
+            {riskyError ? '—' : (data.risky_users_count ?? 0)}
+          </p>
           <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Usuários de risco</p>
         </div>
         <div className="card rounded-2xl p-4 text-center">
@@ -1409,17 +1416,41 @@ const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
         </div>
       </div>
 
-      {/* No data warning */}
-      {noData && (
-        <div className="card rounded-2xl p-5 border border-yellow-400/30 bg-yellow-50/5">
+      {/* MFA permission/error banner */}
+      {mfaError && (
+        <div className="card rounded-2xl p-4 border border-yellow-400/30 bg-yellow-50/5">
           <div className="flex items-start gap-3">
-            <AlertTriangle size={18} className="text-yellow-500 flex-shrink-0 mt-0.5" />
+            <AlertTriangle size={16} className="text-yellow-500 flex-shrink-0 mt-0.5" />
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Sem dados de MFA</p>
+              <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                {mfaError === 'permission_denied' ? 'Permissão insuficiente — Reports.Read.All' : 'Falha ao carregar dados de MFA'}
+              </p>
+              {mfaError === 'permission_denied' && (
+                <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                  No Azure Portal → App Registration → <strong>API permissions</strong> → adicione{' '}
+                  <code className="font-mono bg-gray-100 dark:bg-slate-800 px-1 rounded">Reports.Read.All</code>{' '}
+                  (Application) e clique em <strong>"Grant admin consent"</strong>.
+                  Após o consent, reinicie o backend para forçar um novo token MSAL.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Identity Protection permission/license banner */}
+      {riskyError && (
+        <div className="card rounded-2xl p-4 border border-gray-300/30 dark:border-slate-700">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={16} className="text-gray-400 dark:text-slate-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-gray-700 dark:text-slate-300">
+                {riskyError === 'not_available' ? 'Identity Protection indisponível neste tenant' : 'Usuários de risco — sem acesso'}
+              </p>
               <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                Nenhum usuário foi verificado. Confira se a permissão{' '}
-                <code className="font-mono bg-gray-100 dark:bg-slate-800 px-1 rounded">Reports.Read.All</code>{' '}
-                foi concedida com admin consent no App Registration do Azure AD.
+                Este recurso requer <strong>Azure AD Premium P2</strong> e a permissão{' '}
+                <code className="font-mono bg-gray-100 dark:bg-slate-800 px-1 rounded">IdentityRiskyUser.Read.All</code>{' '}
+                com admin consent. Sem licença P2, a API retorna 403 independente das permissões.
               </p>
             </div>
           </div>
@@ -1427,7 +1458,7 @@ const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
       )}
 
       {/* MFA coverage bar */}
-      {!noData && (
+      {!noMfaData && !mfaError && (
         <div className="card rounded-2xl p-5">
           <div className="flex items-center justify-between mb-3">
             <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Cobertura MFA</p>

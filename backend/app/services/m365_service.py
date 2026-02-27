@@ -410,16 +410,23 @@ class M365Service:
         """
         Security summary:
         - MFA registration coverage (from beta credentialUserRegistrationDetails)
-        - Risky users from Entra ID Identity Protection
+        - Risky users from Entra ID Identity Protection (requires P2 + IdentityRiskyUser.Read.All)
+        Each data source tracks its own error so the UI can surface specific guidance.
         """
-        # MFA
+        # MFA registration details (Reports.Read.All + admin consent required)
         mfa_raw: list = []
+        mfa_error: str | None = None
         try:
             mfa_raw = self._get_all_pages(
                 "/reports/credentialUserRegistrationDetails", base=GRAPH_BETA
             )
         except Exception as exc:
+            err_str = str(exc)
             logger.warning("Could not fetch MFA registration details: %s", exc)
+            if "403" in err_str or "Forbidden" in err_str:
+                mfa_error = "permission_denied"
+            else:
+                mfa_error = "error"
 
         total = len(mfa_raw)
         mfa_enabled = sum(1 for u in mfa_raw if u.get("isMfaRegistered"))
@@ -434,8 +441,9 @@ class M365Service:
             if not u.get("isMfaRegistered")
         ][:50]
 
-        # Risky users (Entra ID Identity Protection)
+        # Risky users — requires Identity Protection (Azure AD P2) + IdentityRiskyUser.Read.All
         risky_users: list = []
+        risky_error: str | None = None
         try:
             risky_raw = self._get_all_pages(
                 "/identityProtection/riskyUsers",
@@ -446,12 +454,20 @@ class M365Service:
                 if u.get("riskLevel") not in (None, "none", "hidden")
             ]
         except Exception as exc:
+            err_str = str(exc)
             logger.warning("Could not fetch risky users: %s", exc)
+            if "403" in err_str or "Forbidden" in err_str:
+                risky_error = "permission_denied"
+            elif "404" in err_str:
+                risky_error = "not_available"   # tenant doesn't have Identity Protection
+            else:
+                risky_error = "error"
 
         return {
             "total_users_checked": total,
             "mfa_enabled": mfa_enabled,
             "mfa_coverage_pct": round(mfa_enabled / total, 4) if total else 0.0,
+            "mfa_error": mfa_error,
             "users_without_mfa": users_without_mfa,
             "risky_users_count": len(risky_users),
             "risky_users": [
@@ -463,6 +479,7 @@ class M365Service:
                 }
                 for u in risky_users[:20]
             ],
+            "risky_error": risky_error,
         }
 
     # ── User authentication methods ───────────────────────────────────────────
