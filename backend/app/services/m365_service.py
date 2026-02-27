@@ -217,29 +217,39 @@ class M365Service:
         except Exception as exc:
             logger.warning("GET /teams failed (%s) — trying /groups fallback", exc)
 
-        # Fallback: M365 Groups that are Teams-enabled.
-        # The Any() lambda filter requires ConsistencyLevel: eventual + $count=true
-        # (Microsoft Graph advanced query requirement).
+        # Fallback: fetch ALL groups, filter client-side for Teams-provisioned ones.
+        # Avoids advanced-query requirements (ConsistencyLevel/Any lambda) that
+        # can silently return empty results in some tenants.
         if not raw:
             try:
                 url = f"{GRAPH_V1}/groups"
                 params = {
-                    "$filter": "resourceProvisioningOptions/Any(x:x eq 'Team')",
-                    "$select": "id,displayName,visibility,description",
-                    "$count": "true",
+                    "$select": "id,displayName,visibility,description,resourceProvisioningOptions",
+                    "$top": "999",
                 }
                 token = self._get_token()
-                headers = {
-                    "Authorization": f"Bearer {token}",
-                    "ConsistencyLevel": "eventual",
-                }
+                all_groups: list = []
                 while url:
-                    r = requests.get(url, headers=headers, params=params, timeout=30)
+                    r = requests.get(
+                        url,
+                        headers={"Authorization": f"Bearer {token}"},
+                        params=params,
+                        timeout=30,
+                    )
                     r.raise_for_status()
                     data = r.json()
-                    raw.extend(data.get("value", []))
+                    all_groups.extend(data.get("value", []))
                     url = data.get("@odata.nextLink")
                     params = {}
+                # Keep only groups that are Teams-provisioned
+                raw = [
+                    g for g in all_groups
+                    if "Team" in g.get("resourceProvisioningOptions", [])
+                ]
+                logger.info(
+                    "Groups fallback: %d total groups, %d Teams-enabled",
+                    len(all_groups), len(raw),
+                )
             except Exception as exc2:
                 logger.warning("GET /groups Teams fallback also failed: %s", exc2)
 
