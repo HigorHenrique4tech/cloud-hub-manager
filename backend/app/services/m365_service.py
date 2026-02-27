@@ -103,24 +103,35 @@ class M365Service:
 
     def get_overview(self) -> dict:
         """
-        Tenant summary: users, licenses, teams.
+        Tenant summary: users, licenses, groups.
         Lightweight — uses $select to reduce payload.
         """
         users = self._get_all_pages(
             "/users", select="id,assignedLicenses,accountEnabled"
         )
         skus = self._get("/subscribedSkus").get("value", [])
+
+        # Count groups via /groups (Directory.Read.All) — avoids Team.ReadBasic.All requirement.
+        total_teams = 0
         try:
-            teams_resp = self._get("/teams", params={"$top": 1, "$count": "true"})
-            total_teams = teams_resp.get("@odata.count", len(teams_resp.get("value", [])))
-        except Exception:
-            total_teams = 0
+            r = requests.get(
+                f"{GRAPH_V1}/groups",
+                headers={**self._headers(), "ConsistencyLevel": "eventual"},
+                params={"$count": "true", "$top": "1", "$select": "id"},
+                timeout=30,
+            )
+            r.raise_for_status()
+            data = r.json()
+            total_teams = data.get("@odata.count", len(data.get("value", [])))
+        except Exception as exc:
+            logger.warning("Could not count groups: %s", exc)
 
         total_licenses = sum(s["prepaidUnits"]["enabled"] for s in skus)
         assigned_licenses = sum(s["consumedUnits"] for s in skus)
 
         return {
             "total_users": len(users),
+            "active_users": sum(1 for u in users if u.get("accountEnabled")),
             "licensed_users": sum(
                 1 for u in users if u.get("assignedLicenses") and u.get("accountEnabled")
             ),

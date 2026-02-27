@@ -322,7 +322,7 @@ const OverviewTab = ({ overview, isLoading, isError, error, onRefresh }) => {
       )}
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <KpiCard label="Usuários licenciados"  value={overview.licensed_users}   color="text-blue-400" />
+        <KpiCard label="Usuários ativos"       value={overview.active_users}     color="text-blue-400" />
         <KpiCard label="Licenças disponíveis"  value={overview.available_licenses} color="text-green-400"
                  sub={`de ${overview.total_licenses} total`} />
         <KpiCard label="Grupos ativos"         value={overview.total_teams}      color="text-purple-400" />
