@@ -1854,9 +1854,11 @@ const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser, serviceHealt
                       className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 px-3 py-2.5"
                     >
                       <span className={`flex-shrink-0 w-2 h-2 rounded-full ${meta.dot}`} />
-                      <p className="flex-1 text-sm text-gray-800 dark:text-slate-200 truncate">{svc.displayName}</p>
+                      <p className="flex-1 text-sm text-gray-800 dark:text-slate-200 truncate">
+                        {svc.displayName || svc.id || '—'}
+                      </p>
                       <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${meta.cls}`}>
-                        {meta.label}
+                        {svc.statusLabel || meta.label}
                       </span>
                     </div>
                   );

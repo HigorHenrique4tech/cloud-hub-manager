@@ -691,9 +691,11 @@ class M365Service:
         for svc in raw:
             raw_status = svc.get("status", "")
             status_key, status_label = STATUS_MAP.get(raw_status, ("unknown", raw_status))
+            # Graph may return an empty displayName — fall back to id
+            display = svc.get("displayName") or svc.get("id") or "Serviço desconhecido"
             result.append({
                 "id": svc.get("id"),
-                "displayName": svc.get("displayName"),
+                "displayName": display,
                 "status": status_key,
                 "statusLabel": status_label,
             })
