@@ -37,6 +37,28 @@ class AddMemberRequest(BaseModel):
     roles: list = []   # [] = member, ["owner"] = owner
 
 
+class CreateUserRequest(BaseModel):
+    display_name: str
+    upn: str                        # userPrincipalName e.g. joao@contoso.com
+    password: str
+    first_name: str = ""
+    last_name: str = ""
+    job_title: str = ""
+    department: str = ""
+    usage_location: str = "BR"
+    mail_nickname: str = ""
+    account_enabled: bool = True
+    force_change_password: bool = True
+
+
+class CreateGroupRequest(BaseModel):
+    display_name: str
+    description: str = ""
+    mail_nickname: str = ""
+    group_type: str = "m365"        # "m365" | "security"
+    visibility: str = "Private"     # "Private" | "Public" (M365 groups only)
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -319,6 +341,74 @@ async def add_team_member(
     except Exception as exc:
         logger.error("M365 add team member error for team %s: %s", team_id, exc)
         raise HTTPException(status_code=502, detail=f"Falha ao adicionar membro: {exc}")
+
+
+@ws_router.post("/users")
+async def create_user(
+    body: CreateUserRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Create a new user in the M365 tenant. Requires User.ReadWrite.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _build_service(acct)
+        result = svc.create_user(
+            display_name=body.display_name,
+            upn=body.upn,
+            password=body.password,
+            first_name=body.first_name,
+            last_name=body.last_name,
+            job_title=body.job_title,
+            department=body.department,
+            usage_location=body.usage_location,
+            mail_nickname=body.mail_nickname,
+            account_enabled=body.account_enabled,
+            force_change_password=body.force_change_password,
+        )
+        return {"detail": "Usuário criado com sucesso", "user": result}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 create user error: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao criar usuário: {exc}")
+
+
+@ws_router.post("/groups")
+async def create_group(
+    body: CreateGroupRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Create a new M365 Group or Security Group. Requires Group.ReadWrite.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _build_service(acct)
+        result = svc.create_group(
+            display_name=body.display_name,
+            mail_nickname=body.mail_nickname,
+            description=body.description,
+            group_type=body.group_type,
+            visibility=body.visibility,
+        )
+        return {"detail": "Grupo criado com sucesso", "group": result}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 create group error: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao criar grupo: {exc}")
 
 
 # ── Org-level Router (MSP Master) ─────────────────────────────────────────────

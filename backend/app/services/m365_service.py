@@ -298,6 +298,73 @@ class M365Service:
             )
         ]
 
+    def create_user(
+        self,
+        display_name: str,
+        upn: str,
+        password: str,
+        first_name: str = "",
+        last_name: str = "",
+        job_title: str = "",
+        department: str = "",
+        usage_location: str = "BR",
+        mail_nickname: str = "",
+        account_enabled: bool = True,
+        force_change_password: bool = True,
+    ) -> dict:
+        """
+        Create a new user in the tenant.
+        Requires User.ReadWrite.All application permission.
+        """
+        nickname = mail_nickname or upn.split("@")[0]
+        body: dict = {
+            "accountEnabled": account_enabled,
+            "displayName": display_name,
+            "mailNickname": nickname,
+            "userPrincipalName": upn,
+            "usageLocation": usage_location,
+            "passwordProfile": {
+                "forceChangePasswordNextSignIn": force_change_password,
+                "password": password,
+            },
+        }
+        if first_name:
+            body["givenName"] = first_name
+        if last_name:
+            body["surname"] = last_name
+        if job_title:
+            body["jobTitle"] = job_title
+        if department:
+            body["department"] = department
+        return self._post("/users", body)
+
+    def create_group(
+        self,
+        display_name: str,
+        mail_nickname: str = "",
+        description: str = "",
+        group_type: str = "m365",
+        visibility: str = "Private",
+    ) -> dict:
+        """
+        Create a Microsoft 365 Group or Security Group.
+        Requires Group.ReadWrite.All application permission.
+        """
+        nickname = mail_nickname or display_name.lower().replace(" ", "-")
+        is_m365 = group_type == "m365"
+        body: dict = {
+            "displayName": display_name,
+            "mailNickname": nickname,
+            "mailEnabled": is_m365,
+            "securityEnabled": not is_m365,
+            "groupTypes": ["Unified"] if is_m365 else [],
+        }
+        if description:
+            body["description"] = description
+        if is_m365:
+            body["visibility"] = visibility
+        return self._post("/groups", body)
+
     def add_team_member(self, team_id: str, user_id: str, roles: list = None) -> dict:
         """
         Add a user to a Team.
