@@ -422,6 +422,84 @@ async def create_group(
         raise HTTPException(status_code=502, detail=f"Falha ao criar grupo: {exc}")
 
 
+@ws_router.get("/users/{user_id}/auth-methods")
+async def get_user_auth_methods(
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return registered authentication methods for a single user (MFA details)."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _build_service(acct)
+        return {"methods": svc.get_user_auth_methods(user_id)}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 auth methods error for user %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch authentication methods")
+
+
+@ws_router.post("/users/{user_id}/revoke-sessions")
+async def revoke_user_sessions(
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Revoke all active sign-in sessions for a user. Requires User.ReadWrite.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _build_service(acct)
+        result = svc.revoke_user_sessions(user_id)
+        return {"detail": "Sessões revogadas com sucesso", "result": result}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 revoke sessions error for user %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao revogar sessões: {exc}")
+
+
+@ws_router.delete("/users/{user_id}/auth-methods/{method_type}/{method_id}")
+async def delete_user_auth_method(
+    user_id: str,
+    method_type: str,
+    method_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Delete a specific authentication method for a user. Requires UserAuthenticationMethod.ReadWrite.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _build_service(acct)
+        svc.delete_user_auth_method(user_id, method_type, method_id)
+        return {"detail": "Método de autenticação removido com sucesso"}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 delete auth method error for user %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao remover método: {exc}")
+
+
 # ── Org-level Router (MSP Master) ─────────────────────────────────────────────
 
 org_router = APIRouter(

@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Users, Shield, Grid3x3, Key, Plug, Trash2, X,
   CheckCircle, XCircle, AlertTriangle, RefreshCw, Pencil,
   MessageSquare, ChevronDown, ChevronRight, UserPlus, Search, Plus,
+  Smartphone, Phone, Mail, Fingerprint, Monitor, Clock, Lock, LogOut,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
@@ -32,6 +33,7 @@ const REQUIRED_PERMISSIONS = [
   'SubscribedSku.Read.All',
   'User.ReadWrite.All',
   'Group.ReadWrite.All',
+  'UserAuthenticationMethod.ReadWrite.All',
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -56,6 +58,232 @@ const mfaColor = (pct) => {
 const fmtDate = (iso) => {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+// ── User Detail Drawer ────────────────────────────────────────────────────────
+
+const METHOD_ICON = {
+  microsoftAuthenticator: Smartphone,
+  phone:                  Phone,
+  email:                  Mail,
+  fido2:                  Fingerprint,
+  windowsHello:           Monitor,
+  tap:                    Clock,
+  oath:                   Lock,
+  password:               Lock,
+};
+
+const initials = (name) =>
+  (name || '?').split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+const AVATAR_COLORS = [
+  'bg-blue-600', 'bg-purple-600', 'bg-green-600',
+  'bg-rose-600', 'bg-amber-600', 'bg-teal-600',
+];
+const avatarColor = (name) =>
+  AVATAR_COLORS[(name || '').charCodeAt(0) % AVATAR_COLORS.length];
+
+const UserDetailDrawer = ({ user, onClose }) => {
+  const isOpen = !!user;
+  const qc = useQueryClient();
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
+
+  const methodsQ = useQuery({
+    queryKey: ['m365-user-auth-methods', user?.id],
+    queryFn: () => m365Service.getUserAuthMethods(user.id),
+    enabled: isOpen && !!user?.id,
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: () => m365Service.revokeUserSessions(user.id),
+    onSuccess: () => alert('Sessões revogadas com sucesso. O usuário precisará fazer login novamente.'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: ({ methodType, methodId }) =>
+      m365Service.deleteAuthMethod(user.id, methodType, methodId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-user-auth-methods', user?.id] });
+    },
+  });
+
+  const methods = methodsQ.data?.methods || [];
+  const mfaMethods = methods.filter((m) => m.methodType !== 'password');
+  const hasPassword = methods.some((m) => m.methodType === 'password');
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <div
+        className={`fixed top-0 right-0 h-full w-full sm:w-[480px] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${user ? avatarColor(user.displayName) : 'bg-gray-400'}`}>
+              {initials(user?.displayName)}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{user?.displayName || '—'}</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{user?.userPrincipalName}</p>
+              <div className="mt-1">
+                {user?.accountEnabled
+                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 font-medium">Ativo</span>
+                  : <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 font-medium">Desativado</span>}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex-shrink-0 ml-2">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+          {/* Info section */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Informações</h3>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {[
+                { label: 'Cargo',        value: user?.jobTitle },
+                { label: 'Departamento', value: user?.department },
+                { label: 'Licenças',     value: user?.licensedCount != null ? `${user.licensedCount} atribuída(s)` : null },
+                { label: 'Último acesso',value: fmtDate(user?.lastSignIn) },
+                { label: 'Senha local',  value: hasPassword ? 'Sim' : null },
+              ].filter((f) => f.value).map((f) => (
+                <div key={f.label} className="flex items-center justify-between py-2.5 gap-4">
+                  <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0 w-32">{f.label}</span>
+                  <span className="text-sm text-gray-900 dark:text-gray-100 text-right">{f.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* MFA Methods section */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                Métodos de Autenticação (MFA)
+              </h3>
+              {user?.mfaRegistered === true  && <span className="flex items-center gap-1 text-xs text-green-500"><CheckCircle size={12} /> Registrado</span>}
+              {user?.mfaRegistered === false && <span className="flex items-center gap-1 text-xs text-red-400"><XCircle size={12} /> Não registrado</span>}
+            </div>
+
+            {methodsQ.isLoading && (
+              <div className="space-y-3">
+                {[1,2,3].map((i) => (
+                  <div key={i} className="h-14 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                ))}
+              </div>
+            )}
+
+            {methodsQ.isError && (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
+                <p className="text-xs text-gray-400 dark:text-slate-500">
+                  Não foi possível carregar os métodos.
+                  Verifique a permissão <span className="font-mono">UserAuthenticationMethod.Read.All</span>.
+                </p>
+                <button
+                  onClick={() => qc.invalidateQueries({ queryKey: ['m365-user-auth-methods', user?.id] })}
+                  className="mt-2 text-xs text-blue-500 hover:underline"
+                >
+                  Tentar novamente
+                </button>
+              </div>
+            )}
+
+            {!methodsQ.isLoading && !methodsQ.isError && mfaMethods.length === 0 && (
+              <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-5 text-center">
+                <Shield size={24} className="text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-400 dark:text-slate-500">Nenhum método MFA registrado</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {mfaMethods.map((m) => {
+                const Icon = METHOD_ICON[m.methodType] || Shield;
+                const isDeleting = deleteMut.isPending && deleteMut.variables?.methodId === m.id;
+                return (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-4 py-3"
+                  >
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-600/15 flex items-center justify-center">
+                      <Icon size={15} className="text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{m.label}</p>
+                      {m.detail && <p className="text-xs text-gray-400 dark:text-slate-500 truncate">{m.detail}</p>}
+                      {m.createdDateTime && (
+                        <p className="text-xs text-gray-400 dark:text-slate-500">
+                          Registrado em {fmtDate(m.createdDateTime)}
+                        </p>
+                      )}
+                    </div>
+                    {m.deletable && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Remover ${m.label}? O usuário precisará recadastrar este método.`)) {
+                            deleteMut.mutate({ methodType: m.methodType, methodId: m.id });
+                          }
+                        }}
+                        disabled={isDeleting}
+                        className="flex-shrink-0 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-40"
+                        title={`Remover ${m.label}`}
+                      >
+                        {isDeleting ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer actions */}
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 space-y-2">
+          {deleteMut.isError && (
+            <p className="text-xs text-red-400 text-center">
+              {deleteMut.error?.response?.data?.detail || 'Erro ao remover método'}
+            </p>
+          )}
+          {revokeMut.isError && (
+            <p className="text-xs text-red-400 text-center">
+              {revokeMut.error?.response?.data?.detail || 'Erro ao revogar sessões'}
+            </p>
+          )}
+          <button
+            onClick={() => {
+              if (window.confirm('Revogar todas as sessões ativas? O usuário será desconectado imediatamente de todos os dispositivos.')) {
+                revokeMut.mutate();
+              }
+            }}
+            disabled={revokeMut.isPending}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border border-orange-400/50 bg-orange-50 dark:bg-orange-900/20 px-4 py-2.5 text-sm font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/40 disabled:opacity-50 transition-colors"
+          >
+            {revokeMut.isPending ? <RefreshCw size={14} className="animate-spin" /> : <LogOut size={14} />}
+            Revogar todas as sessões
+          </button>
+        </div>
+      </div>
+    </>
+  );
 };
 
 // ── Credentials Modal ─────────────────────────────────────────────────────────
@@ -678,6 +906,7 @@ const CreateGroupPanel = () => {
 const UsersTab = ({ data, isLoading }) => {
   const [search, setSearch] = useState('');
   const [filterActive, setFilterActive] = useState('all');
+  const [selectedUser, setSelectedUser] = useState(null);
 
   if (isLoading) return <LoadingSpinner />;
 
@@ -691,63 +920,81 @@ const UsersTab = ({ data, isLoading }) => {
   });
 
   return (
-    <div className="space-y-4">
-      <CreateUserPanel />
-      <div className="flex gap-3 flex-wrap">
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar por nome ou e-mail..."
-          className="flex-1 min-w-48 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
-        />
-        <select
-          value={filterActive}
-          onChange={(e) => setFilterActive(e.target.value)}
-          className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100"
-        >
-          <option value="all">Todos</option>
-          <option value="active">Ativos</option>
-          <option value="inactive">Desativados</option>
-        </select>
-      </div>
+    <>
+      <UserDetailDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
 
-      <div className="card rounded-2xl overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-          <thead className="bg-gray-50 dark:bg-slate-800/60">
-            <tr>
-              {['Nome', 'E-mail', 'Departamento', 'Licenças', 'MFA', 'Último acesso', 'Status'].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-            {users.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">Nenhum usuário encontrado</td></tr>
-            )}
-            {users.map((u) => (
-              <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-slate-800/40">
-                <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-slate-100">{u.displayName || '—'}</td>
-                <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 font-mono">{u.userPrincipalName || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500 dark:text-slate-400">{u.department || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">{u.licensedCount ?? '—'}</td>
-                <td className="px-4 py-3">
-                  {u.mfaRegistered === true  && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle size={12} /> Sim</span>}
-                  {u.mfaRegistered === false && <span className="flex items-center gap-1 text-xs text-red-500"><XCircle size={12} /> Não</span>}
-                  {u.mfaRegistered == null   && <span className="text-xs text-gray-400 dark:text-slate-500">—</span>}
-                </td>
-                <td className="px-4 py-3 text-xs text-gray-400 dark:text-slate-500">{fmtDate(u.lastSignIn)}</td>
-                <td className="px-4 py-3">
-                  {u.accountEnabled
-                    ? <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400">Ativo</span>
-                    : <span className="rounded-full bg-gray-100 dark:bg-slate-700 px-2 py-0.5 text-xs text-gray-500 dark:text-slate-400">Desativado</span>}
-                </td>
+      <div className="space-y-4">
+        <CreateUserPanel />
+        <div className="flex gap-3 flex-wrap">
+          <input
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome ou e-mail..."
+            className="flex-1 min-w-48 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
+          />
+          <select
+            value={filterActive}
+            onChange={(e) => setFilterActive(e.target.value)}
+            className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100"
+          >
+            <option value="all">Todos</option>
+            <option value="active">Ativos</option>
+            <option value="inactive">Desativados</option>
+          </select>
+        </div>
+
+        <div className="card rounded-2xl overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+            <thead className="bg-gray-50 dark:bg-slate-800/60">
+              <tr>
+                {['Nome', 'E-mail', 'Departamento', 'Licenças', 'MFA', 'Último acesso', 'Status'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+              {users.length === 0 && (
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">Nenhum usuário encontrado</td></tr>
+              )}
+              {users.map((u) => {
+                const isSelected = selectedUser?.id === u.id;
+                return (
+                  <tr
+                    key={u.id}
+                    onClick={() => setSelectedUser(isSelected ? null : u)}
+                    className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-800/40'}`}
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2.5">
+                        <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.displayName)}`}>
+                          {initials(u.displayName)}
+                        </div>
+                        <span className="text-sm font-medium text-gray-900 dark:text-slate-100">{u.displayName || '—'}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 font-mono">{u.userPrincipalName || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-slate-400">{u.department || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">{u.licensedCount ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      {u.mfaRegistered === true  && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle size={12} /> Sim</span>}
+                      {u.mfaRegistered === false && <span className="flex items-center gap-1 text-xs text-red-500"><XCircle size={12} /> Não</span>}
+                      {u.mfaRegistered == null   && <span className="text-xs text-gray-400 dark:text-slate-500">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-400 dark:text-slate-500">{fmtDate(u.lastSignIn)}</td>
+                    <td className="px-4 py-3">
+                      {u.accountEnabled
+                        ? <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400">Ativo</span>
+                        : <span className="rounded-full bg-gray-100 dark:bg-slate-700 px-2 py-0.5 text-xs text-gray-500 dark:text-slate-400">Desativado</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-slate-500">{users.length} usuário(s) exibido(s)</p>
       </div>
-      <p className="text-xs text-gray-400 dark:text-slate-500">{users.length} usuário(s) exibido(s)</p>
-    </div>
+    </>
   );
 };
 
@@ -1288,19 +1535,26 @@ export default function M365Dashboard() {
             </div>
             {connected && (
               <div className="flex items-center gap-2">
-                <button
-                  onClick={() => {
-                    qc.invalidateQueries({ queryKey: ['m365-overview'] });
-                    qc.invalidateQueries({ queryKey: ['m365-users'] });
-                    qc.invalidateQueries({ queryKey: ['m365-licenses'] });
-                    qc.invalidateQueries({ queryKey: ['m365-teams'] });
-                    qc.invalidateQueries({ queryKey: ['m365-security'] });
-                  }}
-                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800"
-                  title="Recarregar dados do tenant"
-                >
-                  <RefreshCw size={13} /> Recarregar
-                </button>
+                {(() => {
+                  const activeQ = { 'visao-geral': overviewQ, usuarios: usersQ, licencas: licensesQ, equipes: teamsQ, seguranca: securityQ }[activeTab];
+                  const isFetching = activeQ?.isFetching;
+                  return (
+                    <button
+                      onClick={() => {
+                        qc.invalidateQueries({ queryKey: ['m365-overview'] });
+                        qc.invalidateQueries({ queryKey: ['m365-users'] });
+                        qc.invalidateQueries({ queryKey: ['m365-licenses'] });
+                        qc.invalidateQueries({ queryKey: ['m365-teams'] });
+                        qc.invalidateQueries({ queryKey: ['m365-security'] });
+                      }}
+                      disabled={isFetching}
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-50"
+                      title="Recarregar dados do tenant"
+                    >
+                      <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} /> Recarregar
+                    </button>
+                  );
+                })()}
                 <button
                   onClick={() => setShowCredModal(true)}
                   className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800"

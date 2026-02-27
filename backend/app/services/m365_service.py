@@ -462,3 +462,80 @@ class M365Service:
                 for u in risky_users[:20]
             ],
         }
+
+    # ── User authentication methods ───────────────────────────────────────────
+
+    # Maps Graph @odata.type suffix → (type_key, beta endpoint segment)
+    _METHOD_META: dict = {
+        "microsoftAuthenticatorAuthenticationMethod": ("microsoftAuthenticator", "microsoftAuthenticatorMethods", "Microsoft Authenticator"),
+        "phoneAuthenticationMethod":                  ("phone",                 "phoneAuthenticationMethods",              "Telefone"),
+        "emailAuthenticationMethod":                  ("email",                 "emailAuthenticationMethods",              "E-mail"),
+        "fido2AuthenticationMethod":                  ("fido2",                 "fido2Methods",                            "Chave FIDO2"),
+        "windowsHelloForBusinessAuthenticationMethod":("windowsHello",          "windowsHelloForBusinessMethods",          "Windows Hello"),
+        "temporaryAccessPassAuthenticationMethod":     ("tap",                   "temporaryAccessPassMethods",              "Acesso Temporário"),
+        "softwareOathAuthenticationMethod":            ("oath",                  "softwareOathMethods",                     "App OATH"),
+        "passwordAuthenticationMethod":                ("password",              None,                                      "Senha"),
+    }
+
+    def get_user_auth_methods(self, user_id: str) -> list:
+        """
+        Return all authentication methods registered for a user.
+        Requires UserAuthenticationMethod.Read.All (beta endpoint).
+        """
+        try:
+            raw = self._get_all_pages(
+                f"/users/{user_id}/authentication/methods", base=GRAPH_BETA
+            )
+        except Exception as exc:
+            logger.warning("Could not fetch auth methods for user %s: %s", user_id, exc)
+            return []
+
+        result = []
+        for m in raw:
+            odata = m.get("@odata.type", "")
+            suffix = odata.split(".")[-1]
+            type_key, _, label = self._METHOD_META.get(suffix, ("unknown", None, suffix))
+            _, endpoint_seg, _ = self._METHOD_META.get(suffix, ("unknown", None, suffix))
+            result.append({
+                "id": m["id"],
+                "methodType": type_key,
+                "label": label,
+                "detail": (
+                    m.get("displayName")
+                    or m.get("phoneNumber")
+                    or m.get("emailAddress")
+                    or m.get("device", {}).get("displayName")
+                    or ""
+                ),
+                "createdDateTime": m.get("createdDateTime"),
+                "deletable": type_key not in ("password",) and endpoint_seg is not None,
+            })
+        return result
+
+    def revoke_user_sessions(self, user_id: str) -> dict:
+        """
+        Revoke all active sign-in sessions for a user.
+        Requires User.ReadWrite.All.
+        """
+        url = f"{GRAPH_V1}/users/{user_id}/revokeSignInSessions"
+        r = requests.post(url, headers=self._headers(), timeout=30)
+        r.raise_for_status()
+        return r.json() if r.content else {"value": True}
+
+    def delete_user_auth_method(self, user_id: str, method_type: str, method_id: str) -> None:
+        """
+        Delete a specific authentication method for a user.
+        Requires UserAuthenticationMethod.ReadWrite.All.
+        method_type must be one of the type_key values in _METHOD_META.
+        """
+        # Find endpoint segment for this type key
+        endpoint_seg = None
+        for _, (key, seg, _) in self._METHOD_META.items():
+            if key == method_type:
+                endpoint_seg = seg
+                break
+        if not endpoint_seg:
+            raise ValueError(f"Cannot delete method of type '{method_type}'")
+        url = f"{GRAPH_BETA}/users/{user_id}/authentication/{endpoint_seg}/{method_id}"
+        r = requests.delete(url, headers=self._headers(), timeout=30)
+        r.raise_for_status()

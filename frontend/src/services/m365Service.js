@@ -60,6 +60,21 @@ const m365Service = {
     return data;
   },
 
+  getUserAuthMethods: async (userId) => {
+    const { data } = await api.get(wsUrl(`/m365/users/${userId}/auth-methods`));
+    return data;
+  },
+
+  revokeUserSessions: async (userId) => {
+    const { data } = await api.post(wsUrl(`/m365/users/${userId}/revoke-sessions`));
+    return data;
+  },
+
+  deleteAuthMethod: async (userId, methodType, methodId) => {
+    const { data } = await api.delete(wsUrl(`/m365/users/${userId}/auth-methods/${methodType}/${methodId}`));
+    return data;
+  },
+
   getSecurity: async () => {
     const { data } = await api.get(wsUrl('/m365/security'));
     return data;
