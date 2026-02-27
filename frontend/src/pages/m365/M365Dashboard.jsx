@@ -17,7 +17,7 @@ const TABS = [
   { id: 'visao-geral', label: 'Visão Geral',  icon: Grid3x3 },
   { id: 'usuarios',    label: 'Usuários',       icon: Users },
   { id: 'licencas',    label: 'Licenças',       icon: Key },
-  { id: 'equipes',     label: 'Equipes',        icon: MessageSquare },
+  { id: 'equipes',     label: 'Grupos',         icon: MessageSquare },
   { id: 'seguranca',   label: 'Segurança',      icon: Shield },
 ];
 
@@ -258,23 +258,74 @@ const KpiCard = ({ label, value, sub, color = 'text-blue-400' }) => (
   </div>
 );
 
+const ApiErrorCard = ({ error, onRefresh }) => (
+  <div className="card rounded-2xl p-8 text-center space-y-3">
+    <XCircle size={36} className="text-red-400 mx-auto" />
+    <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Falha ao carregar dados</p>
+    <p className="text-xs text-gray-400 dark:text-slate-500 max-w-md mx-auto">
+      {error?.response?.data?.detail || 'Verifique as permissões do App Registration no Azure AD.'}
+    </p>
+    {onRefresh && (
+      <button
+        onClick={onRefresh}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800"
+      >
+        <RefreshCw size={13} /> Tentar novamente
+      </button>
+    )}
+  </div>
+);
+
 // ── Tab: Visão Geral ──────────────────────────────────────────────────────────
 
-const OverviewTab = ({ overview, isLoading }) => {
+const OverviewTab = ({ overview, isLoading, isError, error, onRefresh }) => {
   if (isLoading) return <LoadingSpinner />;
+
+  if (isError) {
+    return (
+      <div className="card rounded-2xl p-8 text-center space-y-3">
+        <XCircle size={36} className="text-red-400 mx-auto" />
+        <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Falha ao carregar dados do tenant</p>
+        <p className="text-xs text-gray-400 dark:text-slate-500 max-w-md mx-auto">
+          {error?.response?.data?.detail || 'Verifique se as credenciais estão corretas e se todas as permissões do App Registration foram concedidas com admin consent.'}
+        </p>
+        <button
+          onClick={onRefresh}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800"
+        >
+          <RefreshCw size={13} /> Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
   if (!overview) return null;
 
   const usagePct = overview.total_licenses > 0
     ? overview.assigned_licenses / overview.total_licenses
     : 0;
 
+  const noData = overview.total_users === 0 && overview.total_licenses === 0;
+
   return (
     <div className="space-y-6">
+      {noData && (
+        <div className="rounded-xl border border-yellow-300 dark:border-yellow-700/50 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Nenhum dado encontrado</p>
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+              Verifique se as permissões <code className="bg-yellow-100 dark:bg-yellow-800/40 px-1 rounded">User.Read.All</code> e <code className="bg-yellow-100 dark:bg-yellow-800/40 px-1 rounded">SubscribedSku.Read.All</code> foram concedidas com <strong>admin consent</strong> no App Registration.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <KpiCard label="Usuários licenciados"  value={overview.licensed_users}   color="text-blue-400" />
         <KpiCard label="Licenças disponíveis"  value={overview.available_licenses} color="text-green-400"
                  sub={`de ${overview.total_licenses} total`} />
-        <KpiCard label="Equipes ativas"        value={overview.total_teams}      color="text-purple-400" />
+        <KpiCard label="Grupos ativos"         value={overview.total_teams}      color="text-purple-400" />
         <KpiCard label="Usuários desativados"  value={overview.disabled_users}   color="text-slate-400" />
       </div>
 
@@ -1236,12 +1287,27 @@ export default function M365Dashboard() {
               </div>
             </div>
             {connected && (
-              <button
-                onClick={() => setShowCredModal(true)}
-                className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800"
-              >
-                <Pencil size={13} /> Reconfigurar
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => {
+                    qc.invalidateQueries({ queryKey: ['m365-overview'] });
+                    qc.invalidateQueries({ queryKey: ['m365-users'] });
+                    qc.invalidateQueries({ queryKey: ['m365-licenses'] });
+                    qc.invalidateQueries({ queryKey: ['m365-teams'] });
+                    qc.invalidateQueries({ queryKey: ['m365-security'] });
+                  }}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800"
+                  title="Recarregar dados do tenant"
+                >
+                  <RefreshCw size={13} /> Recarregar
+                </button>
+                <button
+                  onClick={() => setShowCredModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800"
+                >
+                  <Pencil size={13} /> Reconfigurar
+                </button>
+              </div>
             )}
           </div>
 
@@ -1272,16 +1338,28 @@ export default function M365Dashboard() {
 
               {/* Tab content */}
               {activeTab === 'visao-geral' && (
-                <OverviewTab overview={overviewQ.data} isLoading={overviewQ.isLoading} />
+                <OverviewTab
+                  overview={overviewQ.data}
+                  isLoading={overviewQ.isLoading}
+                  isError={overviewQ.isError}
+                  error={overviewQ.error}
+                  onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-overview'] })}
+                />
               )}
               {activeTab === 'usuarios' && (
-                <UsersTab data={usersQ.data} isLoading={usersQ.isLoading} />
+                usersQ.isError
+                  ? <ApiErrorCard error={usersQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-users'] })} />
+                  : <UsersTab data={usersQ.data} isLoading={usersQ.isLoading} />
               )}
               {activeTab === 'licencas' && (
-                <LicensesTab data={licensesQ.data} isLoading={licensesQ.isLoading} />
+                licensesQ.isError
+                  ? <ApiErrorCard error={licensesQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-licenses'] })} />
+                  : <LicensesTab data={licensesQ.data} isLoading={licensesQ.isLoading} />
               )}
               {activeTab === 'equipes' && (
-                <TeamsTab data={teamsQ.data} isLoading={teamsQ.isLoading} />
+                teamsQ.isError
+                  ? <ApiErrorCard error={teamsQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-teams'] })} />
+                  : <TeamsTab data={teamsQ.data} isLoading={teamsQ.isLoading} />
               )}
               {activeTab === 'seguranca' && (
                 <SecurityTab data={securityQ.data} isLoading={securityQ.isLoading} />
