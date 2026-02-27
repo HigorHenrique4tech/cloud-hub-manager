@@ -5,114 +5,224 @@ import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 import OAuthButtons from '../components/auth/OAuthButtons';
 
-/* ── Animated cloud network SVG ─────────────────────────────────── */
-const CloudAnimation = () => (
+/* ── Globe animation ──────────────────────────────────────────────── */
+const GlobeAnimation = () => (
   <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden select-none">
+
+    {/* Ambient glow layers */}
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div className="w-[520px] h-[520px] rounded-full"
+        style={{ background: 'radial-gradient(circle, rgba(37,99,235,0.18) 0%, transparent 70%)' }} />
+    </div>
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <div className="w-[280px] h-[280px] rounded-full blur-3xl"
+        style={{ background: 'radial-gradient(circle, rgba(96,165,250,0.12) 0%, transparent 80%)' }} />
+    </div>
+
     <svg
       viewBox="0 0 480 480"
-      className="w-80 h-80 lg:w-96 lg:h-96"
+      className="w-80 h-80 lg:w-[420px] lg:h-[420px] relative z-10 drop-shadow-2xl"
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
-        <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.4" />
+        <radialGradient id="globeSphere" cx="38%" cy="35%" r="70%">
+          <stop offset="0%"   stopColor="#1e3a8a" stopOpacity="0.9" />
+          <stop offset="45%"  stopColor="#0c1830" stopOpacity="0.95" />
+          <stop offset="100%" stopColor="#050810" stopOpacity="1" />
+        </radialGradient>
+
+        <radialGradient id="globeGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"   stopColor="#2563eb" stopOpacity="0.25" />
+          <stop offset="100%" stopColor="#2563eb" stopOpacity="0" />
+        </radialGradient>
+
+        <radialGradient id="centerGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"   stopColor="#60a5fa" stopOpacity="0.3" />
           <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
         </radialGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
+
+        <filter id="nodeGlow">
+          <feGaussianBlur stdDeviation="3.5" result="coloredBlur"/>
+          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
         </filter>
+
+        <filter id="softGlow">
+          <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+
+        <clipPath id="globeClip">
+          <circle cx="240" cy="240" r="118" />
+        </clipPath>
+
         <style>{`
-          @keyframes float1 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-          @keyframes float2 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(8px)} }
-          @keyframes float3 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-          @keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-          @keyframes pulse-dash {
-            0%   { stroke-dashoffset: 200; opacity: 0.2; }
-            50%  { opacity: 0.7; }
-            100% { stroke-dashoffset: 0;   opacity: 0.2; }
+          @keyframes floatUp   { 0%,100%{transform:translateY(0px)}  50%{transform:translateY(-10px)} }
+          @keyframes floatDown { 0%,100%{transform:translateY(0px)}  50%{transform:translateY(8px)}  }
+          @keyframes spinCW    { from{transform:rotate(0deg)}   to{transform:rotate(360deg)}  }
+          @keyframes spinCCW   { from{transform:rotate(0deg)}   to{transform:rotate(-360deg)} }
+          @keyframes spinDiag  { from{transform:rotate(-20deg)} to{transform:rotate(340deg)}  }
+          @keyframes pulseDash {
+            0%   { stroke-dashoffset: 300; opacity: 0.1; }
+            40%  { opacity: 0.55; }
+            100% { stroke-dashoffset: 0;   opacity: 0.1; }
           }
-          .n1 { animation: float1 4s ease-in-out infinite; transform-origin: 240px 240px; }
-          .n2 { animation: float2 5s ease-in-out infinite 0.8s; transform-origin: 100px 160px; }
-          .n3 { animation: float3 4.5s ease-in-out infinite 1.4s; transform-origin: 380px 150px; }
-          .n4 { animation: float1 6s ease-in-out infinite 0.3s; transform-origin: 120px 350px; }
-          .n5 { animation: float2 4.2s ease-in-out infinite 1s; transform-origin: 370px 340px; }
-          .n6 { animation: float3 5.5s ease-in-out infinite 0.5s; transform-origin: 240px 100px; }
-          .ring { animation: spin-slow 12s linear infinite; transform-origin: 240px 240px; }
-          .line { stroke-dasharray: 200; animation: pulse-dash 3s linear infinite; }
-          .line2 { stroke-dasharray: 200; animation: pulse-dash 3.5s linear infinite 0.7s; }
-          .line3 { stroke-dasharray: 200; animation: pulse-dash 4s linear infinite 1.3s; }
-          .line4 { stroke-dasharray: 200; animation: pulse-dash 3.2s linear infinite 0.4s; }
-          .line5 { stroke-dasharray: 200; animation: pulse-dash 3.8s linear infinite 1.8s; }
+          @keyframes pulseRing {
+            0%,100% { opacity: 0.35; }
+            50%     { opacity: 0.65; }
+          }
+          @keyframes shimmer {
+            0%,100% { opacity:0.25; } 50% { opacity:0.6; }
+          }
+          .nAws   { animation: floatUp   5.0s ease-in-out infinite 0.0s; }
+          .nAzure { animation: floatDown 4.5s ease-in-out infinite 0.8s; }
+          .nM365  { animation: floatUp   5.5s ease-in-out infinite 1.3s; }
+          .nSec   { animation: floatDown 4.2s ease-in-out infinite 0.4s; }
+          .ring1  { animation: spinCW   22s linear infinite; transform-origin: 240px 240px; }
+          .ring2  { animation: spinCCW  18s linear infinite; transform-origin: 240px 240px; }
+          .ring3  { animation: spinDiag 28s linear infinite; transform-origin: 240px 240px; }
+          .rPulse { animation: pulseRing 4s ease-in-out infinite; }
+          .lA  { stroke-dasharray:300; animation: pulseDash 3.2s linear infinite 0.0s; }
+          .lB  { stroke-dasharray:300; animation: pulseDash 3.8s linear infinite 0.9s; }
+          .lC  { stroke-dasharray:300; animation: pulseDash 3.5s linear infinite 1.8s; }
+          .lD  { stroke-dasharray:300; animation: pulseDash 4.0s linear infinite 0.5s; }
+          .shimmer { animation: shimmer 3s ease-in-out infinite; }
         `}</style>
       </defs>
 
-      {/* Connection lines */}
-      <line className="line"  x1="240" y1="240" x2="100" y2="160" stroke="#3b82f6" strokeWidth="1.5" />
-      <line className="line2" x1="240" y1="240" x2="380" y2="150" stroke="#60a5fa" strokeWidth="1.5" />
-      <line className="line3" x1="240" y1="240" x2="120" y2="350" stroke="#3b82f6" strokeWidth="1.5" />
-      <line className="line4" x1="240" y1="240" x2="370" y2="340" stroke="#60a5fa" strokeWidth="1.5" />
-      <line className="line5" x1="240" y1="240" x2="240" y2="100" stroke="#818cf8" strokeWidth="1.5" />
-      <line className="line"  x1="100" y1="160" x2="240" y2="100" stroke="#3b82f6" strokeWidth="1" strokeOpacity="0.5" />
-      <line className="line2" x1="380" y1="150" x2="240" y2="100" stroke="#60a5fa" strokeWidth="1" strokeOpacity="0.5" />
+      {/* ── Outer ambient halo ── */}
+      <circle cx="240" cy="240" r="210" fill="url(#globeGlow)" />
 
-      {/* Rotating ring around center */}
-      <circle className="ring" cx="240" cy="240" r="52" fill="none" stroke="#3b82f6" strokeWidth="1" strokeDasharray="8 6" strokeOpacity="0.5" />
+      {/* ── Connection lines (behind globe) ── */}
+      <line className="lA" x1="240" y1="240" x2="82"  y2="118" stroke="#3b82f6" strokeWidth="1.5" />
+      <line className="lB" x1="240" y1="240" x2="398" y2="118" stroke="#38bdf8" strokeWidth="1.5" />
+      <line className="lC" x1="240" y1="240" x2="86"  y2="362" stroke="#818cf8" strokeWidth="1.5" />
+      <line className="lD" x1="240" y1="240" x2="394" y2="358" stroke="#60a5fa" strokeWidth="1.5" />
 
-      {/* Center hub node */}
-      <g className="n1">
-        <circle cx="240" cy="240" r="36" fill="url(#nodeGlow)" />
-        <circle cx="240" cy="240" r="24" fill="#1e3a5f" stroke="#3b82f6" strokeWidth="2" filter="url(#glow)" />
-        {/* CloudAtlas icon */}
-        <text x="240" y="245" textAnchor="middle" dominantBaseline="middle" fontSize="18" fill="#60a5fa">⬡</text>
+      {/* ── Globe sphere ── */}
+      <circle cx="240" cy="240" r="120" fill="url(#globeSphere)" />
+
+      {/* ── Grid lines (clipped to globe) ── */}
+      <g clipPath="url(#globeClip)" opacity="0.18">
+        {/* latitude */}
+        <ellipse cx="240" cy="200" rx="118" ry="22"  fill="none" stroke="#93c5fd" strokeWidth="0.7" />
+        <ellipse cx="240" cy="240" rx="118" ry="40"  fill="none" stroke="#93c5fd" strokeWidth="0.7" />
+        <ellipse cx="240" cy="278" rx="118" ry="22"  fill="none" stroke="#93c5fd" strokeWidth="0.7" />
+        <ellipse cx="240" cy="160" rx="118" ry="8"   fill="none" stroke="#93c5fd" strokeWidth="0.5" />
+        <ellipse cx="240" cy="320" rx="118" ry="8"   fill="none" stroke="#93c5fd" strokeWidth="0.5" />
+        {/* longitude */}
+        <ellipse cx="240" cy="240" rx="25"  ry="118" fill="none" stroke="#93c5fd" strokeWidth="0.7" />
+        <ellipse cx="240" cy="240" rx="65"  ry="118" fill="none" stroke="#93c5fd" strokeWidth="0.7" />
+        <ellipse cx="240" cy="240" rx="100" ry="118" fill="none" stroke="#93c5fd" strokeWidth="0.7" />
       </g>
 
-      {/* AWS node */}
-      <g className="n2">
-        <circle cx="100" cy="160" r="22" fill="#1a1a2e" stroke="#f97316" strokeWidth="2" filter="url(#glow)" />
-        <text x="100" y="165" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="bold" fill="#f97316">AWS</text>
+      {/* ── Globe edge rim ── */}
+      <circle cx="240" cy="240" r="120" fill="none" stroke="#2563eb" strokeWidth="1.2" strokeOpacity="0.6" />
+
+      {/* ── Globe inner highlight ── */}
+      <circle cx="210" cy="208" r="48" fill="#ffffff" fillOpacity="0.025" />
+      <circle cx="198" cy="200" r="18" fill="#3b82f6" fillOpacity="0.12" />
+
+      {/* ── Orbit rings ── */}
+      <g className="ring1 rPulse">
+        <ellipse cx="240" cy="240" rx="172" ry="36"
+          fill="none" stroke="#3b82f6" strokeWidth="1" strokeDasharray="6 5" strokeOpacity="0.55" />
+      </g>
+      <g className="ring2 rPulse">
+        <ellipse cx="240" cy="240" rx="36" ry="172"
+          fill="none" stroke="#6366f1" strokeWidth="1" strokeDasharray="6 5" strokeOpacity="0.45" />
+      </g>
+      <g className="ring3">
+        <ellipse cx="240" cy="240" rx="160" ry="55"
+          fill="none" stroke="#38bdf8" strokeWidth="0.8" strokeDasharray="4 7" strokeOpacity="0.3"
+          transform="rotate(-30 240 240)" />
       </g>
 
-      {/* Azure node */}
-      <g className="n3">
-        <circle cx="380" cy="150" r="22" fill="#1a1a2e" stroke="#0ea5e9" strokeWidth="2" filter="url(#glow)" />
-        <text x="380" y="155" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="bold" fill="#0ea5e9">Azure</text>
+      {/* ── Center hub (shield icon) ── */}
+      <g filter="url(#softGlow)">
+        <circle cx="240" cy="240" r="30" fill="url(#centerGlow)" />
+        <circle cx="240" cy="240" r="22" fill="#070c1a" stroke="#3b82f6" strokeWidth="1.8" />
+        <path
+          d="M240 230 L232 234.5 L232 243 Q232 251.5 240 255 Q248 251.5 248 243 L248 234.5 Z"
+          fill="none" stroke="#60a5fa" strokeWidth="1.6" strokeLinejoin="round"
+        />
       </g>
 
-      {/* Small nodes */}
-      <g className="n4">
-        <circle cx="120" cy="350" r="14" fill="#1a1a2e" stroke="#6366f1" strokeWidth="1.5" />
-        <circle cx="120" cy="350" r="5" fill="#6366f1" />
+      {/* ── AWS node ── */}
+      <g className="nAws" filter="url(#nodeGlow)">
+        <circle cx="82"  cy="118" r="30" fill="#070c1a" stroke="#f97316" strokeWidth="1.8" />
+        <circle cx="82"  cy="118" r="38" fill="none" stroke="#f97316" strokeWidth="0.5" strokeOpacity="0.25" />
+        <text x="82" y="123" textAnchor="middle" dominantBaseline="middle" fontSize="10" fontWeight="bold" fill="#f97316">AWS</text>
       </g>
 
-      <g className="n5">
-        <circle cx="370" cy="340" r="14" fill="#1a1a2e" stroke="#6366f1" strokeWidth="1.5" />
-        <circle cx="370" cy="340" r="5" fill="#6366f1" />
+      {/* ── Azure node ── */}
+      <g className="nAzure" filter="url(#nodeGlow)">
+        <circle cx="398" cy="118" r="30" fill="#070c1a" stroke="#0ea5e9" strokeWidth="1.8" />
+        <circle cx="398" cy="118" r="38" fill="none" stroke="#0ea5e9" strokeWidth="0.5" strokeOpacity="0.25" />
+        <text x="398" y="123" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="bold" fill="#0ea5e9">Azure</text>
       </g>
 
-      <g className="n6">
-        <circle cx="240" cy="100" r="14" fill="#1a1a2e" stroke="#818cf8" strokeWidth="1.5" />
-        <circle cx="240" cy="100" r="5" fill="#818cf8" />
+      {/* ── Microsoft 365 node (Windows-style 4-square icon) ── */}
+      <g className="nM365" filter="url(#nodeGlow)">
+        <circle cx="394" cy="358" r="30" fill="#070c1a" stroke="#2563eb" strokeWidth="1.8" />
+        <circle cx="394" cy="358" r="38" fill="none" stroke="#2563eb" strokeWidth="0.5" strokeOpacity="0.25" />
+        <rect x="383" y="348" width="8" height="8" fill="#f25022" rx="1.2" />
+        <rect x="393" y="348" width="8" height="8" fill="#7fba00" rx="1.2" />
+        <rect x="383" y="358" width="8" height="8" fill="#00a4ef" rx="1.2" />
+        <rect x="393" y="358" width="8" height="8" fill="#ffb900" rx="1.2" />
       </g>
+
+      {/* ── Security node ── */}
+      <g className="nSec" filter="url(#nodeGlow)">
+        <circle cx="86"  cy="362" r="30" fill="#070c1a" stroke="#8b5cf6" strokeWidth="1.8" />
+        <circle cx="86"  cy="362" r="38" fill="none" stroke="#8b5cf6" strokeWidth="0.5" strokeOpacity="0.25" />
+        <path
+          d="M86 352 L79 356 L79 363 Q79 370 86 373 Q93 370 93 363 L93 356 Z"
+          fill="none" stroke="#a78bfa" strokeWidth="1.6" strokeLinejoin="round"
+        />
+      </g>
+
+      {/* ── Floating particles ── */}
+      <circle className="shimmer" cx="160" cy="170" r="2" fill="#60a5fa" />
+      <circle className="shimmer" cx="320" cy="175" r="1.5" fill="#38bdf8" />
+      <circle className="shimmer" cx="155" cy="310" r="2" fill="#818cf8" />
+      <circle className="shimmer" cx="330" cy="308" r="1.5" fill="#60a5fa" />
+      <circle className="shimmer" cx="240" cy="140" r="1.5" fill="#93c5fd" />
+      <circle className="shimmer" cx="240" cy="345" r="2"   fill="#818cf8" />
     </svg>
 
-    <p className="mt-6 text-center text-slate-400 text-sm max-w-xs leading-relaxed px-4">
-      Gerencie sua infraestrutura multi-cloud em um só lugar
+    {/* Tagline */}
+    <p className="mt-6 text-center text-slate-300 text-lg font-semibold max-w-sm leading-snug tracking-tight">
+      Governança e Segurança<br />
+      <span className="text-white">Multi-Cloud em um só lugar</span>
     </p>
 
-    <div className="mt-4 flex gap-4 text-xs text-slate-500">
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> AWS</span>
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Azure</span>
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-400 inline-block" /> Multi-cloud</span>
+    {/* Provider chips */}
+    <div className="mt-4 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs text-slate-400 px-6">
+      <span className="flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> AWS
+      </span>
+      <span className="text-slate-600">•</span>
+      <span className="flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Azure
+      </span>
+      <span className="text-slate-600">•</span>
+      <span className="flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-blue-400 inline-block" /> Microsoft 365
+      </span>
+      <span className="text-slate-600">•</span>
+      <span className="flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-violet-400 inline-block" /> Segurança
+      </span>
     </div>
   </div>
 );
 
+/* ── Input style for dark theme ─────────────────────────────────── */
 const inputClass =
-  'w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent';
+  'w-full pl-10 pr-10 py-3 rounded-xl text-sm text-slate-100 placeholder:text-slate-500 font-medium ' +
+  'bg-white/5 border border-white/10 ' +
+  'focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500/60 ' +
+  'transition-colors';
 
 /* ── Login page ──────────────────────────────────────────────────── */
 const Login = () => {
@@ -212,34 +322,48 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left panel – form */}
-      <div className="flex-1 flex flex-col justify-center px-8 py-12 bg-white lg:max-w-md xl:max-w-lg">
+    <div className="min-h-screen flex" style={{ background: '#080c14' }}>
+
+      {/* ── Left panel — login form ── */}
+      <div
+        className="flex-1 flex flex-col justify-center px-10 py-12 lg:max-w-[460px] xl:max-w-[500px] relative"
+        style={{ background: 'linear-gradient(160deg, #0d1220 0%, #080c14 100%)' }}
+      >
+        {/* Subtle left-edge glow */}
+        <div className="absolute inset-y-0 right-0 w-px"
+          style={{ background: 'linear-gradient(to bottom, transparent, rgba(37,99,235,0.25), transparent)' }} />
+
         {/* Logo */}
         <div className="mb-10">
-          <div className="flex items-center gap-3 mb-2">
+          <div className="flex items-center gap-3 mb-1">
             <img src="/logo.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
-            <span className="text-2xl font-bold text-gray-900">CloudAtlas</span>
+            <span className="text-2xl font-bold text-white tracking-tight">CloudAtlas</span>
           </div>
-          <p className="text-gray-500 text-sm">Gerenciamento multi-cloud centralizado</p>
+          <p className="text-slate-500 text-xs tracking-wide uppercase font-medium ml-[52px]">
+            Multi-Cloud Control &amp; Security Platform
+          </p>
         </div>
 
         {step === 'credentials' ? (
           <>
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Bem-vindo de volta</h1>
-            <p className="text-gray-500 mb-8">Entre com suas credenciais para continuar</p>
+            <h1 className="text-3xl font-bold text-white mb-1 leading-tight">
+              Acesse seu centro<br />de controle
+            </h1>
+            <p className="text-slate-400 text-sm mb-8">Entre com sua conta para continuar</p>
 
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+              <div className="mb-5 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Email
+                </label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input
                     type="email"
                     required
@@ -252,9 +376,11 @@ const Login = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5">
+                  Senha
+                </label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     required
@@ -266,7 +392,7 @@ const Login = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors"
                     tabIndex={-1}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -277,49 +403,62 @@ const Login = () => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed mt-2"
+                style={{
+                  background: loading
+                    ? 'rgba(37,99,235,0.5)'
+                    : 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  boxShadow: loading ? 'none' : '0 4px 24px rgba(37,99,235,0.4)',
+                }}
               >
-                {loading ? (
-                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <LogIn className="w-4 h-4" />
-                )}
+                {loading
+                  ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <LogIn className="w-4 h-4" />}
                 {loading ? 'Entrando...' : 'Entrar'}
               </button>
             </form>
 
-            <p className="mt-6 text-center text-sm text-gray-500">
+            <p className="mt-5 text-center text-sm text-slate-500">
               Não tem uma conta?{' '}
-              <Link to="/register" className="text-primary font-medium hover:underline">
+              <Link to="/register" className="text-blue-400 font-medium hover:text-blue-300 transition-colors">
                 Criar conta
               </Link>
             </p>
 
             <OAuthButtons />
+
+            {/* Security badge */}
+            <div className="mt-8 flex items-center justify-center gap-2 text-xs text-slate-600">
+              <svg viewBox="0 0 16 16" className="w-3.5 h-3.5 fill-current flex-shrink-0">
+                <path d="M8 1L2 3.5v4C2 11.08 4.6 14.22 8 15c3.4-.78 6-3.92 6-7.5v-4L8 1z" />
+              </svg>
+              Seus dados são protegidos com criptografia de nível enterprise
+            </div>
           </>
         ) : (
           <>
             {/* OTP step */}
             <div className="flex flex-col items-center text-center mb-8">
-              <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
-                <ShieldCheck className="w-8 h-8 text-primary" />
+              <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: 'rgba(37,99,235,0.15)', border: '1px solid rgba(37,99,235,0.35)' }}>
+                <ShieldCheck className="w-8 h-8 text-blue-400" />
               </div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-2">Verificação em dois fatores</h1>
-              <p className="text-gray-500 text-sm">
+              <h1 className="text-2xl font-bold text-white mb-2">Verificação em dois fatores</h1>
+              <p className="text-slate-400 text-sm">
                 Enviamos um código de 6 dígitos para<br />
-                <span className="font-medium text-gray-700">{email}</span>
+                <span className="font-semibold text-slate-200">{email}</span>
               </p>
             </div>
 
             {otpError && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm text-center">
+              <div className="mb-4 px-4 py-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-sm text-center">
                 {otpError}
               </div>
             )}
 
-            <form onSubmit={handleVerifyOTP} className="space-y-5">
+            <form onSubmit={handleVerifyOTP} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1 text-center">
+                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1.5 text-center">
                   Código de verificação
                 </label>
                 <input
@@ -332,20 +471,22 @@ const Login = () => {
                   value={otp}
                   onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
                   placeholder="000000"
-                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-gray-900 font-mono text-2xl text-center tracking-[0.5em] placeholder:text-gray-300 focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                  className="w-full px-4 py-3 rounded-xl font-mono text-2xl text-center tracking-[0.5em] bg-white/5 border border-white/10 text-slate-100 placeholder:text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500/60 focus:border-blue-500/60"
                 />
               </div>
 
               <button
                 type="submit"
                 disabled={loading || otp.length !== 6}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold text-sm text-white transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                style={{
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  boxShadow: '0 4px 24px rgba(37,99,235,0.4)',
+                }}
               >
-                {loading ? (
-                  <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <ShieldCheck className="w-4 h-4" />
-                )}
+                {loading
+                  ? <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  : <ShieldCheck className="w-4 h-4" />}
                 {loading ? 'Verificando...' : 'Verificar'}
               </button>
             </form>
@@ -355,7 +496,7 @@ const Login = () => {
                 type="button"
                 onClick={handleResend}
                 disabled={resendCooldown > 0}
-                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-primary disabled:text-gray-400 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-blue-400 disabled:text-slate-600 disabled:cursor-not-allowed transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 {resendCooldown > 0 ? `Reenviar em ${resendCooldown}s` : 'Reenviar código'}
@@ -364,7 +505,7 @@ const Login = () => {
               <button
                 type="button"
                 onClick={handleBack}
-                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors"
+                className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-300 transition-colors"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 Voltar
@@ -374,12 +515,19 @@ const Login = () => {
         )}
       </div>
 
-      {/* Right panel – animation */}
+      {/* ── Right panel — globe animation ── */}
       <div
-        className="hidden lg:flex flex-1 items-center justify-center"
-        style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #0f172a 100%)' }}
+        className="hidden lg:flex flex-1 items-center justify-center relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, #070b12 0%, #0d1525 50%, #07090f 100%)' }}
       >
-        <CloudAnimation />
+        {/* Subtle top-right corner glow */}
+        <div className="absolute top-0 right-0 w-96 h-96 pointer-events-none"
+          style={{ background: 'radial-gradient(circle at top right, rgba(37,99,235,0.08), transparent 70%)' }} />
+        {/* Bottom-left glow */}
+        <div className="absolute bottom-0 left-0 w-80 h-80 pointer-events-none"
+          style={{ background: 'radial-gradient(circle at bottom left, rgba(99,102,241,0.07), transparent 70%)' }} />
+
+        <GlobeAnimation />
       </div>
     </div>
   );
