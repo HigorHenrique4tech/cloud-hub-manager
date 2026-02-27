@@ -558,3 +558,144 @@ class M365Service:
         url = f"{GRAPH_BETA}/users/{user_id}/authentication/{endpoint_seg}/{method_id}"
         r = requests.delete(url, headers=self._headers(), timeout=30)
         r.raise_for_status()
+
+    # ── User management actions ───────────────────────────────────────────────
+
+    def toggle_user_account(self, user_id: str, enabled: bool) -> dict:
+        """
+        Enable or disable a user account.
+        Requires User.ReadWrite.All.
+        """
+        url = f"{GRAPH_V1}/users/{user_id}"
+        r = requests.patch(
+            url,
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json={"accountEnabled": enabled},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return {"accountEnabled": enabled}
+
+    def reset_user_password(
+        self,
+        user_id: str,
+        new_password: str,
+        force_change: bool = True,
+    ) -> dict:
+        """
+        Reset a user's password.
+        Requires User.ReadWrite.All. Cannot reset passwords of admins unless the caller has
+        a higher-privileged admin role.
+        """
+        url = f"{GRAPH_V1}/users/{user_id}"
+        r = requests.patch(
+            url,
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json={
+                "passwordProfile": {
+                    "forceChangePasswordNextSignIn": force_change,
+                    "password": new_password,
+                }
+            },
+            timeout=30,
+        )
+        r.raise_for_status()
+        return {"detail": "Senha alterada com sucesso"}
+
+    def create_tap(
+        self,
+        user_id: str,
+        lifetime_minutes: int = 60,
+        is_usable_once: bool = True,
+    ) -> dict:
+        """
+        Create a Temporary Access Pass (TAP) for a user.
+        The TAP code is returned in the response — show it to the admin immediately.
+        Requires UserAuthenticationMethod.ReadWrite.All (beta).
+        """
+        body: dict = {
+            "lifetimeInMinutes": max(10, min(lifetime_minutes, 480)),
+            "isUsableOnce": is_usable_once,
+        }
+        url = f"{GRAPH_BETA}/users/{user_id}/authentication/temporaryAccessPassMethods"
+        r = requests.post(
+            url,
+            headers={**self._headers(), "Content-Type": "application/json"},
+            json=body,
+            timeout=30,
+        )
+        r.raise_for_status()
+        data = r.json()
+        return {
+            "id": data.get("id"),
+            "temporaryAccessPass": data.get("temporaryAccessPass"),
+            "lifetimeInMinutes": data.get("lifetimeInMinutes"),
+            "startDateTime": data.get("startDateTime"),
+            "isUsableOnce": data.get("isUsableOnce"),
+        }
+
+    def get_user_groups(self, user_id: str) -> list:
+        """
+        Return the groups a user is a direct member of.
+        Requires Directory.Read.All.
+        """
+        try:
+            raw = self._get_all_pages(
+                f"/users/{user_id}/memberOf",
+                select="id,displayName,groupTypes,securityEnabled,mailEnabled",
+            )
+        except Exception as exc:
+            logger.warning("Could not fetch groups for user %s: %s", user_id, exc)
+            return []
+        return [
+            {
+                "id": obj["id"],
+                "displayName": obj.get("displayName"),
+                "isM365Group": "Unified" in obj.get("groupTypes", []),
+                "isSecurity": obj.get("securityEnabled", False),
+            }
+            for obj in raw
+            if obj.get("@odata.type") in (
+                "#microsoft.graph.group",
+                "#microsoft.graph.directoryRole",
+                None,
+            )
+        ]
+
+    # ── Service health ────────────────────────────────────────────────────────
+
+    def get_service_health(self) -> list:
+        """
+        Return the current health status for all M365 services.
+        Requires ServiceHealth.Read.All.
+        """
+        try:
+            raw = self._get("/admin/serviceAnnouncement/healthOverviews").get("value", [])
+        except Exception as exc:
+            logger.warning("Could not fetch service health: %s", exc)
+            return []
+
+        STATUS_MAP = {
+            "serviceOperational":    ("operational", "Operacional"),
+            "investigating":         ("warning",     "Investigando"),
+            "restoringService":      ("warning",     "Restaurando"),
+            "verifiedIssue":         ("warning",     "Problema verificado"),
+            "serviceDegradation":    ("degraded",    "Degradado"),
+            "serviceInterruption":   ("outage",      "Interrupção"),
+            "extendedRecovery":      ("warning",     "Recuperação estendida"),
+            "mitigated":             ("operational", "Mitigado"),
+            "resolved":              ("operational", "Resolvido"),
+            "falsePositive":         ("operational", "Falso positivo"),
+        }
+        result = []
+        for svc in raw:
+            raw_status = svc.get("status", "")
+            status_key, status_label = STATUS_MAP.get(raw_status, ("unknown", raw_status))
+            result.append({
+                "id": svc.get("id"),
+                "displayName": svc.get("displayName"),
+                "status": status_key,
+                "statusLabel": status_label,
+            })
+        # Sort: non-operational first, then alphabetical
+        return sorted(result, key=lambda x: (x["status"] == "operational", x["displayName"] or ""))

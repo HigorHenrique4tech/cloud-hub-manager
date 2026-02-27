@@ -5,6 +5,7 @@ import {
   CheckCircle, XCircle, AlertTriangle, RefreshCw, Pencil,
   MessageSquare, ChevronDown, ChevronRight, UserPlus, Search, Plus,
   Smartphone, Phone, Mail, Fingerprint, Monitor, Clock, Lock, LogOut,
+  Download, Activity,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
@@ -34,6 +35,7 @@ const REQUIRED_PERMISSIONS = [
   'User.ReadWrite.All',
   'Group.ReadWrite.All',
   'UserAuthenticationMethod.ReadWrite.All',
+  'ServiceHealth.Read.All',
 ];
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -86,6 +88,17 @@ const avatarColor = (name) =>
 const UserDetailDrawer = ({ user, onClose }) => {
   const isOpen = !!user;
   const qc = useQueryClient();
+  const [showResetPwd, setShowResetPwd] = useState(false);
+  const [showTap, setShowTap]           = useState(false);
+  const [tapResult, setTapResult]       = useState(null);
+  const [newPwd, setNewPwd]             = useState('');
+  const [forceChange, setForceChange]   = useState(true);
+  const [tapMinutes, setTapMinutes]     = useState(60);
+  const [tapOnce, setTapOnce]           = useState(true);
+  const [localEnabled, setLocalEnabled] = useState(null); // optimistic
+
+  // Sync localEnabled when user changes
+  useEffect(() => { setLocalEnabled(null); }, [user?.id]);
 
   // Close on Escape
   useEffect(() => {
@@ -103,22 +116,47 @@ const UserDetailDrawer = ({ user, onClose }) => {
     retry: false,
   });
 
+  const groupsQ = useQuery({
+    queryKey: ['m365-user-groups', user?.id],
+    queryFn: () => m365Service.getUserGroups(user.id),
+    enabled: isOpen && !!user?.id,
+    staleTime: 60_000,
+    retry: false,
+  });
+
   const revokeMut = useMutation({
     mutationFn: () => m365Service.revokeUserSessions(user.id),
-    onSuccess: () => alert('Sessões revogadas com sucesso. O usuário precisará fazer login novamente.'),
   });
 
   const deleteMut = useMutation({
     mutationFn: ({ methodType, methodId }) =>
       m365Service.deleteAuthMethod(user.id, methodType, methodId),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['m365-user-auth-methods', user?.id] });
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-user-auth-methods', user?.id] }),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: (enabled) => m365Service.toggleUserAccount(user.id, enabled),
+    onSuccess: (_, enabled) => {
+      setLocalEnabled(enabled);
+      qc.invalidateQueries({ queryKey: ['m365-users'] });
     },
   });
 
-  const methods = methodsQ.data?.methods || [];
+  const resetPwdMut = useMutation({
+    mutationFn: () => m365Service.resetUserPassword(user.id, newPwd, forceChange),
+    onSuccess: () => { setShowResetPwd(false); setNewPwd(''); },
+  });
+
+  const tapMut = useMutation({
+    mutationFn: () => m365Service.createTap(user.id, tapMinutes, tapOnce),
+    onSuccess: (data) => setTapResult(data),
+  });
+
+  const methods    = methodsQ.data?.methods || [];
   const mfaMethods = methods.filter((m) => m.methodType !== 'password');
   const hasPassword = methods.some((m) => m.methodType === 'password');
+  const groups     = groupsQ.data?.groups || [];
+  const isEnabled  = localEnabled !== null ? localEnabled : (user?.accountEnabled ?? true);
 
   return (
     <>
@@ -130,7 +168,7 @@ const UserDetailDrawer = ({ user, onClose }) => {
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 h-full w-full sm:w-[480px] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        className={`fixed top-0 right-0 h-full w-full sm:w-[500px] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
         {/* Header */}
         <div className="flex items-start justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
@@ -141,10 +179,26 @@ const UserDetailDrawer = ({ user, onClose }) => {
             <div className="min-w-0">
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{user?.displayName || '—'}</h2>
               <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{user?.userPrincipalName}</p>
-              <div className="mt-1">
-                {user?.accountEnabled
+              <div className="mt-1.5 flex items-center gap-2">
+                {isEnabled
                   ? <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 font-medium">Ativo</span>
                   : <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400 font-medium">Desativado</span>}
+                <button
+                  onClick={() => {
+                    const action = isEnabled ? 'desativar' : 'ativar';
+                    if (window.confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} a conta de ${user?.displayName}?`)) {
+                      toggleMut.mutate(!isEnabled);
+                    }
+                  }}
+                  disabled={toggleMut.isPending}
+                  className={`text-xs px-2 py-0.5 rounded-full border font-medium transition-colors disabled:opacity-50 ${
+                    isEnabled
+                      ? 'border-red-300 dark:border-red-700 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                      : 'border-green-400 dark:border-green-700 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
+                  }`}
+                >
+                  {toggleMut.isPending ? '...' : isEnabled ? 'Desativar' : 'Ativar'}
+                </button>
               </div>
             </div>
           </div>
@@ -155,6 +209,7 @@ const UserDetailDrawer = ({ user, onClose }) => {
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
           {/* Info section */}
           <div>
             <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Informações</h3>
@@ -172,6 +227,145 @@ const UserDetailDrawer = ({ user, onClose }) => {
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Grupos */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
+              Grupos ({groupsQ.isLoading ? '…' : groups.length})
+            </h3>
+            {groupsQ.isLoading && <div className="h-10 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />}
+            {!groupsQ.isLoading && groups.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-slate-500">Nenhum grupo encontrado</p>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {groups.map((g) => (
+                <span
+                  key={g.id}
+                  className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${
+                    g.isM365Group
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                      : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-400'
+                  }`}
+                >
+                  {g.isM365Group ? <MessageSquare size={10} /> : <Shield size={10} />}
+                  {g.displayName}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Reset de senha */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button
+              onClick={() => { setShowResetPwd((p) => !p); setShowTap(false); setTapResult(null); }}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <span className="flex items-center gap-2"><Key size={14} className="text-gray-400" /> Resetar senha</span>
+              {showResetPwd ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+            {showResetPwd && (
+              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newPwd}
+                    onChange={(e) => setNewPwd(e.target.value)}
+                    placeholder="Nova senha..."
+                    className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setNewPwd(genPassword())}
+                    className="rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-2 text-xs text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700"
+                  >
+                    Gerar
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer">
+                  <input type="checkbox" checked={forceChange} onChange={(e) => setForceChange(e.target.checked)} className="rounded" />
+                  Forçar troca no próximo login
+                </label>
+                {resetPwdMut.isError && (
+                  <p className="text-xs text-red-400">{resetPwdMut.error?.response?.data?.detail || 'Erro ao resetar senha'}</p>
+                )}
+                {resetPwdMut.isSuccess && (
+                  <p className="text-xs text-green-500">Senha alterada com sucesso!</p>
+                )}
+                <button
+                  onClick={() => resetPwdMut.mutate()}
+                  disabled={!newPwd || resetPwdMut.isPending}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {resetPwdMut.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Key size={13} />}
+                  Confirmar reset
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Acesso Temporário (TAP) */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button
+              onClick={() => { setShowTap((p) => !p); setShowResetPwd(false); setTapResult(null); }}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <span className="flex items-center gap-2"><Clock size={14} className="text-gray-400" /> Criar Acesso Temporário (TAP)</span>
+              {showTap ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+            {showTap && (
+              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
+                {tapResult ? (
+                  <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-400/40 p-4 space-y-2">
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400">TAP criado! Compartilhe com o usuário:</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 font-mono text-lg font-bold text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/40 rounded px-3 py-2 tracking-widest">
+                        {tapResult.temporaryAccessPass}
+                      </code>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(tapResult.temporaryAccessPass)}
+                        className="rounded-lg border border-green-400/40 px-2 py-2 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/40"
+                        title="Copiar"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">
+                      Válido por {tapResult.lifetimeInMinutes} min · {tapResult.isUsableOnce ? 'Uso único' : 'Múltiplos usos'}
+                    </p>
+                    <button onClick={() => { setTapResult(null); }} className="text-xs text-gray-400 hover:underline">Criar outro</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-gray-600 dark:text-slate-400 flex-shrink-0">Validade (min)</label>
+                      <input
+                        type="number"
+                        min={10} max={480}
+                        value={tapMinutes}
+                        onChange={(e) => setTapMinutes(Number(e.target.value))}
+                        className="w-24 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-1.5 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-400 cursor-pointer">
+                      <input type="checkbox" checked={tapOnce} onChange={(e) => setTapOnce(e.target.checked)} className="rounded" />
+                      Uso único (recomendado)
+                    </label>
+                    {tapMut.isError && (
+                      <p className="text-xs text-red-400">{tapMut.error?.response?.data?.detail || 'Erro ao criar TAP'}</p>
+                    )}
+                    <button
+                      onClick={() => tapMut.mutate()}
+                      disabled={tapMut.isPending}
+                      className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                    >
+                      {tapMut.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Clock size={13} />}
+                      Gerar acesso temporário
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* MFA Methods section */}
@@ -198,10 +392,7 @@ const UserDetailDrawer = ({ user, onClose }) => {
                   Não foi possível carregar os métodos.
                   Verifique a permissão <span className="font-mono">UserAuthenticationMethod.Read.All</span>.
                 </p>
-                <button
-                  onClick={() => qc.invalidateQueries({ queryKey: ['m365-user-auth-methods', user?.id] })}
-                  className="mt-2 text-xs text-blue-500 hover:underline"
-                >
+                <button onClick={() => qc.invalidateQueries({ queryKey: ['m365-user-auth-methods', user?.id] })} className="mt-2 text-xs text-blue-500 hover:underline">
                   Tentar novamente
                 </button>
               </div>
@@ -219,21 +410,14 @@ const UserDetailDrawer = ({ user, onClose }) => {
                 const Icon = METHOD_ICON[m.methodType] || Shield;
                 const isDeleting = deleteMut.isPending && deleteMut.variables?.methodId === m.id;
                 return (
-                  <div
-                    key={m.id}
-                    className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-4 py-3"
-                  >
+                  <div key={m.id} className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-4 py-3">
                     <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-600/15 flex items-center justify-center">
                       <Icon size={15} className="text-blue-500" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{m.label}</p>
                       {m.detail && <p className="text-xs text-gray-400 dark:text-slate-500 truncate">{m.detail}</p>}
-                      {m.createdDateTime && (
-                        <p className="text-xs text-gray-400 dark:text-slate-500">
-                          Registrado em {fmtDate(m.createdDateTime)}
-                        </p>
-                      )}
+                      {m.createdDateTime && <p className="text-xs text-gray-400 dark:text-slate-500">Registrado em {fmtDate(m.createdDateTime)}</p>}
                     </div>
                     {m.deletable && (
                       <button
@@ -256,17 +440,13 @@ const UserDetailDrawer = ({ user, onClose }) => {
           </div>
         </div>
 
-        {/* Footer actions */}
+        {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 space-y-2">
-          {deleteMut.isError && (
-            <p className="text-xs text-red-400 text-center">
-              {deleteMut.error?.response?.data?.detail || 'Erro ao remover método'}
-            </p>
+          {revokeMut.isSuccess && (
+            <p className="text-xs text-green-500 text-center">Sessões revogadas com sucesso.</p>
           )}
           {revokeMut.isError && (
-            <p className="text-xs text-red-400 text-center">
-              {revokeMut.error?.response?.data?.detail || 'Erro ao revogar sessões'}
-            </p>
+            <p className="text-xs text-red-400 text-center">{revokeMut.error?.response?.data?.detail || 'Erro ao revogar sessões'}</p>
           )}
           <button
             onClick={() => {
@@ -903,96 +1083,142 @@ const CreateGroupPanel = () => {
 
 // ── Tab: Usuários ─────────────────────────────────────────────────────────────
 
+const exportCsv = (users) => {
+  const headers = ['Nome', 'E-mail', 'Cargo', 'Departamento', 'Licenças', 'MFA', 'Último acesso', 'Status'];
+  const rows = users.map((u) => [
+    u.displayName || '',
+    u.userPrincipalName || '',
+    u.jobTitle || '',
+    u.department || '',
+    u.licensedCount ?? '',
+    u.mfaRegistered === true ? 'Sim' : u.mfaRegistered === false ? 'Não' : '—',
+    u.lastSignIn ? new Date(u.lastSignIn).toLocaleDateString('pt-BR') : '—',
+    u.accountEnabled ? 'Ativo' : 'Desativado',
+  ]);
+  const csv = [headers, ...rows]
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `m365-usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
 const UsersTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
   const [search, setSearch] = useState('');
   const [filterActive, setFilterActive] = useState('all');
 
   if (isLoading) return <LoadingSpinner />;
 
+  const now = Date.now();
+  const daysMs = (d) => d * 86_400_000;
+
   const users = (data?.users || []).filter((u) => {
     const matchSearch = !search || (
       u.displayName?.toLowerCase().includes(search.toLowerCase()) ||
       u.userPrincipalName?.toLowerCase().includes(search.toLowerCase())
     );
-    const matchActive = filterActive === 'all' || (filterActive === 'active' ? u.accountEnabled : !u.accountEnabled);
-    return matchSearch && matchActive;
+    let matchFilter = true;
+    if (filterActive === 'active')      matchFilter = !!u.accountEnabled;
+    else if (filterActive === 'inactive') matchFilter = !u.accountEnabled;
+    else if (filterActive === 'inactive-30')
+      matchFilter = !u.lastSignIn || (now - new Date(u.lastSignIn).getTime()) > daysMs(30);
+    else if (filterActive === 'inactive-60')
+      matchFilter = !u.lastSignIn || (now - new Date(u.lastSignIn).getTime()) > daysMs(60);
+    else if (filterActive === 'inactive-90')
+      matchFilter = !u.lastSignIn || (now - new Date(u.lastSignIn).getTime()) > daysMs(90);
+    return matchSearch && matchFilter;
   });
 
   return (
-    <>
+    <div className="space-y-4">
+      <CreateUserPanel />
 
-      <div className="space-y-4">
-        <CreateUserPanel />
-        <div className="flex gap-3 flex-wrap">
-          <input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Buscar por nome ou e-mail..."
-            className="flex-1 min-w-48 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
-          />
-          <select
-            value={filterActive}
-            onChange={(e) => setFilterActive(e.target.value)}
-            className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100"
-          >
-            <option value="all">Todos</option>
-            <option value="active">Ativos</option>
-            <option value="inactive">Desativados</option>
-          </select>
-        </div>
-
-        <div className="card rounded-2xl overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-            <thead className="bg-gray-50 dark:bg-slate-800/60">
-              <tr>
-                {['Nome', 'E-mail', 'Departamento', 'Licenças', 'MFA', 'Último acesso', 'Status'].map((h) => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
-              {users.length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">Nenhum usuário encontrado</td></tr>
-              )}
-              {users.map((u) => {
-                const isSelected = selectedUser?.id === u.id;
-                return (
-                  <tr
-                    key={u.id}
-                    onClick={() => onSelectUser(isSelected ? null : u)}
-                    className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-800/40'}`}
-                  >
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.displayName)}`}>
-                          {initials(u.displayName)}
-                        </div>
-                        <span className="text-sm font-medium text-gray-900 dark:text-slate-100">{u.displayName || '—'}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 font-mono">{u.userPrincipalName || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-slate-400">{u.department || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">{u.licensedCount ?? '—'}</td>
-                    <td className="px-4 py-3">
-                      {u.mfaRegistered === true  && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle size={12} /> Sim</span>}
-                      {u.mfaRegistered === false && <span className="flex items-center gap-1 text-xs text-red-500"><XCircle size={12} /> Não</span>}
-                      {u.mfaRegistered == null   && <span className="text-xs text-gray-400 dark:text-slate-500">—</span>}
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-400 dark:text-slate-500">{fmtDate(u.lastSignIn)}</td>
-                    <td className="px-4 py-3">
-                      {u.accountEnabled
-                        ? <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400">Ativo</span>
-                        : <span className="rounded-full bg-gray-100 dark:bg-slate-700 px-2 py-0.5 text-xs text-gray-500 dark:text-slate-400">Desativado</span>}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        <p className="text-xs text-gray-400 dark:text-slate-500">{users.length} usuário(s) exibido(s)</p>
+      <div className="flex gap-3 flex-wrap items-center">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nome ou e-mail..."
+          className="flex-1 min-w-48 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
+        />
+        <select
+          value={filterActive}
+          onChange={(e) => setFilterActive(e.target.value)}
+          className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100"
+        >
+          <option value="all">Todos</option>
+          <option value="active">Ativos</option>
+          <option value="inactive">Desativados</option>
+          <optgroup label="Sem acesso há…">
+            <option value="inactive-30">+30 dias sem acesso</option>
+            <option value="inactive-60">+60 dias sem acesso</option>
+            <option value="inactive-90">+90 dias sem acesso</option>
+          </optgroup>
+        </select>
+        <button
+          onClick={() => exportCsv(users)}
+          disabled={users.length === 0}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-2 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40"
+          title="Exportar lista atual como CSV"
+        >
+          <Download size={14} /> Exportar CSV
+        </button>
       </div>
-    </>
+
+      <div className="card rounded-2xl overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
+          <thead className="bg-gray-50 dark:bg-slate-800/60">
+            <tr>
+              {['Nome', 'E-mail', 'Departamento', 'Licenças', 'MFA', 'Último acesso', 'Status'].map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+            {users.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-slate-500">Nenhum usuário encontrado</td></tr>
+            )}
+            {users.map((u) => {
+              const isSelected = selectedUser?.id === u.id;
+              return (
+                <tr
+                  key={u.id}
+                  onClick={() => onSelectUser(isSelected ? null : u)}
+                  className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-slate-800/40'}`}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.displayName)}`}>
+                        {initials(u.displayName)}
+                      </div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-slate-100">{u.displayName || '—'}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 font-mono">{u.userPrincipalName || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-slate-400">{u.department || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">{u.licensedCount ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {u.mfaRegistered === true  && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle size={12} /> Sim</span>}
+                    {u.mfaRegistered === false && <span className="flex items-center gap-1 text-xs text-red-500"><XCircle size={12} /> Não</span>}
+                    {u.mfaRegistered == null   && <span className="text-xs text-gray-400 dark:text-slate-500">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400 dark:text-slate-500">{fmtDate(u.lastSignIn)}</td>
+                  <td className="px-4 py-3">
+                    {u.accountEnabled
+                      ? <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400">Ativo</span>
+                      : <span className="rounded-full bg-gray-100 dark:bg-slate-700 px-2 py-0.5 text-xs text-gray-500 dark:text-slate-400">Desativado</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-400 dark:text-slate-500">{users.length} usuário(s) exibido(s)</p>
+    </div>
   );
 };
 
@@ -1382,7 +1608,14 @@ const RISK_STATE_LABEL  = {
   dismissed:            'Dispensado',
 };
 
-const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
+const SERVICE_STATUS_META = {
+  operational: { label: 'Operacional',   cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',  dot: 'bg-green-500'  },
+  warning:     { label: 'Atenção',        cls: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400', dot: 'bg-yellow-400' },
+  degraded:    { label: 'Degradado',      cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400', dot: 'bg-orange-500' },
+  outage:      { label: 'Interrupção',    cls: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',           dot: 'bg-red-500'    },
+};
+
+const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser, serviceHealthData, serviceHealthLoading }) => {
   if (isLoading) return <LoadingSpinner />;
   if (!data) return null;
 
@@ -1572,6 +1805,68 @@ const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
           </p>
         </div>
       )}
+
+      {/* ── Service Health ── */}
+      <div className="card rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Activity size={16} className="text-blue-400" />
+          <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Saúde dos Serviços M365</p>
+        </div>
+
+        {serviceHealthLoading && (
+          <div className="space-y-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-10 rounded-xl bg-gray-100 dark:bg-slate-800 animate-pulse" />
+            ))}
+          </div>
+        )}
+
+        {!serviceHealthLoading && !serviceHealthData && (
+          <div className="rounded-xl border border-yellow-300/40 dark:border-yellow-700/30 bg-yellow-50 dark:bg-yellow-900/10 px-4 py-3 flex items-start gap-3">
+            <AlertTriangle size={14} className="text-yellow-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-gray-500 dark:text-slate-400">
+              Adicione a permissão{' '}
+              <code className="font-mono bg-gray-100 dark:bg-slate-800 px-1 rounded">ServiceHealth.Read.All</code>{' '}
+              (Application) com admin consent no App Registration para ver o status dos serviços.
+            </p>
+          </div>
+        )}
+
+        {!serviceHealthLoading && serviceHealthData && (() => {
+          const services = serviceHealthData.services || [];
+          const hasIssues = services.some((s) => s.status !== 'operational');
+          return services.length === 0 ? (
+            <p className="text-xs text-gray-400 dark:text-slate-500">Nenhum serviço encontrado</p>
+          ) : (
+            <>
+              {!hasIssues && (
+                <div className="mb-3 flex items-center gap-2 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-300/40 dark:border-green-700/30 px-3 py-2">
+                  <CheckCircle size={13} className="text-green-500" />
+                  <span className="text-xs text-green-700 dark:text-green-400 font-medium">Todos os serviços operacionais</span>
+                </div>
+              )}
+              <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                {services.map((svc) => {
+                  const meta = SERVICE_STATUS_META[svc.status] || SERVICE_STATUS_META.operational;
+                  return (
+                    <div
+                      key={svc.id}
+                      className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 px-3 py-2.5"
+                    >
+                      <span className={`flex-shrink-0 w-2 h-2 rounded-full ${meta.dot}`} />
+                      <p className="flex-1 text-sm text-gray-800 dark:text-slate-200 truncate">{svc.displayName}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${meta.cls}`}>
+                        {meta.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-gray-400 dark:text-slate-500">{services.length} serviço(s) monitorado(s)</p>
+            </>
+          );
+        })()}
+      </div>
     </div>
   );
 };
@@ -1627,6 +1922,14 @@ export default function M365Dashboard() {
     enabled: connected && isEnterprise && activeTab === 'seguranca',
   });
 
+  const serviceHealthQ = useQuery({
+    queryKey: ['m365-service-health'],
+    queryFn: m365Service.getServiceHealth,
+    enabled: connected && isEnterprise && activeTab === 'seguranca',
+    staleTime: 5 * 60_000, // 5 min — service health doesn't change often
+    retry: false,
+  });
+
   const handleCredSaved = () => {
     setShowCredModal(false);
     qc.invalidateQueries({ queryKey: ['m365-credentials'] });
@@ -1658,7 +1961,7 @@ export default function M365Dashboard() {
               <div className="flex items-center gap-2">
                 {(() => {
                   const activeQ = { 'visao-geral': overviewQ, usuarios: usersQ, licencas: licensesQ, equipes: teamsQ, seguranca: securityQ }[activeTab];
-                  const isFetching = activeQ?.isFetching;
+                  const isFetching = activeQ?.isFetching || (activeTab === 'seguranca' && serviceHealthQ.isFetching);
                   return (
                     <button
                       onClick={() => {
@@ -1667,6 +1970,7 @@ export default function M365Dashboard() {
                         qc.invalidateQueries({ queryKey: ['m365-licenses'] });
                         qc.invalidateQueries({ queryKey: ['m365-teams'] });
                         qc.invalidateQueries({ queryKey: ['m365-security'] });
+                        qc.invalidateQueries({ queryKey: ['m365-service-health'] });
                       }}
                       disabled={isFetching}
                       className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-50"
@@ -1737,7 +2041,14 @@ export default function M365Dashboard() {
                   : <TeamsTab data={teamsQ.data} isLoading={teamsQ.isLoading} />
               )}
               {activeTab === 'seguranca' && (
-                <SecurityTab data={securityQ.data} isLoading={securityQ.isLoading} onSelectUser={setSelectedUser} selectedUser={selectedUser} />
+                <SecurityTab
+                  data={securityQ.data}
+                  isLoading={securityQ.isLoading}
+                  onSelectUser={setSelectedUser}
+                  selectedUser={selectedUser}
+                  serviceHealthData={serviceHealthQ.data}
+                  serviceHealthLoading={serviceHealthQ.isLoading}
+                />
               )}
             </>
           )}

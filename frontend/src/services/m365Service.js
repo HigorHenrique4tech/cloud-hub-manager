@@ -75,6 +75,37 @@ const m365Service = {
     return data;
   },
 
+  toggleUserAccount: async (userId, enabled) => {
+    const { data } = await api.patch(wsUrl(`/m365/users/${userId}/toggle`), { enabled });
+    return data;
+  },
+
+  resetUserPassword: async (userId, newPassword, forceChange = true) => {
+    const { data } = await api.post(wsUrl(`/m365/users/${userId}/reset-password`), {
+      new_password: newPassword,
+      force_change: forceChange,
+    });
+    return data;
+  },
+
+  createTap: async (userId, lifetimeMinutes = 60, isUsableOnce = true) => {
+    const { data } = await api.post(wsUrl(`/m365/users/${userId}/tap`), {
+      lifetime_minutes: lifetimeMinutes,
+      is_usable_once: isUsableOnce,
+    });
+    return data;
+  },
+
+  getUserGroups: async (userId) => {
+    const { data } = await api.get(wsUrl(`/m365/users/${userId}/groups`));
+    return data;
+  },
+
+  getServiceHealth: async () => {
+    const { data } = await api.get(wsUrl('/m365/service-health'));
+    return data;
+  },
+
   getSecurity: async () => {
     const { data } = await api.get(wsUrl('/m365/security'));
     return data;

@@ -500,6 +500,132 @@ async def delete_user_auth_method(
         raise HTTPException(status_code=502, detail=f"Falha ao remover método: {exc}")
 
 
+class ToggleUserRequest(BaseModel):
+    enabled: bool
+
+
+class ResetPasswordRequest(BaseModel):
+    new_password: str
+    force_change: bool = True
+
+
+class CreateTapRequest(BaseModel):
+    lifetime_minutes: int = 60
+    is_usable_once: bool = True
+
+
+@ws_router.patch("/users/{user_id}/toggle")
+async def toggle_user_account(
+    user_id: str,
+    body: ToggleUserRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Enable or disable a user account. Requires User.ReadWrite.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    try:
+        svc = _build_service(acct)
+        return svc.toggle_user_account(user_id, body.enabled)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 toggle user error for %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao atualizar conta: {exc}")
+
+
+@ws_router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: str,
+    body: ResetPasswordRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Reset a user's password. Requires User.ReadWrite.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    try:
+        svc = _build_service(acct)
+        return svc.reset_user_password(user_id, body.new_password, body.force_change)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 reset password error for %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao resetar senha: {exc}")
+
+
+@ws_router.post("/users/{user_id}/tap")
+async def create_tap(
+    user_id: str,
+    body: CreateTapRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Create a Temporary Access Pass for a user. Requires UserAuthenticationMethod.ReadWrite.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    try:
+        svc = _build_service(acct)
+        return svc.create_tap(user_id, body.lifetime_minutes, body.is_usable_once)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 create TAP error for %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao criar acesso temporário: {exc}")
+
+
+@ws_router.get("/users/{user_id}/groups")
+async def get_user_groups(
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return the groups a user belongs to. Requires Directory.Read.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    try:
+        svc = _build_service(acct)
+        return {"groups": svc.get_user_groups(user_id)}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 get user groups error for %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail="Falha ao carregar grupos do usuário")
+
+
+@ws_router.get("/service-health")
+async def get_service_health(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return current M365 service health. Requires ServiceHealth.Read.All."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    try:
+        svc = _build_service(acct)
+        return {"services": svc.get_service_health()}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 service health error: %s", exc)
+        raise HTTPException(status_code=502, detail="Falha ao carregar saúde dos serviços")
+
+
 # ── Org-level Router (MSP Master) ─────────────────────────────────────────────
 
 org_router = APIRouter(
