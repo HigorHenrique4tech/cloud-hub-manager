@@ -129,14 +129,27 @@ class M365Service:
         """
         List all users with license count, last sign-in, and MFA status.
         MFA data comes from the beta endpoint (Reports.Read.All required).
+        signInActivity requires AuditLog.Read.All; if missing the call is retried
+        without that field so users still load (lastSignIn will be null).
         """
-        raw = self._get_all_pages(
-            "/users",
-            select=(
-                "id,displayName,userPrincipalName,jobTitle,department,"
-                "accountEnabled,assignedLicenses,signInActivity"
-            ),
+        base_select = (
+            "id,displayName,userPrincipalName,jobTitle,department,"
+            "accountEnabled,assignedLicenses"
         )
+        try:
+            raw = self._get_all_pages(
+                "/users",
+                select=base_select + ",signInActivity",
+            )
+        except Exception as exc:
+            if "403" in str(exc) or "Forbidden" in str(exc) or "Authorization_RequestDenied" in str(exc):
+                logger.warning(
+                    "signInActivity field requires AuditLog.Read.All — "
+                    "retrying without it. Grant that permission in Azure AD for last-sign-in data."
+                )
+                raw = self._get_all_pages("/users", select=base_select)
+            else:
+                raise
 
         # MFA registration details (beta)
         mfa_map: dict = {}
