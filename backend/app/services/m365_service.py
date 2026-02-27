@@ -217,9 +217,9 @@ class M365Service:
         except Exception as exc:
             logger.warning("GET /teams failed (%s) — trying /groups fallback", exc)
 
-        # Fallback: fetch ALL groups, filter client-side for Teams-provisioned ones.
-        # Avoids advanced-query requirements (ConsistencyLevel/Any lambda) that
-        # can silently return empty results in some tenants.
+        # Fallback: list ALL Microsoft 365 Groups.
+        # resourceProvisioningOptions can be empty even for real Teams groups
+        # when provisioned outside the Teams UI — so we show all groups.
         if not raw:
             try:
                 url = f"{GRAPH_V1}/groups"
@@ -228,7 +228,6 @@ class M365Service:
                     "$top": "999",
                 }
                 token = self._get_token()
-                all_groups: list = []
                 while url:
                     r = requests.get(
                         url,
@@ -238,28 +237,31 @@ class M365Service:
                     )
                     r.raise_for_status()
                     data = r.json()
-                    all_groups.extend(data.get("value", []))
+                    raw.extend(data.get("value", []))
                     url = data.get("@odata.nextLink")
                     params = {}
-                # Keep only groups that are Teams-provisioned
-                raw = [
-                    g for g in all_groups
-                    if "Team" in g.get("resourceProvisioningOptions", [])
-                ]
-                logger.info(
-                    "Groups fallback: %d total groups, %d Teams-enabled",
-                    len(all_groups), len(raw),
-                )
+                logger.info("Groups fallback: %d groups loaded", len(raw))
             except Exception as exc2:
-                logger.warning("GET /groups Teams fallback also failed: %s", exc2)
+                logger.warning("GET /groups fallback also failed: %s", exc2)
 
         result = []
+        is_teams_source = True  # set False when result came from /groups fallback
+        # Detect source: /teams items have isArchived field natively; /groups items don't
+        if raw and "isArchived" not in raw[0]:
+            is_teams_source = False
+
         for t in raw:
+            member_count = None
             try:
-                members_resp = self._get(f"/teams/{t['id']}/members")
-                member_count = len(members_resp.get("value", []))
+                if is_teams_source:
+                    # /teams/{id}/members — works when Team.ReadBasic.All is granted
+                    resp = self._get(f"/teams/{t['id']}/members")
+                else:
+                    # /groups/{id}/members — works with Directory.Read.All
+                    resp = self._get(f"/groups/{t['id']}/members")
+                member_count = len(resp.get("value", []))
             except Exception:
-                member_count = None
+                pass
             result.append(
                 {
                     "id": t["id"],
@@ -268,22 +270,32 @@ class M365Service:
                     "description": t.get("description"),
                     "isArchived": t.get("isArchived", False),
                     "membersCount": member_count,
+                    "isTeam": "Team" in t.get("resourceProvisioningOptions", []) or is_teams_source,
                 }
             )
         return result
 
     def get_team_members(self, team_id: str) -> list:
-        """Return the full member list for a specific Team."""
-        raw = self._get(f"/teams/{team_id}/members").get("value", [])
+        """Return the full member list for a Team or M365 Group."""
+        # Try /teams/{id}/members first; fall back to /groups/{id}/members
+        try:
+            raw = self._get(f"/teams/{team_id}/members").get("value", [])
+        except Exception:
+            raw = self._get(f"/groups/{team_id}/members").get("value", [])
         return [
             {
                 "id": m["id"],
                 "displayName": m.get("displayName"),
-                "email": m.get("email"),
+                "email": m.get("mail") or m.get("email") or m.get("userPrincipalName"),
                 "roles": m.get("roles", []),
-                "userId": m.get("userId"),
+                "userId": m.get("id"),
             }
             for m in raw
+            if m.get("@odata.type") in (
+                "#microsoft.graph.user",
+                "#microsoft.graph.aadUserConversationMember",
+                None,
+            )
         ]
 
     def add_team_member(self, team_id: str, user_id: str, roles: list = None) -> dict:

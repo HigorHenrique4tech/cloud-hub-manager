@@ -586,6 +586,11 @@ const TeamCard = ({ team }) => {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{team.displayName}</p>
+              {team.isTeam && (
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                  Teams
+                </span>
+              )}
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 team.visibility === 'public'
                   ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
@@ -708,7 +713,7 @@ const TeamsTab = ({ data, isLoading }) => {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar equipe..."
+          placeholder="Buscar grupo ou equipe..."
           className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
         />
       </div>
@@ -717,11 +722,11 @@ const TeamsTab = ({ data, isLoading }) => {
         <div className="card rounded-2xl py-16 text-center">
           <MessageSquare size={32} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
           <p className="text-sm text-gray-400 dark:text-slate-500">
-            {search ? 'Nenhuma equipe encontrada para a busca' : 'Nenhuma equipe encontrada'}
+            {search ? 'Nenhum grupo encontrado para a busca' : 'Nenhum grupo encontrado'}
           </p>
           {!search && (
             <p className="text-xs text-gray-400 dark:text-slate-600 mt-1">
-              Verifique se a permissão Team.ReadBasic.All foi concedida no Azure AD
+              Verifique se a permissão Directory.Read.All foi concedida no Azure AD
             </p>
           )}
         </div>
@@ -732,7 +737,9 @@ const TeamsTab = ({ data, isLoading }) => {
       ))}
 
       {teams.length > 0 && (
-        <p className="text-xs text-gray-400 dark:text-slate-500">{teams.length} equipe(s)</p>
+        <p className="text-xs text-gray-400 dark:text-slate-500">
+          {teams.length} grupo(s) · {teams.filter(t => t.isTeam).length} com Microsoft Teams
+        </p>
       )}
     </div>
   );
