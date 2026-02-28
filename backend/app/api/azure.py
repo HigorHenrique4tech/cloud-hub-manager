@@ -565,7 +565,7 @@ async def ws_get_azure_costs(
 
 @ws_router.get("/security/scan")
 async def azure_security_scan(
-    member: MemberContext = Depends(require_permission("azure.view")),
+    member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     """

@@ -557,7 +557,7 @@ async def ws_get_aws_costs(
 
 @ws_router.get("/security/scan")
 async def aws_security_scan(
-    member: MemberContext = Depends(require_permission("aws.view")),
+    member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     """

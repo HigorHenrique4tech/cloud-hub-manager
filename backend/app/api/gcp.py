@@ -331,7 +331,7 @@ def gcp_delete_network(
 
 @ws_router.get("/security/scan")
 async def gcp_security_scan(
-    member: MemberContext = Depends(require_permission("gcp.view")),
+    member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     """
