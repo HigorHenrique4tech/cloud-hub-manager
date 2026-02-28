@@ -13,7 +13,9 @@ from app.core.auth_context import MemberContext
 from app.database import get_db
 from app.services.auth_service import decrypt_credential
 from app.services.log_service import log_activity
+from app.services.security_service import AzureSecurityScanner
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -557,3 +559,49 @@ async def ws_get_azure_costs(
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo Azure'))
     return result
+
+
+# ── Security Scan ─────────────────────────────────────────────────────────────
+
+@ws_router.get("/security/scan")
+async def azure_security_scan(
+    member: MemberContext = Depends(require_permission("azure.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Runs basic security checks on the configured Azure subscription:
+    - Storage Accounts with public blob access enabled
+    - NSG rules allowing SSH/RDP from any source
+    - VMs without Azure Disk Encryption
+    """
+    account = (
+        db.query(CloudAccount)
+        .filter(
+            CloudAccount.workspace_id == member.workspace_id,
+            CloudAccount.provider == "azure",
+            CloudAccount.is_active == True,
+        )
+        .order_by(CloudAccount.created_at.desc())
+        .first()
+    )
+    if not account:
+        raise HTTPException(status_code=400, detail="Nenhuma conta Azure configurada neste workspace.")
+
+    creds = decrypt_credential(account.encrypted_data)
+    scanner = AzureSecurityScanner(
+        subscription_id=creds.get("subscription_id", ""),
+        tenant_id=creds.get("tenant_id", ""),
+        client_id=creds.get("client_id", ""),
+        client_secret=creds.get("client_secret", ""),
+    )
+    findings = scanner.scan_all()
+
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    findings.sort(key=lambda f: order.get(f.get("severity", "low"), 3))
+
+    return {
+        "findings": findings,
+        "total": len(findings),
+        "scanned_at": datetime.utcnow().isoformat(),
+        "provider": "azure",
+    }

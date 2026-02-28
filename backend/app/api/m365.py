@@ -247,6 +247,29 @@ async def get_licenses(
         raise HTTPException(status_code=502, detail="Failed to fetch M365 licenses")
 
 
+@ws_router.get("/groups")
+async def get_groups(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return list of all M365/Security/Distribution groups with type classification."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _build_service(acct)
+        return {"groups": svc.get_groups()}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 groups error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch M365 groups")
+
+
 @ws_router.get("/teams")
 async def get_teams(
     member: MemberContext = Depends(require_permission("m365.view")),

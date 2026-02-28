@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
-  ShieldCheck, Webhook, Grid3x3,
+  ShieldCheck, Webhook, Grid3x3, PackageSearch,
 } from 'lucide-react';
 import { AwsIcon, AzureIcon, GcpIcon } from '../common/CloudProviderIcons';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
@@ -92,6 +92,9 @@ const Sidebar = () => {
         </PermissionGate>
         <PermissionGate permission="finops.view">
           <NavItem to="/finops" label="FinOps" icon={Zap} />
+        </PermissionGate>
+        <PermissionGate permission="resources.view">
+          <NavItem to="/inventory" label="Inventário" icon={PackageSearch} />
         </PermissionGate>
         <PermissionGate permission="resources.view">
           <NavItem to="/schedules" label="Agendamentos" icon={Clock} />

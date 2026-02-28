@@ -4,6 +4,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Resp
 import { Zap, TrendingDown, History, Wallet, AlertTriangle, Plus, Trash2, X, Clock, CheckCircle, XCircle, Mail, RefreshCw, Pencil, Bell, FileDown, Printer } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
+import EmptyState from '../components/common/emptystate';
 import PermissionGate from '../components/common/PermissionGate';
 import PlanGate from '../components/common/PlanGate';
 import WasteSummary from '../components/finops/WasteSummary';
@@ -1081,11 +1082,11 @@ const FinOps = () => {
                 Erro ao carregar recomendações. Verifique as permissões.
               </div>
             ) : recsQ.data?.total === 0 ? (
-              <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-slate-500">
-                <TrendingDown size={40} className="mb-3 opacity-20" />
-                <p className="text-base font-medium">Nenhuma recomendação encontrada</p>
-                <p className="text-sm mt-1">Clique em "Escanear Agora" para detectar desperdícios</p>
-              </div>
+              <EmptyState
+                icon={TrendingDown}
+                title="Nenhuma recomendação encontrada"
+                description='Clique em "Escanear Agora" para detectar desperdícios'
+              />
             ) : (
               <div className="space-y-3">
                 {(recsQ.data?.items ?? []).map((rec) => (
@@ -1352,11 +1353,11 @@ const FinOps = () => {
                   Erro ao carregar anomalias. Verifique as permissões.
                 </div>
               ) : (anomaliesQ.data?.items ?? []).length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-slate-500">
-                  <Bell size={40} className="mb-3 opacity-20" />
-                  <p className="text-base font-medium">Nenhuma anomalia detectada</p>
-                  <p className="text-sm mt-1">As anomalias são detectadas automaticamente durante o scan de custos</p>
-                </div>
+                <EmptyState
+                  icon={Bell}
+                  title="Nenhuma anomalia detectada"
+                  description="As anomalias são detectadas automaticamente durante o scan de custos"
+                />
               ) : (
                 <div className="space-y-3">
                   {(anomaliesQ.data?.items ?? []).map((anomaly) => {

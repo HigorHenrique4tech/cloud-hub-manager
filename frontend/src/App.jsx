@@ -16,6 +16,7 @@ import AzureStorage from './pages/azure/AzureStorage';
 import AzureVNets from './pages/azure/AzureVNets';
 import AzureDatabases from './pages/azure/AzureDatabases';
 import AzureAppServices from './pages/azure/AzureAppServices';
+import AzureSecurity from './pages/azure/AzureSecurity';
 // GCP
 import GcpOverview from './pages/gcp/GcpOverview';
 import GcpComputeEngine from './pages/gcp/GcpComputeEngine';
@@ -23,6 +24,7 @@ import GcpStorage from './pages/gcp/GcpStorage';
 import GcpCloudSQL from './pages/gcp/GcpCloudSQL';
 import GcpFunctions from './pages/gcp/GcpFunctions';
 import GcpVPC from './pages/gcp/GcpVPC';
+import GcpSecurity from './pages/gcp/GcpSecurity';
 // AWS
 import AwsOverview from './pages/aws/AwsOverview';
 import AwsEC2 from './pages/aws/AwsEC2';
@@ -30,6 +32,7 @@ import AwsS3 from './pages/aws/AwsS3';
 import AwsRDS from './pages/aws/AwsRDS';
 import AwsLambda from './pages/aws/AwsLambda';
 import AwsVPC from './pages/aws/AwsVPC';
+import AwsSecurity from './pages/aws/AwsSecurity';
 import Logs from './pages/logs';
 import FinOps from './pages/FinOps';
 import Schedules from './pages/Schedules';
@@ -47,6 +50,7 @@ import AdminPanel from './pages/AdminPanel';
 import Webhooks from './pages/Webhooks';
 import OAuthCallback from './pages/OAuthCallback';
 import M365Dashboard from './pages/m365/M365Dashboard';
+import Inventory from './pages/Inventory';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -85,6 +89,7 @@ function App() {
                 <Route path="/aws/rds" element={<PR><AwsRDS /></PR>} />
                 <Route path="/aws/lambda" element={<PR><AwsLambda /></PR>} />
                 <Route path="/aws/vpc" element={<PR><AwsVPC /></PR>} />
+                <Route path="/aws/security" element={<PR><AwsSecurity /></PR>} />
                 {/* GCP */}
                 <Route path="/gcp" element={<PR><GcpOverview /></PR>} />
                 <Route path="/gcp/compute" element={<PR><GcpComputeEngine /></PR>} />
@@ -92,6 +97,7 @@ function App() {
                 <Route path="/gcp/sql" element={<PR><GcpCloudSQL /></PR>} />
                 <Route path="/gcp/functions" element={<PR><GcpFunctions /></PR>} />
                 <Route path="/gcp/networks" element={<PR><GcpVPC /></PR>} />
+                <Route path="/gcp/security" element={<PR><GcpSecurity /></PR>} />
                 {/* Azure */}
                 <Route path="/azure" element={<PR><AzureOverview /></PR>} />
                 <Route path="/azure/vms" element={<PR><AzureVMs /></PR>} />
@@ -99,12 +105,14 @@ function App() {
                 <Route path="/azure/vnets" element={<PR><AzureVNets /></PR>} />
                 <Route path="/azure/databases" element={<PR><AzureDatabases /></PR>} />
                 <Route path="/azure/app-services" element={<PR><AzureAppServices /></PR>} />
+                <Route path="/azure/security" element={<PR><AzureSecurity /></PR>} />
                 {/* Other */}
                 <Route path="/costs" element={<PR><Costs /></PR>} />
                 <Route path="/finops" element={<PR><FinOps /></PR>} />
                 <Route path="/schedules" element={<PR><Schedules /></PR>} />
                 <Route path="/webhooks" element={<PR><Webhooks /></PR>} />
                 <Route path="/m365" element={<PR><M365Dashboard /></PR>} />
+                <Route path="/inventory" element={<PR><Inventory /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
                 {/* Billing */}

@@ -12,6 +12,8 @@ from app.database import get_db
 from app.services.auth_service import decrypt_credential
 from app.services.gcp_service import GCPService
 from app.services.log_service import log_activity
+from app.services.security_service import GCPSecurityScanner
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -323,3 +325,37 @@ def gcp_delete_network(
     _wrap(svc.delete_network, name)
     log_activity(db, member.user, "gcp.network.delete", "Network", name, {})
     return {"success": True, "network": name}
+
+
+# ── Security Scan ─────────────────────────────────────────────────────────────
+
+@ws_router.get("/security/scan")
+async def gcp_security_scan(
+    member: MemberContext = Depends(require_permission("gcp.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Runs basic security checks on the configured GCP project:
+    - GCS buckets with allUsers/allAuthenticatedUsers in IAM
+    - Firewall rules allowing SSH/RDP from 0.0.0.0/0
+    - Project-level IAM bindings with roles/owner for user accounts
+    """
+    account = _get_gcp_account(member, db)
+    creds = decrypt_credential(account.encrypted_data)
+    scanner = GCPSecurityScanner(
+        project_id=creds.get("project_id", ""),
+        client_email=creds.get("client_email", ""),
+        private_key=creds.get("private_key", ""),
+        private_key_id=creds.get("private_key_id", ""),
+    )
+    findings = scanner.scan_all()
+
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    findings.sort(key=lambda f: order.get(f.get("severity", "low"), 3))
+
+    return {
+        "findings": findings,
+        "total": len(findings),
+        "scanned_at": datetime.utcnow().isoformat(),
+        "provider": "gcp",
+    }

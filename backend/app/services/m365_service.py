@@ -309,6 +309,44 @@ class M365Service:
             )
         ]
 
+    def get_groups(self) -> list:
+        """
+        List all groups in the tenant with type classification.
+        Requires Directory.Read.All.
+        """
+        raw = self._get_all_pages(
+            "/groups",
+            select="id,displayName,description,groupTypes,mail,visibility,"
+                   "resourceProvisioningOptions,createdDateTime,mailEnabled,securityEnabled",
+        )
+        result = []
+        for g in raw:
+            gtypes = g.get("groupTypes") or []
+            is_team = "Team" in (g.get("resourceProvisioningOptions") or [])
+            mail_enabled = g.get("mailEnabled", False)
+            sec_enabled = g.get("securityEnabled", False)
+
+            if "Unified" in gtypes:
+                group_type = "M365 Group"
+            elif mail_enabled and sec_enabled:
+                group_type = "Mail-enabled Security"
+            elif mail_enabled and not sec_enabled:
+                group_type = "Distribution"
+            else:
+                group_type = "Security"
+
+            result.append({
+                "id": g["id"],
+                "displayName": g.get("displayName"),
+                "description": g.get("description"),
+                "mail": g.get("mail"),
+                "visibility": g.get("visibility"),
+                "groupType": group_type,
+                "isTeam": is_team,
+                "createdDateTime": g.get("createdDateTime"),
+            })
+        return result
+
     def create_user(
         self,
         display_name: str,

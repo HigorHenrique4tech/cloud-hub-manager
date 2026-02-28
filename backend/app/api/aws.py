@@ -14,7 +14,9 @@ from app.core.auth_context import MemberContext
 from app.database import get_db
 from app.services.auth_service import decrypt_credential
 from app.services.log_service import log_activity
+from app.services.security_service import AWSSecurityScanner
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -549,3 +551,42 @@ async def ws_get_aws_costs(
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo AWS'))
     return result
+
+
+# ── Security Scan ─────────────────────────────────────────────────────────────
+
+@ws_router.get("/security/scan")
+async def aws_security_scan(
+    member: MemberContext = Depends(require_permission("aws.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Runs basic security checks on the configured AWS account:
+    - S3 buckets without Block Public Access
+    - Security Groups with unrestricted inbound access (0.0.0.0/0) on SSH/RDP
+    - Root account active access keys
+    """
+    accounts = _get_ws_aws_accounts(member, db)
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
+
+    all_findings = []
+    for account in accounts:
+        creds = decrypt_credential(account.encrypted_data)
+        scanner = AWSSecurityScanner(
+            access_key=creds.get("access_key_id", ""),
+            secret_key=creds.get("secret_access_key", ""),
+            region=creds.get("region", "us-east-1"),
+        )
+        all_findings.extend(scanner.scan_all())
+
+    # Sort by severity
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    all_findings.sort(key=lambda f: order.get(f.get("severity", "low"), 3))
+
+    return {
+        "findings": all_findings,
+        "total": len(all_findings),
+        "scanned_at": datetime.utcnow().isoformat(),
+        "provider": "aws",
+    }

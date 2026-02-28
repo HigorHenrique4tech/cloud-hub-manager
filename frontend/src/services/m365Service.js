@@ -35,6 +35,11 @@ const m365Service = {
     return data;
   },
 
+  getGroups: async () => {
+    const { data } = await api.get(wsUrl('/m365/groups'));
+    return data;
+  },
+
   getTeams: async () => {
     const { data } = await api.get(wsUrl('/m365/teams'));
     return data;

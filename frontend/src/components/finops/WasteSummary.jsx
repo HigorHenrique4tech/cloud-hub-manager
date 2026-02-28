@@ -33,7 +33,17 @@ const KpiCard = ({ icon: Icon, label, value, sub, color }) => {
  *   scanning — boolean
  */
 const WasteSummary = ({ summary, onScan, scanning }) => {
-  if (!summary) return null;
+  if (!summary) return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
+      {[...Array(4)].map((_, i) => (
+        <div key={i} className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 space-y-3">
+          <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-24" />
+          <div className="h-7 bg-gray-200 dark:bg-slate-700 rounded w-20" />
+          <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-32" />
+        </div>
+      ))}
+    </div>
+  );
 
   const { potential_saving_monthly, realized_saving_30d, adoption_rate_pct, recommendations, open_anomalies, top_waste_category } = summary;
 

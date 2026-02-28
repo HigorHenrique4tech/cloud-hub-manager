@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, MonitorPlay, HardDrive, Network, Database, Globe, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, MonitorPlay, HardDrive, Network, Database, Globe, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const azureNavItems = [
   { to: '/azure', label: 'Visão Geral', icon: LayoutGrid, end: true },
@@ -9,6 +9,7 @@ const azureNavItems = [
   { to: '/azure/vnets', label: 'Virtual Networks', icon: Network },
   { to: '/azure/databases', label: 'Bancos de Dados', icon: Database },
   { to: '/azure/app-services', label: 'App Services', icon: Globe },
+  { to: '/azure/security', label: 'Segurança', icon: ShieldAlert },
 ];
 
 const AzureSecondarySidebar = () => {

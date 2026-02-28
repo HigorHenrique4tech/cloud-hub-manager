@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
+import SkeletonTable from '../../components/common/SkeletonTable';
 import PlanGate from '../../components/common/PlanGate';
 import m365Service from '../../services/m365Service';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
@@ -1111,7 +1112,7 @@ const UsersTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
   const [search, setSearch] = useState('');
   const [filterActive, setFilterActive] = useState('all');
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <SkeletonTable columns={5} rows={8} />;
 
   const now = Date.now();
   const daysMs = (d) => d * 86_400_000;
@@ -1225,7 +1226,7 @@ const UsersTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
 // ── Tab: Licenças ─────────────────────────────────────────────────────────────
 
 const LicensesTab = ({ data, isLoading }) => {
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <SkeletonTable columns={4} rows={5} />;
 
   const licenses = data?.licenses || [];
 
@@ -1545,15 +1546,31 @@ const TeamCard = ({ team }) => {
   );
 };
 
-// ── Tab: Equipes ──────────────────────────────────────────────────────────────
+// ── Tab: Grupos ───────────────────────────────────────────────────────────────
 
-const TeamsTab = ({ data, isLoading }) => {
+const GROUP_TYPE_META = {
+  'M365 Group':            { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-400' },
+  'Security':              { bg: 'bg-red-100 dark:bg-red-900/30',       text: 'text-red-700 dark:text-red-400'       },
+  'Distribution':          { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400' },
+  'Mail-enabled Security': { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' },
+};
+
+const GroupTypeBadge = ({ type }) => {
+  const meta = GROUP_TYPE_META[type] || GROUP_TYPE_META['Security'];
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${meta.bg} ${meta.text}`}>
+      {type}
+    </span>
+  );
+};
+
+const GroupsTab = ({ data, isLoading }) => {
   const [search, setSearch] = useState('');
 
-  if (isLoading) return <LoadingSpinner />;
+  if (isLoading) return <SkeletonTable columns={4} rows={8} />;
 
-  const teams = (data?.teams || []).filter((t) =>
-    !search || t.displayName?.toLowerCase().includes(search.toLowerCase())
+  const groups = (data?.groups || []).filter((g) =>
+    !search || g.displayName?.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
@@ -1566,12 +1583,12 @@ const TeamsTab = ({ data, isLoading }) => {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Buscar grupo ou equipe..."
+          placeholder="Buscar grupo por nome..."
           className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 pl-8 pr-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none"
         />
       </div>
 
-      {teams.length === 0 && (
+      {groups.length === 0 ? (
         <div className="card rounded-2xl py-16 text-center">
           <MessageSquare size={32} className="mx-auto mb-3 text-gray-300 dark:text-slate-600" />
           <p className="text-sm text-gray-400 dark:text-slate-500">
@@ -1583,16 +1600,46 @@ const TeamsTab = ({ data, isLoading }) => {
             </p>
           )}
         </div>
-      )}
-
-      {teams.map((team) => (
-        <TeamCard key={team.id} team={team} />
-      ))}
-
-      {teams.length > 0 && (
-        <p className="text-xs text-gray-400 dark:text-slate-500">
-          {teams.length} grupo(s) · {teams.filter(t => t.isTeam).length} com Microsoft Teams
-        </p>
+      ) : (
+        <div className="card rounded-2xl overflow-hidden">
+          <table className="min-w-full">
+            <thead className="bg-gray-50 dark:bg-slate-900/50 border-b border-gray-200 dark:border-slate-700">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Nome</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Tipo</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">E-mail</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Visibilidade</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Criado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {groups.map((g) => (
+                <tr key={g.id} className="border-b border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
+                  <td className="px-4 py-3">
+                    <p className="text-sm font-medium text-gray-800 dark:text-slate-200">{g.displayName}</p>
+                    {g.description && <p className="text-xs text-gray-400 dark:text-slate-500 truncate max-w-xs">{g.description}</p>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <GroupTypeBadge type={g.groupType} />
+                      {g.isTeam && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                          Teams
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">{g.mail || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">{g.visibility || '—'}</td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">{fmtDate(g.createdDateTime)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="px-4 py-2 text-xs text-gray-400 dark:text-slate-500 border-t border-gray-100 dark:border-slate-800">
+            {groups.length} grupo(s) · {groups.filter(g => g.isTeam).length} com Microsoft Teams
+          </div>
+        </div>
       )}
     </div>
   );
@@ -1912,9 +1959,9 @@ export default function M365Dashboard() {
     enabled: connected && isEnterprise && activeTab === 'licencas',
   });
 
-  const teamsQ = useQuery({
-    queryKey: ['m365-teams'],
-    queryFn: m365Service.getTeams,
+  const groupsQ = useQuery({
+    queryKey: ['m365-groups'],
+    queryFn: m365Service.getGroups,
     enabled: connected && isEnterprise && activeTab === 'equipes',
   });
 
@@ -1962,7 +2009,7 @@ export default function M365Dashboard() {
             {connected && (
               <div className="flex items-center gap-2">
                 {(() => {
-                  const activeQ = { 'visao-geral': overviewQ, usuarios: usersQ, licencas: licensesQ, equipes: teamsQ, seguranca: securityQ }[activeTab];
+                  const activeQ = { 'visao-geral': overviewQ, usuarios: usersQ, licencas: licensesQ, equipes: groupsQ, seguranca: securityQ }[activeTab];
                   const isFetching = activeQ?.isFetching || (activeTab === 'seguranca' && serviceHealthQ.isFetching);
                   return (
                     <button
@@ -2038,9 +2085,9 @@ export default function M365Dashboard() {
                   : <LicensesTab data={licensesQ.data} isLoading={licensesQ.isLoading} />
               )}
               {activeTab === 'equipes' && (
-                teamsQ.isError
-                  ? <ApiErrorCard error={teamsQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-teams'] })} />
-                  : <TeamsTab data={teamsQ.data} isLoading={teamsQ.isLoading} />
+                groupsQ.isError
+                  ? <ApiErrorCard error={groupsQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-groups'] })} />
+                  : <GroupsTab data={groupsQ.data} isLoading={groupsQ.isLoading} />
               )}
               {activeTab === 'seguranca' && (
                 <SecurityTab
