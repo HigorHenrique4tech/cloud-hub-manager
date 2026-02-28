@@ -3,6 +3,8 @@ FinOps REST API — waste detection, recommendations, budgets, and actions.
 
 Routes are workspace-scoped (org_slug + workspace_id in the path).
 """
+import csv
+import io
 import json
 import logging
 import math
@@ -13,6 +15,7 @@ from typing import List, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -76,6 +79,25 @@ def _get_cached_spend(key: str):
 def _set_cached_spend(key: str, value):
     with _spend_cache_lock:
         _spend_cache[key] = (value, datetime.utcnow().timestamp() + _SPEND_CACHE_TTL)
+
+
+# ── In-memory cost-trend cache (1-hour TTL) ───────────────────────────────────
+_trend_cache: dict = {}
+_trend_cache_lock = threading.Lock()
+_TREND_CACHE_TTL = 3600  # seconds
+
+
+def _get_cached_trend(key: str):
+    with _trend_cache_lock:
+        entry = _trend_cache.get(key)
+        if entry and entry[1] > datetime.utcnow().timestamp():
+            return entry[0]
+    return None
+
+
+def _set_cached_trend(key: str, value):
+    with _trend_cache_lock:
+        _trend_cache[key] = (value, datetime.utcnow().timestamp() + _TREND_CACHE_TTL)
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -627,6 +649,128 @@ async def get_finops_summary(
     }
 
 
+# ── Cost Trend ────────────────────────────────────────────────────────────────
+
+
+@ws_router.get("/cost-trend")
+async def get_cost_trend(
+    days: int = Query(30, ge=7, le=90),
+    member: MemberContext = Depends(require_permission("finops.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns daily cost totals per provider for the last `days` days.
+    Results are cached for 1 hour per workspace.
+    GCP daily cost data is not available without BigQuery export — returns zeros.
+    """
+    from datetime import date, timedelta
+
+    cache_key = f"trend:{member.workspace_id}:{days}"
+    cached = _get_cached_trend(cache_key)
+    if cached:
+        return cached
+
+    today  = date.today()
+    labels = [(today - timedelta(days=i)).isoformat() for i in range(days - 1, -1, -1)]
+    result = {
+        "labels": labels,
+        "aws":    [0.0] * days,
+        "azure":  [0.0] * days,
+        "gcp":    [0.0] * days,
+    }
+
+    # Build a date→index map for fast lookups
+    date_idx = {d: i for i, d in enumerate(labels)}
+
+    accounts = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.is_active == True,
+    ).all()
+
+    for acct in accounts:
+        creds = decrypt_credential(acct.encrypted_data)
+
+        if acct.provider == "aws":
+            try:
+                import boto3
+                session = boto3.Session(
+                    aws_access_key_id=creds.get("access_key_id"),
+                    aws_secret_access_key=creds.get("secret_access_key"),
+                    region_name=creds.get("region", "us-east-1"),
+                )
+                ce = session.client("ce", region_name="us-east-1")
+                start = (today - timedelta(days=days - 1)).isoformat()
+                end   = today.isoformat()
+                resp  = ce.get_cost_and_usage(
+                    TimePeriod={"Start": start, "End": end},
+                    Granularity="DAILY",
+                    Metrics=["UnblendedCost"],
+                )
+                for period in resp.get("ResultsByTime", []):
+                    day   = period["TimePeriod"]["Start"]
+                    cost  = float(period["Total"]["UnblendedCost"]["Amount"])
+                    if day in date_idx:
+                        result["aws"][date_idx[day]] += cost
+            except Exception as e:
+                logger.warning(f"AWS daily cost trend error: {e}")
+
+        elif acct.provider == "azure":
+            try:
+                from datetime import datetime as _dt
+                from azure.identity import ClientSecretCredential
+                from azure.mgmt.costmanagement import CostManagementClient
+                from azure.mgmt.costmanagement.models import (
+                    QueryDefinition, QueryDataset, QueryTimePeriod,
+                    QueryAggregation,
+                )
+                credential = ClientSecretCredential(
+                    tenant_id=creds.get("tenant_id"),
+                    client_id=creds.get("client_id"),
+                    client_secret=creds.get("client_secret"),
+                )
+                client    = CostManagementClient(credential)
+                scope     = f"/subscriptions/{creds.get('subscription_id')}"
+                start_dt  = today - timedelta(days=days - 1)
+                query_res = client.query.usage(
+                    scope=scope,
+                    parameters=QueryDefinition(
+                        type="ActualCost",
+                        timeframe="Custom",
+                        time_period=QueryTimePeriod(
+                            from_property=_dt(start_dt.year, start_dt.month, start_dt.day),
+                            to=_dt(today.year, today.month, today.day),
+                        ),
+                        dataset=QueryDataset(
+                            granularity="Daily",
+                            aggregation={"totalCost": QueryAggregation(name="Cost", function="Sum")},
+                        ),
+                    ),
+                )
+                col_names = [c.name for c in query_res.columns]
+                cost_idx  = next(i for i, c in enumerate(col_names) if "cost" in c.name.lower())
+                date_col  = next(
+                    (i for i, c in enumerate(col_names) if "date" in c.name.lower() or "usage" in c.name.lower()),
+                    None,
+                )
+                if date_col is not None:
+                    for row in query_res.rows:
+                        raw_date = str(row[date_col])          # YYYYMMDD integer
+                        if len(raw_date) == 8:
+                            day = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+                        else:
+                            day = raw_date[:10]
+                        cost = float(row[cost_idx])
+                        if day in date_idx:
+                            result["azure"][date_idx[day]] += cost
+            except Exception as e:
+                logger.warning(f"Azure daily cost trend error: {e}")
+
+        # GCP: no simple per-day billing API without BigQuery export — leave as zeros
+
+    _set_cached_trend(cache_key, result)
+    return result
+
+
 # ── Recommendations ───────────────────────────────────────────────────────────
 
 
@@ -674,6 +818,62 @@ async def list_recommendations(
         "pages": math.ceil(total / page_size) if total else 1,
         "page_size": page_size,
     }
+
+
+@ws_router.get("/recommendations/export")
+def export_recommendations(
+    format: str = Query("csv", description="csv|json"),
+    status: Optional[str] = Query(None),
+    provider: Optional[str] = Query(None),
+    severity: Optional[str] = Query(None),
+    member: MemberContext = Depends(require_permission("finops.view")),
+    db: Session = Depends(get_db),
+):
+    """Export all matching recommendations as CSV or JSON (no pagination — full dump)."""
+    q = db.query(FinOpsRecommendation).filter(
+        FinOpsRecommendation.workspace_id == member.workspace_id,
+    )
+    if status:
+        q = q.filter(FinOpsRecommendation.status == status)
+    if provider:
+        q = q.filter(FinOpsRecommendation.provider == provider)
+    if severity:
+        q = q.filter(FinOpsRecommendation.severity == severity)
+    recs = q.order_by(FinOpsRecommendation.estimated_saving_monthly.desc()).all()
+
+    if format == "json":
+        return [_rec_to_dict(r) for r in recs]
+
+    # CSV export
+    from datetime import date as _date
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "ID", "Provider", "Recurso", "Tipo de Recurso", "Região",
+        "Recomendação", "Severidade", "Economia Estimada/mês (USD)",
+        "Custo Atual/mês (USD)", "Status", "Detectado Em",
+    ])
+    for r in recs:
+        writer.writerow([
+            str(r.id),
+            r.provider,
+            r.resource_name or r.resource_id,
+            r.resource_type,
+            r.region or "",
+            r.recommendation_type,
+            r.severity,
+            f"{r.estimated_saving_monthly:.2f}" if r.estimated_saving_monthly is not None else "",
+            f"{r.current_monthly_cost:.2f}" if r.current_monthly_cost is not None else "",
+            r.status,
+            r.detected_at.isoformat() if r.detected_at else "",
+        ])
+    output.seek(0)
+    filename = f"finops-recomendacoes-{_date.today().isoformat()}.csv"
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @ws_router.post("/recommendations/{rec_id}/apply", status_code=200)

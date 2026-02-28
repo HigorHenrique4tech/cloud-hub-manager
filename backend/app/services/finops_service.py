@@ -404,6 +404,121 @@ class AWSFinOpsScanner:
             logger.warning(f"Always-on EC2 scan error: {e}")
         return findings
 
+    # ── Cost Explorer: top spending / MoM spike detection ────────────────────
+
+    def scan_cost_explorer(self) -> List[dict]:
+        """
+        Queries AWS Cost Explorer to find services with abnormally high or
+        rapidly growing spend.  Produces 'review_spend' recommendations so
+        the user is aware without requiring an automated action.
+        Requires the 'ce:GetCostAndUsage' IAM permission.
+        """
+        findings = []
+        try:
+            import calendar
+            from datetime import date
+
+            ce = self._client("ce", region="us-east-1")
+            today = date.today()
+
+            # Month-to-date window
+            mtd_start = today.replace(day=1).isoformat()
+            mtd_end   = today.isoformat()
+            if mtd_start == mtd_end:
+                return findings  # 1st of month — no data yet
+
+            # Previous full month
+            if today.month == 1:
+                prev_start = date(today.year - 1, 12, 1).isoformat()
+                prev_end   = date(today.year, 1, 1).isoformat()
+            else:
+                prev_start = today.replace(month=today.month - 1, day=1).isoformat()
+                prev_end   = today.replace(day=1).isoformat()
+
+            def _by_service(start: str, end: str) -> dict:
+                resp = ce.get_cost_and_usage(
+                    TimePeriod={"Start": start, "End": end},
+                    Granularity="MONTHLY",
+                    Metrics=["UnblendedCost"],
+                    GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}],
+                )
+                result: dict = {}
+                for r in resp.get("ResultsByTime", []):
+                    for g in r.get("Groups", []):
+                        svc  = g["Keys"][0]
+                        cost = float(g["Metrics"]["UnblendedCost"]["Amount"])
+                        result[svc] = result.get(svc, 0.0) + cost
+                return result
+
+            mtd_by_svc  = _by_service(mtd_start, mtd_end)
+            prev_by_svc = _by_service(prev_start, prev_end)
+
+            # Project MTD spend to full-month rate
+            days_elapsed  = today.day
+            days_in_month = calendar.monthrange(today.year, today.month)[1]
+            projected = {
+                svc: cost * days_in_month / days_elapsed
+                for svc, cost in mtd_by_svc.items()
+            }
+
+            flagged = 0
+            for svc, proj_mo in sorted(projected.items(), key=lambda x: -x[1]):
+                if proj_mo < 10.0:
+                    continue  # ignore negligible services
+                prev_cost = prev_by_svc.get(svc, 0.0)
+                mtd_cost  = mtd_by_svc.get(svc, 0.0)
+
+                if prev_cost > 0:
+                    increase_pct = (proj_mo - prev_cost) / prev_cost
+                    # Only flag if >30 % MoM spike OR very high projected spend
+                    if increase_pct < 0.30 and proj_mo < 200:
+                        continue
+                    if increase_pct >= 0.30:
+                        reasoning = (
+                            f"Serviço AWS '{svc}' com custo projetado de ${proj_mo:.2f}/mês — "
+                            f"aumento de {increase_pct * 100:.0f}% em relação ao mês anterior (${prev_cost:.2f})."
+                        )
+                    else:
+                        reasoning = (
+                            f"Serviço AWS '{svc}' com alto custo projetado de ${proj_mo:.2f}/mês "
+                            f"(mês anterior: ${prev_cost:.2f})."
+                        )
+                elif proj_mo >= 200:
+                    reasoning = (
+                        f"Serviço AWS '{svc}' com alto custo projetado de ${proj_mo:.2f}/mês (sem histórico anterior)."
+                    )
+                else:
+                    continue
+
+                # Estimate 20% potential saving as an actionable signal
+                estimated_saving = round(proj_mo * 0.20, 2)
+                findings.append({
+                    "provider": "aws",
+                    "resource_id": svc.replace(" ", "-").lower(),
+                    "resource_name": svc,
+                    "resource_type": "aws_service",
+                    "region": self.region,
+                    "recommendation_type": "review_spend",
+                    "severity": _severity(estimated_saving),
+                    "estimated_saving_monthly": estimated_saving,
+                    "current_monthly_cost": round(proj_mo, 2),
+                    "reasoning": reasoning,
+                    "current_spec": {
+                        "service": svc,
+                        "mtd_cost": round(mtd_cost, 2),
+                        "projected_monthly": round(proj_mo, 2),
+                        "prev_month_cost": round(prev_cost, 2),
+                    },
+                    "recommended_spec": None,
+                })
+                flagged += 1
+                if flagged >= 10:
+                    break
+
+        except Exception as e:
+            logger.warning(f"Cost Explorer scan error: {e}")
+        return findings
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_ec2_idle())
@@ -412,6 +527,7 @@ class AWSFinOpsScanner:
         findings.extend(self.scan_rds_idle())
         findings.extend(self.scan_old_snapshots())
         findings.extend(self.scan_always_on())
+        findings.extend(self.scan_cost_explorer())
         return findings
 
 
@@ -434,6 +550,7 @@ class AzureFinOpsScanner:
         self._compute_client = None
         self._network_client = None
         self._monitor_client = None
+        self._cost_mgmt_client = None
 
     def _get_credential(self):
         if not self._credential:
@@ -462,6 +579,12 @@ class AzureFinOpsScanner:
             from azure.mgmt.monitor import MonitorManagementClient
             self._monitor_client = MonitorManagementClient(self._get_credential(), self.subscription_id)
         return self._monitor_client
+
+    def _cost_mgmt(self):
+        if not self._cost_mgmt_client:
+            from azure.mgmt.costmanagement import CostManagementClient
+            self._cost_mgmt_client = CostManagementClient(self._get_credential())
+        return self._cost_mgmt_client
 
     def _azure_monitor_avg(self, resource_id: str, metric: str, days: int = CPU_WINDOW_DAYS) -> Optional[float]:
         """Average metric value over last `days` days via Azure Monitor."""
@@ -676,12 +799,122 @@ class AzureFinOpsScanner:
             logger.warning(f"Azure always-on VM scan error: {e}")
         return findings
 
+    def scan_cost_management(self) -> List[dict]:
+        """
+        Queries Azure Cost Management API for service-level spend trends.
+        Flags services with >30% MoM increase or projected spend >$200/mo.
+        Requires 'Microsoft.CostManagement/query/action' RBAC (Cost Management Reader role).
+        """
+        import calendar
+        from datetime import date as _date, datetime as _datetime
+
+        findings = []
+        try:
+            from azure.mgmt.costmanagement.models import (
+                QueryDefinition, QueryDataset, QueryTimePeriod,
+                QueryAggregation, QueryGrouping,
+            )
+
+            today = _date.today()
+            mtd_start = today.replace(day=1)
+            mtd_end   = today
+
+            if today.month == 1:
+                prev_start = _date(today.year - 1, 12, 1)
+                prev_end   = _date(today.year, 1, 1)
+            else:
+                prev_start = today.replace(month=today.month - 1, day=1)
+                prev_end   = today.replace(day=1)
+
+            scope  = f"/subscriptions/{self.subscription_id}"
+            client = self._cost_mgmt()
+
+            def _query_by_service(start: _date, end: _date) -> dict:
+                result = client.query.usage(
+                    scope=scope,
+                    parameters=QueryDefinition(
+                        type="ActualCost",
+                        timeframe="Custom",
+                        time_period=QueryTimePeriod(
+                            from_property=_datetime(start.year, start.month, start.day),
+                            to=_datetime(end.year, end.month, end.day),
+                        ),
+                        dataset=QueryDataset(
+                            granularity="None",
+                            aggregation={"totalCost": QueryAggregation(name="Cost", function="Sum")},
+                            grouping=[QueryGrouping(type="Dimension", name="ServiceName")],
+                        ),
+                    ),
+                )
+                col_names = [c.name for c in result.columns]
+                svc_idx   = col_names.index("ServiceName")
+                cost_idx  = next(i for i, c in enumerate(col_names) if "cost" in c.name.lower())
+                by_svc: dict = {}
+                for row in result.rows:
+                    svc  = row[svc_idx]
+                    cost = float(row[cost_idx])
+                    by_svc[svc] = by_svc.get(svc, 0.0) + cost
+                return by_svc
+
+            mtd_by_svc  = _query_by_service(mtd_start, mtd_end)
+            prev_by_svc = _query_by_service(prev_start, prev_end)
+
+            days_elapsed  = today.day
+            days_in_month = calendar.monthrange(today.year, today.month)[1]
+            projected = {
+                svc: cost * days_in_month / days_elapsed
+                for svc, cost in mtd_by_svc.items()
+            }
+
+            for svc, proj_mo in sorted(projected.items(), key=lambda x: -x[1]):
+                if proj_mo < 10.0:
+                    continue
+                prev_cost = prev_by_svc.get(svc, 0.0)
+                if prev_cost > 0:
+                    increase_pct = (proj_mo - prev_cost) / prev_cost
+                    if increase_pct < 0.30 and proj_mo < 200:
+                        continue
+                else:
+                    if proj_mo < 200:
+                        continue
+
+                severity    = "high" if proj_mo > 500 else "medium" if proj_mo > 100 else "low"
+                description = f"Serviço Azure '{svc}' com gasto projetado de ${proj_mo:.2f}/mês"
+                if prev_cost > 0:
+                    increase_pct = (proj_mo - prev_cost) / prev_cost
+                    description += f" (variação de {increase_pct:+.0%} vs mês anterior)"
+
+                findings.append({
+                    "provider":                 "azure",
+                    "resource_id":              svc.lower().replace(" ", "-"),
+                    "resource_name":            svc,
+                    "resource_type":            "azure_service",
+                    "recommendation_type":      "review_spend",
+                    "severity":                 severity,
+                    "estimated_saving_monthly": round(proj_mo * 0.20, 2),
+                    "description":              description,
+                    "spec_before": {
+                        "projected_monthly_usd": round(proj_mo, 2),
+                        "mtd_usd":               round(mtd_by_svc.get(svc, 0.0), 2),
+                        "prev_month_usd":        round(prev_cost, 2),
+                    },
+                    "spec_after": {"target_monthly_usd": round(proj_mo * 0.80, 2)},
+                    "rollback_data": {},
+                })
+                if len(findings) >= 10:
+                    break
+        except Exception as e:
+            logger.warning(f"Azure Cost Management scan error: {e}")
+
+        return findings
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_vm_idle())
         findings.extend(self.scan_managed_disks())
         findings.extend(self.scan_public_ips())
         findings.extend(self.scan_always_on())
+        findings.extend(self.scan_cost_management())
         return findings
 
 
@@ -968,12 +1201,83 @@ class GCPFinOpsScanner:
             logger.warning(f"GCP always-on scan error: {e}")
         return findings
 
+    def scan_billing_recommender(self) -> List[dict]:
+        """
+        Queries GCP Recommender API for native cost optimization insights
+        (google.billing.ProjectCostInsights). Requires 'recommender.googleapis.com'
+        to be enabled and 'roles/recommender.viewer' on the service account.
+        Fails silently if the API is not enabled or permissions are insufficient.
+        """
+        findings = []
+        try:
+            from googleapiclient.discovery import build
+
+            service = build("recommender", "v1", credentials=self.credentials)
+            parent  = (
+                f"projects/{self.project_id}/locations/global/"
+                "recommenders/google.billing.ProjectCostInsights"
+            )
+            resp = (
+                service.projects()
+                .locations()
+                .recommenders()
+                .recommendations()
+                .list(parent=parent)
+                .execute()
+            )
+
+            TYPE_MAP = {
+                "STOP_VM":                  "stop_vm",
+                "CHANGE_MACHINE_TYPE":      "right_size",
+                "SNAPSHOT_AND_DELETE_DISK": "delete_disk",
+                "CHANGE_STORAGE_CLASS":     "storage_class",
+                "OPTIMIZE_VM":              "right_size",
+            }
+
+            for rec in resp.get("recommendations", []):
+                if rec.get("stateInfo", {}).get("state") != "ACTIVE":
+                    continue
+
+                # Extract estimated monthly saving (negative units = savings)
+                impact   = rec.get("primaryImpact", {}).get("costProjection", {})
+                cost_obj = impact.get("cost", {})
+                units    = float(cost_obj.get("units", 0) or 0)
+                nanos    = float(cost_obj.get("nanos", 0) or 0)
+                saving_monthly = abs(units + nanos / 1e9)
+
+                subtype  = rec.get("recommenderSubtype", "")
+                rec_type = TYPE_MAP.get(subtype, "review_spend")
+                severity = "high" if saving_monthly > 100 else "medium" if saving_monthly > 20 else "low"
+
+                name_parts  = rec.get("name", "").split("/")
+                resource_id = name_parts[-1] if name_parts else "unknown"
+                description = rec.get("description", resource_id)
+
+                findings.append({
+                    "provider":                 "gcp",
+                    "resource_id":              resource_id,
+                    "resource_name":            description[:120],
+                    "resource_type":            "gcp_resource",
+                    "recommendation_type":      rec_type,
+                    "severity":                 severity,
+                    "estimated_saving_monthly": round(saving_monthly, 2),
+                    "description":              description,
+                    "spec_before": {"recommender_subtype": subtype},
+                    "spec_after":  {},
+                    "rollback_data": {},
+                })
+        except Exception as e:
+            logger.warning(f"GCP billing recommender scan error: {e}")
+
+        return findings
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_compute_idle())
         findings.extend(self.scan_persistent_disks())
         findings.extend(self.scan_static_ips())
         findings.extend(self.scan_always_on())
+        findings.extend(self.scan_billing_recommender())
         return findings
 
 

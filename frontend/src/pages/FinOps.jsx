@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Zap, TrendingDown, History, Wallet, AlertTriangle, Plus, Trash2, X, Clock, CheckCircle, XCircle, Mail, RefreshCw, Pencil, Bell } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
+import { Zap, TrendingDown, History, Wallet, AlertTriangle, Plus, Trash2, X, Clock, CheckCircle, XCircle, Mail, RefreshCw, Pencil, Bell, FileDown, Printer } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
 import PermissionGate from '../components/common/PermissionGate';
@@ -542,6 +543,7 @@ const FinOps = () => {
   const [filterStatus, setFilterStatus] = useState('pending');
   const [filterProvider, setFilterProvider] = useState('');
   const [filterSeverity, setFilterSeverity] = useState('');
+  const [recsPage, setRecsPage]         = useState(1);
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showScanScheduleModal, setShowScanScheduleModal] = useState(false);
   const [showReportScheduleModal, setShowReportScheduleModal] = useState(false);
@@ -583,12 +585,17 @@ const FinOps = () => {
     refetchInterval: 60_000,
   });
 
+  // Reset to page 1 when filters change
+  useEffect(() => { setRecsPage(1); }, [filterStatus, filterProvider, filterSeverity]);
+
   const recsQ = useQuery({
-    queryKey: ['finops-recs', filterStatus, filterProvider, filterSeverity],
+    queryKey: ['finops-recs', filterStatus, filterProvider, filterSeverity, recsPage],
     queryFn: () => finopsService.getRecommendations({
-      status:   filterStatus   || undefined,
-      provider: filterProvider || undefined,
-      severity: filterSeverity || undefined,
+      status:    filterStatus   || undefined,
+      provider:  filterProvider || undefined,
+      severity:  filterSeverity || undefined,
+      page:      recsPage,
+      page_size: 20,
     }),
     enabled: activeTab === 'recommendations',
   });
@@ -611,6 +618,13 @@ const FinOps = () => {
     queryKey: ['finops-anomalies'],
     queryFn: finopsService.getAnomalies,
     enabled: isPro && activeTab === 'anomalies',
+  });
+
+  const costTrendQ = useQuery({
+    queryKey: ['finops-cost-trend', 30],
+    queryFn:  () => finopsService.getCostTrend(30),
+    enabled:  isPro,
+    staleTime: 60 * 60 * 1000, // 1h — matches backend cache
   });
 
   const scanScheduleQ = useQuery({
@@ -753,6 +767,60 @@ const FinOps = () => {
     rollbackMut.mutate(id);
   };
 
+  const handleExportCSV = async () => {
+    try {
+      await finopsService.exportRecommendationsCSV({
+        status:   filterStatus   || undefined,
+        provider: filterProvider || undefined,
+        severity: filterSeverity || undefined,
+      });
+    } catch {
+      // silently ignore — browser will show download error if any
+    }
+  };
+
+  const handlePrintPDF = () => {
+    const items = recsQ.data?.items ?? [];
+    const rows = items
+      .map((r) => `
+        <tr>
+          <td>${r.provider?.toUpperCase() ?? ''}</td>
+          <td>${r.resource_name || r.resource_id}</td>
+          <td>${r.resource_type}</td>
+          <td>${r.recommendation_type}</td>
+          <td>${r.severity}</td>
+          <td>$${Number(r.estimated_saving_monthly ?? 0).toFixed(2)}</td>
+          <td>${r.status}</td>
+        </tr>`)
+      .join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
+      <title>FinOps — Recomendações</title>
+      <style>
+        body { font-family: Arial, sans-serif; font-size: 12px; color: #111; }
+        h1 { font-size: 16px; margin-bottom: 8px; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { border: 1px solid #ccc; padding: 5px 8px; text-align: left; }
+        th { background: #f0f0f0; font-weight: bold; }
+        tr:nth-child(even) { background: #fafafa; }
+      </style></head><body>
+      <h1>FinOps — Recomendações (${new Date().toLocaleDateString('pt-BR')})</h1>
+      <table>
+        <thead><tr>
+          <th>Provider</th><th>Recurso</th><th>Tipo</th>
+          <th>Recomendação</th><th>Severidade</th><th>Economia/mês</th><th>Status</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </body></html>`;
+    const win = window.open('', '_blank');
+    if (!win) return;
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+    win.close();
+  };
+
   /* ── Render ── */
 
   return (
@@ -798,6 +866,88 @@ const FinOps = () => {
             />
           )}
         </PermissionGate>
+
+        {/* Cost trend chart */}
+        {isPro && (
+          <div className="card p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">
+                Tendência de Custo — últimos 30 dias
+              </h3>
+              {costTrendQ.isLoading && (
+                <span className="text-xs text-gray-400 dark:text-slate-500 animate-pulse">Carregando…</span>
+              )}
+            </div>
+            {costTrendQ.isLoading ? (
+              <div className="h-40 animate-pulse rounded-lg bg-gray-100 dark:bg-slate-800" />
+            ) : costTrendQ.isError ? (
+              <div className="h-40 flex items-center justify-center text-xs text-gray-400 dark:text-slate-500">
+                Dados de custo indisponíveis
+              </div>
+            ) : (() => {
+              const labels = costTrendQ.data?.labels ?? [];
+              const aws    = costTrendQ.data?.aws   ?? [];
+              const azure  = costTrendQ.data?.azure ?? [];
+              const gcp    = costTrendQ.data?.gcp   ?? [];
+              const hasAws   = aws.some(v => v > 0);
+              const hasAzure = azure.some(v => v > 0);
+              const hasGcp   = gcp.some(v => v > 0);
+
+              if (!hasAws && !hasAzure && !hasGcp) {
+                return (
+                  <div className="h-40 flex items-center justify-center text-xs text-gray-400 dark:text-slate-500">
+                    Nenhum dado de custo disponível. Configure uma conta cloud e execute um scan.
+                  </div>
+                );
+              }
+
+              const chartData = labels.map((label, i) => ({
+                date:  label.slice(5),
+                AWS:   aws[i]   || 0,
+                Azure: azure[i] || 0,
+                GCP:   gcp[i]   || 0,
+              }));
+
+              return (
+                <ResponsiveContainer width="100%" height={160}>
+                  <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="awsGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#f97316" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#f97316" stopOpacity={0}   />
+                      </linearGradient>
+                      <linearGradient id="azureGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}   />
+                      </linearGradient>
+                      <linearGradient id="gcpGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#22c55e" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}   />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="rgba(148,163,184,0.4)" />
+                    <YAxis
+                      tick={{ fontSize: 10 }}
+                      tickFormatter={(v) => `$${v}`}
+                      stroke="rgba(148,163,184,0.4)"
+                      width={45}
+                    />
+                    <RTooltip
+                      formatter={(v, name) => [`$${Number(v).toFixed(2)}`, name]}
+                      contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
+                      labelStyle={{ color: '#94a3b8' }}
+                    />
+                    <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                    {hasAws   && <Area type="monotone" dataKey="AWS"   stroke="#f97316" fill="url(#awsGrad)"   strokeWidth={2} dot={false} />}
+                    {hasAzure && <Area type="monotone" dataKey="Azure" stroke="#3b82f6" fill="url(#azureGrad)" strokeWidth={2} dot={false} />}
+                    {hasGcp   && <Area type="monotone" dataKey="GCP"   stroke="#22c55e" fill="url(#gcpGrad)"   strokeWidth={2} dot={false} />}
+                  </AreaChart>
+                </ResponsiveContainer>
+              );
+            })()}
+          </div>
+        )}
 
         {/* Scan result toast */}
         {scanJobStatus?.status === 'queued' && (
@@ -901,6 +1051,26 @@ const FinOps = () => {
                   </button>
                 ))}
               </div>
+
+              {/* Export buttons */}
+              <div className="ml-auto flex gap-2">
+                <button
+                  onClick={handleExportCSV}
+                  title="Exportar CSV"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <FileDown size={13} />
+                  CSV
+                </button>
+                <button
+                  onClick={handlePrintPDF}
+                  title="Imprimir / Salvar como PDF"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <Printer size={13} />
+                  PDF
+                </button>
+              </div>
             </div>
 
             {/* List */}
@@ -929,6 +1099,30 @@ const FinOps = () => {
                     planTier={planTier}
                   />
                 ))}
+                {/* Pagination */}
+                {recsQ.data?.pages > 1 && (
+                  <div className="flex items-center justify-between pt-3 mt-2 border-t border-gray-200 dark:border-slate-700">
+                    <span className="text-xs text-gray-500 dark:text-slate-400">
+                      {recsQ.data.total} recomendações · Página {recsQ.data.page} de {recsQ.data.pages}
+                    </span>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={recsPage === 1}
+                        onClick={() => setRecsPage(p => p - 1)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                      >
+                        Anterior
+                      </button>
+                      <button
+                        disabled={recsPage >= recsQ.data.pages}
+                        onClick={() => setRecsPage(p => p + 1)}
+                        className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                      >
+                        Próximo
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

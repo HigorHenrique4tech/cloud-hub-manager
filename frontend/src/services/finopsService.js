@@ -10,13 +10,35 @@ const finopsService = {
 
   // ── Recommendations ───────────────────────────────────────────────────────
 
-  getRecommendations: async ({ status, provider, severity } = {}) => {
+  getRecommendations: async ({ status, provider, severity, page = 1, page_size = 20 } = {}) => {
     const params = {};
-    if (status)   params.status   = status;
-    if (provider) params.provider = provider;
-    if (severity) params.severity = severity;
+    if (status)   params.status    = status;
+    if (provider) params.provider  = provider;
+    if (severity) params.severity  = severity;
+    params.page      = page;
+    params.page_size = page_size;
     const { data } = await api.get(wsUrl('/finops/recommendations'), { params });
     return data;
+  },
+
+  /**
+   * Triggers a CSV download by building a temporary anchor with a Bearer-authenticated blob URL.
+   * Falls back to the direct URL if the token is not available.
+   */
+  exportRecommendationsCSV: async ({ status, provider, severity } = {}) => {
+    const params = new URLSearchParams({ format: 'csv' });
+    if (status)   params.set('status',   status);
+    if (provider) params.set('provider', provider);
+    if (severity) params.set('severity', severity);
+    const { data } = await api.get(wsUrl(`/finops/recommendations/export?${params}`), {
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(new Blob([data], { type: 'text/csv' }));
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = `finops-recomendacoes-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   },
 
   applyRecommendation: async (recId) => {
@@ -124,6 +146,13 @@ const finopsService = {
 
   deleteReportSchedule: async () => {
     await api.delete(wsUrl('/finops/report-schedule'));
+  },
+
+  // ── Cost Trend ────────────────────────────────────────────────────────────
+
+  getCostTrend: async (days = 30) => {
+    const { data } = await api.get(wsUrl('/finops/cost-trend'), { params: { days } });
+    return data;
   },
 };
 
