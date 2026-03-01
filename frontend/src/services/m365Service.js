@@ -55,6 +55,16 @@ const m365Service = {
     return data;
   },
 
+  getGroupMembers: async (groupId) => {
+    const { data } = await api.get(wsUrl(`/m365/groups/${groupId}/members`));
+    return data;
+  },
+
+  addGroupMember: async (groupId, userId, roles = []) => {
+    const { data } = await api.post(wsUrl(`/m365/groups/${groupId}/members`), { user_id: userId, roles });
+    return data;
+  },
+
   createUser: async (payload) => {
     const { data } = await api.post(wsUrl('/m365/users'), payload);
     return data;

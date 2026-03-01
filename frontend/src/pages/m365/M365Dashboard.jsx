@@ -1407,6 +1407,280 @@ const AddMemberModal = ({ team, onClose }) => {
   );
 };
 
+// ── Add Group Member Modal ────────────────────────────────────────────────────
+
+const AddGroupMemberModal = ({ group, onClose }) => {
+  const [search, setSearch] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [asOwner, setAsOwner] = useState(false);
+  const qc = useQueryClient();
+
+  const usersQ = useQuery({
+    queryKey: ['m365-users-picker'],
+    queryFn: m365Service.getUsers,
+    staleTime: 60_000,
+  });
+
+  const addMut = useMutation({
+    mutationFn: () =>
+      m365Service.addGroupMember(group.id, selectedUserId, asOwner ? ['owner'] : []),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-group-members', group.id] });
+      onClose();
+    },
+  });
+
+  const allUsers = usersQ.data?.users || [];
+  const filtered = allUsers.filter((u) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      u.displayName?.toLowerCase().includes(q) ||
+      u.userPrincipalName?.toLowerCase().includes(q)
+    );
+  });
+
+  const selected = allUsers.find((u) => u.id === selectedUserId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl flex flex-col max-h-[80vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4 shrink-0">
+          <div>
+            <h2 className="text-base font-semibold text-slate-100">Adicionar membro</h2>
+            <p className="text-xs text-slate-400 mt-0.5 truncate">{group.displayName}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-white"><X size={18} /></button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pt-4 shrink-0">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar usuário por nome ou e-mail..."
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 pl-8 pr-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* User list */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1 min-h-0">
+          {usersQ.isLoading && (
+            <p className="text-center text-sm text-slate-400 py-6">Carregando usuários...</p>
+          )}
+          {!usersQ.isLoading && filtered.length === 0 && (
+            <p className="text-center text-sm text-slate-400 py-6">Nenhum usuário encontrado</p>
+          )}
+          {filtered.slice(0, 50).map((u) => (
+            <button
+              key={u.id}
+              onClick={() => setSelectedUserId(u.id === selectedUserId ? null : u.id)}
+              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                u.id === selectedUserId
+                  ? 'bg-blue-600/20 border border-blue-600/40'
+                  : 'hover:bg-slate-800 border border-transparent'
+              }`}
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-semibold text-slate-300">
+                {(u.displayName || u.userPrincipalName || '?')[0].toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-slate-100 truncate">{u.displayName || '—'}</p>
+                <p className="text-xs text-slate-400 truncate font-mono">{u.userPrincipalName}</p>
+              </div>
+              {u.id === selectedUserId && (
+                <CheckCircle size={16} className="ml-auto shrink-0 text-blue-400" />
+              )}
+            </button>
+          ))}
+          {filtered.length > 50 && (
+            <p className="text-center text-xs text-slate-500 pt-2">
+              Mostrando 50 de {filtered.length} — refine a busca
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-slate-700 px-5 py-4 shrink-0 space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={asOwner}
+              onChange={(e) => setAsOwner(e.target.checked)}
+              className="rounded border-slate-600"
+            />
+            <span className="text-sm text-slate-300">Adicionar como <strong>proprietário</strong> (owner)</span>
+          </label>
+
+          {addMut.isError && (
+            <p className="text-xs text-red-400">
+              {addMut.error?.response?.data?.detail || 'Erro ao adicionar membro'}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-sm text-slate-400 hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => addMut.mutate()}
+              disabled={!selectedUserId || addMut.isPending}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {addMut.isPending
+                ? <RefreshCw size={14} className="animate-spin" />
+                : <UserPlus size={14} />}
+              {selected ? `Adicionar ${selected.displayName?.split(' ')[0] || ''}` : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Group Card (expandable) ───────────────────────────────────────────────────
+
+const GroupCard = ({ group }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const membersQ = useQuery({
+    queryKey: ['m365-group-members', group.id],
+    queryFn: () => m365Service.getGroupMembers(group.id),
+    enabled: expanded,
+  });
+
+  const members = membersQ.data?.members || [];
+
+  return (
+    <>
+      <div className="card rounded-2xl overflow-hidden">
+        {/* Header row */}
+        <button
+          onClick={() => setExpanded((p) => !p)}
+          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 dark:hover:bg-slate-800/40 transition-colors text-left"
+        >
+          {/* Group avatar */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600/20 border border-purple-600/30 text-sm font-bold text-purple-400 select-none">
+            {(group.displayName || '?')[0].toUpperCase()}
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{group.displayName}</p>
+              <GroupTypeBadge type={group.groupType} />
+              {group.isTeam && (
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                  Teams
+                </span>
+              )}
+            </div>
+            {group.description && (
+              <p className="text-xs text-gray-400 dark:text-slate-500 truncate mt-0.5">{group.description}</p>
+            )}
+            {group.mail && (
+              <p className="text-xs text-gray-400 dark:text-slate-500 font-mono truncate">{group.mail}</p>
+            )}
+          </div>
+
+          {/* Visibility + chevron */}
+          <div className="shrink-0 flex items-center gap-2">
+            {group.visibility && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                group.visibility?.toLowerCase() === 'public'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                  : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400'
+              }`}>
+                {group.visibility?.toLowerCase() === 'public' ? 'Pública' : 'Privada'}
+              </span>
+            )}
+            {expanded
+              ? <ChevronDown size={16} className="text-gray-400 dark:text-slate-400" />
+              : <ChevronRight size={16} className="text-gray-400 dark:text-slate-400" />}
+          </div>
+        </button>
+
+        {/* Expanded panel */}
+        {expanded && (
+          <div className="border-t border-gray-200 dark:border-slate-700 px-5 py-4 space-y-4 bg-gray-50/50 dark:bg-slate-800/30">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
+                Membros
+              </p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600/10 border border-blue-600/30 px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-600/20 transition-colors"
+              >
+                <UserPlus size={12} /> Adicionar membro
+              </button>
+            </div>
+
+            {membersQ.isLoading && (
+              <div className="flex justify-center py-4">
+                <RefreshCw size={16} className="animate-spin text-slate-400" />
+              </div>
+            )}
+
+            {membersQ.isError && (
+              <p className="text-xs text-red-400 text-center py-2">
+                Falha ao carregar membros — verifique a permissão Directory.Read.All
+              </p>
+            )}
+
+            {!membersQ.isLoading && !membersQ.isError && members.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-slate-500 text-center py-2">
+                Nenhum membro encontrado
+              </p>
+            )}
+
+            {members.length > 0 && (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                {members.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 rounded-lg bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 px-3 py-2"
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 text-xs font-semibold text-slate-600 dark:text-slate-300">
+                      {(m.displayName || m.email || '?')[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate">
+                        {m.displayName || '—'}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-slate-500 truncate font-mono">
+                        {m.email || '—'}
+                      </p>
+                    </div>
+                    {m.roles?.includes('owner') && (
+                      <span className="rounded-full bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 text-xs font-medium text-purple-700 dark:text-purple-400 shrink-0">
+                        owner
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showAddModal && (
+        <AddGroupMemberModal group={group} onClose={() => setShowAddModal(false)} />
+      )}
+    </>
+  );
+};
+
 // ── Team Card (expandable) ────────────────────────────────────────────────────
 
 const TeamCard = ({ team }) => {
@@ -1601,44 +1875,13 @@ const GroupsTab = ({ data, isLoading }) => {
           )}
         </div>
       ) : (
-        <div className="card rounded-2xl overflow-hidden">
-          <table className="min-w-full">
-            <thead className="bg-gray-50 dark:bg-slate-900/50 border-b border-gray-200 dark:border-slate-700">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Nome</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Tipo</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">E-mail</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Visibilidade</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Criado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {groups.map((g) => (
-                <tr key={g.id} className="border-b border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-medium text-gray-800 dark:text-slate-200">{g.displayName}</p>
-                    {g.description && <p className="text-xs text-gray-400 dark:text-slate-500 truncate max-w-xs">{g.description}</p>}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <GroupTypeBadge type={g.groupType} />
-                      {g.isTeam && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
-                          Teams
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">{g.mail || '—'}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">{g.visibility || '—'}</td>
-                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">{fmtDate(g.createdDateTime)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="px-4 py-2 text-xs text-gray-400 dark:text-slate-500 border-t border-gray-100 dark:border-slate-800">
+        <div className="space-y-3">
+          {groups.map((g) => (
+            <GroupCard key={g.id} group={g} />
+          ))}
+          <p className="text-xs text-gray-400 dark:text-slate-500 px-1">
             {groups.length} grupo(s) · {groups.filter(g => g.isTeam).length} com Microsoft Teams
-          </div>
+          </p>
         </div>
       )}
     </div>
