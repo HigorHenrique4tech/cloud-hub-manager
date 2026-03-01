@@ -67,6 +67,7 @@ const BudgetModal = ({ onClose, onSave, saving }) => {
                 <option value="all">Todos</option>
                 <option value="aws">AWS</option>
                 <option value="azure">Azure</option>
+                <option value="gcp">GCP</option>
               </select>
             </div>
             <div>
@@ -1344,6 +1345,27 @@ const FinOps = () => {
                             </p>
                           )}
                         </div>
+                        {budget.provider === 'all' && budget.breakdown && (
+                          <div className="space-y-1 pt-2 mt-2 border-t border-gray-200 dark:border-slate-700/50">
+                            {[
+                              { key: 'aws',   label: 'AWS',   color: 'bg-orange-500' },
+                              { key: 'azure', label: 'Azure', color: 'bg-blue-500' },
+                              { key: 'gcp',   label: 'GCP',   color: 'bg-green-500' },
+                            ].filter(p => budget.breakdown[p.key] != null).map(({ key, label, color }) => {
+                              const v = budget.breakdown[key];
+                              const barPct = budget.amount > 0 ? Math.min((v / budget.amount) * 100, 100) : 0;
+                              return (
+                                <div key={key} className="flex items-center gap-2">
+                                  <span className="w-10 text-xs text-gray-400 dark:text-slate-400">{label}</span>
+                                  <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-slate-700">
+                                    <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${barPct}%` }} />
+                                  </div>
+                                  <span className="text-xs text-gray-400 dark:text-slate-400 w-16 text-right">{fmtUSD(v)}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     );
                   })}

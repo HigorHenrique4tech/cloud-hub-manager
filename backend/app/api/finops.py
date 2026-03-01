@@ -204,6 +204,7 @@ def _budget_to_dict(b: FinOpsBudget) -> dict:
         "last_spend": last_spend,
         "last_evaluated_at": b.last_evaluated_at.isoformat() if b.last_evaluated_at else None,
         "pct": pct,
+        "breakdown": __import__("json").loads(b.spend_breakdown) if b.spend_breakdown else None,
     }
 
 
@@ -2069,9 +2070,13 @@ async def evaluate_budgets(
     now = datetime.utcnow()
     cooldown = timedelta(hours=24)
 
+    import json as _json
+    breakdown_json = _json.dumps({k: round(v, 2) for k, v in provider_spend.items()}) if provider_spend else None
+
     for budget in budgets:
         if budget.provider == "all":
             spend = sum(provider_spend.values())
+            budget.spend_breakdown = breakdown_json
         else:
             spend = provider_spend.get(budget.provider, 0.0)
 
@@ -2185,6 +2190,22 @@ def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
             result = client.query.usage(scope=scope, parameters=query)
             rows = result.rows or []
             spend = float(rows[0][0]) if rows else 0.0
+
+        elif provider == "gcp":
+            from app.services.gcp_service import GCPService
+            from datetime import date
+            svc = GCPService(
+                project_id=creds.get("project_id", ""),
+                client_email=creds.get("client_email", ""),
+                private_key=creds.get("private_key", ""),
+                private_key_id=creds.get("private_key_id", ""),
+            )
+            today = date.today()
+            result = svc.get_cost_and_usage(
+                start_date=today.replace(day=1).isoformat(),
+                end_date=today.isoformat(),
+            )
+            spend = result.get("total") if result.get("success") else None
 
         if spend is not None:
             _set_cached_spend(cache_key, spend)

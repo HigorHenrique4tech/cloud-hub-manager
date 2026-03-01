@@ -251,6 +251,9 @@ def update_profile(
     if payload.name is not None:
         current_user.name = payload.name
 
+    if payload.onboarding_completed is not None:
+        current_user.onboarding_completed = payload.onboarding_completed
+
     db.commit()
     db.refresh(current_user)
     return UserResponse.model_validate(current_user)

@@ -51,6 +51,7 @@ import Webhooks from './pages/Webhooks';
 import OAuthCallback from './pages/OAuthCallback';
 import M365Dashboard from './pages/m365/M365Dashboard';
 import Inventory from './pages/Inventory';
+import Onboarding from './pages/Onboarding';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -81,6 +82,7 @@ function App() {
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/verify/:token" element={<VerifyCallback />} />
                 <Route path="/select-plan" element={<PR><PlanSelection /></PR>} />
+                <Route path="/onboarding" element={<PR><Onboarding /></PR>} />
                 <Route path="/" element={<PR><Dashboard /></PR>} />
                 {/* AWS */}
                 <Route path="/aws" element={<PR><AwsOverview /></PR>} />

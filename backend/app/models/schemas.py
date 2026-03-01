@@ -110,6 +110,7 @@ class UserResponse(BaseModel):
     oauth_provider: Optional[str] = None
     avatar_url: Optional[str] = None
     mfa_enabled: bool = False
+    onboarding_completed: bool = False
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -144,6 +145,7 @@ class MFAToggleRequest(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
+    onboarding_completed: Optional[bool] = None
 
 
 class PasswordChange(BaseModel):

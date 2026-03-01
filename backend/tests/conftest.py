@@ -56,3 +56,33 @@ def client():
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+@pytest.fixture()
+def ws_setup(client, db):
+    """Register a user, upgrade org to pro, return headers + org_slug + workspace_id."""
+    import uuid
+    email = f"wsuser_{uuid.uuid4().hex[:8]}@example.com"
+    resp = client.post(
+        "/api/v1/auth/register",
+        json={"email": email, "name": "WS User", "password": "Test1234!"},
+    )
+    assert resp.status_code == 201, resp.text
+    token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    # Resolve org_slug via the list endpoint
+    orgs_resp = client.get("/api/v1/orgs", headers=headers)
+    assert orgs_resp.status_code == 200, orgs_resp.text
+    org_slug = orgs_resp.json()["organizations"][0]["slug"]
+
+    from app.models.db_models import Organization
+    org = db.query(Organization).filter(Organization.slug == org_slug).first()
+    org.plan_tier = "pro"
+    db.commit()
+
+    ws_resp = client.get(f"/api/v1/orgs/{org_slug}/workspaces", headers=headers)
+    assert ws_resp.status_code == 200, ws_resp.text
+    workspace_id = ws_resp.json()["workspaces"][0]["id"]
+
+    return {"headers": headers, "org_slug": org_slug, "workspace_id": workspace_id}

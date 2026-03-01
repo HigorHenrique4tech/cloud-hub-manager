@@ -78,6 +78,11 @@ const authService = {
     return data;
   },
 
+  markOnboardingComplete: async () => {
+    const { data } = await api.put('/auth/me', { onboarding_completed: true });
+    return data;
+  },
+
   // OAuth
   googleCallback: async (code, redirectUri) => {
     const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri });

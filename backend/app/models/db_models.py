@@ -163,6 +163,7 @@ class User(Base):
     mfa_otp_expires_at = Column(DateTime, nullable=True)
     mfa_otp_attempts   = Column(Integer, default=0, nullable=False)
     is_admin           = Column(Boolean, default=False, nullable=False)
+    onboarding_completed = Column(Boolean, default=False, nullable=False)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -292,6 +293,7 @@ class FinOpsBudget(Base):
     last_spend        = Column(Float, nullable=True)
     last_evaluated_at = Column(DateTime(timezone=True), nullable=True)
     alert_sent_at     = Column(DateTime(timezone=True), nullable=True)
+    spend_breakdown   = Column(Text, nullable=True)  # JSON: {"aws": X, "azure": Y, "gcp": Z}
 
 
 class FinOpsAction(Base):
