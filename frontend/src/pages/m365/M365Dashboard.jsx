@@ -39,6 +39,55 @@ const REQUIRED_PERMISSIONS = [
   'ServiceHealth.Read.All',
 ];
 
+// ── SKU friendly names ─────────────────────────────────────────────────────────
+
+const SKU_FRIENDLY_NAMES = {
+  // Microsoft 365 / Office 365
+  'O365_BUSINESS_ESSENTIALS':          'Microsoft 365 Business Basic',
+  'O365_BUSINESS_PREMIUM':             'Microsoft 365 Business Standard',
+  'O365_BUSINESS':                     'Microsoft 365 Apps for Business',
+  'SPB':                               'Microsoft 365 Business Premium',
+  'ENTERPRISEPACK':                    'Microsoft 365 E3',
+  'ENTERPRISEPREMIUM':                 'Microsoft 365 E5',
+  'ENTERPRISEPACKWITHOUTPROPLUS':      'Microsoft 365 E3 (sem Apps)',
+  'STANDARDPACK':                      'Office 365 E1',
+  'STANDARDWOFFPACK':                  'Office 365 E2',
+  'ENTERPRISEWITHSCAL':                'Office 365 E4',
+  'DESKLESSPACK':                      'Office 365 F1',
+  'FLOW_FREE':                         'Microsoft Power Automate Free',
+  'POWERAPPS_VIRAL':                   'Microsoft Power Apps (Trial)',
+  // Teams
+  'TEAMS_EXPLORATORY':                 'Microsoft Teams Exploratory',
+  'TEAMS_FREE':                        'Microsoft Teams Free',
+  // Exchange
+  'EXCHANGESTANDARD':                  'Exchange Online (Plano 1)',
+  'EXCHANGEENTERPRISE':                'Exchange Online (Plano 2)',
+  'EXCHANGE_S_DESKLESS':               'Exchange Online Kiosk',
+  // Azure AD / Entra
+  'AAD_PREMIUM':                       'Microsoft Entra ID P1',
+  'AAD_PREMIUM_P2':                    'Microsoft Entra ID P2',
+  // Dynamics 365
+  'DYN365_ENTERPRISE_PLAN1':           'Dynamics 365 Customer Engagement',
+  // Power BI
+  'POWER_BI_STANDARD':                 'Power BI (Free)',
+  'POWER_BI_PRO':                      'Power BI Pro',
+  // Visio / Project
+  'VISIOCLIENT':                       'Visio Online Plan 2',
+  'PROJECTPREMIUM':                    'Project Online Premium',
+  'PROJECTPROFESSIONAL':               'Project Online Professional',
+  // EMS
+  'EMS':                               'Enterprise Mobility + Security E3',
+  'EMSPREMIUM':                        'Enterprise Mobility + Security E5',
+  // Intune
+  'INTUNE_A':                          'Microsoft Intune',
+  // Defender
+  'DEFENDER_ENDPOINT_P1':              'Microsoft Defender for Endpoint P1',
+  'WIN_DEF_ATP':                       'Microsoft Defender for Endpoint P2',
+};
+
+const skuLabel = (skuPartNumber) =>
+  SKU_FRIENDLY_NAMES[skuPartNumber] || skuPartNumber.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const genPassword = () => {
@@ -1225,45 +1274,210 @@ const UsersTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
 
 // ── Tab: Licenças ─────────────────────────────────────────────────────────────
 
+const AssignLicenseModal = ({ sku, onClose }) => {
+  const [search, setSearch] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const qc = useQueryClient();
+
+  const licenseUsersQ = useQuery({
+    queryKey: ['m365-license-users', sku.skuId],
+    queryFn: () => m365Service.getLicenseUsers(sku.skuId),
+  });
+
+  const allUsersQ = useQuery({
+    queryKey: ['m365-users-picker'],
+    queryFn: m365Service.getUsers,
+    staleTime: 60_000,
+  });
+
+  const assignMut = useMutation({
+    mutationFn: () => m365Service.assignLicense(sku.skuId, selectedUserId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-license-users', sku.skuId] });
+      qc.invalidateQueries({ queryKey: ['m365-licenses'] });
+      setSelectedUserId(null);
+      setSearch('');
+    },
+  });
+
+  const removeMut = useMutation({
+    mutationFn: (userId) => m365Service.removeLicense(sku.skuId, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-license-users', sku.skuId] });
+      qc.invalidateQueries({ queryKey: ['m365-licenses'] });
+    },
+  });
+
+  const assignedIds = new Set((licenseUsersQ.data?.users || []).map(u => u.id));
+  const allUsers = allUsersQ.data?.users || [];
+  const unassigned = allUsers.filter(u => !assignedIds.has(u.id));
+  const filtered = unassigned.filter(u => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return u.displayName?.toLowerCase().includes(q) || u.userPrincipalName?.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700 flex-shrink-0">
+          <div>
+            <p className="text-base font-semibold text-slate-100">{skuLabel(sku.skuPartNumber)}</p>
+            <p className="text-xs text-slate-400 mt-0.5">{sku.available} de {sku.prepaid} disponíveis</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-200"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+          {/* Assigned users */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              Usuários com esta licença ({licenseUsersQ.data?.users?.length ?? '…'})
+            </p>
+            {licenseUsersQ.isLoading ? (
+              <p className="text-xs text-slate-500 py-2">Carregando…</p>
+            ) : (licenseUsersQ.data?.users || []).length === 0 ? (
+              <p className="text-xs text-slate-500 py-2">Nenhum usuário com esta licença</p>
+            ) : (
+              <ul className="space-y-1">
+                {licenseUsersQ.data.users.map(u => (
+                  <li key={u.id} className="flex items-center justify-between rounded-lg px-3 py-2 bg-slate-800">
+                    <div className="min-w-0">
+                      <p className="text-sm text-slate-100 truncate">{u.displayName}</p>
+                      <p className="text-xs text-slate-400 truncate">{u.userPrincipalName}</p>
+                    </div>
+                    <button
+                      onClick={() => removeMut.mutate(u.id)}
+                      disabled={removeMut.isPending}
+                      className="ml-3 flex-shrink-0 text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                    >
+                      Remover
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Assign to new user */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Atribuir a usuário</p>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <input
+                value={search}
+                onChange={e => { setSearch(e.target.value); setSelectedUserId(null); }}
+                placeholder="Buscar usuário…"
+                className="w-full bg-slate-800 border border-slate-600 rounded-lg pl-9 pr-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            {sku.available <= 0 && (
+              <p className="text-xs text-red-400 mb-2">Sem licenças disponíveis para atribuição.</p>
+            )}
+            <ul className="space-y-1 max-h-48 overflow-y-auto">
+              {filtered.slice(0, 30).map(u => (
+                <li
+                  key={u.id}
+                  onClick={() => setSelectedUserId(u.id)}
+                  className={`flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors ${
+                    selectedUserId === u.id
+                      ? 'bg-indigo-600 text-white'
+                      : 'bg-slate-800 hover:bg-slate-700 text-slate-100'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm truncate">{u.displayName}</p>
+                    <p className={`text-xs truncate ${selectedUserId === u.id ? 'text-indigo-200' : 'text-slate-400'}`}>
+                      {u.userPrincipalName}
+                    </p>
+                  </div>
+                  {selectedUserId === u.id && <CheckCircle className="w-4 h-4 flex-shrink-0 ml-2" />}
+                </li>
+              ))}
+              {filtered.length === 0 && search && (
+                <p className="text-xs text-slate-500 py-2 text-center">Nenhum usuário encontrado</p>
+              )}
+            </ul>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-5 py-4 border-t border-slate-700 flex-shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-slate-300 hover:text-slate-100">
+            Fechar
+          </button>
+          <button
+            onClick={() => assignMut.mutate()}
+            disabled={!selectedUserId || assignMut.isPending || sku.available <= 0}
+            className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
+          >
+            {assignMut.isPending ? 'Atribuindo…' : 'Atribuir licença'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const LicensesTab = ({ data, isLoading }) => {
+  const [managingSku, setManagingSku] = useState(null);
+
   if (isLoading) return <SkeletonTable columns={4} rows={5} />;
 
   const licenses = data?.licenses || [];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {licenses.length === 0 && (
-        <p className="col-span-full text-center text-sm text-gray-400 dark:text-slate-500 py-12">Nenhuma licença encontrada</p>
-      )}
-      {licenses.map((sku) => {
-        const pct = sku.prepaid > 0 ? sku.consumed / sku.prepaid : 0;
-        const low = sku.available < sku.prepaid * 0.1;
-        return (
-          <div key={sku.skuId} className="card rounded-2xl p-5 space-y-3">
-            <div className="flex items-start justify-between">
+    <>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {licenses.length === 0 && (
+          <p className="col-span-full text-center text-sm text-gray-400 dark:text-slate-500 py-12">Nenhuma licença encontrada</p>
+        )}
+        {licenses.map((sku) => {
+          const pct = sku.prepaid > 0 ? sku.consumed / sku.prepaid : 0;
+          const low = sku.available < sku.prepaid * 0.1;
+          return (
+            <div key={sku.skuId} className="card rounded-2xl p-5 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 leading-tight">
+                    {skuLabel(sku.skuPartNumber)}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{sku.skuPartNumber}</p>
+                </div>
+                {low && <span className="rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs text-red-600 dark:text-red-400 flex-shrink-0">Baixo</span>}
+              </div>
               <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 leading-tight">{sku.skuPartNumber}</p>
-                <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5 font-mono">{sku.skuId.slice(0, 8)}…</p>
+                <div className="flex justify-between text-xs mb-1 text-gray-500 dark:text-slate-400">
+                  <span>{sku.consumed} usadas</span>
+                  <span>{sku.prepaid} total</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-700">
+                  <div className={`h-2 rounded-full ${pctColor(pct)}`} style={{ width: `${Math.min(pct * 100, 100)}%` }} />
+                </div>
               </div>
-              {low && <span className="rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs text-red-600 dark:text-red-400">Baixo</span>}
-            </div>
-            <div>
-              <div className="flex justify-between text-xs mb-1 text-gray-500 dark:text-slate-400">
-                <span>{sku.consumed} usadas</span>
-                <span>{sku.prepaid} total</span>
+              <div className="flex items-center justify-between">
+                <div className="flex gap-3 text-xs text-gray-500 dark:text-slate-400">
+                  <span className="text-green-600 dark:text-green-400 font-medium">{sku.available} disponíveis</span>
+                  {sku.suspended > 0 && <span className="text-yellow-500">{sku.suspended} suspensas</span>}
+                </div>
+                <button
+                  onClick={() => setManagingSku(sku)}
+                  className="text-xs text-indigo-500 hover:text-indigo-400 flex items-center gap-1"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Atribuir
+                </button>
               </div>
-              <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-700">
-                <div className={`h-2 rounded-full ${pctColor(pct)}`} style={{ width: `${Math.min(pct * 100, 100)}%` }} />
-              </div>
             </div>
-            <div className="flex justify-between text-xs text-gray-500 dark:text-slate-400">
-              <span className="text-green-600 dark:text-green-400 font-medium">{sku.available} disponíveis</span>
-              {sku.suspended > 0 && <span className="text-yellow-500">{sku.suspended} suspensas</span>}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+          );
+        })}
+      </div>
+
+      {managingSku && (
+        <AssignLicenseModal sku={managingSku} onClose={() => setManagingSku(null)} />
+      )}
+    </>
   );
 };
 

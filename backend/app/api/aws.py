@@ -590,3 +590,19 @@ async def aws_security_scan(
         "scanned_at": datetime.utcnow().isoformat(),
         "provider": "aws",
     }
+
+
+@ws_router.get("/metrics")
+async def ws_get_aws_metrics(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Returns CPU and network metrics for running EC2 instances (last 1 hour)."""
+    accounts = _get_ws_aws_accounts(member, db)
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
+    try:
+        svc = _build_aws_service_from_account(accounts[0])
+        return svc.get_metrics()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

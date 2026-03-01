@@ -364,3 +364,70 @@ class GCPService:
         except Exception as e:
             logger.error(f"GCP cost estimation error: {e}")
             return {"success": False, "error": str(e), "estimated": True}
+
+    # ── Metrics (Cloud Monitoring) ────────────────────────────────────────────
+
+    def get_metrics(self, limit: int = 15) -> dict:
+        """Return CPU metrics for running GCE instances via Cloud Monitoring."""
+        from google.cloud import monitoring_v3
+
+        end = datetime.utcnow()
+        start = end - timedelta(hours=1)
+
+        # Build instance list (running only, up to limit)
+        try:
+            instances_raw = self.list_instances()
+        except Exception as e:
+            logger.error(f"GCP get_metrics list error: {e}")
+            return {"resources": [], "scanned_at": end.isoformat()}
+
+        running = [i for i in instances_raw if i.get("status", "").upper() == "RUNNING"][:limit]
+        if not running:
+            return {"resources": [], "scanned_at": end.isoformat()}
+
+        # Map instance_id (numeric string) → instance dict
+        id_map = {i["id"]: i for i in running}
+
+        # Query Cloud Monitoring for CPU utilization
+        cpu_map: dict = {}
+        try:
+            client = monitoring_v3.MetricServiceClient(credentials=self.credentials)
+            project_name = f"projects/{self.project_id}"
+            interval = monitoring_v3.TimeInterval(
+                {
+                    "end_time": {"seconds": int(end.timestamp())},
+                    "start_time": {"seconds": int(start.timestamp())},
+                }
+            )
+            results = client.list_time_series(
+                request={
+                    "name": project_name,
+                    "filter": 'metric.type = "compute.googleapis.com/instance/cpu/utilization"',
+                    "interval": interval,
+                    "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+                }
+            )
+            for ts in results:
+                inst_id = ts.resource.labels.get("instance_id", "")
+                vals = [p.value.double_value for p in ts.points if p.value.double_value is not None]
+                if vals and inst_id in id_map:
+                    cpu_map[inst_id] = round((sum(vals) / len(vals)) * 100, 1)
+        except Exception as e:
+            logger.warning(f"GCP Cloud Monitoring CPU query error: {e}")
+
+        resources = []
+        for inst in running:
+            inst_id = inst["id"]
+            resources.append({
+                "id": inst_id,
+                "name": inst["name"],
+                "type": "compute",
+                "region": inst.get("zone", ""),
+                "status": "running",
+                "cpu_pct": cpu_map.get(inst_id),
+                "memory_pct": None,
+                "net_in_bytes": None,
+                "net_out_bytes": None,
+            })
+
+        return {"resources": resources, "scanned_at": end.isoformat()}

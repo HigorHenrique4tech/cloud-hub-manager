@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { MonitorPlay, HardDrive, Database, Zap, Network, AlertCircle } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import ResourceMetricsPanel from '../../components/monitoring/ResourceMetricsPanel';
 import gcpService from '../../services/gcpService';
 
 const serviceCards = [
@@ -52,10 +53,19 @@ const serviceCards = [
 ];
 
 const GcpOverview = () => {
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['gcp-overview'],
     queryFn: () => gcpService.getOverview(),
     retry: false,
+  });
+
+  const metricsQ = useQuery({
+    queryKey: ['gcp-metrics'],
+    queryFn: () => gcpService.getMetrics(),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    enabled: !error,
   });
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando GCP..." /></Layout>;
@@ -108,6 +118,13 @@ const GcpOverview = () => {
           </Link>
         ))}
       </div>
+
+      <ResourceMetricsPanel
+        resources={metricsQ.data?.resources}
+        isLoading={metricsQ.isLoading}
+        isError={metricsQ.isError}
+        onRefresh={() => queryClient.invalidateQueries({ queryKey: ['gcp-metrics'] })}
+      />
     </Layout>
   );
 };

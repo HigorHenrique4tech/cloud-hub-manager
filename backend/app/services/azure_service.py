@@ -8,8 +8,10 @@ from azure.mgmt.web import WebSiteManagementClient
 from azure.mgmt.sql import SqlManagementClient
 from azure.mgmt.costmanagement import CostManagementClient
 from azure.mgmt.costmanagement.models import QueryDefinition, QueryTimePeriod, QueryDataset, QueryAggregation, QueryGrouping
+from azure.mgmt.monitor import MonitorManagementClient
 from typing import Dict, List
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 import logging
 
 logger = logging.getLogger(__name__)
@@ -913,3 +915,90 @@ class AzureService:
         except Exception as e:
             logger.error(f"delete_app_service error: {e}")
             return {'success': False, 'error': str(e)}
+
+    # ── Metrics (Azure Monitor) ───────────────────────────────────────────────
+
+    def get_metrics(self, limit: int = 15) -> dict:
+        """Return CPU metrics for running VMs via Azure Monitor."""
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(hours=1)
+        timespan = f"{start.strftime('%Y-%m-%dT%H:%M:%SZ')}/{end.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+
+        try:
+            monitor = MonitorManagementClient(self.credential, self.subscription_id)
+        except Exception as e:
+            logger.error(f"Azure Monitor client error: {e}")
+            return {"resources": [], "scanned_at": end.isoformat()}
+
+        # Collect running VMs (up to limit)
+        running_vms = []
+        try:
+            resource_groups = list(self.resource_client.resource_groups.list())
+            for rg in resource_groups:
+                if len(running_vms) >= limit:
+                    break
+                try:
+                    rg_vms = list(self.compute_client.virtual_machines.list(resource_group_name=rg.name))
+                    for vm in rg_vms:
+                        if len(running_vms) >= limit:
+                            break
+                        try:
+                            iv = self.compute_client.virtual_machines.instance_view(
+                                resource_group_name=rg.name, vm_name=vm.name
+                            )
+                            power_state = "unknown"
+                            for s in (iv.statuses or []):
+                                if s.code.startswith("PowerState/"):
+                                    power_state = s.code.split("/")[-1]
+                                    break
+                            if power_state == "running":
+                                running_vms.append({
+                                    "vm_id": vm.id,
+                                    "name": vm.name,
+                                    "resource_group": rg.name,
+                                    "location": vm.location,
+                                    "vm_size": vm.hardware_profile.vm_size if vm.hardware_profile else None,
+                                })
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"Azure get_metrics VM listing error: {e}")
+
+        def _fetch_cpu(vm: dict) -> dict:
+            cpu_pct = None
+            try:
+                resp = monitor.metrics.list(
+                    vm["vm_id"],
+                    timespan=timespan,
+                    interval="PT1H",
+                    metricnames="Percentage CPU",
+                    aggregation="Average",
+                )
+                for metric in resp.value:
+                    for ts in metric.timeseries:
+                        vals = [d.average for d in ts.data if d.average is not None]
+                        if vals:
+                            cpu_pct = round(sum(vals) / len(vals), 1)
+                            break
+            except Exception as e:
+                logger.debug(f"Azure metrics fetch error for {vm['name']}: {e}")
+            return {
+                "id": vm["vm_id"],
+                "name": vm["name"],
+                "type": "vm",
+                "region": vm["location"],
+                "status": "running",
+                "cpu_pct": cpu_pct,
+                "memory_pct": None,
+                "net_in_bytes": None,
+                "net_out_bytes": None,
+            }
+
+        resources = []
+        if running_vms:
+            with ThreadPoolExecutor(max_workers=5) as ex:
+                resources = list(ex.map(_fetch_cpu, running_vms))
+
+        return {"resources": resources, "scanned_at": end.isoformat()}

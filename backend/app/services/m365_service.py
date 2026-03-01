@@ -739,3 +739,36 @@ class M365Service:
             })
         # Sort: non-operational first, then alphabetical
         return sorted(result, key=lambda x: (x["status"] == "operational", x["displayName"] or ""))
+
+    # ── License assignment ────────────────────────────────────────────────────
+
+    def get_license_users(self, sku_id: str) -> list:
+        """Return users who have a specific license SKU assigned."""
+        users = self._get_all_pages(
+            "/users",
+            select="id,displayName,userPrincipalName,accountEnabled,assignedLicenses",
+        )
+        return [
+            {
+                "id": u["id"],
+                "displayName": u.get("displayName"),
+                "userPrincipalName": u.get("userPrincipalName"),
+                "accountEnabled": u.get("accountEnabled"),
+            }
+            for u in users
+            if any(lic.get("skuId") == sku_id for lic in u.get("assignedLicenses", []))
+        ]
+
+    def assign_license(self, user_id: str, sku_id: str) -> dict:
+        """Assign a license SKU to a user."""
+        return self._post(
+            f"/users/{user_id}/assignLicense",
+            {"addLicenses": [{"skuId": sku_id, "disabledPlans": []}], "removeLicenses": []},
+        )
+
+    def remove_license(self, user_id: str, sku_id: str) -> dict:
+        """Remove a license SKU from a user."""
+        return self._post(
+            f"/users/{user_id}/assignLicense",
+            {"addLicenses": [], "removeLicenses": [sku_id]},
+        )

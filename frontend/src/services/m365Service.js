@@ -35,6 +35,21 @@ const m365Service = {
     return data;
   },
 
+  getLicenseUsers: async (skuId) => {
+    const { data } = await api.get(wsUrl(`/m365/licenses/${skuId}/users`));
+    return data;
+  },
+
+  assignLicense: async (skuId, userId) => {
+    const { data } = await api.post(wsUrl(`/m365/licenses/${skuId}/assign`), { user_id: userId });
+    return data;
+  },
+
+  removeLicense: async (skuId, userId) => {
+    const { data } = await api.delete(wsUrl(`/m365/licenses/${skuId}/assign/${userId}`));
+    return data;
+  },
+
   getGroups: async () => {
     const { data } = await api.get(wsUrl('/m365/groups'));
     return data;

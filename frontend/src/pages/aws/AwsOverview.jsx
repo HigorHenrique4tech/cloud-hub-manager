@@ -1,9 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { MonitorPlay, HardDrive, Database, Zap, Network, AlertCircle } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import ResourceMetricsPanel from '../../components/monitoring/ResourceMetricsPanel';
 import awsService from '../../services/awsservices';
 
 const serviceCards = [
@@ -15,10 +16,19 @@ const serviceCards = [
 ];
 
 const AwsOverview = () => {
+  const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
     queryKey: ['aws-overview'],
     queryFn: () => awsService.getOverview(),
     retry: false,
+  });
+
+  const metricsQ = useQuery({
+    queryKey: ['aws-metrics'],
+    queryFn: () => awsService.getMetrics(),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    enabled: !error,
   });
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando visão geral AWS..." /></Layout>;
@@ -70,6 +80,13 @@ const AwsOverview = () => {
           );
         })}
       </div>
+
+      <ResourceMetricsPanel
+        resources={metricsQ.data?.resources}
+        isLoading={metricsQ.isLoading}
+        isError={metricsQ.isError}
+        onRefresh={() => queryClient.invalidateQueries({ queryKey: ['aws-metrics'] })}
+      />
     </Layout>
   );
 };

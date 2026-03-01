@@ -54,6 +54,9 @@ export const azureService = {
   deleteVNet: async (resourceGroup, vnetName) => (await api.delete(wsUrl(`/azure/vnets/${resourceGroup}/${vnetName}`))).data,
   deleteSQLServer: async (resourceGroup, serverName) => (await api.delete(wsUrl(`/azure/databases/${resourceGroup}/${serverName}`))).data,
   deleteAppService: async (resourceGroup, appName) => (await api.delete(wsUrl(`/azure/app-services/${resourceGroup}/${appName}`))).data,
+
+  // Metrics
+  getMetrics: async () => (await api.get(wsUrl('/azure/metrics'))).data,
 };
 
 export default azureService;

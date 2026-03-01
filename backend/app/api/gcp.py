@@ -387,3 +387,19 @@ async def ws_get_gcp_costs(
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@ws_router.get("/metrics")
+async def ws_get_gcp_metrics(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Returns CPU metrics for running GCE instances (last 1 hour)."""
+    try:
+        account = _get_gcp_account(member, db)
+        svc = _build_gcp_service(account)
+        return svc.get_metrics()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

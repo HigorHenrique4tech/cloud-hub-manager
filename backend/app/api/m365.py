@@ -709,6 +709,83 @@ async def get_service_health(
         raise HTTPException(status_code=502, detail="Falha ao carregar saúde dos serviços")
 
 
+# ── License assignment ─────────────────────────────────────────────────────────
+
+
+class AssignLicenseRequest(BaseModel):
+    user_id: str
+
+
+@ws_router.get("/licenses/{sku_id}/users")
+async def get_license_users(
+    sku_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return all users who have the given license SKU assigned."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    try:
+        svc = _build_service(acct)
+        return {"users": svc.get_license_users(sku_id)}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 get_license_users error: %s", exc)
+        raise HTTPException(status_code=502, detail="Falha ao listar usuários da licença")
+
+
+@ws_router.post("/licenses/{sku_id}/assign")
+async def assign_license(
+    sku_id: str,
+    body: AssignLicenseRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Assign a license SKU to a user."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    try:
+        svc = _build_service(acct)
+        svc.assign_license(body.user_id, sku_id)
+        return {"detail": "Licença atribuída com sucesso"}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 assign_license error: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao atribuir licença: {exc}")
+
+
+@ws_router.delete("/licenses/{sku_id}/assign/{user_id}")
+async def remove_license(
+    sku_id: str,
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Remove a license SKU from a user."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    try:
+        svc = _build_service(acct)
+        svc.remove_license(user_id, sku_id)
+        return {"detail": "Licença removida com sucesso"}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 remove_license error: %s", exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao remover licença: {exc}")
+
+
 # ── Org-level Router (MSP Master) ─────────────────────────────────────────────
 
 org_router = APIRouter(

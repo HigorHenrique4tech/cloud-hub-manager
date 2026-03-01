@@ -58,6 +58,9 @@ export const awsService = {
   // Costs
   getCosts: async (startDate, endDate, granularity = 'DAILY') =>
     (await api.get(wsUrl('/aws/costs'), { params: { start_date: startDate, end_date: endDate, granularity } })).data,
+
+  // Metrics
+  getMetrics: async () => (await api.get(wsUrl('/aws/metrics'))).data,
 };
 
 export default awsService;

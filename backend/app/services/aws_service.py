@@ -649,6 +649,74 @@ class AWSService:
             logger.error(f"get_overview error: {e}")
             return {'success': False, 'error': str(e)}
 
+    # ── Metrics (CloudWatch) ──────────────────────────────────────────────────
+
+    def get_metrics(self, limit: int = 15) -> dict:
+        """Fetch CloudWatch metrics (CPU + Network) for running EC2 instances."""
+        try:
+            end = datetime.utcnow()
+            start = end - timedelta(hours=1)
+
+            # 1. List running EC2 instances
+            resp = self.ec2_client.describe_instances(
+                Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
+            )
+            instances = []
+            for reservation in resp.get("Reservations", []):
+                for inst in reservation.get("Instances", []):
+                    name = next(
+                        (t["Value"] for t in (inst.get("Tags") or []) if t["Key"] == "Name"),
+                        inst.get("InstanceId"),
+                    )
+                    instances.append({
+                        "id": inst["InstanceId"],
+                        "name": name,
+                        "type": "ec2",
+                        "region": self.region,
+                        "status": "running",
+                        "instance_type": inst.get("InstanceType", ""),
+                    })
+            instances = instances[:limit]
+
+            if not instances:
+                return {"resources": [], "scanned_at": end.isoformat()}
+
+            # 2. Build batch CloudWatch queries (cpu + netin + netout per instance)
+            cw = self._boto3_client("cloudwatch")
+            queries = []
+            for idx, inst in enumerate(instances):
+                dims = [{"Name": "InstanceId", "Value": inst["id"]}]
+                queries.extend([
+                    {"Id": f"cpu{idx}", "MetricStat": {"Metric": {"Namespace": "AWS/EC2", "MetricName": "CPUUtilization", "Dimensions": dims}, "Period": 3600, "Stat": "Average"}, "ReturnData": True},
+                    {"Id": f"netin{idx}", "MetricStat": {"Metric": {"Namespace": "AWS/EC2", "MetricName": "NetworkIn", "Dimensions": dims}, "Period": 3600, "Stat": "Sum"}, "ReturnData": True},
+                    {"Id": f"netout{idx}", "MetricStat": {"Metric": {"Namespace": "AWS/EC2", "MetricName": "NetworkOut", "Dimensions": dims}, "Period": 3600, "Stat": "Sum"}, "ReturnData": True},
+                ])
+
+            cw_resp = cw.get_metric_data(
+                MetricDataQueries=queries,
+                StartTime=start,
+                EndTime=end,
+            )
+            results_by_id = {r["Id"]: r.get("Values", []) for r in cw_resp.get("MetricDataResults", [])}
+
+            resources = []
+            for idx, inst in enumerate(instances):
+                cpu_vals = results_by_id.get(f"cpu{idx}", [])
+                net_in_vals = results_by_id.get(f"netin{idx}", [])
+                net_out_vals = results_by_id.get(f"netout{idx}", [])
+                resources.append({
+                    **inst,
+                    "cpu_pct": round(sum(cpu_vals) / len(cpu_vals), 1) if cpu_vals else None,
+                    "memory_pct": None,
+                    "net_in_bytes": int(sum(net_in_vals)) if net_in_vals else None,
+                    "net_out_bytes": int(sum(net_out_vals)) if net_out_vals else None,
+                })
+
+            return {"resources": resources, "scanned_at": end.isoformat()}
+        except Exception as exc:
+            logger.error("get_metrics error: %s", exc)
+            raise
+
     # ── Costs ─────────────────────────────────────────────────────────────────
 
     async def get_cost_and_usage(self, start_date: str, end_date: str, granularity: str = 'DAILY') -> Dict:

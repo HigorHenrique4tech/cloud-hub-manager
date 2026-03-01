@@ -605,3 +605,18 @@ async def azure_security_scan(
         "scanned_at": datetime.utcnow().isoformat(),
         "provider": "azure",
     }
+
+
+@ws_router.get("/metrics")
+async def ws_get_azure_metrics(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Returns CPU metrics for running Azure VMs (last 1 hour)."""
+    try:
+        svc = _get_single_azure_service(member, db)
+        return svc.get_metrics()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

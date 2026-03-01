@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight, RefreshCw, Box, Layers } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import ResourceMetricsPanel from '../../components/monitoring/ResourceMetricsPanel';
 import azureService from '../../services/azureservices';
 
 const ResourceRow = ({ resource }) => (
@@ -99,11 +101,20 @@ const ResourceGroupAccordion = ({ rg }) => {
 };
 
 const AzureOverview = () => {
+  const queryClient = useQueryClient();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
   const [subscriptions, setSubscriptions] = useState([]);
   const [resourceGroups, setResourceGroups] = useState([]);
+
+  const metricsQ = useQuery({
+    queryKey: ['azure-metrics'],
+    queryFn: () => azureService.getMetrics(),
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+    enabled: !noCredentials,
+  });
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -191,6 +202,13 @@ const AzureOverview = () => {
           </div>
         )}
       </section>
+
+      <ResourceMetricsPanel
+        resources={metricsQ.data?.resources}
+        isLoading={metricsQ.isLoading}
+        isError={metricsQ.isError}
+        onRefresh={() => queryClient.invalidateQueries({ queryKey: ['azure-metrics'] })}
+      />
     </Layout>
   );
 };

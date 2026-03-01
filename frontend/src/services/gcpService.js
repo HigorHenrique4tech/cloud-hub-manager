@@ -31,6 +31,9 @@ const gcpService = {
   listNetworks: () => api.get(wsUrl('/gcp/networks')).then(r => r.data),
   createNetwork: (payload) => api.post(wsUrl('/gcp/networks'), payload).then(r => r.data),
   deleteNetwork: (name) => api.delete(wsUrl(`/gcp/networks/${name}`)),
+
+  // Metrics
+  getMetrics: () => api.get(wsUrl('/gcp/metrics')).then(r => r.data),
 };
 
 export default gcpService;
