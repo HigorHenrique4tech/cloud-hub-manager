@@ -175,13 +175,22 @@ def _fetch_aws(account: CloudAccount) -> list:
         return []
 
 
+def _extract_resource_group(resource_id: str) -> str:
+    """Extract resource group name from an Azure resource ID."""
+    if not resource_id:
+        return ""
+    parts = resource_id.split("/")
+    for i, part in enumerate(parts):
+        if part.lower() == "resourcegroups" and i + 1 < len(parts):
+            return parts[i + 1]
+    return ""
+
+
 def _fetch_azure(account: CloudAccount) -> list:
+    """Fetch ALL resources from an Azure subscription using the generic Resources API."""
     try:
         from azure.identity import ClientSecretCredential
-        from azure.mgmt.compute import ComputeManagementClient
-        from azure.mgmt.storage import StorageManagementClient
-        from azure.mgmt.sql import SqlManagementClient
-        from azure.mgmt.web import WebSiteManagementClient
+        from azure.mgmt.resource import ResourceManagementClient
 
         creds = decrypt_credential(account.encrypted_data)
         tenant_id = creds.get("tenant_id", "")
@@ -192,71 +201,51 @@ def _fetch_azure(account: CloudAccount) -> list:
             return []
 
         credential = ClientSecretCredential(tenant_id, client_id, client_secret)
+        resource_client = ResourceManagementClient(credential, subscription_id)
         items = []
 
-        # VMs
         try:
-            compute = ComputeManagementClient(credential, subscription_id)
-            for vm in compute.virtual_machines.list_all():
-                loc = vm.location or ""
-                items.append({
-                    "provider": "azure", "resource_type": "vm",
-                    "name": vm.name, "resource_id": vm.id or vm.name,
-                    "status": "running", "region": loc,
-                    "created_at": None,
-                    "tags": dict(vm.tags or {}),
-                    "cost_hint": (vm.hardware_profile.vm_size if vm.hardware_profile else None),
-                })
-        except Exception as e:
-            logger.warning("Azure VM inventory error: %s", e)
+            for resource in resource_client.resources.list(expand="provisioningState,createdTime"):
+                resource_id = resource.id or resource.name or ""
+                resource_group = _extract_resource_group(resource_id)
 
-        # Storage
-        try:
-            storage = StorageManagementClient(credential, subscription_id)
-            for acc in storage.storage_accounts.list():
-                items.append({
-                    "provider": "azure", "resource_type": "storage",
-                    "name": acc.name, "resource_id": acc.id or acc.name,
-                    "status": acc.status_of_primary or "available",
-                    "region": acc.location or "",
-                    "created_at": acc.creation_time.isoformat() if acc.creation_time else None,
-                    "tags": dict(acc.tags or {}),
-                    "cost_hint": (acc.sku.name if acc.sku else None),
-                })
-        except Exception as e:
-            logger.warning("Azure Storage inventory error: %s", e)
+                # Normalize resource type — e.g. "Microsoft.Compute/virtualMachines" → "virtualMachines"
+                raw_type = resource.type or ""
+                rtype = raw_type.split("/")[-1].lower() if "/" in raw_type else raw_type.lower()
 
-        # SQL
-        try:
-            sql = SqlManagementClient(credential, subscription_id)
-            for srv in sql.servers.list():
-                items.append({
-                    "provider": "azure", "resource_type": "database",
-                    "name": srv.name, "resource_id": srv.id or srv.name,
-                    "status": srv.state or "ready",
-                    "region": srv.location or "",
-                    "created_at": None,
-                    "tags": dict(srv.tags or {}),
-                    "cost_hint": None,
-                })
-        except Exception as e:
-            logger.warning("Azure SQL inventory error: %s", e)
+                # Provisioning / power state
+                status = "available"
+                if hasattr(resource, "properties") and resource.properties:
+                    ps = None
+                    if isinstance(resource.properties, dict):
+                        ps = resource.properties.get("provisioningState") or resource.properties.get("state")
+                    else:
+                        ps = getattr(resource.properties, "provisioning_state", None)
+                    if ps:
+                        status = ps.lower()
 
-        # App Services
-        try:
-            web = WebSiteManagementClient(credential, subscription_id)
-            for app in web.web_apps.list():
+                # Creation time
+                created_at = None
+                if hasattr(resource, "created_time") and resource.created_time:
+                    try:
+                        created_at = resource.created_time.isoformat()
+                    except Exception:
+                        pass
+
                 items.append({
-                    "provider": "azure", "resource_type": "appservice",
-                    "name": app.name, "resource_id": app.id or app.name,
-                    "status": app.state or "running",
-                    "region": app.location or "",
-                    "created_at": None,
-                    "tags": dict(app.tags or {}),
-                    "cost_hint": None,
+                    "provider": "azure",
+                    "resource_type": rtype,
+                    "name": resource.name or "",
+                    "resource_id": resource_id,
+                    "resource_group": resource_group,
+                    "status": status,
+                    "region": resource.location or "",
+                    "created_at": created_at,
+                    "tags": dict(resource.tags or {}),
+                    "cost_hint": (resource.sku.name if resource.sku else None),
                 })
         except Exception as e:
-            logger.warning("Azure App Services inventory error: %s", e)
+            logger.warning("Azure resources.list() error: %s", e)
 
         return items
     except Exception as e:
@@ -386,10 +375,16 @@ async def list_inventory(
     resource_type: str = Query("all"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    refresh: bool = Query(False, description="Bypass cache and re-fetch from cloud providers"),
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     """List all cloud resources in this workspace (paginated)."""
+    if refresh:
+        # Invalidate cache for this workspace so _collect_all re-fetches
+        key = _cache_key(member.workspace_id)
+        with _inv_cache_lock:
+            _inv_cache.pop(key, None)
     items = _collect_all(db, member.workspace_id, provider)
 
     # Filter by resource type
@@ -432,7 +427,7 @@ async def export_inventory(
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Provider", "Tipo", "Nome", "ID", "Status", "Região", "Criado", "Tags", "Spec"])
+    writer.writerow(["Provider", "Tipo", "Nome", "Grupo de Recurso", "ID", "Status", "Região", "Criado", "Tags", "Spec"])
 
     for item in items:
         tags_str = "; ".join(f"{k}={v}" for k, v in (item.get("tags") or {}).items())
@@ -440,6 +435,7 @@ async def export_inventory(
             item.get("provider", ""),
             item.get("resource_type", ""),
             item.get("name", ""),
+            item.get("resource_group", ""),
             item.get("resource_id", ""),
             item.get("status", ""),
             item.get("region", ""),

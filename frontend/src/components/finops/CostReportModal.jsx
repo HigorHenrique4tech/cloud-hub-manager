@@ -174,14 +174,26 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
     style.id = 'cost-report-print-style';
     style.textContent = `
       @media print {
-        body > * { visibility: hidden !important; }
+        body * { visibility: hidden !important; }
+        .cost-report-overlay {
+          position: static !important;
+          background: transparent !important;
+          overflow: visible !important;
+        }
         #cost-report-print, #cost-report-print * { visibility: visible !important; }
         #cost-report-print {
-          position: fixed; top: 0; left: 0; width: 100%;
-          overflow: visible; z-index: 9999; background: white;
+          position: absolute !important;
+          top: 0 !important; left: 0 !important;
+          width: 100% !important; max-width: 100% !important;
+          overflow: visible !important;
+          box-shadow: none !important;
+          border-radius: 0 !important;
+          background: white !important;
+          margin: 0 !important;
+          min-height: auto !important;
         }
         .no-print { display: none !important; }
-        @page { margin: 1.2cm; }
+        @page { margin: 1.5cm; size: A4 portrait; }
       }
     `;
     document.head.appendChild(style);
@@ -189,7 +201,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 overflow-y-auto">
+    <div className="cost-report-overlay fixed inset-0 z-50 bg-black/60 overflow-y-auto">
       <div
         id="cost-report-print"
         className="min-h-screen bg-white dark:bg-gray-900 max-w-5xl mx-auto my-6 rounded-xl shadow-2xl"
@@ -231,7 +243,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Gerado em: {generatedAt}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold">Cloud Hub Manager</p>
+              <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold">CloudAtlas</p>
               <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mt-1">{fmtUSD(data.total)}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500">total no período</p>
             </div>
@@ -472,7 +484,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
 
           {/* Footer */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4 text-center text-xs text-gray-400 dark:text-gray-500">
-            Relatório gerado automaticamente pelo <strong className="text-gray-500 dark:text-gray-400">Cloud Hub Manager</strong> · {generatedAt}
+            Relatório gerado automaticamente pelo <strong className="text-gray-500 dark:text-gray-400">CloudAtlas</strong> · {generatedAt}
           </div>
 
         </div>

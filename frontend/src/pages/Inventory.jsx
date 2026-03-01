@@ -28,7 +28,8 @@ const PROVIDER_OPTIONS = [
 const TYPE_OPTIONS = [
   { value: 'all', label: 'Todos os tipos' },
   { value: 'ec2', label: 'EC2' }, { value: 's3', label: 'S3' }, { value: 'rds', label: 'RDS' }, { value: 'lambda', label: 'Lambda' },
-  { value: 'vm', label: 'VM (Azure)' }, { value: 'storage', label: 'Storage' }, { value: 'database', label: 'Database' }, { value: 'appservice', label: 'App Service' },
+  { value: 'virtualmachines', label: 'VM (Azure)' }, { value: 'storageaccounts', label: 'Storage (Azure)' },
+  { value: 'servers', label: 'SQL Server (Azure)' }, { value: 'sites', label: 'App Service (Azure)' },
   { value: 'compute', label: 'Compute (GCP)' }, { value: 'bucket', label: 'Bucket (GCP)' }, { value: 'sql', label: 'Cloud SQL' }, { value: 'function', label: 'Function' },
 ];
 
@@ -48,12 +49,23 @@ const Inventory = () => {
   const [resourceType, setResourceType] = useState('all');
   const [page, setPage] = useState(1);
 
+  const [forceRefresh, setForceRefresh] = useState(false);
+
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['inventory', provider, resourceType, page],
-    queryFn: () => inventoryService.getInventory({ provider, resource_type: resourceType, page, page_size: PAGE_SIZE }),
+    queryKey: ['inventory', provider, resourceType, page, forceRefresh],
+    queryFn: () => inventoryService.getInventory({
+      provider, resource_type: resourceType, page, page_size: PAGE_SIZE,
+      ...(forceRefresh ? { refresh: true } : {}),
+    }),
     staleTime: 5 * 60 * 1000,
     keepPreviousData: true,
   });
+
+  const handleRefresh = () => {
+    setForceRefresh(true);
+    // Reset flag after query fires so subsequent navigations use cache
+    setTimeout(() => setForceRefresh(false), 500);
+  };
 
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -96,7 +108,7 @@ const Inventory = () => {
           </div>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => refetch()}
+              onClick={handleRefresh}
               disabled={isFetching}
               className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
             >
@@ -135,7 +147,7 @@ const Inventory = () => {
         {/* Table */}
         <div className="card overflow-hidden">
           {isLoading ? (
-            <SkeletonTable columns={6} rows={10} />
+            <SkeletonTable columns={7} rows={10} />
           ) : items.length === 0 ? (
             <EmptyState
               icon={PackageSearch}
@@ -150,6 +162,7 @@ const Inventory = () => {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Provider</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Tipo</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Nome</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Grupo de Recurso</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Região</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Spec</th>
@@ -163,11 +176,14 @@ const Inventory = () => {
                         {RESOURCE_TYPE_LABELS[item.resource_type] || item.resource_type}
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-gray-800 dark:text-slate-200 truncate max-w-xs">{item.name}</p>
-                        <p className="text-xs text-gray-400 dark:text-slate-500 font-mono truncate max-w-xs">{item.resource_id}</p>
+                        <p className="text-sm font-medium text-gray-800 dark:text-slate-200 truncate max-w-[200px]">{item.name}</p>
+                        <p className="text-xs text-gray-400 dark:text-slate-500 font-mono truncate max-w-[200px]" title={item.resource_id}>{item.resource_id}</p>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">
+                        {item.resource_group || '—'}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs font-medium ${item.status === 'running' || item.status === 'available' || item.status === 'active' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-slate-400'}`}>
+                        <span className={`text-xs font-medium ${item.status === 'running' || item.status === 'available' || item.status === 'active' || item.status === 'succeeded' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-slate-400'}`}>
                           {item.status || '—'}
                         </span>
                       </td>
