@@ -89,6 +89,10 @@ def execute_scheduled_action(schedule_id: str) -> None:
                 "provider":      s.provider,
                 "action":        s.action,
             })
+            from app.services.notification_service import push_notification as _push
+            _push(db, s.workspace_id, "schedule",
+                  f"Agendamento executado: {s.resource_name} ({s.action})",
+                  "/schedules")
         except Exception as exc:
             logger.exception(f"Scheduled action {schedule_id} failed: {exc}")
             _record_run(db, s, "failed", str(exc)[:500])
@@ -101,6 +105,10 @@ def execute_scheduled_action(schedule_id: str) -> None:
                 "action":        s.action,
                 "error":         str(exc)[:200],
             })
+            from app.services.notification_service import push_notification as _push
+            _push(db, s.workspace_id, "schedule",
+                  f"Falha no agendamento: {s.resource_name} — {str(exc)[:100]}",
+                  "/schedules")
 
     except Exception as exc:
         logger.exception(f"Unexpected error in scheduler job {schedule_id}: {exc}")
@@ -422,6 +430,11 @@ def execute_budget_eval() -> None:
                         "budget_amount": budget.amount,
                         "pct":          round(pct, 4),
                     })
+                    from app.services.notification_service import push_notification as _push
+                    _push(db, budget.workspace_id, "budget",
+                          f"Orçamento '{budget.name}' atingiu {round(pct * 100, 1)}% do limite "
+                          f"(${spend:,.2f} / ${budget.amount:,.2f})",
+                          "/finops")
                     budget.alert_sent_at = datetime.utcnow()
 
                 db.commit()
@@ -432,6 +445,46 @@ def execute_budget_eval() -> None:
 
     except Exception as exc:
         logger.error(f"execute_budget_eval failed: {exc}")
+    finally:
+        db.close()
+
+
+# ── Anomaly Detection Job ──────────────────────────────────────────────────────
+
+
+def execute_anomaly_detection() -> None:
+    """
+    Daily job (09:00 UTC) — runs statistical cost anomaly detection (3σ baseline)
+    across all workspaces that have active AWS or Azure cloud accounts.
+    """
+    from app.database import SessionLocal
+    from app.models.db_models import CloudAccount
+    from app.api.finops import detect_and_save_anomalies
+
+    db = SessionLocal()
+    try:
+        # Distinct workspaces with active AWS or Azure accounts
+        rows = (
+            db.query(CloudAccount.workspace_id)
+            .filter(
+                CloudAccount.is_active == True,
+                CloudAccount.provider.in_(["aws", "azure"]),
+            )
+            .distinct()
+            .all()
+        )
+        workspace_ids = [r[0] for r in rows]
+        total_new = 0
+        for ws_id in workspace_ids:
+            try:
+                count = detect_and_save_anomalies(ws_id, db)
+                total_new += count
+            except Exception as exc:
+                logger.error(f"Anomaly detection failed for workspace {ws_id}: {exc}")
+                db.rollback()
+        logger.info(f"Anomaly detection complete: {total_new} new anomalies across {len(workspace_ids)} workspaces")
+    except Exception as exc:
+        logger.error(f"execute_anomaly_detection failed: {exc}")
     finally:
         db.close()
 
@@ -727,6 +780,18 @@ def load_report_schedules(db) -> int:
         logger.info("Daily budget evaluation job registered")
     except Exception as exc:
         logger.error(f"Failed to register budget_eval_daily job: {exc}")
+
+    # Register daily anomaly detection job (09:00 UTC — after budget eval)
+    try:
+        scheduler.add_job(
+            execute_anomaly_detection,
+            CronTrigger(hour=9, minute=0),
+            id="anomaly_detection_daily",
+            replace_existing=True,
+        )
+        logger.info("Daily anomaly detection job registered")
+    except Exception as exc:
+        logger.error(f"Failed to register anomaly_detection_daily job: {exc}")
 
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count

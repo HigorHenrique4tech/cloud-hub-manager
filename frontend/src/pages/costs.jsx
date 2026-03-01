@@ -6,10 +6,11 @@ import {
 } from 'recharts';
 import {
   DollarSign, TrendingUp, TrendingDown, AlertCircle,
-  Download, Printer, Plus, Trash2, Bell, CheckCircle,
+  Download, Printer, Plus, Trash2, Bell, CheckCircle, FileText,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
+import CostReportModal from '../components/finops/CostReportModal';
 import costService from '../services/costService';
 import alertService from '../services/alertService';
 
@@ -24,7 +25,7 @@ const PERIODS = [
   { label: '1 ano', days: 365 },
 ];
 
-const PIE_COLORS = ['#f97316', '#0ea5e9'];
+const PIE_COLORS = ['#f97316', '#0ea5e9', '#10b981'];
 
 const fmtUSD = (v) =>
   v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -159,6 +160,7 @@ const AlertModal = ({ onClose, onSave }) => {
 const Costs = () => {
   const [periodIdx, setPeriodIdx] = useState(0);
   const [showModal, setShowModal] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   const qc = useQueryClient();
 
   const { days } = PERIODS[periodIdx];
@@ -210,7 +212,7 @@ const Costs = () => {
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const dayOfMonth = today.getDate();
     const daysLeft = daysInMonth - dayOfMonth;
-    const projection = (data.aws?.total || 0) + (data.azure?.total || 0) > 0
+    const projection = ((data.aws?.total || 0) + (data.azure?.total || 0) + (data.gcp?.total || 0)) > 0
       ? avgDaily * daysLeft + total
       : 0;
     const topService = data.by_service?.[0];
@@ -226,8 +228,8 @@ const Costs = () => {
       [`Período: ${startDate} a ${endDate}`, '', ''],
       [`Gerado em: ${date}`, '', ''],
       [''],
-      ['Data', 'AWS (USD)', 'Azure (USD)', 'Total (USD)'],
-      ...(data.combined || []).map((d) => [d.date, d.aws?.toFixed(4) || 0, d.azure?.toFixed(4) || 0, d.total?.toFixed(4) || 0]),
+      ['Data', 'AWS (USD)', 'Azure (USD)', 'GCP (USD)', 'Total (USD)'],
+      ...(data.combined || []).map((d) => [d.date, d.aws?.toFixed(4) || 0, d.azure?.toFixed(4) || 0, d.gcp?.toFixed(4) || 0, d.total?.toFixed(4) || 0]),
       [''],
       ['Serviço', 'Valor (USD)', ''],
       ...(data.by_service || []).map((s) => [s.name, s.amount?.toFixed(4), '']),
@@ -251,7 +253,8 @@ const Costs = () => {
 
   const hasAws   = !!data?.aws;
   const hasAzure = !!data?.azure;
-  const hasAny   = hasAws || hasAzure;
+  const hasGcp   = !!data?.gcp;
+  const hasAny   = hasAws || hasAzure || hasGcp;
 
   return (
     <Layout>
@@ -259,6 +262,18 @@ const Costs = () => {
         <AlertModal
           onClose={() => setShowModal(false)}
           onSave={(d) => createMutation.mutate(d)}
+        />
+      )}
+
+      {showReport && data && metrics && (
+        <CostReportModal
+          data={data}
+          metrics={metrics}
+          startDate={startDate}
+          endDate={endDate}
+          periodLabel={PERIODS[periodIdx].label}
+          days={days}
+          onClose={() => setShowReport(false)}
         />
       )}
 
@@ -270,6 +285,7 @@ const Costs = () => {
             {startDate} → {endDate}
             {!hasAws && <span className="ml-2 text-yellow-600 dark:text-yellow-400">(sem dados AWS)</span>}
             {!hasAzure && <span className="ml-2 text-yellow-600 dark:text-yellow-400">(sem dados Azure)</span>}
+            {hasGcp && data?.gcp?.estimated && <span className="ml-2 text-green-600 dark:text-green-400">(GCP estimado)</span>}
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap no-print">
@@ -289,6 +305,13 @@ const Costs = () => {
               </button>
             ))}
           </div>
+          <button
+            onClick={() => setShowReport(true)}
+            disabled={!hasAny}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 transition-colors"
+          >
+            <FileText className="w-4 h-4" /> Relatório Detalhado
+          </button>
           <button onClick={exportCSV} disabled={!hasAny}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
             <Download className="w-4 h-4" /> CSV
@@ -339,6 +362,7 @@ const Costs = () => {
                 <Legend />
                 {hasAws   && <Line type="monotone" dataKey="aws"   name="AWS"   stroke="#f97316" strokeWidth={2} dot={false} />}
                 {hasAzure && <Line type="monotone" dataKey="azure" name="Azure" stroke="#0ea5e9" strokeWidth={2} dot={false} />}
+                {hasGcp   && <Line type="monotone" dataKey="gcp"   name="GCP"   stroke="#10b981" strokeWidth={2} dot={false} />}
                 <Line type="monotone" dataKey="total" name="Total" stroke="#8b5cf6" strokeWidth={2} strokeDasharray="4 2" dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -362,29 +386,67 @@ const Costs = () => {
             )}
 
             {/* Pie Chart */}
-            {hasAws && hasAzure && (
+            {[hasAws, hasAzure, hasGcp].filter(Boolean).length >= 2 && (
               <div className="card flex flex-col items-center justify-center">
                 <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4 self-start">Distribuição por Cloud</h2>
                 <ResponsiveContainer width="100%" height={220}>
                   <PieChart>
                     <Pie
                       data={[
-                        { name: 'AWS', value: data.aws?.total || 0 },
-                        { name: 'Azure', value: data.azure?.total || 0 },
-                      ]}
+                        hasAws   && { name: 'AWS',   value: data.aws?.total   || 0 },
+                        hasAzure && { name: 'Azure', value: data.azure?.total || 0 },
+                        hasGcp   && { name: 'GCP*',  value: data.gcp?.total   || 0 },
+                      ].filter(Boolean)}
                       cx="50%" cy="50%" innerRadius={55} outerRadius={80}
                       dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
                       labelLine={false}
                     >
-                      {PIE_COLORS.map((c, i) => <Cell key={i} fill={c} />)}
+                      {[hasAws && '#f97316', hasAzure && '#0ea5e9', hasGcp && '#10b981'].filter(Boolean).map((c, i) => (
+                        <Cell key={i} fill={c} />
+                      ))}
                     </Pie>
                     <Tooltip formatter={(v) => fmtUSD(v)} />
                   </PieChart>
                 </ResponsiveContainer>
+                {hasGcp && data?.gcp?.estimated && (
+                  <p className="text-xs text-green-500 dark:text-green-400 mt-1">* GCP: valor estimado</p>
+                )}
               </div>
             )}
           </div>
         </>
+      )}
+
+      {/* Provider breakdown cards */}
+      {hasAny && (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          {hasAws && (
+            <div className="card border-l-4 border-l-orange-400">
+              <p className="text-xs font-semibold text-orange-400 uppercase tracking-wide mb-1">AWS</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtUSD(data.aws?.total)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">período selecionado</p>
+            </div>
+          )}
+          {hasAzure && (
+            <div className="card border-l-4 border-l-sky-400">
+              <p className="text-xs font-semibold text-sky-400 uppercase tracking-wide mb-1">Azure</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtUSD(data.azure?.total)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">período selecionado</p>
+            </div>
+          )}
+          {hasGcp && (
+            <div className="card border-l-4 border-l-emerald-400">
+              <p className="text-xs font-semibold text-emerald-400 uppercase tracking-wide mb-1 flex items-center gap-1.5">
+                GCP
+                {data.gcp?.estimated && (
+                  <span className="text-[10px] font-normal bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded px-1 py-0.5">estimado</span>
+                )}
+              </p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtUSD(data.gcp?.total)}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">período selecionado</p>
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Alert Management ─────────────────────────────── */}

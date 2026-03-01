@@ -194,12 +194,15 @@ class AlertEvent(Base):
     __tablename__ = "alert_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    alert_id = Column(UUID(as_uuid=True), ForeignKey("cost_alerts.id", ondelete="CASCADE"), nullable=False)
+    alert_id = Column(UUID(as_uuid=True), ForeignKey("cost_alerts.id", ondelete="CASCADE"), nullable=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
     triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    current_value = Column(Float, nullable=False)
-    threshold_value = Column(Float, nullable=False)
+    current_value = Column(Float, nullable=True)
+    threshold_value = Column(Float, nullable=True)
     message = Column(String(500), nullable=True)
     is_read = Column(Boolean, default=False, nullable=False)
+    notification_type = Column(String(50), default='cost_alert', nullable=False)
+    link_to = Column(String(255), nullable=True)
 
     alert = relationship("CostAlert", back_populates="events")
 

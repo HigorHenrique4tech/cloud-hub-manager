@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -57,12 +58,14 @@ def alert_to_dict(alert: CostAlert) -> dict:
 def event_to_dict(event: AlertEvent) -> dict:
     return {
         'id': str(event.id),
-        'alert_id': str(event.alert_id),
+        'alert_id': str(event.alert_id) if event.alert_id else None,
         'triggered_at': event.triggered_at.isoformat() if event.triggered_at else None,
         'current_value': event.current_value,
         'threshold_value': event.threshold_value,
         'message': event.message,
         'is_read': event.is_read,
+        'notification_type': event.notification_type,
+        'link_to': event.link_to,
     }
 
 
@@ -175,8 +178,11 @@ async def ws_get_events(
     """Get alert events for this workspace."""
     query = (
         db.query(AlertEvent)
-        .join(CostAlert, AlertEvent.alert_id == CostAlert.id)
-        .filter(CostAlert.workspace_id == member.workspace_id)
+        .outerjoin(CostAlert, AlertEvent.alert_id == CostAlert.id)
+        .filter(or_(
+            AlertEvent.workspace_id == member.workspace_id,
+            CostAlert.workspace_id == member.workspace_id,
+        ))
     )
     if unread_only:
         query = query.filter(AlertEvent.is_read == False)
@@ -192,8 +198,14 @@ async def ws_mark_event_read(
 ):
     event = (
         db.query(AlertEvent)
-        .join(CostAlert, AlertEvent.alert_id == CostAlert.id)
-        .filter(AlertEvent.id == event_id, CostAlert.workspace_id == member.workspace_id)
+        .outerjoin(CostAlert, AlertEvent.alert_id == CostAlert.id)
+        .filter(
+            AlertEvent.id == event_id,
+            or_(
+                AlertEvent.workspace_id == member.workspace_id,
+                CostAlert.workspace_id == member.workspace_id,
+            ),
+        )
         .first()
     )
     if not event:
@@ -210,8 +222,14 @@ async def ws_mark_all_events_read(
 ):
     (
         db.query(AlertEvent)
-        .join(CostAlert, AlertEvent.alert_id == CostAlert.id)
-        .filter(CostAlert.workspace_id == member.workspace_id, AlertEvent.is_read == False)
+        .outerjoin(CostAlert, AlertEvent.alert_id == CostAlert.id)
+        .filter(
+            or_(
+                AlertEvent.workspace_id == member.workspace_id,
+                CostAlert.workspace_id == member.workspace_id,
+            ),
+            AlertEvent.is_read == False,
+        )
         .update({AlertEvent.is_read: True}, synchronize_session=False)
     )
     db.commit()

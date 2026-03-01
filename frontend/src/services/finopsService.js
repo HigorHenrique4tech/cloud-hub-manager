@@ -51,6 +51,16 @@ const finopsService = {
     return data;
   },
 
+  bulkDismiss: async (recIds, reason = '') => {
+    const { data } = await api.post(wsUrl('/finops/recommendations/bulk-dismiss'), { rec_ids: recIds, reason });
+    return data;
+  },
+
+  bulkApply: async (recIds) => {
+    const { data } = await api.post(wsUrl('/finops/recommendations/bulk-apply'), { rec_ids: recIds });
+    return data;
+  },
+
   // ── Scan ──────────────────────────────────────────────────────────────────
 
   triggerScan: async (provider = null) => {
@@ -106,6 +116,11 @@ const finopsService = {
 
   acknowledgeAnomaly: async (anomalyId) => {
     const { data } = await api.post(wsUrl(`/finops/anomalies/${anomalyId}/acknowledge`));
+    return data;
+  },
+
+  triggerAnomalyScan: async () => {
+    const { data } = await api.post(wsUrl('/finops/anomalies/scan'));
     return data;
   },
 

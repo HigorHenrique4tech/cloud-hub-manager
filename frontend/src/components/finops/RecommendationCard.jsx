@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   ChevronDown, ChevronUp, Zap, Trash2, StopCircle,
-  ArrowRight, Lock, AlertTriangle, CheckCircle2, XCircle, Clock,
+  ArrowRight, Lock, AlertTriangle, CheckCircle2, XCircle, Clock, TrendingDown,
 } from 'lucide-react';
 import PermissionGate from '../common/PermissionGate';
 import PlanGate from '../common/PlanGate';
@@ -16,19 +16,21 @@ const SEVERITY_STYLES = {
 };
 
 const TYPE_ICON = {
-  right_size: <ArrowRight size={14} />,
-  stop:       <StopCircle size={14} />,
-  delete:     <Trash2 size={14} />,
-  schedule:   <Clock size={14} />,
-  reserve:    <Zap size={14} />,
+  right_size:  <ArrowRight size={14} />,
+  rightsizing: <TrendingDown size={14} />,
+  stop:        <StopCircle size={14} />,
+  delete:      <Trash2 size={14} />,
+  schedule:    <Clock size={14} />,
+  reserve:     <Zap size={14} />,
 };
 
 const TYPE_LABEL = {
-  right_size: 'Redimensionar',
-  stop:       'Parar',
-  delete:     'Deletar',
-  schedule:   'Agendar',
-  reserve:    'Reservar',
+  right_size:  'Redimensionar',
+  rightsizing: 'Redimensionar',
+  stop:        'Parar',
+  delete:      'Deletar',
+  schedule:    'Agendar',
+  reserve:     'Reservar',
 };
 
 const PROVIDER_BADGE = {
@@ -42,26 +44,40 @@ const STATUS_ICON = {
   failed:    <AlertTriangle size={14} className="text-red-400" />,
 };
 
-const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoading, planTier = 'free' }) => {
+const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoading, planTier = 'free', selected = false, onToggle }) => {
   const [expanded, setExpanded] = useState(false);
   const isLocked = rec._locked;
   const isPending = rec.status === 'pending';
   const isScheduleType = rec.recommendation_type === 'schedule';
 
-  const canApply  = !isLocked && isPending;
-  const planOk    = ['pro', 'enterprise'].includes((planTier || 'free').toLowerCase());
+  const canApply      = !isLocked && isPending;
+  const isRightsizing = rec.recommendation_type === 'rightsizing';
+  const planOk        = ['pro', 'enterprise'].includes((planTier || 'free').toLowerCase());
 
   return (
     <div className={`rounded-xl border transition-colors ${
-      isLocked
-        ? 'border-gray-200 bg-gray-50/50 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/30'
-        : 'border-gray-300 bg-white hover:border-gray-400 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
+      selected
+        ? 'border-indigo-500 bg-indigo-50/40 dark:border-indigo-500/60 dark:bg-indigo-900/10'
+        : isLocked
+          ? 'border-gray-200 bg-gray-50/50 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/30'
+          : 'border-gray-300 bg-white hover:border-gray-400 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
     }`}>
       {/* Header row */}
       <div
         className="flex items-start gap-3 p-4 cursor-pointer select-none"
         onClick={() => !isLocked && setExpanded((v) => !v)}
       >
+        {/* Checkbox (only when bulk mode active) */}
+        {onToggle && isPending && !isLocked && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={(e) => { e.stopPropagation(); onToggle(); }}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-1 h-4 w-4 shrink-0 accent-indigo-600 cursor-pointer"
+          />
+        )}
+
         {/* Severity badge */}
         <span className={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-xs font-bold uppercase tracking-wide ${SEVERITY_STYLES[rec.severity] || SEVERITY_STYLES.medium}`}>
           {rec.severity === 'high' ? '⬆ ALTA' : rec.severity === 'medium' ? '= MÉDIA' : '⬇ BAIXA'}
@@ -82,7 +98,9 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
           {/* Recommendation summary */}
           <div className="mt-1 flex items-center gap-1.5 text-sm text-slate-300">
             <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
-              isScheduleType ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300' : 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300'
+              isScheduleType ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300'
+              : isRightsizing ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300'
+              : 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300'
             }`}>
               {TYPE_ICON[rec.recommendation_type]}
               {TYPE_LABEL[rec.recommendation_type] || rec.recommendation_type}

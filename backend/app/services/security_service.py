@@ -17,6 +17,7 @@ All scan methods fail silently (log warning, return []) to avoid crashing the
 overall scan when a single check lacks permissions or encounters a transient error.
 """
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 
 import boto3
@@ -97,18 +98,27 @@ class AWSSecurityScanner:
             logger.warning(f"AWS S3 public scan error: {e}")
         return findings
 
+    # ── Region discovery ──────────────────────────────────────────────────────
+
+    def _get_regions(self) -> List[str]:
+        """Return all opted-in AWS regions, capped at 15 to limit scan time."""
+        try:
+            ec2 = self._client("ec2", "us-east-1")
+            resp = ec2.describe_regions(Filters=[
+                {"Name": "opt-in-status", "Values": ["opted-in", "opt-in-not-required"]}
+            ])
+            return [r["RegionName"] for r in resp.get("Regions", [])][:15]
+        except Exception:
+            return [self.region]
+
     # ── Security Groups open to internet ─────────────────────────────────────
 
-    def scan_sg_open(self) -> List[dict]:
-        """
-        Detect Security Groups that allow unrestricted inbound access (0.0.0.0/0 or ::/0)
-        on sensitive ports: 22 (SSH), 3389 (RDP), or ALL traffic (-1).
-        Requires ec2:DescribeSecurityGroups.
-        """
+    def _scan_sg_region(self, region: str) -> List[dict]:
+        """Scan Security Groups for a single region."""
         findings = []
         SENSITIVE_PORTS = {22: "SSH", 3389: "RDP"}
         try:
-            ec2 = self._client("ec2")
+            ec2 = self._client("ec2", region)
             paginator = ec2.get_paginator("describe_security_groups")
             for page in paginator.paginate():
                 for sg in page.get("SecurityGroups", []):
@@ -138,7 +148,7 @@ class AWSSecurityScanner:
                                 "severity":       "critical",
                                 "recommendation": "Remova a regra de acesso irrestrito. Permita apenas IPs ou ranges específicos.",
                                 "provider":       "aws",
-                                "region":         self.region,
+                                "region":         region,
                             })
                         else:
                             for port, svc in SENSITIVE_PORTS.items():
@@ -151,10 +161,27 @@ class AWSSecurityScanner:
                                         "severity":       "high",
                                         "recommendation": f"Restrinja o acesso à porta {port} a IPs ou ranges específicos conhecidos.",
                                         "provider":       "aws",
-                                        "region":         self.region,
+                                        "region":         region,
                                     })
         except ClientError as e:
-            logger.warning(f"AWS SG scan error: {e}")
+            logger.warning(f"AWS SG scan error (region={region}): {e}")
+        return findings
+
+    def scan_sg_open(self) -> List[dict]:
+        """
+        Detect Security Groups that allow unrestricted inbound access (0.0.0.0/0 or ::/0)
+        on sensitive ports: 22 (SSH), 3389 (RDP), or ALL traffic (-1).
+        Scans all opted-in regions in parallel (max 5 workers).
+        """
+        regions = self._get_regions()
+        findings: List[dict] = []
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            futures = {ex.submit(self._scan_sg_region, r): r for r in regions}
+            for future in as_completed(futures):
+                try:
+                    findings.extend(future.result())
+                except Exception as e:
+                    logger.warning(f"AWS SG region scan failed ({futures[future]}): {e}")
         return findings
 
     # ── IAM root access key ───────────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timedelta
 from typing import Optional
 
 from google.oauth2 import service_account
@@ -8,6 +9,37 @@ from googleapiclient import discovery
 logger = logging.getLogger(__name__)
 
 _SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
+
+# ── Cost estimation maps ──────────────────────────────────────────────────────
+_GCE_COST_MAP = {
+    "e2-micro": 6.11, "e2-small": 12.23, "e2-medium": 24.46,
+    "e2-standard-2": 48.91, "e2-standard-4": 97.83, "e2-standard-8": 195.65,
+    "e2-standard-16": 391.30, "e2-standard-32": 782.61,
+    "n1-standard-1": 24.27, "n1-standard-2": 48.54, "n1-standard-4": 97.09,
+    "n1-standard-8": 194.18, "n1-standard-16": 388.35,
+    "n2-standard-2": 56.35, "n2-standard-4": 112.70, "n2-standard-8": 225.40,
+    "n2d-standard-2": 51.63, "n2d-standard-4": 103.26,
+    "c2-standard-4": 138.48, "c2-standard-8": 276.95,
+}
+
+_SQL_COST_MAP = {
+    "db-f1-micro": 7.65, "db-g1-small": 25.46,
+    "db-n1-standard-1": 46.26, "db-n1-standard-2": 92.52,
+    "db-n1-standard-4": 185.04, "db-n1-standard-8": 370.08,
+    "db-n1-highmem-2": 108.52, "db-n1-highmem-4": 217.04,
+    "db-custom-1-3840": 55.00, "db-custom-2-7680": 110.00,
+}
+
+
+def _estimate_gce_cost(machine_type: str) -> float:
+    mt = machine_type.split("/")[-1] if "/" in machine_type else machine_type
+    if mt in _GCE_COST_MAP:
+        return _GCE_COST_MAP[mt]
+    try:
+        cpus = int(mt.split("-")[-1])
+        return round(cpus * 24.27, 2)
+    except Exception:
+        return 24.27
 
 
 class GCPService:
@@ -242,3 +274,93 @@ class GCPService:
         client = compute_v1.NetworksClient(credentials=self.credentials)
         op = client.delete(project=self.project_id, network=name)
         op.result()
+
+    # ── Cost Estimation ───────────────────────────────────────────────────────
+
+    def get_cost_and_usage(self, start_date: str, end_date: str) -> dict:
+        """
+        Estimates GCP costs from active resources (Compute, SQL, Functions).
+        Returns the same shape as AWS/Azure cost endpoints.
+        Results are marked `estimated: True` since real billing data requires
+        the Cloud Billing API (billing_account_id + billing.viewer role).
+        """
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            end   = datetime.strptime(end_date,   "%Y-%m-%d")
+            n_days = max(1, (end - start).days)
+            # Scale monthly estimates to the requested period
+            monthly_factor = n_days / 30.0
+
+            by_service: dict[str, float] = {}
+
+            # --- Compute Engine ---
+            try:
+                client = compute_v1.InstancesClient(credentials=self.credentials)
+                compute_total = 0.0
+                for zone_name, zone_data in client.aggregated_list(project=self.project_id):
+                    if not zone_data.instances:
+                        continue
+                    for inst in zone_data.instances:
+                        if inst.status != "RUNNING":
+                            continue
+                        mt = inst.machine_type.split("/")[-1] if inst.machine_type else "unknown"
+                        compute_total += _estimate_gce_cost(mt)
+                if compute_total > 0:
+                    by_service["Compute Engine"] = round(compute_total * monthly_factor, 4)
+            except Exception as e:
+                logger.debug(f"GCP Compute cost estimation: {e}")
+
+            # --- Cloud SQL ---
+            try:
+                svc = discovery.build("sqladmin", "v1beta4", credentials=self.credentials, cache_discovery=False)
+                resp = svc.instances().list(project=self.project_id).execute()
+                sql_total = 0.0
+                for inst in resp.get("items", []):
+                    tier = inst.get("settings", {}).get("tier", "db-n1-standard-1")
+                    sql_total += _SQL_COST_MAP.get(tier, 46.26)
+                if sql_total > 0:
+                    by_service["Cloud SQL"] = round(sql_total * monthly_factor, 4)
+            except Exception as e:
+                logger.debug(f"GCP SQL cost estimation: {e}")
+
+            # --- Cloud Functions (low estimate: $2/function/month) ---
+            try:
+                fn_svc = discovery.build("cloudfunctions", "v1", credentials=self.credentials, cache_discovery=False)
+                fn_total = 0.0
+                for region in ["us-central1", "us-east1", "europe-west1", "us-east4"]:
+                    parent = f"projects/{self.project_id}/locations/{region}"
+                    try:
+                        fn_resp = fn_svc.projects().locations().functions().list(parent=parent).execute()
+                        fn_total += len(fn_resp.get("functions", [])) * 2.0
+                    except Exception:
+                        pass
+                if fn_total > 0:
+                    by_service["Cloud Functions"] = round(fn_total * monthly_factor, 4)
+            except Exception as e:
+                logger.debug(f"GCP Functions cost estimation: {e}")
+
+            total = round(sum(by_service.values()), 4)
+
+            # Distribute evenly across days
+            daily_cost = total / n_days if n_days > 0 else 0.0
+            daily = [
+                {"date": (start + timedelta(days=i)).strftime("%Y-%m-%d"), "total": round(daily_cost, 4)}
+                for i in range(n_days)
+            ]
+
+            by_service_list = sorted(
+                [{"name": k, "amount": v} for k, v in by_service.items()],
+                key=lambda x: x["amount"],
+                reverse=True,
+            )
+
+            return {
+                "success": True,
+                "total": total,
+                "daily": daily,
+                "by_service": by_service_list,
+                "estimated": True,
+            }
+        except Exception as e:
+            logger.error(f"GCP cost estimation error: {e}")
+            return {"success": False, "error": str(e), "estimated": True}

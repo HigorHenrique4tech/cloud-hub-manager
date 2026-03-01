@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
 import { Zap, TrendingDown, History, Wallet, AlertTriangle, Plus, Trash2, X, Clock, CheckCircle, XCircle, Mail, RefreshCw, Pencil, Bell, FileDown, Printer } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
@@ -551,6 +551,7 @@ const FinOps = () => {
   const [applyingId, setApplyingId]   = useState(null);
   const [dismissingId, setDismissingId] = useState(null);
   const [rollbackId, setRollbackId]   = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
   const [scanJobId, setScanJobId]     = useState(null);
   const [scanJobStatus, setScanJobStatus] = useState(null); // null | {status,new_findings,results,error}
 
@@ -675,6 +676,24 @@ const FinOps = () => {
     onError: () => setDismissingId(null),
   });
 
+  const bulkDismissMut = useMutation({
+    mutationFn: (ids) => finopsService.bulkDismiss([...ids]),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['finops-recs'] });
+      qc.invalidateQueries({ queryKey: ['finops-summary'] });
+      setSelectedIds(new Set());
+    },
+  });
+
+  const bulkApplyMut = useMutation({
+    mutationFn: (ids) => finopsService.bulkApply([...ids]),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['finops-recs'] });
+      qc.invalidateQueries({ queryKey: ['finops-summary'] });
+      setSelectedIds(new Set());
+    },
+  });
+
   const rollbackMut = useMutation({
     mutationFn: finopsService.rollbackAction,
     onSuccess: () => {
@@ -743,6 +762,16 @@ const FinOps = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['finops-anomalies'] }),
   });
 
+  const anomalyScanMut = useMutation({
+    mutationFn: finopsService.triggerAnomalyScan,
+    onSuccess: () => {
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: ['finops-anomalies'] });
+        qc.invalidateQueries({ queryKey: ['finops-summary'] });
+      }, 3000); // wait a few seconds for the background task to finish
+    },
+  });
+
   // Evaluate budgets when user opens the budgets tab
   useEffect(() => {
     if (activeTab === 'budgets' && isPro) {
@@ -761,6 +790,25 @@ const FinOps = () => {
   const handleDismiss = (id) => {
     setDismissingId(id);
     dismissMut.mutate(id);
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const pendingItems = (recsQ.data?.items ?? []).filter((r) => r.status === 'pending' && !r._locked);
+  const allSelected = pendingItems.length > 0 && pendingItems.every((r) => selectedIds.has(r.id));
+
+  const toggleAll = () => {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(pendingItems.map((r) => r.id)));
+    }
   };
 
   const handleRollback = (id) => {
@@ -886,13 +934,18 @@ const FinOps = () => {
                 Dados de custo indisponíveis
               </div>
             ) : (() => {
-              const labels = costTrendQ.data?.labels ?? [];
-              const aws    = costTrendQ.data?.aws   ?? [];
-              const azure  = costTrendQ.data?.azure ?? [];
-              const gcp    = costTrendQ.data?.gcp   ?? [];
-              const hasAws   = aws.some(v => v > 0);
-              const hasAzure = azure.some(v => v > 0);
-              const hasGcp   = gcp.some(v => v > 0);
+              const trendData   = costTrendQ.data ?? {};
+              const labels      = trendData.labels        ?? [];
+              const aws         = trendData.aws           ?? [];
+              const azure       = trendData.azure         ?? [];
+              const gcp         = trendData.gcp           ?? [];
+              const fLabels     = trendData.forecast_labels ?? [];
+              const awsF        = trendData.aws_forecast  ?? [];
+              const azureF      = trendData.azure_forecast ?? [];
+              const hasAws      = aws.some(v => v > 0);
+              const hasAzure    = azure.some(v => v > 0);
+              const hasGcp      = gcp.some(v => v > 0);
+              const hasForecast = awsF.some(v => v > 0) || azureF.some(v => v > 0);
 
               if (!hasAws && !hasAzure && !hasGcp) {
                 return (
@@ -902,49 +955,103 @@ const FinOps = () => {
                 );
               }
 
-              const chartData = labels.map((label, i) => ({
+              // Merge historical + forecast into single array
+              const todayLabel = labels[labels.length - 1]?.slice(5) ?? 'Hoje';
+              const histData = labels.map((label, i) => ({
                 date:  label.slice(5),
                 AWS:   aws[i]   || 0,
                 Azure: azure[i] || 0,
                 GCP:   gcp[i]   || 0,
               }));
+              const forecastData = fLabels.map((label, i) => ({
+                date:    label.slice(5),
+                AWS_f:   awsF[i]   || 0,
+                Azure_f: azureF[i] || 0,
+              }));
+              const chartData = [...histData, ...forecastData];
+
+              // Forecast monthly projections
+              const avgDays = fLabels.length || 1;
+              const awsMonthly   = (awsF.reduce((s, v) => s + v, 0) / avgDays) * 30;
+              const azureMonthly = (azureF.reduce((s, v) => s + v, 0) / avgDays) * 30;
 
               return (
-                <ResponsiveContainer width="100%" height={160}>
-                  <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="awsGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#f97316" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#f97316" stopOpacity={0}   />
-                      </linearGradient>
-                      <linearGradient id="azureGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}   />
-                      </linearGradient>
-                      <linearGradient id="gcpGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%"  stopColor="#22c55e" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#22c55e" stopOpacity={0}   />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
-                    <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="rgba(148,163,184,0.4)" />
-                    <YAxis
-                      tick={{ fontSize: 10 }}
-                      tickFormatter={(v) => `$${v}`}
-                      stroke="rgba(148,163,184,0.4)"
-                      width={45}
-                    />
-                    <RTooltip
-                      formatter={(v, name) => [`$${Number(v).toFixed(2)}`, name]}
-                      contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
-                      labelStyle={{ color: '#94a3b8' }}
-                    />
-                    <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
-                    {hasAws   && <Area type="monotone" dataKey="AWS"   stroke="#f97316" fill="url(#awsGrad)"   strokeWidth={2} dot={false} />}
-                    {hasAzure && <Area type="monotone" dataKey="Azure" stroke="#3b82f6" fill="url(#azureGrad)" strokeWidth={2} dot={false} />}
-                    {hasGcp   && <Area type="monotone" dataKey="GCP"   stroke="#22c55e" fill="url(#gcpGrad)"   strokeWidth={2} dot={false} />}
-                  </AreaChart>
-                </ResponsiveContainer>
+                <>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <AreaChart data={chartData} margin={{ top: 5, right: 10, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="awsGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#f97316" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#f97316" stopOpacity={0}   />
+                        </linearGradient>
+                        <linearGradient id="azureGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}   />
+                        </linearGradient>
+                        <linearGradient id="gcpGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#22c55e" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#22c55e" stopOpacity={0}   />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(148,163,184,0.15)" />
+                      <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="rgba(148,163,184,0.4)" />
+                      <YAxis
+                        tick={{ fontSize: 10 }}
+                        tickFormatter={(v) => `$${v}`}
+                        stroke="rgba(148,163,184,0.4)"
+                        width={45}
+                      />
+                      <RTooltip
+                        formatter={(v, name) => {
+                          const label = name.endsWith('_f') ? `${name.replace('_f', '')} (prev.)` : name;
+                          return [`$${Number(v).toFixed(2)}`, label];
+                        }}
+                        contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
+                        labelStyle={{ color: '#94a3b8' }}
+                      />
+                      <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+                      {/* Historical areas */}
+                      {hasAws   && <Area type="monotone" dataKey="AWS"   stroke="#f97316" fill="url(#awsGrad)"   strokeWidth={2} dot={false} connectNulls />}
+                      {hasAzure && <Area type="monotone" dataKey="Azure" stroke="#3b82f6" fill="url(#azureGrad)" strokeWidth={2} dot={false} connectNulls />}
+                      {hasGcp   && <Area type="monotone" dataKey="GCP"   stroke="#22c55e" fill="url(#gcpGrad)"   strokeWidth={2} dot={false} connectNulls />}
+                      {/* Forecast dashed areas */}
+                      {hasForecast && hasAws   && <Area type="monotone" dataKey="AWS_f"   stroke="#f97316" fill="none" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls />}
+                      {hasForecast && hasAzure && <Area type="monotone" dataKey="Azure_f" stroke="#3b82f6" fill="none" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls />}
+                      {/* "Hoje" divider */}
+                      {hasForecast && (
+                        <ReferenceLine
+                          x={todayLabel}
+                          stroke="rgba(148,163,184,0.5)"
+                          strokeDasharray="4 4"
+                          label={{ value: 'Hoje', fill: '#94a3b8', fontSize: 10, position: 'top' }}
+                        />
+                      )}
+                    </AreaChart>
+                  </ResponsiveContainer>
+                  {/* Forecast summary strip */}
+                  {hasForecast && (
+                    <div className="mt-3 grid grid-cols-3 gap-3">
+                      {hasAws && (
+                        <div className="rounded-lg border border-orange-200 dark:border-orange-800/30 bg-orange-50 dark:bg-orange-900/10 p-2.5">
+                          <p className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">AWS (próx. 30d)</p>
+                          <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(awsMonthly)}</p>
+                        </div>
+                      )}
+                      {hasAzure && (
+                        <div className="rounded-lg border border-blue-200 dark:border-blue-800/30 bg-blue-50 dark:bg-blue-900/10 p-2.5">
+                          <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Azure (próx. 30d)</p>
+                          <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(azureMonthly)}</p>
+                        </div>
+                      )}
+                      {(hasAws || hasAzure) && (
+                        <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 p-2.5">
+                          <p className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Total (próx. 30d)</p>
+                          <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(awsMonthly + azureMonthly)}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </>
               );
             })()}
           </div>
@@ -1089,6 +1196,18 @@ const FinOps = () => {
               />
             ) : (
               <div className="space-y-3">
+                {/* Select all row — only shown for pending filter */}
+                {filterStatus === 'pending' && pendingItems.length > 0 && (
+                  <label className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400 cursor-pointer select-none px-1">
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={toggleAll}
+                      className="h-4 w-4 accent-indigo-600"
+                    />
+                    {allSelected ? 'Desmarcar todos' : 'Selecionar todos'}
+                  </label>
+                )}
                 {(recsQ.data?.items ?? []).map((rec) => (
                   <RecommendationCard
                     key={rec.id}
@@ -1098,6 +1217,8 @@ const FinOps = () => {
                     applyLoading={applyingId === rec.id}
                     dismissLoading={dismissingId === rec.id}
                     planTier={planTier}
+                    selected={selectedIds.has(rec.id)}
+                    onToggle={filterStatus === 'pending' ? () => toggleSelect(rec.id) : undefined}
                   />
                 ))}
                 {/* Pagination */}
@@ -1339,12 +1460,24 @@ const FinOps = () => {
           <div className="space-y-4">
             <PlanGate minPlan="pro" feature="Detecção de Anomalias">
               <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-slate-400">
-                    Picos de custo detectados automaticamente por análise estatística (3σ acima da baseline).
-                  </p>
-                </div>
+                <p className="text-sm text-gray-500 dark:text-slate-400">
+                  Picos de custo detectados automaticamente por análise estatística (3σ acima da baseline).
+                </p>
+                <button
+                  onClick={() => anomalyScanMut.mutate()}
+                  disabled={anomalyScanMut.isPending}
+                  className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-60 transition-colors shrink-0"
+                >
+                  <AlertTriangle size={14} />
+                  {anomalyScanMut.isPending ? 'Escaneando…' : 'Escanear Anomalias'}
+                </button>
               </div>
+              {anomalyScanMut.isSuccess && (
+                <div className="flex items-center gap-2 rounded-lg border border-green-700/40 bg-green-900/20 px-4 py-2.5 text-sm text-green-300">
+                  <CheckCircle size={14} />
+                  Scan iniciado — os resultados aparecem em instantes.
+                </div>
+              )}
 
               {anomaliesQ.isLoading ? (
                 <div className="flex justify-center py-12"><LoadingSpinner /></div>
@@ -1480,6 +1613,47 @@ const FinOps = () => {
           />
         )}
       </div>
+
+      {/* Floating bulk action bar */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3
+                        rounded-xl border border-indigo-500/40 bg-gray-900/95 backdrop-blur
+                        px-5 py-3 shadow-2xl shadow-black/40">
+          <span className="text-sm font-medium text-slate-300">
+            {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
+          </span>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-slate-500 hover:text-slate-300 transition-colors"
+            title="Limpar seleção"
+          >
+            <X size={16} />
+          </button>
+          <div className="w-px h-5 bg-slate-700" />
+          <button
+            onClick={() => bulkDismissMut.mutate(selectedIds)}
+            disabled={bulkDismissMut.isPending}
+            className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300
+                       hover:border-slate-400 hover:text-white disabled:opacity-50 transition-colors"
+          >
+            {bulkDismissMut.isPending ? 'Ignorando…' : 'Ignorar todas'}
+          </button>
+          <PermissionGate permission="finops.execute">
+            <button
+              onClick={() => {
+                if (window.confirm(`Aplicar ${selectedIds.size} recomendação(ões)? Esta ação pode ser irreversível.`)) {
+                  bulkApplyMut.mutate(selectedIds);
+                }
+              }}
+              disabled={bulkApplyMut.isPending}
+              className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white
+                         hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+            >
+              {bulkApplyMut.isPending ? 'Aplicando…' : 'Aplicar todas'}
+            </button>
+          </PermissionGate>
+        </div>
+      )}
     </Layout>
   );
 };

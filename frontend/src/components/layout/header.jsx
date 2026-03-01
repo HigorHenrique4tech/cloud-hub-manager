@@ -1,4 +1,4 @@
-import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown } from 'lucide-react';
+import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Wallet, Clock, Zap } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -198,24 +198,40 @@ const Header = () => {
                     </p>
                   ) : (
                     <ul className="divide-y divide-gray-100 dark:divide-gray-700 max-h-72 overflow-y-auto">
-                      {unreadEvents.map((ev) => (
-                        <li key={ev.id} className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <Bell className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug line-clamp-2">{ev.message}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              {new Date(ev.triggered_at).toLocaleString('pt-BR')}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => markReadMutation.mutate(ev.id)}
-                            className="flex-shrink-0 text-gray-300 hover:text-green-500 dark:hover:text-green-400 transition-colors"
-                            title="Marcar como lido"
+                      {unreadEvents.map((ev) => {
+                        const TYPE_META = {
+                          anomaly:     { Icon: TrendingDown, color: 'text-red-500',    label: 'Anomalia' },
+                          budget:      { Icon: Wallet,       color: 'text-yellow-500', label: 'Orçamento' },
+                          schedule:    { Icon: Clock,        color: 'text-blue-500',   label: 'Agendamento' },
+                          finops_scan: { Icon: Zap,          color: 'text-indigo-500', label: 'FinOps' },
+                          cost_alert:  { Icon: Bell,         color: 'text-orange-500', label: 'Alerta' },
+                        };
+                        const meta = TYPE_META[ev.notification_type] || TYPE_META.cost_alert;
+                        const { Icon, color, label } = meta;
+                        return (
+                          <li
+                            key={ev.id}
+                            className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+                            onClick={() => { setBellOpen(false); navigate(ev.link_to || '/costs'); }}
                           >
-                            ✓
-                          </button>
-                        </li>
-                      ))}
+                            <Icon className={`w-4 h-4 ${color} mt-0.5 flex-shrink-0`} />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</span>
+                              <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug line-clamp-2">{ev.message}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {new Date(ev.triggered_at).toLocaleString('pt-BR')}
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); markReadMutation.mutate(ev.id); }}
+                              className="flex-shrink-0 text-gray-300 hover:text-green-500 dark:hover:text-green-400 transition-colors"
+                              title="Marcar como lido"
+                            >
+                              ✓
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>

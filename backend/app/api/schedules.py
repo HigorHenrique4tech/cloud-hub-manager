@@ -17,6 +17,7 @@ from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
 from app.database import get_db
 from app.models.db_models import Organization, ScheduledAction
+from app.services.log_service import log_activity
 from app.services.scheduler_service import (
     get_next_run,
     load_all_schedules,
@@ -198,6 +199,18 @@ async def create_schedule(
     if s.is_enabled:
         register_schedule(s)
 
+    log_activity(
+        db, member.user,
+        action="schedule.create",
+        resource_type="ScheduledAction",
+        resource_id=str(s.id),
+        resource_name=s.resource_name,
+        provider=s.provider,
+        detail=f"{s.action} @ {s.schedule_time} ({s.schedule_type})",
+        organization_id=member.organization_id,
+        workspace_id=member.workspace_id,
+    )
+
     return _schedule_to_dict(s)
 
 
@@ -234,6 +247,18 @@ async def update_schedule(
     else:
         unregister_schedule(str(s.id))
 
+    log_activity(
+        db, member.user,
+        action="schedule.update",
+        resource_type="ScheduledAction",
+        resource_id=str(s.id),
+        resource_name=s.resource_name,
+        provider=s.provider,
+        detail=f"{s.action} @ {s.schedule_time} ({s.schedule_type})",
+        organization_id=member.organization_id,
+        workspace_id=member.workspace_id,
+    )
+
     return _schedule_to_dict(s)
 
 
@@ -254,5 +279,15 @@ async def delete_schedule(
         raise HTTPException(status_code=404, detail="Agendamento não encontrado.")
 
     unregister_schedule(str(s.id))
+    log_activity(
+        db, member.user,
+        action="schedule.delete",
+        resource_type="ScheduledAction",
+        resource_id=str(s.id),
+        resource_name=s.resource_name,
+        provider=s.provider,
+        organization_id=member.organization_id,
+        workspace_id=member.workspace_id,
+    )
     db.delete(s)
     db.commit()

@@ -6,6 +6,7 @@ import csv
 import io
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from threading import Lock
 from typing import Optional
@@ -72,31 +73,25 @@ def _fetch_aws(account: CloudAccount) -> list:
         creds = decrypt_credential(account.encrypted_data)
         ak = creds.get("access_key_id", "")
         sk = creds.get("secret_access_key", "")
-        region = creds.get("region", getattr(settings, "AWS_DEFAULT_REGION", "us-east-1"))
+        default_region = creds.get("region", getattr(settings, "AWS_DEFAULT_REGION", "us-east-1"))
         if not ak or not sk:
             return []
 
+        # Discover all opted-in regions
+        def get_regions() -> list:
+            try:
+                ec2 = boto3.client("ec2", aws_access_key_id=ak, aws_secret_access_key=sk, region_name="us-east-1")
+                resp = ec2.describe_regions(Filters=[
+                    {"Name": "opt-in-status", "Values": ["opted-in", "opt-in-not-required"]}
+                ])
+                return [r["RegionName"] for r in resp.get("Regions", [])][:15]
+            except Exception:
+                return [default_region]
+
+        regions = get_regions()
         items = []
 
-        # EC2
-        try:
-            ec2 = boto3.client("ec2", aws_access_key_id=ak, aws_secret_access_key=sk, region_name=region)
-            resp = ec2.describe_instances()
-            for res in resp.get("Reservations", []):
-                for inst in res.get("Instances", []):
-                    name = next((t["Value"] for t in inst.get("Tags", []) if t["Key"] == "Name"), inst["InstanceId"])
-                    items.append({
-                        "provider": "aws", "resource_type": "ec2",
-                        "name": name, "resource_id": inst["InstanceId"],
-                        "status": inst.get("State", {}).get("Name", ""),
-                        "region": region, "created_at": inst.get("LaunchTime", "").isoformat() if inst.get("LaunchTime") else None,
-                        "tags": {t["Key"]: t["Value"] for t in inst.get("Tags", [])},
-                        "cost_hint": inst.get("InstanceType"),
-                    })
-        except Exception as e:
-            logger.warning("AWS EC2 inventory error: %s", e)
-
-        # S3
+        # S3 is global — fetch once
         try:
             s3 = boto3.client("s3", aws_access_key_id=ak, aws_secret_access_key=sk)
             buckets = s3.list_buckets().get("Buckets", [])
@@ -111,39 +106,68 @@ def _fetch_aws(account: CloudAccount) -> list:
         except Exception as e:
             logger.warning("AWS S3 inventory error: %s", e)
 
-        # RDS
-        try:
-            rds = boto3.client("rds", aws_access_key_id=ak, aws_secret_access_key=sk, region_name=region)
-            for db_inst in rds.describe_db_instances().get("DBInstances", []):
-                items.append({
-                    "provider": "aws", "resource_type": "rds",
-                    "name": db_inst.get("DBInstanceIdentifier", ""),
-                    "resource_id": db_inst.get("DBInstanceIdentifier", ""),
-                    "status": db_inst.get("DBInstanceStatus", ""),
-                    "region": region,
-                    "created_at": db_inst.get("InstanceCreateTime", "").isoformat() if db_inst.get("InstanceCreateTime") else None,
-                    "tags": {t["Key"]: t["Value"] for t in db_inst.get("TagList", [])},
-                    "cost_hint": db_inst.get("DBInstanceClass"),
-                })
-        except Exception as e:
-            logger.warning("AWS RDS inventory error: %s", e)
+        # Per-region fetch helper
+        def fetch_region(region: str) -> list:
+            region_items = []
+            # EC2
+            try:
+                ec2 = boto3.client("ec2", aws_access_key_id=ak, aws_secret_access_key=sk, region_name=region)
+                resp = ec2.describe_instances()
+                for res in resp.get("Reservations", []):
+                    for inst in res.get("Instances", []):
+                        name = next((t["Value"] for t in inst.get("Tags", []) if t["Key"] == "Name"), inst["InstanceId"])
+                        region_items.append({
+                            "provider": "aws", "resource_type": "ec2",
+                            "name": name, "resource_id": inst["InstanceId"],
+                            "status": inst.get("State", {}).get("Name", ""),
+                            "region": region,
+                            "created_at": inst.get("LaunchTime", "").isoformat() if inst.get("LaunchTime") else None,
+                            "tags": {t["Key"]: t["Value"] for t in inst.get("Tags", [])},
+                            "cost_hint": inst.get("InstanceType"),
+                        })
+            except Exception as e:
+                logger.warning("AWS EC2 inventory error (region=%s): %s", region, e)
+            # RDS
+            try:
+                rds = boto3.client("rds", aws_access_key_id=ak, aws_secret_access_key=sk, region_name=region)
+                for db_inst in rds.describe_db_instances().get("DBInstances", []):
+                    region_items.append({
+                        "provider": "aws", "resource_type": "rds",
+                        "name": db_inst.get("DBInstanceIdentifier", ""),
+                        "resource_id": db_inst.get("DBInstanceIdentifier", ""),
+                        "status": db_inst.get("DBInstanceStatus", ""),
+                        "region": region,
+                        "created_at": db_inst.get("InstanceCreateTime", "").isoformat() if db_inst.get("InstanceCreateTime") else None,
+                        "tags": {t["Key"]: t["Value"] for t in db_inst.get("TagList", [])},
+                        "cost_hint": db_inst.get("DBInstanceClass"),
+                    })
+            except Exception as e:
+                logger.warning("AWS RDS inventory error (region=%s): %s", region, e)
+            # Lambda
+            try:
+                lmb = boto3.client("lambda", aws_access_key_id=ak, aws_secret_access_key=sk, region_name=region)
+                for fn in lmb.list_functions().get("Functions", []):
+                    region_items.append({
+                        "provider": "aws", "resource_type": "lambda",
+                        "name": fn.get("FunctionName", ""),
+                        "resource_id": fn.get("FunctionArn", ""),
+                        "status": fn.get("State", "active"),
+                        "region": region,
+                        "created_at": fn.get("LastModified"),
+                        "tags": fn.get("Tags") or {},
+                        "cost_hint": fn.get("Runtime"),
+                    })
+            except Exception as e:
+                logger.warning("AWS Lambda inventory error (region=%s): %s", region, e)
+            return region_items
 
-        # Lambda
-        try:
-            lmb = boto3.client("lambda", aws_access_key_id=ak, aws_secret_access_key=sk, region_name=region)
-            for fn in lmb.list_functions().get("Functions", []):
-                items.append({
-                    "provider": "aws", "resource_type": "lambda",
-                    "name": fn.get("FunctionName", ""),
-                    "resource_id": fn.get("FunctionArn", ""),
-                    "status": fn.get("State", "active"),
-                    "region": region,
-                    "created_at": fn.get("LastModified"),
-                    "tags": fn.get("Tags") or {},
-                    "cost_hint": fn.get("Runtime"),
-                })
-        except Exception as e:
-            logger.warning("AWS Lambda inventory error: %s", e)
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            futures = {ex.submit(fetch_region, r): r for r in regions}
+            for future in as_completed(futures):
+                try:
+                    items.extend(future.result())
+                except Exception as e:
+                    logger.warning("AWS region fetch failed (%s): %s", futures[future], e)
 
         return items
     except Exception as e:

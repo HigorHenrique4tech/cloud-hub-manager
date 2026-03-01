@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, FileText, ChevronDown } from 'lucide-react';
+import { RefreshCw, FileText, ChevronDown, Download } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import logsService from '../services/logsService';
 
@@ -17,6 +17,12 @@ const ACTION_LABELS = {
   'alert.delete':       'Alerta Excluído',
   'auth.login':         'Login',
   'auth.register':      'Cadastro',
+  'schedule.create':    'Agendamento Criado',
+  'schedule.update':    'Agendamento Atualizado',
+  'schedule.delete':    'Agendamento Excluído',
+  'finops.apply':       'Recomendação Aplicada',
+  'finops.dismiss':     'Recomendação Ignorada',
+  'finops.scan':        'Scan FinOps',
 };
 
 const STATUS_COLORS = {
@@ -27,14 +33,15 @@ const STATUS_COLORS = {
 const PROVIDER_COLORS = {
   aws:    'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
   azure:  'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  gcp:    'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
   system: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
 };
 
 function timeAgo(dateStr) {
   if (!dateStr) return '—';
   const diff = (Date.now() - new Date(dateStr).getTime()) / 1000;
-  if (diff < 60)   return 'agora';
-  if (diff < 3600) return `${Math.floor(diff / 60)}min atrás`;
+  if (diff < 60)    return 'agora';
+  if (diff < 3600)  return `${Math.floor(diff / 60)}min atrás`;
   if (diff < 86400) return `${Math.floor(diff / 3600)}h atrás`;
   return `${Math.floor(diff / 86400)}d atrás`;
 }
@@ -50,8 +57,9 @@ function formatDate(dateStr) {
 const PAGE_SIZE = 50;
 
 const Logs = () => {
-  const [filters, setFilters] = useState({ action: '', provider: '', startDate: '', endDate: '' });
+  const [filters, setFilters] = useState({ action: '', provider: '', startDate: '', endDate: '', userEmail: '' });
   const [offset, setOffset] = useState(0);
+  const [exporting, setExporting] = useState(false);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['logs', filters, offset],
@@ -65,6 +73,15 @@ const Logs = () => {
   const handleFilter = (key, value) => {
     setFilters(f => ({ ...f, [key]: value }));
     setOffset(0);
+  };
+
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await logsService.exportLogs(filters);
+    } finally {
+      setExporting(false);
+    }
   };
 
   return (
@@ -81,18 +98,28 @@ const Logs = () => {
               </p>
             </div>
           </div>
-          <button
-            onClick={() => refetch()}
-            disabled={isFetching}
-            className="btn btn-secondary flex items-center gap-2"
-          >
-            <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-            Atualizar
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleExport}
+              disabled={exporting || total === 0}
+              className="btn btn-secondary flex items-center gap-2"
+            >
+              <Download className={`w-4 h-4 ${exporting ? 'animate-pulse' : ''}`} />
+              {exporting ? 'Exportando…' : 'Exportar CSV'}
+            </button>
+            <button
+              onClick={() => refetch()}
+              disabled={isFetching}
+              className="btn btn-secondary flex items-center gap-2"
+            >
+              <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
+              Atualizar
+            </button>
+          </div>
         </div>
 
         {/* Filters */}
-        <div className="card p-4 mb-5 grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="card p-4 mb-5 grid grid-cols-2 md:grid-cols-5 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ação</label>
             <select
@@ -116,6 +143,7 @@ const Logs = () => {
               <option value="">Todos</option>
               <option value="aws">AWS</option>
               <option value="azure">Azure</option>
+              <option value="gcp">GCP</option>
               <option value="system">Sistema</option>
             </select>
           </div>
@@ -135,6 +163,16 @@ const Logs = () => {
               className="input"
               value={filters.endDate}
               onChange={e => handleFilter('endDate', e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Email do usuário</label>
+            <input
+              type="text"
+              className="input"
+              placeholder="Buscar por email..."
+              value={filters.userEmail}
+              onChange={e => handleFilter('userEmail', e.target.value)}
             />
           </div>
         </div>

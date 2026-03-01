@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 # ── Thresholds ────────────────────────────────────────────────────────────────
 
 CPU_IDLE_PCT       = 5.0    # % — below this = idle
+CPU_UNDERUTIL_PCT  = 20.0   # % — between idle and this = underutilized (rightsizing candidate)
 CPU_WINDOW_DAYS    = 7      # days of CloudWatch data
 DB_CONNECTIONS_MIN = 5      # avg connections/day below this = idle
 DISK_ORPHAN_DAYS   = 7      # days unattached before flagging
@@ -519,9 +520,56 @@ class AWSFinOpsScanner:
             logger.warning(f"Cost Explorer scan error: {e}")
         return findings
 
+    def scan_ec2_rightsizing(self) -> List[dict]:
+        """Detects EC2 instances with 5–20% CPU (subutilized, not idle) and suggests a smaller type."""
+        findings = []
+        try:
+            ec2 = self._client("ec2")
+            resp = ec2.describe_instances(
+                Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
+            )
+            for r in resp.get("Reservations", []):
+                for i in r.get("Instances", []):
+                    instance_id   = i["InstanceId"]
+                    instance_type = i.get("InstanceType", "unknown")
+                    name = next((t["Value"] for t in (i.get("Tags") or []) if t["Key"] == "Name"), instance_id)
+                    az   = i.get("Placement", {}).get("AvailabilityZone", self.region)
+
+                    avg_cpu = self._cloudwatch_avg(
+                        "AWS/EC2", "CPUUtilization",
+                        [{"Name": "InstanceId", "Value": instance_id}],
+                    )
+                    if avg_cpu is None or avg_cpu < CPU_IDLE_PCT or avg_cpu >= CPU_UNDERUTIL_PCT:
+                        continue  # skip idle (<5%) and adequately utilized (≥20%)
+
+                    current_cost = self._estimate_ec2_monthly_cost(instance_type)
+                    saving, rec_type = _right_size_saving(instance_type, current_cost)
+
+                    findings.append({
+                        "provider": "aws",
+                        "resource_id": instance_id,
+                        "resource_name": name,
+                        "resource_type": "ec2",
+                        "region": az,
+                        "recommendation_type": "rightsizing",
+                        "severity": _severity(saving),
+                        "estimated_saving_monthly": round(saving, 2),
+                        "current_monthly_cost": current_cost,
+                        "reasoning": (
+                            f"CPU médio de {avg_cpu:.1f}% nos últimos {CPU_WINDOW_DAYS} dias. "
+                            f"Instância subutilizada — considere reduzir para '{rec_type}'."
+                        ),
+                        "current_spec": {"instance_type": instance_type, "az": az},
+                        "recommended_spec": {"instance_type": rec_type},
+                    })
+        except Exception as e:
+            logger.warning(f"AWS EC2 rightsizing scan error: {e}")
+        return findings
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_ec2_idle())
+        findings.extend(self.scan_ec2_rightsizing())
         findings.extend(self.scan_ebs_orphan())
         findings.extend(self.scan_elastic_ips())
         findings.extend(self.scan_rds_idle())
@@ -908,9 +956,65 @@ class AzureFinOpsScanner:
 
         return findings
 
+    def scan_vm_rightsizing(self) -> List[dict]:
+        """Detects Azure VMs with 5–20% CPU (subutilized, not idle) and suggests a smaller SKU."""
+        findings = []
+        try:
+            compute = self._compute()
+            vm_sizes_sorted = sorted(AZURE_VM_FAMILY_RATIO.keys(), key=lambda k: AZURE_VM_FAMILY_RATIO[k])
+            for vm in compute.virtual_machines.list_all():
+                try:
+                    instance_view = compute.virtual_machines.instance_view(
+                        vm.id.split("/")[4], vm.name,
+                    )
+                    statuses = [s.code for s in (instance_view.statuses or [])]
+                    if "PowerState/running" not in statuses:
+                        continue
+                except Exception:
+                    continue
+
+                vm_size      = vm.hardware_profile.vm_size if vm.hardware_profile else "unknown"
+                resource_id  = vm.id
+                resource_group = vm.id.split("/")[4]
+
+                avg_cpu = self._azure_monitor_avg(resource_id, "Percentage CPU")
+                if avg_cpu is None or avg_cpu < CPU_IDLE_PCT or avg_cpu >= CPU_UNDERUTIL_PCT:
+                    continue
+
+                current_cost = self._estimate_vm_monthly_cost(vm_size)
+                current_idx  = next((i for i, s in enumerate(vm_sizes_sorted) if s == vm_size), None)
+                if current_idx and current_idx > 0:
+                    rec_size = vm_sizes_sorted[current_idx - 1]
+                    saving   = max(0.0, current_cost - self._estimate_vm_monthly_cost(rec_size))
+                else:
+                    rec_size = "menor SKU da mesma família"
+                    saving   = current_cost * SAVING_RIGHT_SIZE
+
+                findings.append({
+                    "provider": "azure",
+                    "resource_id": resource_id,
+                    "resource_name": vm.name,
+                    "resource_type": "vm",
+                    "region": vm.location,
+                    "recommendation_type": "rightsizing",
+                    "severity": _severity(saving),
+                    "estimated_saving_monthly": round(saving, 2),
+                    "current_monthly_cost": current_cost,
+                    "reasoning": (
+                        f"CPU médio de {avg_cpu:.1f}% nos últimos {CPU_WINDOW_DAYS} dias. "
+                        f"VM subutilizada — considere reduzir para '{rec_size}'."
+                    ),
+                    "current_spec": {"vm_size": vm_size, "resource_group": resource_group},
+                    "recommended_spec": {"vm_size": rec_size},
+                })
+        except Exception as e:
+            logger.warning(f"Azure VM rightsizing scan error: {e}")
+        return findings
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_vm_idle())
+        findings.extend(self.scan_vm_rightsizing())
         findings.extend(self.scan_managed_disks())
         findings.extend(self.scan_public_ips())
         findings.extend(self.scan_always_on())
@@ -1271,9 +1375,65 @@ class GCPFinOpsScanner:
 
         return findings
 
+    def scan_gce_rightsizing(self) -> List[dict]:
+        """Detects GCE instances with 5–20% CPU (subutilized, not idle) and suggests a smaller type."""
+        findings = []
+        try:
+            client = self._instances_client()
+            for zone_name, zone_data in client.aggregated_list(project=self.project_id):
+                if not zone_data.instances:
+                    continue
+                zone = zone_name.replace("zones/", "")
+                for inst in zone_data.instances:
+                    if inst.status != "RUNNING":
+                        continue
+                    machine_type = inst.machine_type.split("/")[-1] if inst.machine_type else "unknown"
+                    avg_cpu = self._get_instance_avg_cpu(str(inst.id))
+                    if avg_cpu is None or avg_cpu < CPU_IDLE_PCT or avg_cpu >= CPU_UNDERUTIL_PCT:
+                        continue
+
+                    current_cost = self._estimate_gce_monthly_cost(machine_type)
+                    # Suggest half the vCPUs in the same family
+                    try:
+                        parts = machine_type.split("-")
+                        current_vcpu = int(parts[-1])
+                        half_vcpu = current_vcpu // 2
+                        if half_vcpu >= 1:
+                            rec_type = "-".join(parts[:-1] + [str(half_vcpu)])
+                            rec_cost = self._estimate_gce_monthly_cost(rec_type)
+                            saving   = max(0.0, current_cost - rec_cost)
+                        else:
+                            rec_type = "menor tipo da mesma família"
+                            saving   = current_cost * SAVING_RIGHT_SIZE
+                    except Exception:
+                        rec_type = "menor tipo da mesma família"
+                        saving   = current_cost * SAVING_RIGHT_SIZE
+
+                    findings.append({
+                        "provider": "gcp",
+                        "resource_id": inst.name,
+                        "resource_name": inst.name,
+                        "resource_type": "compute_instance",
+                        "region": zone,
+                        "recommendation_type": "rightsizing",
+                        "severity": _severity(saving),
+                        "estimated_saving_monthly": round(saving, 2),
+                        "current_monthly_cost": current_cost,
+                        "reasoning": (
+                            f"CPU médio de {avg_cpu:.1f}% nos últimos {CPU_WINDOW_DAYS} dias. "
+                            f"Instância subutilizada — considere reduzir para '{rec_type}'."
+                        ),
+                        "current_spec": {"machine_type": machine_type, "zone": zone},
+                        "recommended_spec": {"machine_type": rec_type},
+                    })
+        except Exception as e:
+            logger.warning(f"GCP GCE rightsizing scan error: {e}")
+        return findings
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_compute_idle())
+        findings.extend(self.scan_gce_rightsizing())
         findings.extend(self.scan_persistent_disks())
         findings.extend(self.scan_static_ips())
         findings.extend(self.scan_always_on())

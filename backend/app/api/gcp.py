@@ -359,3 +359,31 @@ async def gcp_security_scan(
         "scanned_at": datetime.utcnow().isoformat(),
         "provider": "gcp",
     }
+
+
+# ── Costs ─────────────────────────────────────────────────────────────────────
+
+@ws_router.get("/costs")
+async def ws_get_gcp_costs(
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    granularity: str = Query("DAILY"),
+    member: MemberContext = Depends(require_permission("costs.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns estimated GCP costs for the given period.
+    Costs are estimated from active resources (Compute, SQL, Functions).
+    Results are marked `estimated: true`.
+    """
+    try:
+        account = _get_gcp_account(member, db)
+        svc = _build_gcp_service(account)
+        result = svc.get_cost_and_usage(start_date=start_date, end_date=end_date)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Erro ao estimar custos GCP"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
