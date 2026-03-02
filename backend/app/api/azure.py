@@ -825,7 +825,7 @@ async def ws_create_azure_vault(
         vault_body = Vault(
             location=body.location,
             sku=Sku(name="Standard"),
-            properties=VaultProperties(),
+            properties=VaultProperties(public_network_access="Enabled"),
         )
         poller = svc.recovery_services_client.vaults.begin_create_or_update(
             body.resource_group, body.vault_name, vault_body
