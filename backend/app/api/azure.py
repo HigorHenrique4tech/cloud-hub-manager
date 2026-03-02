@@ -690,7 +690,7 @@ async def ws_create_azure_snapshot(
         ).result()
         log_activity(db, member.user, "backup.create", "AZURE_SNAPSHOT",
                      resource_id=result.id, resource_name=body.snapshot_name,
-                     provider="azure", organization_id=member.org_id, workspace_id=member.workspace_id)
+                     provider="azure", organization_id=member.organization_id, workspace_id=member.workspace_id)
         return {
             "snapshot_id": result.id,
             "name": result.name,
@@ -715,7 +715,7 @@ async def ws_delete_azure_snapshot(
         svc.compute_client.snapshots.begin_delete(resource_group, snapshot_name).result()
         log_activity(db, member.user, "backup.delete", "AZURE_SNAPSHOT",
                      resource_id=snapshot_name, resource_name=snapshot_name,
-                     provider="azure", organization_id=member.org_id, workspace_id=member.workspace_id)
+                     provider="azure", organization_id=member.organization_id, workspace_id=member.workspace_id)
         return {"deleted": True}
     except HTTPException:
         raise
