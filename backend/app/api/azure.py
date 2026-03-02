@@ -753,3 +753,358 @@ async def ws_list_azure_disks(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Backup — Recovery Services Vault (Azure Backup) ─────────────────────────
+
+class CreateVaultRequest(_BM):
+    resource_group: str
+    vault_name: str
+    location: str
+
+class CreateBackupPolicyRequest(_BM):
+    policy_name: str
+    schedule_run_times: list[str]        # ISO-8601, ex: ["2024-01-01T02:00:00Z"]
+    schedule_run_frequency: str = "Daily"  # "Daily" | "Weekly"
+    instant_rp_retention_range_in_days: int = 2
+    daily_retention_duration: int = 30
+
+class EnableVMBackupRequest(_BM):
+    vm_id: str       # ARM resource ID completo da VM
+    vm_rg: str
+    vm_name: str
+    policy_name: str
+
+class BackupNowRequest(_BM):
+    vm_rg: str
+    vm_name: str
+    retention_days: int = 30
+
+
+@ws_router.get("/backups/vaults")
+async def ws_list_azure_vaults(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List all Recovery Services Vaults in the subscription."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        vaults = []
+        for v in svc.recovery_services_client.vaults.list_by_subscription_id():
+            rg = ""
+            try:
+                rg = v.id.split("/resourceGroups/")[1].split("/")[0]
+            except Exception:
+                pass
+            vaults.append({
+                "id": v.id,
+                "name": v.name,
+                "resource_group": rg,
+                "location": v.location,
+                "provisioning_state": v.properties.provisioning_state if v.properties else None,
+                "sku": v.sku.name if v.sku else None,
+            })
+        vaults.sort(key=lambda x: x["name"])
+        return {"vaults": vaults}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/vaults")
+async def ws_create_azure_vault(
+    body: CreateVaultRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Create a Recovery Services Vault."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        from azure.mgmt.recoveryservices.models import Vault, VaultProperties, Sku
+        vault_body = Vault(
+            location=body.location,
+            sku=Sku(name="Standard"),
+            properties=VaultProperties(),
+        )
+        result = svc.recovery_services_client.vaults.create_or_update(
+            body.resource_group, body.vault_name, vault_body
+        )
+        log_activity(db, member.user, "backup.create", "AZURE_VAULT",
+                     resource_id=result.id, resource_name=body.vault_name,
+                     provider="azure", organization_id=member.organization_id, workspace_id=member.workspace_id)
+        return {"id": result.id, "name": result.name, "provisioning_state": result.properties.provisioning_state if result.properties else None}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/backups/vaults/{vault_rg}/{vault_name}/policies")
+async def ws_list_backup_policies(
+    vault_rg: str,
+    vault_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List backup policies in a Recovery Services Vault."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        policies = []
+        for p in svc.backup_client.backup_policies.list(vault_name, vault_rg):
+            props = p.properties
+            schedule_freq = None
+            schedule_time = None
+            retention_daily = None
+            instant_rp_days = None
+            try:
+                if hasattr(props, "schedule_policy") and props.schedule_policy:
+                    sp = props.schedule_policy
+                    schedule_freq = getattr(sp, "schedule_run_frequency", None)
+                    times = getattr(sp, "schedule_run_times", None)
+                    schedule_time = times[0].isoformat() if times else None
+                if hasattr(props, "retention_policy") and props.retention_policy:
+                    rp = props.retention_policy
+                    if hasattr(rp, "daily_schedule") and rp.daily_schedule:
+                        rd = rp.daily_schedule.retention_duration
+                        retention_daily = getattr(rd, "count", None)
+                instant_rp_days = getattr(props, "instant_rp_retention_range_in_days", None)
+            except Exception:
+                pass
+            policies.append({
+                "name": p.name,
+                "id": p.id,
+                "type": type(props).__name__ if props else None,
+                "schedule_frequency": schedule_freq,
+                "schedule_time": schedule_time,
+                "retention_daily_count": retention_daily,
+                "instant_rp_days": instant_rp_days,
+            })
+        return {"policies": policies}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/vaults/{vault_rg}/{vault_name}/policies")
+async def ws_create_backup_policy(
+    vault_rg: str,
+    vault_name: str,
+    body: CreateBackupPolicyRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Create a custom backup policy in a Recovery Services Vault."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        from azure.mgmt.recoveryservicesbackup.models import (
+            ProtectionPolicyResource, AzureIaaSVMProtectionPolicy,
+            SimpleSchedulePolicy, LongTermRetentionPolicy,
+            RetentionDuration, RetentionDurationType, ScheduleRunType,
+            DailyRetentionSchedule,
+        )
+        from datetime import datetime as _dt
+        run_times = [_dt.fromisoformat(t.replace("Z", "+00:00")) for t in body.schedule_run_times]
+        policy = ProtectionPolicyResource(
+            properties=AzureIaaSVMProtectionPolicy(
+                instant_rp_retention_range_in_days=body.instant_rp_retention_range_in_days,
+                schedule_policy=SimpleSchedulePolicy(
+                    schedule_run_frequency=ScheduleRunType(body.schedule_run_frequency),
+                    schedule_run_times=run_times,
+                ),
+                retention_policy=LongTermRetentionPolicy(
+                    daily_schedule=DailyRetentionSchedule(
+                        retention_times=run_times,
+                        retention_duration=RetentionDuration(
+                            count=body.daily_retention_duration,
+                            duration_type=RetentionDurationType.DAYS,
+                        ),
+                    )
+                ),
+            )
+        )
+        result = svc.backup_client.protection_policies.create_or_update(
+            vault_name, vault_rg, body.policy_name, policy
+        )
+        log_activity(db, member.user, "backup.create", "AZURE_BACKUP_POLICY",
+                     resource_name=body.policy_name, provider="azure",
+                     organization_id=member.organization_id, workspace_id=member.workspace_id)
+        return {"name": result.name, "id": result.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/backups/vaults/{vault_rg}/{vault_name}/items")
+async def ws_list_protected_items(
+    vault_rg: str,
+    vault_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List VMs protected by Azure Backup in a vault."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        items = []
+        for item in svc.backup_client.backup_protected_items.list(
+            vault_name, vault_rg,
+            filter="backupManagementType eq 'AzureIaasVM' and itemType eq 'VM'",
+        ):
+            props = item.properties
+            vm_name = None
+            vm_rg = None
+            policy_name = None
+            last_backup_time = None
+            try:
+                if item.name:
+                    parts = item.name.split(";")
+                    if len(parts) >= 4:
+                        vm_rg = parts[2]
+                        vm_name = parts[3]
+                policy_id = getattr(props, "policy_id", None)
+                if policy_id:
+                    policy_name = policy_id.split("/")[-1]
+                lbt = getattr(props, "last_backup_time", None)
+                last_backup_time = lbt.isoformat() if lbt else None
+            except Exception:
+                pass
+            items.append({
+                "name": item.name,
+                "vm_name": vm_name or getattr(props, "friendly_name", None),
+                "resource_group": vm_rg,
+                "protection_status": getattr(props, "protection_status", None),
+                "protection_state": str(getattr(props, "protection_state", None)),
+                "last_backup_status": str(getattr(props, "last_backup_status", None)),
+                "last_backup_time": last_backup_time,
+                "policy_name": policy_name,
+                "health_status": str(getattr(props, "health_status", None)),
+            })
+        return {"items": items}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/vaults/{vault_rg}/{vault_name}/protect")
+async def ws_enable_vm_backup(
+    vault_rg: str,
+    vault_name: str,
+    body: EnableVMBackupRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Enable Azure Backup for a VM."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        from azure.mgmt.recoveryservicesbackup.models import (
+            ProtectedItemResource, AzureIaaSComputeVMProtectedItem,
+        )
+        fabric = "Azure"
+        container_name = f"IaasVMContainer;iaasvmcontainerv2;{body.vm_rg};{body.vm_name}"
+        item_name = f"VM;iaasvmcontainerv2;{body.vm_rg};{body.vm_name}"
+        policy_id = (
+            f"/subscriptions/{svc.subscription_id}/resourceGroups/{vault_rg}"
+            f"/providers/Microsoft.RecoveryServices/vaults/{vault_name}"
+            f"/backupPolicies/{body.policy_name}"
+        )
+        protected_item = ProtectedItemResource(
+            properties=AzureIaaSComputeVMProtectedItem(
+                policy_id=policy_id,
+                source_resource_id=body.vm_id,
+            )
+        )
+        svc.backup_client.protected_items.create_or_update(
+            vault_name, vault_rg, fabric, container_name, item_name, protected_item
+        )
+        log_activity(db, member.user, "backup.create", "AZURE_VM_BACKUP",
+                     resource_name=body.vm_name, provider="azure",
+                     organization_id=member.organization_id, workspace_id=member.workspace_id)
+        return {"enabled": True, "vm_name": body.vm_name, "policy_name": body.policy_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/vaults/{vault_rg}/{vault_name}/backup-now")
+async def ws_trigger_backup_now(
+    vault_rg: str,
+    vault_name: str,
+    body: BackupNowRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Trigger an on-demand backup for a VM."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        from azure.mgmt.recoveryservicesbackup.models import (
+            BackupRequestResource, IaasVMBackupRequest,
+        )
+        from datetime import datetime, timezone, timedelta
+        fabric = "Azure"
+        container_name = f"IaasVMContainer;iaasvmcontainerv2;{body.vm_rg};{body.vm_name}"
+        item_name = f"VM;iaasvmcontainerv2;{body.vm_rg};{body.vm_name}"
+        svc.backup_client.backups.trigger(
+            vault_name, vault_rg, fabric, container_name, item_name,
+            BackupRequestResource(
+                properties=IaasVMBackupRequest(
+                    recovery_point_expiry_time_in_utc=datetime.now(timezone.utc) + timedelta(days=body.retention_days)
+                )
+            ),
+        )
+        log_activity(db, member.user, "backup.create", "AZURE_BACKUP_JOB",
+                     resource_name=body.vm_name, provider="azure",
+                     organization_id=member.organization_id, workspace_id=member.workspace_id)
+        return {"triggered": True, "vm_name": body.vm_name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/backups/vaults/{vault_rg}/{vault_name}/jobs")
+async def ws_list_backup_jobs(
+    vault_rg: str,
+    vault_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List recent backup jobs in a Recovery Services Vault."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        jobs = []
+        for j in svc.backup_client.backup_jobs.list(vault_name, vault_rg):
+            props = j.properties
+            vm_name = None
+            start_time = None
+            end_time = None
+            duration = None
+            try:
+                entity = getattr(props, "entity_friendly_name", None)
+                vm_name = entity
+                st = getattr(props, "start_time", None)
+                et = getattr(props, "end_time", None)
+                start_time = st.isoformat() if st else None
+                end_time = et.isoformat() if et else None
+                if st and et:
+                    secs = int((et - st).total_seconds())
+                    duration = f"{secs // 60}m {secs % 60}s"
+            except Exception:
+                pass
+            jobs.append({
+                "job_id": j.name,
+                "operation": getattr(props, "operation", None),
+                "status": getattr(props, "status", None),
+                "vm_name": vm_name,
+                "start_time": start_time,
+                "end_time": end_time,
+                "duration": duration,
+            })
+        return {"jobs": jobs}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

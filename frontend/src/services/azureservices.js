@@ -63,6 +63,16 @@ export const azureService = {
   createSnapshot: (data) => api.post(wsUrl('/azure/backups/snapshots'), data).then(r => r.data),
   deleteSnapshot: (rg, name) => api.delete(wsUrl(`/azure/backups/snapshots/${rg}/${name}`)).then(r => r.data),
   listDisks: () => api.get(wsUrl('/azure/backups/disks')).then(r => r.data),
+
+  // Backup — Recovery Services Vault (Azure Backup)
+  listVaults: () => api.get(wsUrl('/azure/backups/vaults')).then(r => r.data),
+  createVault: (data) => api.post(wsUrl('/azure/backups/vaults'), data).then(r => r.data),
+  listBackupPolicies: (vaultRg, vaultName) => api.get(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/policies`)).then(r => r.data),
+  createBackupPolicy: (vaultRg, vaultName, data) => api.post(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/policies`), data).then(r => r.data),
+  listProtectedItems: (vaultRg, vaultName) => api.get(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/items`)).then(r => r.data),
+  enableVMBackup: (vaultRg, vaultName, data) => api.post(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/protect`), data, { timeout: 60000 }).then(r => r.data),
+  triggerBackupNow: (vaultRg, vaultName, data) => api.post(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/backup-now`), data).then(r => r.data),
+  listBackupJobs: (vaultRg, vaultName) => api.get(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/jobs`)).then(r => r.data),
 };
 
 export default azureService;

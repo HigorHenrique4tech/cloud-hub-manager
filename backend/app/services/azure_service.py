@@ -32,6 +32,8 @@ class AzureService:
         self._storage_client = None
         self._sql_client = None
         self._web_client = None
+        self._recovery_services_client = None
+        self._backup_client = None
 
     @property
     def credential(self):
@@ -78,6 +80,20 @@ class AzureService:
         if not self._web_client:
             self._web_client = WebSiteManagementClient(self.credential, self.subscription_id)
         return self._web_client
+
+    @property
+    def recovery_services_client(self):
+        if not self._recovery_services_client:
+            from azure.mgmt.recoveryservices import RecoveryServicesClient
+            self._recovery_services_client = RecoveryServicesClient(self.credential, self.subscription_id)
+        return self._recovery_services_client
+
+    @property
+    def backup_client(self):
+        if not self._backup_client:
+            from azure.mgmt.recoveryservicesbackup import RecoveryServicesBackupClient
+            self._backup_client = RecoveryServicesBackupClient(self.credential, self.subscription_id)
+        return self._backup_client
 
     # ── Helpers for form dropdowns ────────────────────────────────────────────
 
