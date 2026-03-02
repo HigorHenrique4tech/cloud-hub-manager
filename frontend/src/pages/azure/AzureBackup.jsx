@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, HardDriveDownload, RefreshCw } from 'lucide-react';
+import { Plus, Trash2, HardDriveDownload, RefreshCw, HardDrive } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import SkeletonTable from '../../components/common/SkeletonTable';
@@ -31,45 +31,164 @@ function formatSize(gb) {
   return `${gb} GB`;
 }
 
+const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sky-400';
+const labelCls = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1';
+
 // ── Create Snapshot Modal ──────────────────────────────────────────────────────
 
 function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
   const [form, setForm] = useState({ resource_group: '', source_resource_id: '', snapshot_name: '', location: '' });
 
+  // Fetch disks and resource groups for pickers
+  const disksQ = useQuery({
+    queryKey: ['azure-disks-picker'],
+    queryFn: () => azureService.listDisks(),
+    enabled: isOpen,
+    staleTime: 120_000,
+    retry: false,
+  });
+
+  const rgsQ = useQuery({
+    queryKey: ['azure-rgs-picker'],
+    queryFn: () => azureService.listResourceGroups(),
+    enabled: isOpen,
+    staleTime: 120_000,
+    retry: false,
+  });
+
+  const disks = disksQ.data?.disks || [];
+  const resourceGroups = useMemo(() => {
+    const fromRGs = (rgsQ.data?.resource_groups || rgsQ.data || []).map(rg =>
+      typeof rg === 'string' ? rg : rg.name
+    );
+    const fromDisks = [...new Set(disks.map(d => d.resource_group).filter(Boolean))];
+    const all = [...new Set([...fromRGs, ...fromDisks])].sort();
+    return all;
+  }, [rgsQ.data, disks]);
+
+  // Disks filtered by selected resource group
+  const filteredDisks = form.resource_group
+    ? disks.filter(d => d.resource_group === form.resource_group)
+    : disks;
+
+  const handleRGChange = (rg) => {
+    setForm(f => ({ ...f, resource_group: rg, source_resource_id: '', location: '' }));
+  };
+
+  const handleDiskChange = (diskId) => {
+    const disk = disks.find(d => d.id === diskId);
+    setForm(f => ({
+      ...f,
+      source_resource_id: diskId,
+      location: disk?.location || f.location,
+      resource_group: disk?.resource_group || f.resource_group,
+    }));
+  };
+
+  const handleLocationChange = (loc) => {
+    setForm(f => ({ ...f, location: loc }));
+  };
+
   if (!isOpen) return null;
+
+  const canSubmit = form.resource_group.trim() && form.source_resource_id.trim() && form.snapshot_name.trim() && form.location.trim();
+
   const submit = (e) => {
     e.preventDefault();
-    if (form.resource_group.trim() && form.source_resource_id.trim() && form.snapshot_name.trim() && form.location.trim()) {
-      onSubmit(form);
-    }
+    if (canSubmit) onSubmit(form);
   };
+
+  const loadingPickers = disksQ.isLoading || rgsQ.isLoading;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-6">
-        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Criar Snapshot de Disco</h2>
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
+          <HardDrive className="w-5 h-5 text-sky-500" />
+          Criar Snapshot de Disco
+        </h2>
         <form onSubmit={submit} className="space-y-4">
-          {[
-            { field: 'resource_group', label: 'Resource Group *', placeholder: 'meu-resource-group' },
-            { field: 'snapshot_name', label: 'Nome do Snapshot *', placeholder: 'meu-disco-snapshot-01' },
-            { field: 'location', label: 'Localização *', placeholder: 'eastus' },
-            { field: 'source_resource_id', label: 'ID do Disco de Origem *', placeholder: '/subscriptions/.../disks/meu-disco' },
-          ].map(({ field, label, placeholder }) => (
-            <div key={field}>
-              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{label}</label>
-              <input
-                value={form[field]}
-                onChange={e => setForm({ ...form, [field]: e.target.value })}
-                placeholder={placeholder}
-                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sky-400"
+
+          {/* Resource Group — dropdown */}
+          <div>
+            <label className={labelCls}>Resource Group *</label>
+            {loadingPickers ? (
+              <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+            ) : (
+              <select
+                value={form.resource_group}
+                onChange={e => handleRGChange(e.target.value)}
+                className={inputCls}
                 required
-              />
-            </div>
-          ))}
+              >
+                <option value="">Selecione um Resource Group...</option>
+                {resourceGroups.map(rg => (
+                  <option key={rg} value={rg}>{rg}</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Disk — dropdown filtered by RG */}
+          <div>
+            <label className={labelCls}>Disco de Origem *</label>
+            {loadingPickers ? (
+              <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+            ) : (
+              <select
+                value={form.source_resource_id}
+                onChange={e => handleDiskChange(e.target.value)}
+                className={inputCls}
+                required
+                disabled={!form.resource_group && filteredDisks.length === 0}
+              >
+                <option value="">
+                  {form.resource_group
+                    ? filteredDisks.length === 0
+                      ? 'Nenhum disco neste Resource Group'
+                      : 'Selecione um disco...'
+                    : 'Selecione um disco...'}
+                </option>
+                {filteredDisks.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} {d.disk_size_gb ? `(${d.disk_size_gb} GB` : ''}{d.os_type ? ` · ${d.os_type}` : ''}{d.disk_size_gb ? ')' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            {form.source_resource_id && (
+              <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 truncate font-mono">{form.source_resource_id}</p>
+            )}
+          </div>
+
+          {/* Location — auto-filled, but editable */}
+          <div>
+            <label className={labelCls}>Localização *</label>
+            <input
+              value={form.location}
+              onChange={e => handleLocationChange(e.target.value)}
+              placeholder="Preenchido automaticamente ao selecionar o disco"
+              className={inputCls}
+              required
+            />
+          </div>
+
+          {/* Snapshot name — manual */}
+          <div>
+            <label className={labelCls}>Nome do Snapshot *</label>
+            <input
+              value={form.snapshot_name}
+              onChange={e => setForm(f => ({ ...f, snapshot_name: e.target.value }))}
+              placeholder="meu-disco-snapshot-01"
+              className={inputCls}
+              required
+            />
+          </div>
+
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
-            <button type="submit" disabled={loading} className="px-4 py-2 text-sm rounded-lg bg-sky-500 text-white font-medium hover:bg-sky-600 disabled:opacity-60">
+            <button type="submit" disabled={loading || !canSubmit} className="px-4 py-2 text-sm rounded-lg bg-sky-500 text-white font-medium hover:bg-sky-600 disabled:opacity-60">
               {loading ? 'Criando...' : 'Criar Snapshot'}
             </button>
           </div>

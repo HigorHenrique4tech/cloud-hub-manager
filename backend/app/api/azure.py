@@ -721,3 +721,35 @@ async def ws_delete_azure_snapshot(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/backups/disks")
+async def ws_list_azure_disks(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List all managed disks in the subscription (for snapshot source picker)."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        disks = []
+        for d in svc.compute_client.disks.list():
+            rg = ""
+            try:
+                rg = d.id.split("/resourceGroups/")[1].split("/")[0]
+            except Exception:
+                pass
+            disks.append({
+                "id": d.id,
+                "name": d.name,
+                "resource_group": rg,
+                "location": d.location,
+                "disk_size_gb": d.disk_size_gb,
+                "os_type": str(d.os_type) if d.os_type else None,
+                "disk_state": d.disk_state,
+            })
+        disks.sort(key=lambda x: (x["resource_group"], x["name"]))
+        return {"disks": disks}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

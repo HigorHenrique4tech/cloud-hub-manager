@@ -62,6 +62,7 @@ export const azureService = {
   listSnapshots: () => api.get(wsUrl('/azure/backups/snapshots')).then(r => r.data),
   createSnapshot: (data) => api.post(wsUrl('/azure/backups/snapshots'), data).then(r => r.data),
   deleteSnapshot: (rg, name) => api.delete(wsUrl(`/azure/backups/snapshots/${rg}/${name}`)).then(r => r.data),
+  listDisks: () => api.get(wsUrl('/azure/backups/disks')).then(r => r.data),
 };
 
 export default azureService;
