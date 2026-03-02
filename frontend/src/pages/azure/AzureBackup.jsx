@@ -345,7 +345,7 @@ function EnableBackupModal({ isOpen, onClose, onSubmit, loading, error, vaultRg,
     retry: false,
   });
 
-  const vms = vmsQ.data?.vms || vmsQ.data || [];
+  const vms = vmsQ.data?.virtual_machines || vmsQ.data?.vms || [];
   const policies = policiesQ.data?.policies || [];
 
   const handleVMChange = (vmId) => {
