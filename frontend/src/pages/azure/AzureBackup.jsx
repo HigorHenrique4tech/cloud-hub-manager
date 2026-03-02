@@ -61,14 +61,19 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
     const fromRGs = (rgsQ.data?.resource_groups || rgsQ.data || []).map(rg =>
       typeof rg === 'string' ? rg : rg.name
     );
-    const fromDisks = [...new Set(disks.map(d => d.resource_group).filter(Boolean))];
-    const all = [...new Set([...fromRGs, ...fromDisks])].sort();
-    return all;
+    const fromDisks = disks.map(d => d.resource_group).filter(Boolean);
+    // Merge case-insensitively — prefer the name from listResourceGroups (canonical)
+    const seen = new Map(); // lowercase key → canonical display name
+    [...fromRGs, ...fromDisks].forEach(rg => {
+      const key = rg.toLowerCase();
+      if (!seen.has(key)) seen.set(key, rg);
+    });
+    return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
   }, [rgsQ.data, disks]);
 
-  // Disks filtered by selected resource group
+  // Disks filtered by selected resource group (case-insensitive)
   const filteredDisks = form.resource_group
-    ? disks.filter(d => d.resource_group === form.resource_group)
+    ? disks.filter(d => d.resource_group?.toLowerCase() === form.resource_group.toLowerCase())
     : disks;
 
   const handleRGChange = (rg) => {
@@ -99,6 +104,7 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
   };
 
   const loadingPickers = disksQ.isLoading || rgsQ.isLoading;
+  const disksError = disksQ.isError;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -134,6 +140,14 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
             <label className={labelCls}>Disco de Origem *</label>
             {loadingPickers ? (
               <div className="h-9 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
+            ) : disksError ? (
+              <input
+                value={form.source_resource_id}
+                onChange={e => setForm(f => ({ ...f, source_resource_id: e.target.value }))}
+                placeholder="/subscriptions/.../disks/nome-do-disco"
+                className={inputCls}
+                required
+              />
             ) : (
               <select
                 value={form.source_resource_id}
@@ -156,7 +170,10 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
                 ))}
               </select>
             )}
-            {form.source_resource_id && (
+            {disksError && (
+              <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Não foi possível carregar a lista de discos. Informe o ID do disco manualmente.</p>
+            )}
+            {!disksError && form.source_resource_id && (
               <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 truncate font-mono">{form.source_resource_id}</p>
             )}
           </div>
