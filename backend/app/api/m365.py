@@ -59,6 +59,34 @@ class CreateGroupRequest(BaseModel):
     visibility: str = "Private"     # "Private" | "Public" (M365 groups only)
 
 
+class MailboxSettingsUpdate(BaseModel):
+    auto_reply_enabled: Optional[bool] = None
+    auto_reply_message: Optional[str] = None
+    timezone: Optional[str] = None
+
+
+class CreateTeamRequest(BaseModel):
+    display_name: str
+    description: str = ""
+    visibility: str = "Private"     # "Private" | "Public"
+
+
+class UpdateTeamRequest(BaseModel):
+    display_name: Optional[str] = None
+    description: Optional[str] = None
+    visibility: Optional[str] = None
+
+
+class CreateChannelRequest(BaseModel):
+    display_name: str
+    description: str = ""
+    channel_type: str = "standard"  # "standard" | "private"
+
+
+class UpdateRoleRequest(BaseModel):
+    roles: list = []                # [] = member, ["owner"] = owner
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -94,6 +122,13 @@ def _build_service(acct: CloudAccount) -> M365Service:
         client_id=creds["client_id"],
         client_secret=creds["client_secret"],
     )
+
+
+def _get_service_or_404(db: Session, workspace_id) -> M365Service:
+    acct = _get_m365_account(db, workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="Conta M365 não encontrada. Configure as credenciais primeiro.")
+    return _build_service(acct)
 
 
 def _acct_to_dict(acct: Optional[CloudAccount]) -> dict:
@@ -849,3 +884,260 @@ async def list_m365_tenants(
             results.append(entry)
 
     return {"tenants": results}
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# SharePoint Admin Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ws_router.get("/sharepoint/sites")
+async def ws_m365_list_sites(
+    search: Optional[str] = None,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "SharePoint Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_sites(search=search)
+
+
+@ws_router.get("/sharepoint/sites/{site_id}")
+async def ws_m365_get_site(
+    site_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "SharePoint Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_site(site_id)
+
+
+@ws_router.get("/sharepoint/sites/{site_id}/drives")
+async def ws_m365_get_site_drives(
+    site_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "SharePoint Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_site_drives(site_id)
+
+
+@ws_router.get("/sharepoint/drives/{drive_id}/items")
+async def ws_m365_get_drive_items(
+    drive_id: str,
+    folder_id: Optional[str] = None,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "SharePoint Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_drive_items(drive_id, folder_id=folder_id)
+
+
+@ws_router.get("/sharepoint/usage")
+async def ws_m365_sharepoint_usage(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "SharePoint Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_sharepoint_usage()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Exchange Admin Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ws_router.get("/exchange/mailboxes")
+async def ws_m365_list_mailboxes(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_mailboxes()
+
+
+@ws_router.get("/exchange/users/{user_id}/mailbox-settings")
+async def ws_m365_get_mailbox_settings(
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_mailbox_settings(user_id)
+
+
+@ws_router.patch("/exchange/users/{user_id}/mailbox-settings")
+async def ws_m365_update_mailbox_settings(
+    user_id: str,
+    body: MailboxSettingsUpdate,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.update_mailbox_settings(user_id, body.model_dump(exclude_none=True))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/exchange/activity")
+async def ws_m365_email_activity(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_email_activity()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Teams Admin Endpoints (extending existing /teams/* routes)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ws_router.post("/teams")
+async def ws_m365_create_team(
+    body: CreateTeamRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.create_team(body.display_name, body.description, body.visibility)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.patch("/teams/{team_id}")
+async def ws_m365_update_team(
+    team_id: str,
+    body: UpdateTeamRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.update_team(team_id, body.model_dump(exclude_none=True))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/teams/{team_id}/archive")
+async def ws_m365_archive_team(
+    team_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        svc.archive_team(team_id)
+        return {"archived": True, "team_id": team_id}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/teams/{team_id}/channels")
+async def ws_m365_list_channels(
+    team_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_channels(team_id)
+
+
+@ws_router.post("/teams/{team_id}/channels")
+async def ws_m365_create_channel(
+    team_id: str,
+    body: CreateChannelRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.create_channel(team_id, body.display_name, body.description, body.channel_type)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/teams/{team_id}/channels/{channel_id}")
+async def ws_m365_delete_channel(
+    team_id: str,
+    channel_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.delete_channel(team_id, channel_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.patch("/teams/{team_id}/members/{member_id}")
+async def ws_m365_update_member_role(
+    team_id: str,
+    member_id: str,
+    body: UpdateRoleRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.update_member_role(team_id, member_id, body.roles)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/teams/{team_id}/members/{member_id}")
+async def ws_m365_remove_team_member(
+    team_id: str,
+    member_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.remove_team_member(team_id, member_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/teams/activity")
+async def ws_m365_teams_activity(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Teams Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_teams_activity()

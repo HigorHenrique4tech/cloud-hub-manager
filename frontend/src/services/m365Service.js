@@ -147,6 +147,33 @@ const m365Service = {
     const { data } = await api.get(`/orgs/${orgSlug}/m365/tenants`);
     return data;
   },
+
+  // ── SharePoint Admin ────────────────────────────────────────────────────────
+
+  getSites: (search) => api.get(wsUrl('/m365/sharepoint/sites'), { params: search ? { search } : {} }).then(r => r.data),
+  getSite: (siteId) => api.get(wsUrl(`/m365/sharepoint/sites/${siteId}`)).then(r => r.data),
+  getSiteDrives: (siteId) => api.get(wsUrl(`/m365/sharepoint/sites/${siteId}/drives`)).then(r => r.data),
+  getDriveItems: (driveId, folderId) => api.get(wsUrl(`/m365/sharepoint/drives/${driveId}/items`), { params: folderId ? { folder_id: folderId } : {} }).then(r => r.data),
+  getSharePointUsage: () => api.get(wsUrl('/m365/sharepoint/usage')).then(r => r.data),
+
+  // ── Exchange Admin ───────────────────────────────────────────────────────────
+
+  getMailboxes: () => api.get(wsUrl('/m365/exchange/mailboxes')).then(r => r.data),
+  getMailboxSettings: (userId) => api.get(wsUrl(`/m365/exchange/users/${userId}/mailbox-settings`)).then(r => r.data),
+  updateMailboxSettings: (userId, data) => api.patch(wsUrl(`/m365/exchange/users/${userId}/mailbox-settings`), data).then(r => r.data),
+  getEmailActivity: () => api.get(wsUrl('/m365/exchange/activity')).then(r => r.data),
+
+  // ── Teams Admin ──────────────────────────────────────────────────────────────
+
+  createTeam: (data) => api.post(wsUrl('/m365/teams'), data).then(r => r.data),
+  updateTeam: (teamId, data) => api.patch(wsUrl(`/m365/teams/${teamId}`), data).then(r => r.data),
+  archiveTeam: (teamId) => api.post(wsUrl(`/m365/teams/${teamId}/archive`)).then(r => r.data),
+  getChannels: (teamId) => api.get(wsUrl(`/m365/teams/${teamId}/channels`)).then(r => r.data),
+  createChannel: (teamId, data) => api.post(wsUrl(`/m365/teams/${teamId}/channels`), data).then(r => r.data),
+  deleteChannel: (teamId, channelId) => api.delete(wsUrl(`/m365/teams/${teamId}/channels/${channelId}`)).then(r => r.data),
+  updateMemberRole: (teamId, memberId, roles) => api.patch(wsUrl(`/m365/teams/${teamId}/members/${memberId}`), { roles }).then(r => r.data),
+  removeTeamMember: (teamId, memberId) => api.delete(wsUrl(`/m365/teams/${teamId}/members/${memberId}`)).then(r => r.data),
+  getTeamsActivity: () => api.get(wsUrl('/m365/teams/activity')).then(r => r.data),
 };
 
 export default m365Service;

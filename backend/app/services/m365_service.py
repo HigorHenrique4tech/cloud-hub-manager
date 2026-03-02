@@ -772,3 +772,369 @@ class M365Service:
             f"/users/{user_id}/assignLicense",
             {"addLicenses": [], "removeLicenses": [sku_id]},
         )
+
+    # ─────────────────────────────────────────────────────────────────────
+    # SharePoint
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_sites(self, search: str = None) -> dict:
+        """List SharePoint sites. Optionally filter by search term."""
+        try:
+            if search:
+                url = f"{GRAPH_V1}/sites?search={search}&$top=50"
+            else:
+                url = f"{GRAPH_V1}/sites?search=*&$top=50"
+            resp = self._get(url)
+            sites = []
+            for s in resp.get("value", []):
+                sites.append({
+                    "id": s.get("id"),
+                    "name": s.get("name") or s.get("displayName"),
+                    "display_name": s.get("displayName"),
+                    "web_url": s.get("webUrl"),
+                    "description": s.get("description", ""),
+                    "created_at": s.get("createdDateTime"),
+                    "last_modified": s.get("lastModifiedDateTime"),
+                })
+            return {"sites": sites, "total": len(sites)}
+        except Exception as e:
+            logger.error(f"Error getting SharePoint sites: {e}")
+            return {"sites": [], "total": 0, "error": str(e)}
+
+    def get_site(self, site_id: str) -> dict:
+        """Get details of a specific SharePoint site."""
+        try:
+            s = self._get(f"{GRAPH_V1}/sites/{site_id}")
+            return {
+                "id": s.get("id"),
+                "name": s.get("name") or s.get("displayName"),
+                "display_name": s.get("displayName"),
+                "web_url": s.get("webUrl"),
+                "description": s.get("description", ""),
+                "created_at": s.get("createdDateTime"),
+                "last_modified": s.get("lastModifiedDateTime"),
+                "site_collection": s.get("siteCollection"),
+            }
+        except Exception as e:
+            logger.error(f"Error getting site {site_id}: {e}")
+            return {"error": str(e)}
+
+    def get_site_drives(self, site_id: str) -> dict:
+        """List document libraries (drives) in a SharePoint site."""
+        try:
+            resp = self._get(f"{GRAPH_V1}/sites/{site_id}/drives")
+            drives = []
+            for d in resp.get("value", []):
+                quota = d.get("quota", {})
+                drives.append({
+                    "id": d.get("id"),
+                    "name": d.get("name"),
+                    "drive_type": d.get("driveType"),
+                    "web_url": d.get("webUrl"),
+                    "quota_used": quota.get("used", 0),
+                    "quota_total": quota.get("total", 0),
+                    "quota_remaining": quota.get("remaining", 0),
+                    "last_modified": d.get("lastModifiedDateTime"),
+                })
+            return {"drives": drives, "total": len(drives)}
+        except Exception as e:
+            logger.error(f"Error getting drives for site {site_id}: {e}")
+            return {"drives": [], "total": 0, "error": str(e)}
+
+    def get_drive_items(self, drive_id: str, folder_id: str = None) -> dict:
+        """List items in a drive (root or a specific folder)."""
+        try:
+            if folder_id:
+                url = f"{GRAPH_V1}/drives/{drive_id}/items/{folder_id}/children"
+            else:
+                url = f"{GRAPH_V1}/drives/{drive_id}/root/children"
+            resp = self._get(f"{url}?$top=100&$select=id,name,size,file,folder,lastModifiedDateTime,webUrl")
+            items = []
+            for item in resp.get("value", []):
+                items.append({
+                    "id": item.get("id"),
+                    "name": item.get("name"),
+                    "is_folder": "folder" in item,
+                    "size": item.get("size", 0),
+                    "web_url": item.get("webUrl"),
+                    "last_modified": item.get("lastModifiedDateTime"),
+                    "mime_type": (item.get("file") or {}).get("mimeType"),
+                    "child_count": (item.get("folder") or {}).get("childCount", 0),
+                })
+            return {"items": items, "total": len(items)}
+        except Exception as e:
+            logger.error(f"Error getting drive items for {drive_id}: {e}")
+            return {"items": [], "total": 0, "error": str(e)}
+
+    def get_sharepoint_usage(self) -> dict:
+        """Get SharePoint site usage report (last 30 days)."""
+        import csv, io
+        try:
+            token = self._get_token()
+            resp = requests.get(
+                f"{GRAPH_V1}/reports/getSharePointSiteUsageDetail(period='D30')",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            reader = csv.DictReader(io.StringIO(resp.text))
+            sites = []
+            for row in reader:
+                try:
+                    sites.append({
+                        "site_url": row.get("Site URL", ""),
+                        "owner": row.get("Owner Display Name", ""),
+                        "storage_used_bytes": int(row.get("Storage Used (Byte)", 0) or 0),
+                        "storage_allocated_bytes": int(row.get("Storage Allocated (Byte)", 0) or 0),
+                        "file_count": int(row.get("File Count", 0) or 0),
+                        "last_activity": row.get("Last Activity Date", ""),
+                        "page_views": int(row.get("Page View Count", 0) or 0),
+                    })
+                except Exception:
+                    continue
+            sites.sort(key=lambda x: x["storage_used_bytes"], reverse=True)
+            return {"sites": sites, "total": len(sites)}
+        except Exception as e:
+            logger.error(f"Error getting SharePoint usage: {e}")
+            return {"sites": [], "total": 0, "error": str(e)}
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Exchange
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_mailboxes(self) -> dict:
+        """List users with mailbox settings summary."""
+        try:
+            resp = self._get(
+                f"{GRAPH_V1}/users?$select=id,displayName,mail,userPrincipalName,"
+                f"mailboxSettings,accountEnabled&$top=999"
+            )
+            mailboxes = []
+            for u in resp.get("value", []):
+                ms = u.get("mailboxSettings") or {}
+                auto_reply = ms.get("automaticRepliesSetting") or {}
+                mailboxes.append({
+                    "id": u.get("id"),
+                    "display_name": u.get("displayName"),
+                    "mail": u.get("mail"),
+                    "upn": u.get("userPrincipalName"),
+                    "account_enabled": u.get("accountEnabled", True),
+                    "auto_reply_status": auto_reply.get("status", "disabled"),
+                    "timezone": ms.get("timeZone", ""),
+                    "language": (ms.get("language") or {}).get("displayName", ""),
+                })
+            return {"mailboxes": mailboxes, "total": len(mailboxes)}
+        except Exception as e:
+            logger.error(f"Error getting mailboxes: {e}")
+            return {"mailboxes": [], "total": 0, "error": str(e)}
+
+    def get_mailbox_settings(self, user_id: str) -> dict:
+        """Get detailed mailbox settings for a user."""
+        try:
+            ms = self._get(f"{GRAPH_V1}/users/{user_id}/mailboxSettings")
+            auto_reply = ms.get("automaticRepliesSetting") or {}
+            return {
+                "auto_reply_status": auto_reply.get("status", "disabled"),
+                "auto_reply_internal_message": auto_reply.get("internalReplyMessage", ""),
+                "auto_reply_external_message": auto_reply.get("externalReplyMessage", ""),
+                "auto_reply_scheduled_start": auto_reply.get("scheduledStartDateTime", {}).get("dateTime"),
+                "auto_reply_scheduled_end": auto_reply.get("scheduledEndDateTime", {}).get("dateTime"),
+                "timezone": ms.get("timeZone", ""),
+                "language": (ms.get("language") or {}).get("displayName", ""),
+                "language_locale": (ms.get("language") or {}).get("locale", ""),
+                "archive_folder": ms.get("archiveFolder", ""),
+            }
+        except Exception as e:
+            logger.error(f"Error getting mailbox settings for {user_id}: {e}")
+            return {"error": str(e)}
+
+    def update_mailbox_settings(self, user_id: str, settings: dict) -> dict:
+        """Update mailbox settings for a user."""
+        try:
+            payload = {}
+            if "auto_reply_enabled" in settings or "auto_reply_message" in settings:
+                status = "enabled" if settings.get("auto_reply_enabled") else "disabled"
+                auto_reply: dict = {"status": status}
+                if settings.get("auto_reply_message"):
+                    auto_reply["internalReplyMessage"] = settings["auto_reply_message"]
+                    auto_reply["externalReplyMessage"] = settings["auto_reply_message"]
+                payload["automaticRepliesSetting"] = auto_reply
+            if settings.get("timezone"):
+                payload["timeZone"] = settings["timezone"]
+            token = self._get_token()
+            resp = requests.patch(
+                f"{GRAPH_V1}/users/{user_id}/mailboxSettings",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=30,
+            )
+            resp.raise_for_status()
+            return {"updated": True}
+        except Exception as e:
+            logger.error(f"Error updating mailbox settings for {user_id}: {e}")
+            raise
+
+    def get_email_activity(self) -> dict:
+        """Get email activity report for the last 30 days."""
+        import csv, io
+        try:
+            token = self._get_token()
+            resp = requests.get(
+                f"{GRAPH_V1}/reports/getEmailActivityUserDetail(period='D30')",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            reader = csv.DictReader(io.StringIO(resp.text))
+            activity = []
+            for row in reader:
+                try:
+                    activity.append({
+                        "upn": row.get("User Principal Name", ""),
+                        "display_name": row.get("Display Name", ""),
+                        "send_count": int(row.get("Send Count", 0) or 0),
+                        "receive_count": int(row.get("Receive Count", 0) or 0),
+                        "read_count": int(row.get("Read Count", 0) or 0),
+                        "last_activity": row.get("Last Activity Date", ""),
+                    })
+                except Exception:
+                    continue
+            return {"activity": activity, "total": len(activity)}
+        except Exception as e:
+            logger.error(f"Error getting email activity: {e}")
+            return {"activity": [], "total": 0, "error": str(e)}
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Teams Admin
+    # ─────────────────────────────────────────────────────────────────────
+
+    def create_team(self, display_name: str, description: str = "", visibility: str = "Private") -> dict:
+        """Create a new Microsoft Team."""
+        return self._post("/teams", {
+            "template@odata.bind": "https://graph.microsoft.com/v1.0/teamsTemplates('standard')",
+            "displayName": display_name,
+            "description": description,
+            "visibility": visibility,
+        })
+
+    def update_team(self, team_id: str, settings: dict) -> dict:
+        """Update team settings (displayName, description, visibility)."""
+        payload = {}
+        if settings.get("display_name"):
+            payload["displayName"] = settings["display_name"]
+        if settings.get("description") is not None:
+            payload["description"] = settings["description"]
+        if settings.get("visibility"):
+            payload["visibility"] = settings["visibility"]
+        token = self._get_token()
+        resp = requests.patch(
+            f"{GRAPH_V1}/teams/{team_id}",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=payload,
+            timeout=30,
+        )
+        if resp.status_code not in (200, 204):
+            raise Exception(f"Update team failed: {resp.status_code} {resp.text}")
+        return {"updated": True}
+
+    def archive_team(self, team_id: str) -> dict:
+        """Archive a team."""
+        return self._post(f"/teams/{team_id}/archive", {})
+
+    def get_channels(self, team_id: str) -> dict:
+        """List channels in a team."""
+        try:
+            resp = self._get(f"{GRAPH_V1}/teams/{team_id}/channels")
+            channels = []
+            for c in resp.get("value", []):
+                channels.append({
+                    "id": c.get("id"),
+                    "display_name": c.get("displayName"),
+                    "description": c.get("description", ""),
+                    "membership_type": c.get("membershipType", "standard"),
+                    "is_favorite_by_default": c.get("isFavoriteByDefault"),
+                    "web_url": c.get("webUrl"),
+                    "created_at": c.get("createdDateTime"),
+                })
+            return {"channels": channels, "total": len(channels)}
+        except Exception as e:
+            logger.error(f"Error getting channels for team {team_id}: {e}")
+            return {"channels": [], "total": 0, "error": str(e)}
+
+    def create_channel(self, team_id: str, display_name: str, description: str = "",
+                       channel_type: str = "standard") -> dict:
+        """Create a channel in a team."""
+        return self._post(f"/teams/{team_id}/channels", {
+            "displayName": display_name,
+            "description": description,
+            "membershipType": channel_type,
+        })
+
+    def delete_channel(self, team_id: str, channel_id: str) -> dict:
+        """Delete a channel from a team."""
+        token = self._get_token()
+        resp = requests.delete(
+            f"{GRAPH_V1}/teams/{team_id}/channels/{channel_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if resp.status_code not in (200, 204):
+            raise Exception(f"Delete channel failed: {resp.status_code} {resp.text}")
+        return {"deleted": True}
+
+    def update_member_role(self, team_id: str, member_id: str, roles: list) -> dict:
+        """Update member role in a team. roles=[] for member, ['owner'] for owner."""
+        token = self._get_token()
+        resp = requests.patch(
+            f"{GRAPH_V1}/teams/{team_id}/members/{member_id}",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"@odata.type": "#microsoft.graph.aadUserConversationMember", "roles": roles},
+            timeout=30,
+        )
+        if resp.status_code not in (200, 204):
+            raise Exception(f"Update member role failed: {resp.status_code} {resp.text}")
+        return {"updated": True}
+
+    def remove_team_member(self, team_id: str, member_id: str) -> dict:
+        """Remove a member from a team."""
+        token = self._get_token()
+        resp = requests.delete(
+            f"{GRAPH_V1}/teams/{team_id}/members/{member_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if resp.status_code not in (200, 204):
+            raise Exception(f"Remove team member failed: {resp.status_code} {resp.text}")
+        return {"removed": True}
+
+    def get_teams_activity(self) -> dict:
+        """Get Teams user activity report (last 30 days)."""
+        import csv, io
+        try:
+            token = self._get_token()
+            resp = requests.get(
+                f"{GRAPH_V1}/reports/getTeamsUserActivityUserDetail(period='D30')",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            reader = csv.DictReader(io.StringIO(resp.text))
+            activity = []
+            for row in reader:
+                try:
+                    activity.append({
+                        "upn": row.get("User Principal Name", ""),
+                        "display_name": row.get("Display Name", ""),
+                        "channel_messages": int(row.get("Team Chat Message Count", 0) or 0),
+                        "private_messages": int(row.get("Private Chat Message Count", 0) or 0),
+                        "calls": int(row.get("Call Count", 0) or 0),
+                        "meetings": int(row.get("Meeting Count", 0) or 0),
+                        "screen_share_duration": int(row.get("Screen Share Duration", 0) or 0),
+                        "last_activity": row.get("Last Activity Date", ""),
+                    })
+                except Exception:
+                    continue
+            return {"activity": activity, "total": len(activity)}
+        except Exception as e:
+            logger.error(f"Error getting Teams activity: {e}")
+            return {"activity": [], "total": 0, "error": str(e)}
