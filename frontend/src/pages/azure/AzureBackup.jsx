@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, HardDriveDownload, RefreshCw, HardDrive,
-  Vault, Shield, Play, ChevronDown, Clock, CheckCircle,
+  Archive, Shield, Play, Clock, CheckCircle,
   XCircle, AlertCircle, Database,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
@@ -241,7 +241,7 @@ function SnapshotsTab() {
   );
 }
 
-// ── Azure Backup (Recovery Services Vault) tab ────────────────────────────────
+// ── Azure Backup (Recovery Services Archive) tab ────────────────────────────────
 
 const JOB_STATUS = {
   completed:        { cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300', icon: CheckCircle },
@@ -269,8 +269,8 @@ function ProtectionBadge({ state }) {
   return <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400 font-medium">{state || '—'}</span>;
 }
 
-// ─ Create Vault Modal
-function CreateVaultModal({ isOpen, onClose, onSubmit, loading, error }) {
+// ─ Create Archive Modal
+function CreateArchiveModal({ isOpen, onClose, onSubmit, loading, error }) {
   const [form, setForm] = useState({ vault_name: '', resource_group: '', location: '' });
 
   const rgsQ = useQuery({ queryKey: ['azure-rgs-picker'], queryFn: () => azureService.listResourceGroups(), enabled: isOpen, staleTime: 120_000, retry: false });
@@ -294,7 +294,7 @@ function CreateVaultModal({ isOpen, onClose, onSubmit, loading, error }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-          <Vault className="w-5 h-5 text-sky-500" /> Criar Cofre de Recuperação
+          <Archive className="w-5 h-5 text-sky-500" /> Criar Cofre de Recuperação
         </h2>
         <form onSubmit={e => { e.preventDefault(); if (canSubmit) onSubmit(form); }} className="space-y-4">
           <div>
@@ -480,43 +480,43 @@ function CreatePolicyModal({ isOpen, onClose, onSubmit, loading, error }) {
   );
 }
 
-// ─ Main BackupVaultTab
-function BackupVaultTab() {
+// ─ Main BackupArchiveTab
+function BackupArchiveTab() {
   const qc = useQueryClient();
-  const [selectedVault, setSelectedVault] = useState(null);
+  const [selectedArchive, setSelectedArchive] = useState(null);
   const [subTab, setSubTab] = useState('items');
-  const [createVaultOpen, setCreateVaultOpen] = useState(false);
+  const [createArchiveOpen, setCreateArchiveOpen] = useState(false);
   const [enableModalOpen, setEnableModalOpen] = useState(false);
   const [createPolicyOpen, setCreatePolicyOpen] = useState(false);
   const [mutError, setMutError] = useState('');
   const [backupNowTarget, setBackupNowTarget] = useState(null);
 
-  const vaultRg = selectedVault?.resource_group;
-  const vaultName = selectedVault?.name;
+  const vaultRg = selectedArchive?.resource_group;
+  const vaultName = selectedArchive?.name;
 
-  const vaultsQ = useQuery({ queryKey: ['azure-backup-vaults'], queryFn: () => azureService.listVaults(), retry: false });
+  const vaultsQ = useQuery({ queryKey: ['azure-backup-vaults'], queryFn: () => azureService.listArchives(), retry: false });
   const itemsQ = useQuery({
     queryKey: ['azure-backup-items', vaultRg, vaultName],
     queryFn: () => azureService.listProtectedItems(vaultRg, vaultName),
-    enabled: !!selectedVault && subTab === 'items',
+    enabled: !!selectedArchive && subTab === 'items',
     staleTime: 30_000, retry: false,
   });
   const jobsQ = useQuery({
     queryKey: ['azure-backup-jobs', vaultRg, vaultName],
     queryFn: () => azureService.listBackupJobs(vaultRg, vaultName),
-    enabled: !!selectedVault && subTab === 'jobs',
+    enabled: !!selectedArchive && subTab === 'jobs',
     staleTime: 30_000, retry: false,
   });
   const policiesQ = useQuery({
     queryKey: ['azure-backup-policies', vaultRg, vaultName],
     queryFn: () => azureService.listBackupPolicies(vaultRg, vaultName),
-    enabled: !!selectedVault && subTab === 'policies',
+    enabled: !!selectedArchive && subTab === 'policies',
     staleTime: 60_000, retry: false,
   });
 
-  const createVaultMut = useMutation({
-    mutationFn: azureService.createVault,
-    onSuccess: () => { qc.invalidateQueries(['azure-backup-vaults']); setCreateVaultOpen(false); setMutError(''); },
+  const createArchiveMut = useMutation({
+    mutationFn: azureService.createArchive,
+    onSuccess: () => { qc.invalidateQueries(['azure-backup-vaults']); setCreateArchiveOpen(false); setMutError(''); },
     onError: (e) => setMutError(e?.response?.data?.detail || 'Erro ao criar cofre'),
   });
   const enableMut = useMutation({
@@ -548,10 +548,10 @@ function BackupVaultTab() {
 
   return (
     <>
-      {/* Vault selector */}
+      {/* Archive selector */}
       <div className="mb-4 flex items-center gap-3 flex-wrap">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <Vault className="w-4 h-4 text-gray-400 flex-shrink-0" />
+          <Archive className="w-4 h-4 text-gray-400 flex-shrink-0" />
           <span className="text-sm text-gray-600 dark:text-gray-400 flex-shrink-0">Cofre:</span>
           {vaultsQ.isLoading ? (
             <div className="h-9 w-64 rounded-lg bg-gray-100 dark:bg-gray-800 animate-pulse" />
@@ -559,10 +559,10 @@ function BackupVaultTab() {
             <span className="text-sm text-gray-400 dark:text-gray-500 italic">Nenhum cofre encontrado</span>
           ) : (
             <select
-              value={selectedVault?.name || ''}
+              value={selectedArchive?.name || ''}
               onChange={e => {
                 const v = vaults.find(v => v.name === e.target.value) || null;
-                setSelectedVault(v);
+                setSelectedArchive(v);
                 setSubTab('items');
               }}
               className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-sky-400 min-w-[220px]"
@@ -576,15 +576,15 @@ function BackupVaultTab() {
           </button>
         </div>
         <PermissionGate permission="resources.create">
-          <button onClick={() => { setMutError(''); setCreateVaultOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-sky-500 text-white text-sm font-medium rounded-lg hover:bg-sky-600 flex-shrink-0">
+          <button onClick={() => { setMutError(''); setCreateArchiveOpen(true); }} className="flex items-center gap-2 px-4 py-2 bg-sky-500 text-white text-sm font-medium rounded-lg hover:bg-sky-600 flex-shrink-0">
             <Plus className="w-4 h-4" /> Criar Cofre
           </button>
         </PermissionGate>
       </div>
 
-      {!selectedVault ? (
+      {!selectedArchive ? (
         <div className="card">
-          <EmptyState icon={Vault} title="Selecione um cofre" description="Escolha um cofre de recuperação para gerenciar backups de VMs." />
+          <EmptyState icon={Archive} title="Selecione um cofre" description="Escolha um cofre de recuperação para gerenciar backups de VMs." />
         </div>
       ) : (
         <>
@@ -754,7 +754,7 @@ function BackupVaultTab() {
         error={mutError}
       />
 
-      <CreateVaultModal isOpen={createVaultOpen} onClose={() => setCreateVaultOpen(false)} onSubmit={createVaultMut.mutate} loading={createVaultMut.isPending} error={mutError} />
+      <CreateArchiveModal isOpen={createArchiveOpen} onClose={() => setCreateArchiveOpen(false)} onSubmit={createArchiveMut.mutate} loading={createArchiveMut.isPending} error={mutError} />
       <EnableBackupModal isOpen={enableModalOpen} onClose={() => setEnableModalOpen(false)} onSubmit={enableMut.mutate} loading={enableMut.isPending} error={mutError} vaultRg={vaultRg} vaultName={vaultName} />
       <CreatePolicyModal isOpen={createPolicyOpen} onClose={() => setCreatePolicyOpen(false)} onSubmit={policyMut.mutate} loading={policyMut.isPending} error={mutError} />
     </>
@@ -809,7 +809,7 @@ export default function AzureBackup() {
       </div>
 
       {activeTab === 'snapshots' && <SnapshotsTab />}
-      {activeTab === 'backup'    && <BackupVaultTab />}
+      {activeTab === 'backup'    && <BackupArchiveTab />}
     </Layout>
   );
 }
