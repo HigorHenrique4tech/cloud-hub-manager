@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { Globe, HardDrive, BarChart2, Search, ChevronRight, X, FileText, Folder, RefreshCw, ExternalLink } from 'lucide-react';
+import { Globe, HardDrive, BarChart2, Search, ChevronRight, X, FileText, Folder, RefreshCw, ExternalLink, Cloud } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
 
@@ -21,9 +21,10 @@ const thCls = 'px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text
 const tdCls = 'px-4 py-3 text-sm text-gray-700 dark:text-gray-300';
 
 const TABS = [
-  { id: 'overview', label: 'Visão Geral', icon: BarChart2 },
-  { id: 'sites',    label: 'Sites',       icon: Globe },
-  { id: 'libraries', label: 'Bibliotecas', icon: HardDrive },
+  { id: 'overview',  label: 'Visão Geral',  icon: BarChart2 },
+  { id: 'sites',     label: 'Sites',        icon: Globe },
+  { id: 'libraries', label: 'Bibliotecas',  icon: HardDrive },
+  { id: 'onedrive',  label: 'OneDrive',     icon: Cloud },
 ];
 
 // ─ Skeleton ─────────────────────────────────────────────────────────────────
@@ -338,6 +339,101 @@ function LibrariesTab() {
   );
 }
 
+// ─ OneDrive Tab ──────────────────────────────────────────────────────────────
+function OneDriveTab() {
+  const usageQ = useQuery({
+    queryKey: ['m365-onedrive-usage'],
+    queryFn: m365Service.getOneDriveUsage,
+    staleTime: 300_000,
+    retry: false,
+  });
+
+  const rows = usageQ.data?.usage || [];
+
+  const totals = rows.reduce((acc, r) => ({
+    users: acc.users + 1,
+    storage: acc.storage + (r.storage_used_bytes || 0),
+    active: acc.active + (r.last_activity ? 1 : 0),
+  }), { users: 0, storage: 0, active: 0 });
+
+  const barColor = (pct) => {
+    if (pct > 90) return 'bg-red-500';
+    if (pct > 70) return 'bg-yellow-500';
+    return 'bg-blue-500';
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[
+          { label: 'Total de Usuários', value: totals.users.toLocaleString(), color: 'text-blue-500' },
+          { label: 'Storage Total Usado', value: fmtBytes(totals.storage), color: 'text-purple-500' },
+          { label: 'Ativos (D30)', value: totals.active.toLocaleString(), color: 'text-green-500' },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="card p-4 rounded-xl">
+            <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+            <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Table */}
+      <div className="card rounded-xl overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <tr>
+              <th className={thCls}>Usuário</th>
+              <th className={thCls}>Storage Usado</th>
+              <th className={thCls}>Alocado</th>
+              <th className={thCls}>Uso %</th>
+              <th className={thCls}>Última Atividade</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {usageQ.isLoading ? (
+              Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={5} />)
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
+                  {usageQ.isError
+                    ? 'Sem dados de OneDrive. Verifique a permissão Reports.Read.All.'
+                    : 'Nenhum dado encontrado.'}
+                </td>
+              </tr>
+            ) : rows.map((r, idx) => {
+              const pct = r.storage_allocated_bytes
+                ? Math.round((r.storage_used_bytes / r.storage_allocated_bytes) * 100)
+                : 0;
+              return (
+                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <td className={tdCls}>
+                    <div>
+                      <p className="font-medium text-gray-900 dark:text-gray-100">{r.display_name || '—'}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{r.upn || ''}</p>
+                    </div>
+                  </td>
+                  <td className={tdCls}>{fmtBytes(r.storage_used_bytes)}</td>
+                  <td className={tdCls}>{fmtBytes(r.storage_allocated_bytes)}</td>
+                  <td className={tdCls}>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                        <div className={`h-full ${barColor(pct)} rounded-full`} style={{ width: `${Math.min(pct, 100)}%` }} />
+                      </div>
+                      <span className="text-xs w-8 text-right">{pct}%</span>
+                    </div>
+                  </td>
+                  <td className={tdCls}>{fmtDate(r.last_activity)}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 // ─ Main Page ─────────────────────────────────────────────────────────────────
 export default function SharePoint() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -385,6 +481,7 @@ export default function SharePoint() {
         {activeTab === 'overview'   && <OverviewTab />}
         {activeTab === 'sites'      && <SitesTab onSelectSite={setSelectedSite} />}
         {activeTab === 'libraries'  && <LibrariesTab />}
+        {activeTab === 'onedrive'   && <OneDriveTab />}
       </div>
 
       {/* Site Drawer */}

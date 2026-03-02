@@ -1137,3 +1137,233 @@ class M365Service:
         except Exception as e:
             logger.error(f"Error getting Teams activity: {e}")
             return {"activity": [], "total": 0, "error": str(e)}
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Guest Users
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_guests(self) -> dict:
+        """List all guest users in the tenant."""
+        try:
+            select = (
+                "id,displayName,mail,userPrincipalName,accountEnabled,"
+                "createdDateTime,externalUserState,externalUserStateChangeDateTime,companyName"
+            )
+            resp = self._get(
+                f"{GRAPH_V1}/users?$filter=userType eq 'Guest'"
+                f"&$select={select}&$top=999"
+            )
+            guests = []
+            for u in resp.get("value", []):
+                guests.append({
+                    "id": u.get("id"),
+                    "display_name": u.get("displayName"),
+                    "mail": u.get("mail") or u.get("userPrincipalName"),
+                    "upn": u.get("userPrincipalName"),
+                    "account_enabled": u.get("accountEnabled", True),
+                    "created_at": u.get("createdDateTime"),
+                    "invitation_state": u.get("externalUserState", "PendingAcceptance"),
+                    "invitation_accepted_at": u.get("externalUserStateChangeDateTime"),
+                    "company_name": u.get("companyName", ""),
+                })
+            return {"guests": guests, "total": len(guests)}
+        except Exception as e:
+            logger.error(f"Error getting guests: {e}")
+            return {"guests": [], "total": 0, "error": str(e)}
+
+    def invite_guest(self, email: str, display_name: str = "",
+                     redirect_url: str = "https://myapps.microsoft.com",
+                     message: str = "") -> dict:
+        """Send an invitation to an external guest user."""
+        body: dict = {
+            "invitedUserEmailAddress": email,
+            "inviteRedirectUrl": redirect_url,
+            "sendInvitationMessage": True,
+        }
+        if display_name:
+            body["invitedUserDisplayName"] = display_name
+        if message:
+            body["invitedUserMessageInfo"] = {
+                "messageLanguage": "pt-BR",
+                "customizedMessageBody": message,
+            }
+        result = self._post("/invitations", body)
+        return {
+            "id": result.get("id"),
+            "invite_redeem_url": result.get("inviteRedeemUrl"),
+            "status": result.get("status", "PendingAcceptance"),
+        }
+
+    def delete_guest(self, user_id: str) -> dict:
+        """Permanently delete a guest user from the tenant."""
+        token = self._get_token()
+        resp = requests.delete(
+            f"{GRAPH_V1}/users/{user_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if resp.status_code not in (200, 204):
+            raise Exception(f"Delete guest failed: {resp.status_code} {resp.text}")
+        return {"deleted": True}
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Audit Logs
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_sign_ins(self, limit: int = 50, upn: str = None, status: str = None) -> dict:
+        """List sign-in logs. Requires AuditLog.Read.All."""
+        try:
+            filters = []
+            if upn:
+                filters.append(f"userPrincipalName eq '{upn}'")
+            if status == "success":
+                filters.append("status/errorCode eq 0")
+            elif status == "failure":
+                filters.append("status/errorCode ne 0")
+            url = f"{GRAPH_V1}/auditLogs/signIns?$top={limit}&$orderby=createdDateTime desc"
+            if filters:
+                url += f"&$filter={' and '.join(filters)}"
+            resp = self._get(url)
+            sign_ins = []
+            for s in resp.get("value", []):
+                loc = s.get("location") or {}
+                geo = loc.get("geoCoordinates") or {}
+                sign_ins.append({
+                    "id": s.get("id"),
+                    "user_display_name": s.get("userDisplayName"),
+                    "upn": s.get("userPrincipalName"),
+                    "app_display_name": s.get("appDisplayName"),
+                    "ip_address": s.get("ipAddress"),
+                    "city": loc.get("city"),
+                    "country": loc.get("countryOrRegion"),
+                    "status_code": (s.get("status") or {}).get("errorCode", 0),
+                    "status_reason": (s.get("status") or {}).get("failureReason", ""),
+                    "created_at": s.get("createdDateTime"),
+                    "client_app_used": s.get("clientAppUsed"),
+                    "conditional_access": s.get("conditionalAccessStatus"),
+                    "device_os": (s.get("deviceDetail") or {}).get("operatingSystem"),
+                    "browser": (s.get("deviceDetail") or {}).get("browser"),
+                })
+            return {"sign_ins": sign_ins, "total": len(sign_ins)}
+        except Exception as e:
+            logger.error(f"Error getting sign-ins: {e}")
+            return {"sign_ins": [], "total": 0, "error": str(e)}
+
+    def get_directory_audits(self, limit: int = 50, category: str = None) -> dict:
+        """List directory audit logs. Requires AuditLog.Read.All."""
+        try:
+            url = f"{GRAPH_V1}/auditLogs/directoryAudits?$top={limit}&$orderby=activityDateTime desc"
+            if category and category != "all":
+                url += f"&$filter=category eq '{category}'"
+            resp = self._get(url)
+            audits = []
+            for a in resp.get("value", []):
+                initiated = (a.get("initiatedBy") or {})
+                initiated_user = initiated.get("user") or {}
+                initiated_app = initiated.get("app") or {}
+                initiator_upn = initiated_user.get("userPrincipalName") or initiated_app.get("displayName", "")
+                initiator_name = initiated_user.get("displayName") or initiated_app.get("displayName", "")
+                targets = a.get("targetResources") or []
+                target_name = targets[0].get("displayName") if targets else ""
+                audits.append({
+                    "id": a.get("id"),
+                    "category": a.get("category"),
+                    "activity_display_name": a.get("activityDisplayName"),
+                    "result": a.get("result"),
+                    "result_reason": a.get("resultReason", ""),
+                    "initiated_by_upn": initiator_upn,
+                    "initiated_by_display_name": initiator_name,
+                    "target_display_name": target_name,
+                    "activity_at": a.get("activityDateTime"),
+                    "log_id": a.get("correlationId"),
+                })
+            return {"audits": audits, "total": len(audits)}
+        except Exception as e:
+            logger.error(f"Error getting directory audits: {e}")
+            return {"audits": [], "total": 0, "error": str(e)}
+
+    # ─────────────────────────────────────────────────────────────────────
+    # OneDrive Usage
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_onedrive_usage(self) -> dict:
+        """Get OneDrive usage per user (last 30 days). Requires Reports.Read.All."""
+        import csv, io
+        try:
+            token = self._get_token()
+            resp = requests.get(
+                f"{GRAPH_V1}/reports/getOneDriveUsageAccountDetail(period='D30')",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            reader = csv.DictReader(io.StringIO(resp.text))
+            usage = []
+            for row in reader:
+                try:
+                    usage.append({
+                        "upn": row.get("Owner Principal Name", ""),
+                        "display_name": row.get("Owner Display Name", ""),
+                        "is_deleted": row.get("Is Deleted", "False").lower() == "true",
+                        "last_activity": row.get("Last Activity Date", ""),
+                        "file_count": int(row.get("File Count", 0) or 0),
+                        "storage_used_bytes": int(row.get("Storage Used (Byte)", 0) or 0),
+                        "storage_allocated_bytes": int(row.get("Storage Allocated (Byte)", 0) or 0),
+                    })
+                except Exception:
+                    continue
+            usage.sort(key=lambda x: x["storage_used_bytes"], reverse=True)
+            return {"usage": usage, "total": len(usage)}
+        except Exception as e:
+            logger.error(f"Error getting OneDrive usage: {e}")
+            return {"usage": [], "total": 0, "error": str(e)}
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Offboarding
+    # ─────────────────────────────────────────────────────────────────────
+
+    def offboard_user(self, user_id: str, options: dict) -> dict:
+        """Orchestrate user offboarding. Non-fatal per step."""
+        results = {}
+
+        if options.get("disable_account", True):
+            try:
+                self.toggle_user_account(user_id, False)
+                results["disable_account"] = True
+            except Exception as e:
+                results["disable_account"] = str(e)
+
+        if options.get("revoke_sessions", True):
+            try:
+                self.revoke_user_sessions(user_id)
+                results["revoke_sessions"] = True
+            except Exception as e:
+                results["revoke_sessions"] = str(e)
+
+        if options.get("remove_licenses", False):
+            try:
+                # Fetch current licenses and remove all
+                user = self._get(f"{GRAPH_V1}/users/{user_id}?$select=assignedLicenses")
+                assigned = user.get("assignedLicenses") or []
+                if assigned:
+                    sku_ids = [lic["skuId"] for lic in assigned]
+                    self._post(f"/users/{user_id}/assignLicense", {
+                        "addLicenses": [],
+                        "removeLicenses": sku_ids,
+                    })
+                results["remove_licenses"] = True
+            except Exception as e:
+                results["remove_licenses"] = str(e)
+
+        auto_reply_msg = options.get("auto_reply_message")
+        if auto_reply_msg:
+            try:
+                self.update_mailbox_settings(user_id, {
+                    "auto_reply_enabled": True,
+                    "auto_reply_message": auto_reply_msg,
+                })
+                results["auto_reply"] = True
+            except Exception as e:
+                results["auto_reply"] = str(e)
+
+        return {"results": results}

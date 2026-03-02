@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Grid3x3, Globe, Mail, MonitorPlay, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Grid3x3, Globe, Mail, MonitorPlay, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const m365NavItems = [
   { to: '/m365',            label: 'Visão Geral',  icon: Grid3x3,    end: true },
   { to: '/m365/sharepoint', label: 'SharePoint',   icon: Globe },
   { to: '/m365/exchange',   label: 'Exchange',     icon: Mail },
   { to: '/m365/teams',      label: 'Teams Admin',  icon: MonitorPlay },
+  { to: '/m365/audit',      label: 'Auditoria',    icon: BookOpen },
 ];
 
 const M365SecondarySidebar = () => {

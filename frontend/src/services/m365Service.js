@@ -174,6 +174,21 @@ const m365Service = {
   updateMemberRole: (teamId, memberId, roles) => api.patch(wsUrl(`/m365/teams/${teamId}/members/${memberId}`), { roles }).then(r => r.data),
   removeTeamMember: (teamId, memberId) => api.delete(wsUrl(`/m365/teams/${teamId}/members/${memberId}`)).then(r => r.data),
   getTeamsActivity: () => api.get(wsUrl('/m365/teams/activity')).then(r => r.data),
+
+  // ── Guest Users ──────────────────────────────────────────────────────────────
+  getGuests: () => api.get(wsUrl('/m365/guests')).then(r => r.data),
+  inviteGuest: (data) => api.post(wsUrl('/m365/guests/invite'), data).then(r => r.data),
+  deleteGuest: (userId) => api.delete(wsUrl(`/m365/guests/${userId}`)).then(r => r.data),
+
+  // ── Audit Logs ───────────────────────────────────────────────────────────────
+  getSignIns: (params) => api.get(wsUrl('/m365/audit/sign-ins'), { params }).then(r => r.data),
+  getDirectoryAudits: (params) => api.get(wsUrl('/m365/audit/directory'), { params }).then(r => r.data),
+
+  // ── OneDrive Usage ───────────────────────────────────────────────────────────
+  getOneDriveUsage: () => api.get(wsUrl('/m365/sharepoint/onedrive-usage')).then(r => r.data),
+
+  // ── Offboarding ──────────────────────────────────────────────────────────────
+  offboardUser: (userId, data) => api.post(wsUrl(`/m365/users/${userId}/offboard`), data).then(r => r.data),
 };
 
 export default m365Service;

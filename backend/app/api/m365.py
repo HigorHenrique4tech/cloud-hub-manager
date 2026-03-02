@@ -87,6 +87,20 @@ class UpdateRoleRequest(BaseModel):
     roles: list = []                # [] = member, ["owner"] = owner
 
 
+class InviteGuestRequest(BaseModel):
+    email: str
+    display_name: str = ""
+    redirect_url: str = "https://myapps.microsoft.com"
+    message: str = ""
+
+
+class OffboardRequest(BaseModel):
+    disable_account: bool = True
+    revoke_sessions: bool = True
+    remove_licenses: bool = False
+    auto_reply_message: Optional[str] = None
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -1141,3 +1155,111 @@ async def ws_m365_teams_activity(
     _require_enterprise(plan, "Teams Admin")
     svc = _get_service_or_404(db, member.workspace_id)
     return svc.get_teams_activity()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Guest Users Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ws_router.get("/guests")
+async def ws_m365_list_guests(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Guest Users")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_guests()
+
+
+@ws_router.post("/guests/invite")
+async def ws_m365_invite_guest(
+    body: InviteGuestRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Guest Users")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.invite_guest(body.email, body.display_name, body.redirect_url, body.message)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/guests/{user_id}")
+async def ws_m365_delete_guest(
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Guest Users")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.delete_guest(user_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Audit Log Endpoints
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ws_router.get("/audit/sign-ins")
+async def ws_m365_sign_ins(
+    limit: int = 50,
+    upn: Optional[str] = None,
+    status: Optional[str] = None,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Audit Logs")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_sign_ins(limit=min(limit, 200), upn=upn, status=status)
+
+
+@ws_router.get("/audit/directory")
+async def ws_m365_directory_audits(
+    limit: int = 50,
+    category: Optional[str] = None,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Audit Logs")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_directory_audits(limit=min(limit, 200), category=category)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# OneDrive Usage Endpoint
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ws_router.get("/sharepoint/onedrive-usage")
+async def ws_m365_onedrive_usage(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "OneDrive Usage")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_onedrive_usage()
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Offboarding Endpoint
+# ═══════════════════════════════════════════════════════════════════════════════
+
+@ws_router.post("/users/{user_id}/offboard")
+async def ws_m365_offboard_user(
+    user_id: str,
+    body: OffboardRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Offboarding")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.offboard_user(user_id, body.dict())

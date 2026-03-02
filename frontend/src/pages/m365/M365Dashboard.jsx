@@ -5,7 +5,7 @@ import {
   CheckCircle, XCircle, AlertTriangle, RefreshCw, Pencil,
   MessageSquare, ChevronDown, ChevronRight, UserPlus, Search, Plus,
   Smartphone, Phone, Mail, Fingerprint, Monitor, Clock, Lock, LogOut,
-  Download, Activity,
+  Download, Activity, UserCheck, Send, CheckCheck,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
@@ -22,6 +22,7 @@ const TABS = [
   { id: 'licencas',    label: 'Licenças',       icon: Key },
   { id: 'equipes',     label: 'Grupos',         icon: MessageSquare },
   { id: 'seguranca',   label: 'Segurança',      icon: Shield },
+  { id: 'convidados',  label: 'Convidados',     icon: UserCheck },
 ];
 
 const REQUIRED_PERMISSIONS = [
@@ -145,7 +146,8 @@ const UserDetailDrawer = ({ user, onClose }) => {
   const [forceChange, setForceChange]   = useState(true);
   const [tapMinutes, setTapMinutes]     = useState(60);
   const [tapOnce, setTapOnce]           = useState(true);
-  const [localEnabled, setLocalEnabled] = useState(null); // optimistic
+  const [localEnabled, setLocalEnabled]   = useState(null); // optimistic
+  const [showOffboarding, setShowOffboarding] = useState(false);
 
   // Sync localEnabled when user changes
   useEffect(() => { setLocalEnabled(null); }, [user?.id]);
@@ -510,8 +512,337 @@ const UserDetailDrawer = ({ user, onClose }) => {
             {revokeMut.isPending ? <RefreshCw size={14} className="animate-spin" /> : <LogOut size={14} />}
             Revogar todas as sessões
           </button>
+          {/* Offboarding */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-2">
+            <button
+              onClick={() => setShowOffboarding(true)}
+              className="w-full flex items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-50 dark:bg-red-900/20 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+            >
+              <LogOut size={14} />
+              Offboarding Completo
+            </button>
+          </div>
         </div>
       </div>
+      {showOffboarding && (
+        <OffboardingModal user={user} onClose={() => setShowOffboarding(false)} />
+      )}
+    </>
+  );
+};
+
+// ── Offboarding Modal ─────────────────────────────────────────────────────────
+
+const OffboardingModal = ({ user, onClose }) => {
+  const [opts, setOpts] = useState({
+    disable_account: true,
+    revoke_sessions: true,
+    remove_licenses: false,
+    auto_reply: false,
+    auto_reply_message: '',
+  });
+  const [results, setResults] = useState(null);
+  const toggle = (k) => setOpts((p) => ({ ...p, [k]: !p[k] }));
+
+  const offboardMut = useMutation({
+    mutationFn: () => m365Service.offboardUser(user.id, {
+      disable_account: opts.disable_account,
+      revoke_sessions: opts.revoke_sessions,
+      remove_licenses: opts.remove_licenses,
+      auto_reply_message: opts.auto_reply && opts.auto_reply_message ? opts.auto_reply_message : null,
+    }),
+    onSuccess: (data) => setResults(data.results),
+  });
+
+  const stepLabels = {
+    disable_account: 'Desabilitar conta',
+    revoke_sessions: 'Revogar sessões',
+    remove_licenses: 'Remover licenças',
+    auto_reply: 'Resposta automática',
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-red-500" />
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Offboarding</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{user.displayName || user.userPrincipalName}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="p-5 space-y-4">
+          {!results ? (
+            <>
+              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-600 dark:text-red-400">Atenção: algumas ações podem ser irreversíveis. Revise antes de executar.</p>
+              </div>
+              {[
+                { key: 'disable_account', label: 'Desabilitar conta' },
+                { key: 'revoke_sessions', label: 'Revogar todas as sessões' },
+                { key: 'remove_licenses', label: 'Remover todas as licenças' },
+                { key: 'auto_reply',      label: 'Ativar resposta automática de saída' },
+              ].map(({ key, label }) => (
+                <label key={key} className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={opts[key]}
+                    onChange={() => toggle(key)}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600"
+                  />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
+                </label>
+              ))}
+              {opts.auto_reply && (
+                <textarea
+                  rows={3}
+                  placeholder="Mensagem de resposta automática..."
+                  value={opts.auto_reply_message}
+                  onChange={(e) => setOpts((p) => ({ ...p, auto_reply_message: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              )}
+              {offboardMut.isError && (
+                <p className="text-xs text-red-500">{offboardMut.error?.response?.data?.detail || 'Erro ao executar offboarding.'}</p>
+              )}
+            </>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Resultado do offboarding:</p>
+              {Object.entries(results).map(([step, val]) => (
+                <div key={step} className="flex items-center gap-2">
+                  {val === true
+                    ? <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                    : <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  }
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {stepLabels[step] || step}: {val === true ? 'Concluído' : <span className="text-red-500">{val}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700">
+          {results ? (
+            <button onClick={onClose} className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700">
+              Fechar
+            </button>
+          ) : (
+            <button
+              onClick={() => offboardMut.mutate()}
+              disabled={offboardMut.isPending}
+              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+            >
+              {offboardMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
+              Executar Offboarding
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Invite Guest Modal ────────────────────────────────────────────────────────
+
+const InviteGuestModal = ({ onClose }) => {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({ email: '', display_name: '', message: '' });
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const [done, setDone] = useState(false);
+
+  const inviteMut = useMutation({
+    mutationFn: () => m365Service.inviteGuest({
+      email: form.email,
+      display_name: form.display_name,
+      message: form.message,
+      redirect_url: 'https://myapps.microsoft.com',
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-guests'] });
+      setDone(true);
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <UserCheck className="w-5 h-5 text-blue-500" />
+            <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Convidar Usuário Guest</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          {done ? (
+            <div className="flex flex-col items-center gap-3 py-4">
+              <CheckCheck className="w-10 h-10 text-green-500" />
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Convite enviado com sucesso!</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">O usuário receberá um e-mail de convite para acessar o tenant.</p>
+              <button onClick={onClose} className="mt-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg">
+                Fechar
+              </button>
+            </div>
+          ) : (
+            <>
+              {[
+                { key: 'email', label: 'E-mail*', type: 'email', placeholder: 'usuario@empresa.com' },
+                { key: 'display_name', label: 'Nome de exibição', type: 'text', placeholder: 'João Silva' },
+              ].map(({ key, label, type, placeholder }) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={form[key]}
+                    onChange={(e) => set(key, e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Mensagem personalizada</label>
+                <textarea
+                  rows={3}
+                  value={form.message}
+                  onChange={(e) => set('message', e.target.value)}
+                  placeholder="Você foi convidado para colaborar no nosso tenant..."
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {inviteMut.isError && (
+                <p className="text-xs text-red-500">{inviteMut.error?.response?.data?.detail || 'Erro ao enviar convite.'}</p>
+              )}
+              <button
+                onClick={() => inviteMut.mutate()}
+                disabled={!form.email || inviteMut.isPending}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+              >
+                {inviteMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Enviar Convite
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Guests Tab ────────────────────────────────────────────────────────────────
+
+const GuestsTab = () => {
+  const qc = useQueryClient();
+  const [showInvite, setShowInvite] = useState(false);
+
+  const guestsQ = useQuery({
+    queryKey: ['m365-guests'],
+    queryFn: m365Service.getGuests,
+    staleTime: 120_000,
+    retry: false,
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (userId) => m365Service.deleteGuest(userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-guests'] }),
+  });
+
+  const guests = guestsQ.data?.guests || [];
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+
+  const thCls = 'px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider';
+  const tdCls = 'px-4 py-3 text-sm text-gray-700 dark:text-gray-300';
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400">{guests.length} convidado{guests.length !== 1 ? 's' : ''}</p>
+        <button
+          onClick={() => setShowInvite(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg"
+        >
+          <UserPlus size={14} /> Convidar Guest
+        </button>
+      </div>
+      <div className="card rounded-xl overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <tr>
+              <th className={thCls}>Usuário</th>
+              <th className={thCls}>E-mail</th>
+              <th className={thCls}>Empresa</th>
+              <th className={thCls}>Status</th>
+              <th className={thCls}>Convidado em</th>
+              <th className={thCls} />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {guestsQ.isLoading ? (
+              <SkeletonTable rows={5} cols={6} />
+            ) : guests.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                  {guestsQ.isError
+                    ? 'Erro ao carregar convidados. Verifique a permissão User.Read.All.'
+                    : 'Nenhum usuário guest encontrado.'}
+                </td>
+              </tr>
+            ) : guests.map((g) => (
+              <tr key={g.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                <td className={tdCls}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${avatarColor(g.display_name || g.mail)}`}>
+                      {(g.display_name || g.mail || '?')[0].toUpperCase()}
+                    </div>
+                    <span className="font-medium text-gray-900 dark:text-gray-100">{g.display_name || '—'}</span>
+                  </div>
+                </td>
+                <td className={tdCls}>{g.mail || g.upn || '—'}</td>
+                <td className={tdCls}>{g.company_name || '—'}</td>
+                <td className={tdCls}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                    g.invitation_state === 'Accepted'
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                  }`}>
+                    {g.invitation_state === 'Accepted' ? 'Aceito' : 'Pendente'}
+                  </span>
+                </td>
+                <td className={tdCls}>{fmtDate(g.created_at)}</td>
+                <td className={tdCls}>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Revogar acesso de ${g.display_name || g.mail}?`)) {
+                        deleteMut.mutate(g.id);
+                      }
+                    }}
+                    disabled={deleteMut.isPending && deleteMut.variables === g.id}
+                    className="text-xs text-red-500 hover:text-red-700 hover:underline disabled:opacity-50"
+                  >
+                    Revogar
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {showInvite && <InviteGuestModal onClose={() => setShowInvite(false)} />}
     </>
   );
 };
@@ -2556,6 +2887,7 @@ export default function M365Dashboard() {
                   serviceHealthLoading={serviceHealthQ.isLoading}
                 />
               )}
+              {activeTab === 'convidados' && <GuestsTab />}
             </>
           )}
         </div>
