@@ -903,25 +903,24 @@ class M365Service:
     # ─────────────────────────────────────────────────────────────────────
 
     def get_mailboxes(self) -> dict:
-        """List users with mailbox settings summary."""
+        """List users (mailboxes). mailboxSettings cannot be $selected on the
+        collection endpoint — individual settings are loaded per-user via
+        get_mailbox_settings()."""
         try:
             resp = self._get(
                 f"{GRAPH_V1}/users?$select=id,displayName,mail,userPrincipalName,"
-                f"mailboxSettings,accountEnabled&$top=999"
+                f"accountEnabled&$top=999"
             )
             mailboxes = []
             for u in resp.get("value", []):
-                ms = u.get("mailboxSettings") or {}
-                auto_reply = ms.get("automaticRepliesSetting") or {}
+                if not u.get("mail"):
+                    continue  # skip service accounts / unlicensed users without mailbox
                 mailboxes.append({
                     "id": u.get("id"),
                     "display_name": u.get("displayName"),
                     "mail": u.get("mail"),
                     "upn": u.get("userPrincipalName"),
                     "account_enabled": u.get("accountEnabled", True),
-                    "auto_reply_status": auto_reply.get("status", "disabled"),
-                    "timezone": ms.get("timeZone", ""),
-                    "language": (ms.get("language") or {}).get("displayName", ""),
                 })
             return {"mailboxes": mailboxes, "total": len(mailboxes)}
         except Exception as e:

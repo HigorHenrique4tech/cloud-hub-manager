@@ -2,12 +2,17 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   MonitorPlay, Users, Hash, BarChart2, X, Plus, Archive,
-  Edit2, Trash2, RefreshCw, ChevronDown, UserMinus,
+  Edit2, Trash2, RefreshCw, UserMinus,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
 
 // ─ Helpers ──────────────────────────────────────────────────────────────────
+// Backend get_teams() returns camelCase: displayName, isArchived, membersCount, visibility
+// Backend get_team_members() returns camelCase: displayName, email, roles
+// Backend get_channels() returns snake_case: display_name, membership_type
+// Backend get_teams_activity() returns snake_case: display_name, channel_messages, private_messages, last_activity
+
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
 
 const labelCls = 'block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1';
@@ -15,8 +20,6 @@ const inputCls = 'w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dar
 const thCls = 'px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider';
 const tdCls = 'px-4 py-3 text-sm text-gray-700 dark:text-gray-300';
 const btnPrimary = 'flex items-center gap-1.5 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors';
-const btnDanger = 'flex items-center gap-1.5 px-3 py-2 bg-red-500 hover:bg-red-600 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-colors';
-const btnGhost = 'flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 text-sm font-medium rounded-lg disabled:opacity-50 transition-colors';
 
 const TABS = [
   { id: 'teams',    label: 'Times',     icon: MonitorPlay },
@@ -50,8 +53,9 @@ function VisibilityBadge({ visibility }) {
 function TeamModal({ team, onClose }) {
   const qc = useQueryClient();
   const isEdit = !!team;
+  // team uses camelCase: displayName, description, visibility
   const [form, setForm] = useState({
-    display_name: team?.display_name || '',
+    display_name: team?.displayName || '',
     description: team?.description || '',
     visibility: team?.visibility || 'Private',
   });
@@ -113,6 +117,7 @@ function TeamsTab() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-teams'] }),
   });
 
+  // get_teams() returns: {teams: [{id, displayName, visibility, description, isArchived, membersCount}]}
   const teams = teamsQ.data?.teams || [];
 
   return (
@@ -144,14 +149,16 @@ function TeamsTab() {
                   <tr key={t.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                     <td className={tdCls}>
                       <div>
-                        <p className="font-medium text-gray-900 dark:text-gray-100">{t.display_name}</p>
+                        {/* camelCase: displayName */}
+                        <p className="font-medium text-gray-900 dark:text-gray-100">{t.displayName || '—'}</p>
                         {t.description && <p className="text-xs text-gray-500 dark:text-gray-400 truncate max-w-xs">{t.description}</p>}
                       </div>
                     </td>
                     <td className={tdCls}><VisibilityBadge visibility={t.visibility} /></td>
-                    <td className={tdCls}>{t.members_count ?? '—'}</td>
+                    <td className={tdCls}>{t.membersCount ?? '—'}</td>
                     <td className={tdCls}>
-                      {t.is_archived
+                      {/* camelCase: isArchived */}
+                      {t.isArchived
                         ? <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Arquivado</span>
                         : <span className="text-xs text-green-600 dark:text-green-400 font-medium">Ativo</span>
                       }
@@ -161,7 +168,7 @@ function TeamsTab() {
                         <button onClick={() => setModal(t)} title="Editar" className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500">
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
-                        {!t.is_archived && (
+                        {!t.isArchived && (
                           <button
                             onClick={() => archiveMut.mutate(t.id)}
                             disabled={archiveMut.isPending}
@@ -255,6 +262,7 @@ function ChannelsTab({ teams }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-channels', selectedTeamId] }),
   });
 
+  // get_channels() returns snake_case: display_name, membership_type
   const channels = channelsQ.data?.channels || [];
 
   return (
@@ -265,7 +273,8 @@ function ChannelsTab({ teams }) {
             <label className={labelCls}>Time</label>
             <select className={inputCls} value={selectedTeamId} onChange={e => setSelectedTeamId(e.target.value)}>
               <option value="">Selecione um time...</option>
-              {teams.map(t => <option key={t.id} value={t.id}>{t.display_name}</option>)}
+              {/* teams use camelCase: displayName */}
+              {teams.map(t => <option key={t.id} value={t.id}>{t.displayName}</option>)}
             </select>
           </div>
           {selectedTeamId && (
@@ -296,16 +305,18 @@ function ChannelsTab({ teams }) {
                       <td className={tdCls}>
                         <div className="flex items-center gap-2">
                           <Hash className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          {/* snake_case: display_name */}
                           <span className="font-medium text-gray-900 dark:text-gray-100">{ch.display_name}</span>
                         </div>
                       </td>
                       <td className={tdCls}>
+                        {/* snake_case: membership_type (not channel_type) */}
                         <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                          ch.channel_type === 'private'
+                          ch.membership_type === 'private'
                             ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
                             : 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400'
                         }`}>
-                          {ch.channel_type === 'private' ? 'Privado' : 'Standard'}
+                          {ch.membership_type === 'private' ? 'Privado' : 'Standard'}
                         </span>
                       </td>
                       <td className={`${tdCls} max-w-xs`}>
@@ -350,9 +361,9 @@ function AddMemberModal({ teamId, onClose }) {
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('member');
 
-  // Use existing m365 users query for picker
   const usersQ = useQuery({ queryKey: ['m365-users'], queryFn: m365Service.getUsers, staleTime: 300_000, retry: false });
-  const users = usersQ.data?.users || [];
+  // get_users() returns camelCase: displayName, userPrincipalName
+  const users = usersQ.data || [];
 
   const mut = useMutation({
     mutationFn: () => m365Service.addTeamMember(teamId, userId, role === 'owner' ? ['owner'] : []),
@@ -374,7 +385,8 @@ function AddMemberModal({ teamId, onClose }) {
             <label className={labelCls}>Usuário *</label>
             <select className={inputCls} value={userId} onChange={e => setUserId(e.target.value)}>
               <option value="">Selecione um usuário...</option>
-              {users.map(u => <option key={u.id} value={u.id}>{u.display_name} ({u.user_principal_name})</option>)}
+              {/* get_users() returns camelCase: displayName, userPrincipalName */}
+              {users.map(u => <option key={u.id} value={u.id}>{u.displayName} ({u.userPrincipalName})</option>)}
             </select>
           </div>
           <div>
@@ -420,6 +432,7 @@ function MembersTab({ teams }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-team-members', selectedTeamId] }),
   });
 
+  // get_team_members() returns camelCase: displayName, email, roles
   const members = membersQ.data?.members || [];
 
   return (
@@ -430,7 +443,7 @@ function MembersTab({ teams }) {
             <label className={labelCls}>Time</label>
             <select className={inputCls} value={selectedTeamId} onChange={e => setSelectedTeamId(e.target.value)}>
               <option value="">Selecione um time...</option>
-              {teams.map(t => <option key={t.id} value={t.id}>{t.display_name}</option>)}
+              {teams.map(t => <option key={t.id} value={t.id}>{t.displayName}</option>)}
             </select>
           </div>
           {selectedTeamId && (
@@ -446,7 +459,7 @@ function MembersTab({ teams }) {
               <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
                 <tr>
                   <th className={thCls}>Membro</th>
-                  <th className={thCls}>UPN</th>
+                  <th className={thCls}>E-mail</th>
                   <th className={thCls}>Função</th>
                   <th className={thCls}>Ações</th>
                 </tr>
@@ -457,18 +470,20 @@ function MembersTab({ teams }) {
                   : members.length === 0
                   ? <tr><td colSpan={4} className="px-4 py-8 text-center text-sm text-gray-400">Nenhum membro encontrado.</td></tr>
                   : members.map(m => {
-                    const isOwner = m.roles?.includes('owner');
+                    const isOwner = (m.roles || []).includes('owner');
                     return (
                       <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                         <td className={tdCls}>
                           <div className="flex items-center gap-2">
                             <div className="w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-xs font-bold text-blue-600 dark:text-blue-400 flex-shrink-0">
-                              {(m.display_name || '?')[0].toUpperCase()}
+                              {/* camelCase: displayName */}
+                              {(m.displayName || '?')[0].toUpperCase()}
                             </div>
-                            <span className="font-medium text-gray-900 dark:text-gray-100">{m.display_name}</span>
+                            <span className="font-medium text-gray-900 dark:text-gray-100">{m.displayName || '—'}</span>
                           </div>
                         </td>
-                        <td className={tdCls}><span className="text-xs text-gray-500">{m.user_principal_name || '—'}</span></td>
+                        {/* camelCase: email (from mail/userPrincipalName) */}
+                        <td className={tdCls}><span className="text-xs text-gray-500">{m.email || '—'}</span></td>
                         <td className={tdCls}>
                           <select
                             className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-500"
@@ -520,11 +535,12 @@ function ActivityTab() {
     retry: false,
   });
 
+  // snake_case: channel_messages, private_messages, calls, meetings, last_activity
   const rows = actQ.data?.activity || [];
 
   const totals = rows.reduce((acc, r) => ({
     channel: acc.channel + (r.channel_messages || 0),
-    chat: acc.chat + (r.chat_messages || 0),
+    chat: acc.chat + (r.private_messages || 0),
     calls: acc.calls + (r.calls || 0),
     meetings: acc.meetings + (r.meetings || 0),
   }), { channel: 0, chat: 0, calls: 0, meetings: 0 });
@@ -572,15 +588,16 @@ function ActivityTab() {
                   <td className={tdCls}>
                     <div>
                       <p className="font-medium text-gray-900 dark:text-gray-100">{r.display_name || '—'}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{r.user_principal_name || ''}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{r.upn || ''}</p>
                     </div>
                   </td>
                   <td className={tdCls}>{(r.channel_messages || 0).toLocaleString()}</td>
-                  <td className={tdCls}>{(r.chat_messages || 0).toLocaleString()}</td>
+                  <td className={tdCls}>{(r.private_messages || 0).toLocaleString()}</td>
                   <td className={tdCls}>{(r.calls || 0).toLocaleString()}</td>
                   <td className={tdCls}>{(r.meetings || 0).toLocaleString()}</td>
-                  <td className={tdCls}>{(r.screen_share_duration || 0).toLocaleString()}</td>
-                  <td className={tdCls}>{fmtDate(r.last_activity_date)}</td>
+                  <td className={tdCls}>{(r.screen_share_duration || 0).toLocaleString()}s</td>
+                  {/* snake_case: last_activity (not last_activity_date) */}
+                  <td className={tdCls}>{fmtDate(r.last_activity)}</td>
                 </tr>
               ))
             }
