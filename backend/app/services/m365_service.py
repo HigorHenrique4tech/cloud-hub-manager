@@ -400,7 +400,9 @@ class M365Service:
         Requires Group.ReadWrite.All application permission.
         """
         import re
-        nickname = mail_nickname or re.sub(r"[^a-zA-Z0-9-]", "", display_name.lower().replace(" ", "-"))
+        # Strip @domain if user accidentally typed the full email address, then remove invalid chars
+        raw = (mail_nickname or display_name.lower().replace(" ", "-")).split("@")[0]
+        nickname = re.sub(r"[^a-zA-Z0-9-]", "", raw) or "group"
         is_m365 = group_type == "m365"
         is_dist = group_type == "distribution"
         body: dict = {

@@ -381,7 +381,7 @@ function CreateDistListModal({ onClose }) {
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
   const [done, setDone] = useState(false);
 
-  const autoNickname = (name) => name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+  const autoNickname = (name) => name.toLowerCase().split('@')[0].replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
 
   const createMut = useMutation({
     mutationFn: () => m365Service.createDistributionList(form),
@@ -423,7 +423,8 @@ function CreateDistListModal({ onClose }) {
               </div>
               <div>
                 <label className={labelCls}>Apelido de e-mail</label>
-                <input type="text" value={form.mail_nickname} onChange={e => set('mail_nickname', e.target.value)} placeholder="equipe-vendas" className={inputCls} />
+                <input type="text" value={form.mail_nickname} onChange={e => set('mail_nickname', e.target.value.split('@')[0].replace(/[^a-z0-9-]/gi, ''))} placeholder="equipe-vendas" className={inputCls} />
+                <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Somente o apelido, sem @domínio</p>
               </div>
               <div>
                 <label className={labelCls}>Descrição</label>
