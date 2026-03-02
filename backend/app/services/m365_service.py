@@ -1182,11 +1182,10 @@ class M365Service:
         }
         if display_name:
             body["invitedUserDisplayName"] = display_name
+        msg_info: dict = {"messageLanguage": "pt-BR"}
         if message:
-            body["invitedUserMessageInfo"] = {
-                "messageLanguage": "pt-BR",
-                "customizedMessageBody": message,
-            }
+            msg_info["customizedMessageBody"] = message
+        body["invitedUserMessageInfo"] = msg_info
         result = self._post("/invitations", body)
         return {
             "id": result.get("id"),

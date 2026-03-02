@@ -662,6 +662,7 @@ const InviteGuestModal = ({ onClose }) => {
   const [form, setForm] = useState({ email: '', display_name: '', message: '' });
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
   const [done, setDone] = useState(false);
+  const [redeemUrl, setRedeemUrl] = useState('');
 
   const inviteMut = useMutation({
     mutationFn: () => m365Service.inviteGuest({
@@ -670,8 +671,9 @@ const InviteGuestModal = ({ onClose }) => {
       message: form.message,
       redirect_url: 'https://myapps.microsoft.com',
     }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['m365-guests'] });
+      setRedeemUrl(data?.invite_redeem_url || '');
       setDone(true);
     },
   });
@@ -693,7 +695,28 @@ const InviteGuestModal = ({ onClose }) => {
             <div className="flex flex-col items-center gap-3 py-4">
               <CheckCheck className="w-10 h-10 text-green-500" />
               <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Convite enviado com sucesso!</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">O usuário receberá um e-mail de convite para acessar o tenant.</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                Um e-mail de convite foi enviado. Verifique a pasta de spam caso não chegue.
+              </p>
+              {redeemUrl && (
+                <div className="w-full">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Link de convite (backup):</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={redeemUrl}
+                      className="flex-1 px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 overflow-hidden"
+                      onClick={(e) => e.target.select()}
+                    />
+                    <button
+                      onClick={() => navigator.clipboard.writeText(redeemUrl)}
+                      className="px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+              )}
               <button onClick={onClose} className="mt-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg">
                 Fechar
               </button>
