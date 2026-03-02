@@ -1017,7 +1017,7 @@ async def ws_enable_vm_backup(
                 source_resource_id=body.vm_id,
             )
         )
-        svc.backup_client.protected_items.begin_create_or_update(
+        svc.backup_client.protected_items.create_or_update(
             vault_name, vault_rg, fabric, container_name, item_name, protected_item
         )
         log_activity(db, member.user, "backup.create", "AZURE_VM_BACKUP",
@@ -1048,7 +1048,7 @@ async def ws_trigger_backup_now(
         fabric = "Azure"
         container_name = f"IaasVMContainer;iaasvmcontainerv2;{body.vm_rg};{body.vm_name}"
         item_name = f"VM;iaasvmcontainerv2;{body.vm_rg};{body.vm_name}"
-        svc.backup_client.backups.begin_trigger(
+        svc.backup_client.backups.trigger(
             vault_name, vault_rg, fabric, container_name, item_name,
             BackupRequestResource(
                 properties=IaasVMBackupRequest(
