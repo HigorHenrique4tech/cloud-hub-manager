@@ -827,9 +827,10 @@ async def ws_create_azure_vault(
             sku=Sku(name="Standard"),
             properties=VaultProperties(),
         )
-        result = svc.recovery_services_client.vaults.create_or_update(
+        poller = svc.recovery_services_client.vaults.begin_create_or_update(
             body.resource_group, body.vault_name, vault_body
         )
+        result = poller.result()
         log_activity(db, member.user, "backup.create", "AZURE_VAULT",
                      resource_id=result.id, resource_name=body.vault_name,
                      provider="azure", organization_id=member.organization_id, workspace_id=member.workspace_id)
@@ -1016,9 +1017,9 @@ async def ws_enable_vm_backup(
                 source_resource_id=body.vm_id,
             )
         )
-        svc.backup_client.protected_items.create_or_update(
+        svc.backup_client.protected_items.begin_create_or_update(
             vault_name, vault_rg, fabric, container_name, item_name, protected_item
-        )
+        ).result()
         log_activity(db, member.user, "backup.create", "AZURE_VM_BACKUP",
                      resource_name=body.vm_name, provider="azure",
                      organization_id=member.organization_id, workspace_id=member.workspace_id)
@@ -1047,14 +1048,14 @@ async def ws_trigger_backup_now(
         fabric = "Azure"
         container_name = f"IaasVMContainer;iaasvmcontainerv2;{body.vm_rg};{body.vm_name}"
         item_name = f"VM;iaasvmcontainerv2;{body.vm_rg};{body.vm_name}"
-        svc.backup_client.backups.trigger(
+        svc.backup_client.backups.begin_trigger(
             vault_name, vault_rg, fabric, container_name, item_name,
             BackupRequestResource(
                 properties=IaasVMBackupRequest(
                     recovery_point_expiry_time_in_utc=datetime.now(timezone.utc) + timedelta(days=body.retention_days)
                 )
             ),
-        )
+        ).result()
         log_activity(db, member.user, "backup.create", "AZURE_BACKUP_JOB",
                      resource_name=body.vm_name, provider="azure",
                      organization_id=member.organization_id, workspace_id=member.workspace_id)
