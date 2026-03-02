@@ -1166,8 +1166,19 @@ const OverviewTab = ({ overview, isLoading, isError, error, onRefresh }) => {
 
 // ── Create User Panel (inline expandable) ─────────────────────────────────────
 
-const CreateUserPanel = () => {
-  const [open, setOpen] = useState(false);
+const WIZARD_STEPS = ['Dados', 'Licença', 'Grupos', 'Confirmar'];
+
+const inputWiz = 'w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none';
+
+const CreateUserWizard = () => {
+  const [open, setOpen]       = useState(false);
+  const [step, setStep]       = useState(0);
+  const [results, setResults] = useState(null); // null = not done, {} = done
+  const [showPwd, setShowPwd] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
+  const [selectedSkuId, setSelectedSkuId] = useState('');
+  const [selectedGroups, setSelectedGroups] = useState([]); // [{id, displayName}]
+
   const emptyForm = () => ({
     display_name: '', first_name: '', last_name: '',
     upn: '', password: genPassword(),
@@ -1175,19 +1186,87 @@ const CreateUserPanel = () => {
     mail_nickname: '', account_enabled: true, force_change_password: true,
   });
   const [form, setForm] = useState(emptyForm);
-  const [showPwd, setShowPwd] = useState(false);
-  const qc = useQueryClient();
-
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
-  const createMut = useMutation({
-    mutationFn: () => m365Service.createUser(form),
-    onSuccess: () => {
+  const qc = useQueryClient();
+
+  const licensesQ = useQuery({
+    queryKey: ['m365-licenses'],
+    queryFn: m365Service.getLicenses,
+    staleTime: 300_000,
+    enabled: open && step >= 1,
+    retry: false,
+  });
+
+  const groupsQ = useQuery({
+    queryKey: ['m365-groups'],
+    queryFn: m365Service.getGroups,
+    staleTime: 300_000,
+    enabled: open && step >= 2,
+    retry: false,
+  });
+
+  const licenses = (licensesQ.data?.licenses || licensesQ.data || []).filter(l => l.available > 0);
+  const groups   = (groupsQ.data?.groups || groupsQ.data || []).filter(g =>
+    !groupSearch || g.displayName?.toLowerCase().includes(groupSearch.toLowerCase())
+  );
+
+  const close = () => {
+    setOpen(false);
+    setStep(0);
+    setResults(null);
+    setForm(emptyForm());
+    setSelectedSkuId('');
+    setSelectedGroups([]);
+    setGroupSearch('');
+  };
+
+  const toggleGroup = (g) => {
+    setSelectedGroups(prev =>
+      prev.find(x => x.id === g.id) ? prev.filter(x => x.id !== g.id) : [...prev, g]
+    );
+  };
+
+  const execMut = useMutation({
+    mutationFn: async () => {
+      const res = {};
+      // Step 1: create user
+      let userId;
+      try {
+        const created = await m365Service.createUser(form);
+        userId = created?.id || created?.user?.id;
+        res.criar_usuario = true;
+      } catch (e) {
+        res.criar_usuario = e?.response?.data?.detail || e.message || 'Erro';
+        return res; // stop if user creation failed
+      }
+      // Step 2: assign license
+      if (selectedSkuId && userId) {
+        try {
+          await m365Service.assignLicense(selectedSkuId, userId);
+          res.atribuir_licenca = true;
+        } catch (e) {
+          res.atribuir_licenca = e?.response?.data?.detail || e.message || 'Erro';
+        }
+      }
+      // Step 3: add to groups
+      for (const g of selectedGroups) {
+        try {
+          await m365Service.addGroupMember(g.id, userId);
+          res[`grupo_${g.displayName}`] = true;
+        } catch (e) {
+          res[`grupo_${g.displayName}`] = e?.response?.data?.detail || e.message || 'Erro';
+        }
+      }
+      return res;
+    },
+    onSuccess: (res) => {
+      setResults(res);
       qc.invalidateQueries({ queryKey: ['m365-users'] });
-      setOpen(false);
-      setForm(emptyForm());
     },
   });
+
+  const step1Valid = form.display_name && form.upn && form.password;
 
   if (!open) {
     return (
@@ -1200,138 +1279,272 @@ const CreateUserPanel = () => {
     );
   }
 
+  const selectedSku = licenses.find(l => l.skuId === selectedSkuId);
+
   return (
-    <div className="card rounded-2xl p-5 space-y-4 border-l-4 border-l-blue-500">
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Novo usuário</p>
-        <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
-          <X size={16} />
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Nome</label>
-          <input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} placeholder="João"
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none" />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Sobrenome</label>
-          <input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} placeholder="Silva"
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none" />
-        </div>
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">
-          Nome de exibição <span className="text-red-400">*</span>
-        </label>
-        <input value={form.display_name} onChange={(e) => set('display_name', e.target.value)} placeholder="João Silva"
-          className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none" />
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">
-          UserPrincipalName (e-mail) <span className="text-red-400">*</span>
-        </label>
-        <input value={form.upn} onChange={(e) => set('upn', e.target.value)}
-          placeholder="joao.silva@contoso.onmicrosoft.com"
-          className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none font-mono" />
-      </div>
-
-      <div>
-        <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">
-          Senha inicial <span className="text-red-400">*</span>
-        </label>
-        <div className="flex gap-2">
-          <input
-            type={showPwd ? 'text' : 'password'}
-            value={form.password}
-            onChange={(e) => set('password', e.target.value)}
-            className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none font-mono"
-          />
-          <button type="button" onClick={() => setShowPwd((p) => !p)}
-            className="rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-2 text-xs text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 whitespace-nowrap">
-            {showPwd ? 'Ocultar' : 'Mostrar'}
-          </button>
-          <button type="button" onClick={() => set('password', genPassword())}
-            className="rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-2 text-xs text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700">
-            Gerar
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={close}>
+      <div
+        className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Criar novo usuário</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Etapa {step + 1} de {WIZARD_STEPS.length}</p>
+          </div>
+          <button onClick={close} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X size={16} className="text-gray-500" />
           </button>
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Cargo</label>
-          <input value={form.job_title} onChange={(e) => set('job_title', e.target.value)} placeholder="Analista de TI"
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none" />
+        {/* Step indicator */}
+        <div className="flex items-center px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+          {WIZARD_STEPS.map((label, i) => (
+            <div key={i} className="flex items-center">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                i < step ? 'bg-green-500 text-white'
+                : i === step ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+              }`}>
+                {i < step ? '✓' : i + 1}
+              </div>
+              <span className={`ml-1.5 text-xs ${i === step ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-400'}`}>{label}</span>
+              {i < WIZARD_STEPS.length - 1 && <div className="w-6 h-px bg-gray-200 dark:bg-gray-700 mx-2" />}
+            </div>
+          ))}
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Departamento</label>
-          <input value={form.department} onChange={(e) => set('department', e.target.value)} placeholder="TI"
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none" />
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+          {/* ── Step 0: Dados básicos ── */}
+          {step === 0 && !results && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Nome</label>
+                  <input value={form.first_name} onChange={e => set('first_name', e.target.value)} placeholder="João" className={inputWiz} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Sobrenome</label>
+                  <input value={form.last_name} onChange={e => set('last_name', e.target.value)} placeholder="Silva" className={inputWiz} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Nome de exibição <span className="text-red-400">*</span></label>
+                <input value={form.display_name} onChange={e => set('display_name', e.target.value)} placeholder="João Silva" className={inputWiz} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">UserPrincipalName <span className="text-red-400">*</span></label>
+                <input value={form.upn} onChange={e => set('upn', e.target.value)} placeholder="joao.silva@contoso.com" className={`${inputWiz} font-mono`} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Senha inicial <span className="text-red-400">*</span></label>
+                <div className="flex gap-2">
+                  <input type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)} className={`flex-1 ${inputWiz} font-mono`} />
+                  <button type="button" onClick={() => setShowPwd(p => !p)} className="rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-2 text-xs text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 whitespace-nowrap">{showPwd ? 'Ocultar' : 'Mostrar'}</button>
+                  <button type="button" onClick={() => set('password', genPassword())} className="rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-2 text-xs text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700">Gerar</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Cargo</label>
+                  <input value={form.job_title} onChange={e => set('job_title', e.target.value)} placeholder="Analista de TI" className={inputWiz} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Departamento</label>
+                  <input value={form.department} onChange={e => set('department', e.target.value)} placeholder="TI" className={inputWiz} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Local de uso</label>
+                  <select value={form.usage_location} onChange={e => set('usage_location', e.target.value)} className={inputWiz}>
+                    <option value="BR">BR — Brasil</option>
+                    <option value="US">US — Estados Unidos</option>
+                    <option value="PT">PT — Portugal</option>
+                    <option value="GB">GB — Reino Unido</option>
+                    <option value="DE">DE — Alemanha</option>
+                    <option value="FR">FR — França</option>
+                    <option value="ES">ES — Espanha</option>
+                    <option value="AR">AR — Argentina</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Apelido de e-mail</label>
+                  <input value={form.mail_nickname} onChange={e => set('mail_nickname', e.target.value)} placeholder="auto (do UPN)" className={`${inputWiz} font-mono`} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.account_enabled} onChange={e => set('account_enabled', e.target.checked)} className="rounded border-gray-400" />
+                  <span className="text-sm text-gray-700 dark:text-slate-300">Conta habilitada</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.force_change_password} onChange={e => set('force_change_password', e.target.checked)} className="rounded border-gray-400" />
+                  <span className="text-sm text-gray-700 dark:text-slate-300">Forçar troca de senha no 1º acesso</span>
+                </label>
+              </div>
+            </>
+          )}
+
+          {/* ── Step 1: Licença ── */}
+          {step === 1 && !results && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Selecione uma licença para atribuir ao usuário (opcional).</p>
+              {licensesQ.isLoading ? (
+                <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />)}</div>
+              ) : licenses.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">Nenhuma licença com vagas disponíveis.</p>
+              ) : licenses.map(l => {
+                const name = SKU_FRIENDLY_NAMES[l.skuPartNumber] || l.skuPartNumber;
+                return (
+                  <label key={l.skuId} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    selectedSkuId === l.skuId
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}>
+                    <input type="radio" name="sku" value={l.skuId} checked={selectedSkuId === l.skuId} onChange={() => setSelectedSkuId(l.skuId)} className="text-blue-500" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{l.available} disponíveis de {l.prepaid}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Step 2: Grupos ── */}
+          {step === 2 && !results && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Adicione o usuário a grupos existentes (opcional).</p>
+              <input
+                value={groupSearch}
+                onChange={e => setGroupSearch(e.target.value)}
+                placeholder="Buscar grupo..."
+                className={inputWiz}
+              />
+              {selectedGroups.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 py-1">
+                  {selectedGroups.map(g => (
+                    <span key={g.id} className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs rounded-full">
+                      {g.displayName}
+                      <button onClick={() => toggleGroup(g)} className="hover:text-blue-900">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {groupsQ.isLoading ? (
+                  [1,2,3,4].map(i => <div key={i} className="h-10 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />)
+                ) : groups.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">Nenhum grupo encontrado.</p>
+                ) : groups.map(g => {
+                  const isSelected = !!selectedGroups.find(x => x.id === g.id);
+                  return (
+                    <label key={g.id} className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      isSelected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                    }`}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleGroup(g)} className="text-blue-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{g.displayName}</p>
+                        <p className="text-xs text-gray-400">{g.groupType}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Confirmar ── */}
+          {step === 3 && !results && (
+            <div className="space-y-3">
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-1">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Usuário</p>
+                <p className="text-sm text-gray-900 dark:text-gray-100"><span className="text-gray-500">Nome:</span> {form.display_name}</p>
+                <p className="text-sm text-gray-900 dark:text-gray-100"><span className="text-gray-500">UPN:</span> <span className="font-mono">{form.upn}</span></p>
+                {form.job_title && <p className="text-sm text-gray-900 dark:text-gray-100"><span className="text-gray-500">Cargo:</span> {form.job_title}</p>}
+                {form.department && <p className="text-sm text-gray-900 dark:text-gray-100"><span className="text-gray-500">Depto:</span> {form.department}</p>}
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Licença</p>
+                <p className="text-sm text-gray-900 dark:text-gray-100">
+                  {selectedSku ? (SKU_FRIENDLY_NAMES[selectedSku.skuPartNumber] || selectedSku.skuPartNumber) : <span className="text-gray-400 italic">Nenhuma</span>}
+                </p>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Grupos ({selectedGroups.length})</p>
+                {selectedGroups.length === 0
+                  ? <p className="text-sm text-gray-400 italic">Nenhum</p>
+                  : <div className="flex flex-wrap gap-1">{selectedGroups.map(g => <span key={g.id} className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs rounded-full">{g.displayName}</span>)}</div>
+                }
+              </div>
+              {execMut.isError && <p className="text-xs text-red-400">{execMut.error?.message || 'Erro ao executar.'}</p>}
+            </div>
+          )}
+
+          {/* ── Results ── */}
+          {results && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Resultado:</p>
+              {Object.entries(results).map(([key, val]) => (
+                <div key={key} className="flex items-center gap-2">
+                  {val === true
+                    ? <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                    : <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  }
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {key.replace(/_/g, ' ').replace('grupo ', 'Grupo → ')}: {val === true ? 'Concluído' : <span className="text-red-500 text-xs">{val}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Local de uso</label>
-          <select value={form.usage_location} onChange={(e) => set('usage_location', e.target.value)}
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100">
-            <option value="BR">BR — Brasil</option>
-            <option value="US">US — Estados Unidos</option>
-            <option value="PT">PT — Portugal</option>
-            <option value="GB">GB — Reino Unido</option>
-            <option value="DE">DE — Alemanha</option>
-            <option value="FR">FR — França</option>
-            <option value="ES">ES — Espanha</option>
-            <option value="AR">AR — Argentina</option>
-          </select>
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+          {results ? (
+            <button onClick={close} className="w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg">
+              Concluir
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              {step > 0 && (
+                <button onClick={() => setStep(s => s - 1)} className="px-4 py-2 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white rounded-lg border border-gray-200 dark:border-gray-700">
+                  Voltar
+                </button>
+              )}
+              <div className="flex-1" />
+              {step < 3 && step > 0 && (
+                <button onClick={() => setStep(s => s + 1)} className="px-4 py-2 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 rounded-lg">
+                  Pular
+                </button>
+              )}
+              {step < 3 ? (
+                <button
+                  onClick={() => setStep(s => s + 1)}
+                  disabled={step === 0 && !step1Valid}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  Próximo →
+                </button>
+              ) : (
+                <button
+                  onClick={() => execMut.mutate()}
+                  disabled={execMut.isPending}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {execMut.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Criar usuário
+                </button>
+              )}
+            </div>
+          )}
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Apelido de e-mail</label>
-          <input value={form.mail_nickname} onChange={(e) => set('mail_nickname', e.target.value)}
-            placeholder="auto (do UPN)"
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-blue-500 focus:outline-none font-mono" />
-        </div>
-      </div>
-
-      <div className="flex flex-wrap gap-6">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={form.account_enabled} onChange={(e) => set('account_enabled', e.target.checked)}
-            className="rounded border-gray-400 dark:border-slate-600" />
-          <span className="text-sm text-gray-700 dark:text-slate-300">Conta habilitada</span>
-        </label>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input type="checkbox" checked={form.force_change_password} onChange={(e) => set('force_change_password', e.target.checked)}
-            className="rounded border-gray-400 dark:border-slate-600" />
-          <span className="text-sm text-gray-700 dark:text-slate-300">Forçar troca de senha no 1º acesso</span>
-        </label>
-      </div>
-
-      {createMut.isError && (
-        <p className="text-xs text-red-400">
-          {createMut.error?.response?.data?.detail || 'Erro ao criar usuário'}
-        </p>
-      )}
-      {createMut.isSuccess && (
-        <p className="text-xs text-green-500">Usuário criado com sucesso!</p>
-      )}
-
-      <div className="flex justify-end gap-2 pt-1">
-        <button onClick={() => setOpen(false)}
-          className="rounded-lg px-4 py-2 text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-white">
-          Cancelar
-        </button>
-        <button
-          onClick={() => createMut.mutate()}
-          disabled={!form.display_name || !form.upn || !form.password || createMut.isPending}
-          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-        >
-          {createMut.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
-          Criar usuário
-        </button>
       </div>
     </div>
   );
@@ -1539,7 +1752,7 @@ const UsersTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
 
   return (
     <div className="space-y-4">
-      <CreateUserPanel />
+      <CreateUserWizard />
 
       <div className="flex gap-3 flex-wrap items-center">
         <input

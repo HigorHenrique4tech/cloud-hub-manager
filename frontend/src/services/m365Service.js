@@ -189,6 +189,14 @@ const m365Service = {
 
   // ── Offboarding ──────────────────────────────────────────────────────────────
   offboardUser: (userId, data) => api.post(wsUrl(`/m365/users/${userId}/offboard`), data).then(r => r.data),
+
+  // ── Shared Mailboxes & Distribution Lists ────────────────────────────────────
+  getSharedMailboxes: () => api.get(wsUrl('/m365/exchange/shared-mailboxes')).then(r => r.data),
+  getDistributionLists: () => api.get(wsUrl('/m365/exchange/distribution-lists')).then(r => r.data),
+  getDistributionListMembers: (groupId) => api.get(wsUrl(`/m365/exchange/distribution-lists/${groupId}/members`)).then(r => r.data),
+  addDistributionListMember: (groupId, userId) => api.post(wsUrl(`/m365/exchange/distribution-lists/${groupId}/members`), { user_id: userId }).then(r => r.data),
+  removeDistributionListMember: (groupId, userId) => api.delete(wsUrl(`/m365/exchange/distribution-lists/${groupId}/members/${userId}`)).then(r => r.data),
+  createDistributionList: (data) => api.post(wsUrl('/m365/exchange/distribution-lists'), data).then(r => r.data),
 };
 
 export default m365Service;

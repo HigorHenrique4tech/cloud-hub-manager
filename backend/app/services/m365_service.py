@@ -399,13 +399,15 @@ class M365Service:
         Create a Microsoft 365 Group or Security Group.
         Requires Group.ReadWrite.All application permission.
         """
-        nickname = mail_nickname or display_name.lower().replace(" ", "-")
+        import re
+        nickname = mail_nickname or re.sub(r"[^a-zA-Z0-9-]", "", display_name.lower().replace(" ", "-"))
         is_m365 = group_type == "m365"
+        is_dist = group_type == "distribution"
         body: dict = {
             "displayName": display_name,
             "mailNickname": nickname,
-            "mailEnabled": is_m365,
-            "securityEnabled": not is_m365,
+            "mailEnabled": is_m365 or is_dist,
+            "securityEnabled": not (is_m365 or is_dist),
             "groupTypes": ["Unified"] if is_m365 else [],
         }
         if description:
@@ -1366,3 +1368,97 @@ class M365Service:
                 results["auto_reply"] = str(e)
 
         return {"results": results}
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Shared Mailboxes & Distribution Lists
+    # ─────────────────────────────────────────────────────────────────────
+
+    def get_shared_mailboxes(self) -> dict:
+        """List unlicensed member accounts with mail (shared mailboxes, rooms, equipment).
+        Requires User.Read.All + ConsistencyLevel: eventual."""
+        try:
+            token = self._get_token()
+            resp = requests.get(
+                f"{GRAPH_V1}/users",
+                headers={"Authorization": f"Bearer {token}", "ConsistencyLevel": "eventual"},
+                params={
+                    "$filter": "assignedLicenses/$count eq 0 and mail ne null and userType eq 'Member'",
+                    "$count": "true",
+                    "$select": "id,displayName,mail,userPrincipalName,accountEnabled",
+                    "$top": "100",
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            mailboxes = [
+                {
+                    "id": u.get("id"),
+                    "display_name": u.get("displayName"),
+                    "mail": u.get("mail"),
+                    "upn": u.get("userPrincipalName"),
+                    "account_enabled": u.get("accountEnabled", True),
+                }
+                for u in resp.json().get("value", [])
+            ]
+            return {"mailboxes": mailboxes, "total": len(mailboxes)}
+        except Exception as e:
+            logger.error(f"Error getting shared mailboxes: {e}")
+            return {"mailboxes": [], "total": 0, "error": str(e)}
+
+    def get_distribution_lists(self) -> dict:
+        """List distribution groups (mail-enabled, non-unified, non-security).
+        Reuses get_groups() and filters client-side."""
+        try:
+            all_groups = self.get_groups()
+            dist = [g for g in all_groups if g.get("groupType") == "Distribution"]
+            return {"distribution_lists": dist, "total": len(dist)}
+        except Exception as e:
+            logger.error(f"Error getting distribution lists: {e}")
+            return {"distribution_lists": [], "total": 0, "error": str(e)}
+
+    def get_distribution_list_members(self, group_id: str) -> dict:
+        """List members of a distribution group."""
+        try:
+            resp = self._get(
+                f"/groups/{group_id}/members"
+                "?$select=id,displayName,mail,userPrincipalName&$top=200"
+            )
+            members = [
+                {
+                    "id": m.get("id"),
+                    "display_name": m.get("displayName"),
+                    "mail": m.get("mail"),
+                    "upn": m.get("userPrincipalName"),
+                }
+                for m in resp.get("value", [])
+            ]
+            return {"members": members, "total": len(members)}
+        except Exception as e:
+            logger.error(f"Error getting distribution list members: {e}")
+            return {"members": [], "total": 0, "error": str(e)}
+
+    def add_distribution_list_member(self, group_id: str, user_id: str) -> dict:
+        """Add a user to a distribution group via directory reference."""
+        token = self._get_token()
+        body = {"@odata.id": f"{GRAPH_V1}/directoryObjects/{user_id}"}
+        resp = requests.post(
+            f"{GRAPH_V1}/groups/{group_id}/members/$ref",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json=body,
+            timeout=30,
+        )
+        if resp.status_code not in (200, 204):
+            raise Exception(f"Add member failed: {resp.status_code} {resp.text}")
+        return {"added": True}
+
+    def remove_distribution_list_member(self, group_id: str, user_id: str) -> dict:
+        """Remove a user from a distribution group."""
+        token = self._get_token()
+        resp = requests.delete(
+            f"{GRAPH_V1}/groups/{group_id}/members/{user_id}/$ref",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=30,
+        )
+        if resp.status_code not in (200, 204):
+            raise Exception(f"Remove member failed: {resp.status_code} {resp.text}")
+        return {"removed": True}

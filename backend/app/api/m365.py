@@ -101,6 +101,12 @@ class OffboardRequest(BaseModel):
     auto_reply_message: Optional[str] = None
 
 
+class CreateDistributionListRequest(BaseModel):
+    display_name: str
+    mail_nickname: str = ""
+    description: str = ""
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -1016,6 +1022,93 @@ async def ws_m365_email_activity(
     _require_enterprise(plan, "Exchange Admin")
     svc = _get_service_or_404(db, member.workspace_id)
     return svc.get_email_activity()
+
+
+@ws_router.get("/exchange/shared-mailboxes")
+async def ws_m365_shared_mailboxes(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_shared_mailboxes()
+
+
+@ws_router.get("/exchange/distribution-lists")
+async def ws_m365_distribution_lists(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_distribution_lists()
+
+
+@ws_router.post("/exchange/distribution-lists")
+async def ws_m365_create_distribution_list(
+    body: CreateDistributionListRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        result = svc.create_group(
+            display_name=body.display_name,
+            mail_nickname=body.mail_nickname,
+            description=body.description,
+            group_type="distribution",
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/exchange/distribution-lists/{group_id}/members")
+async def ws_m365_dist_list_members(
+    group_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return svc.get_distribution_list_members(group_id)
+
+
+@ws_router.post("/exchange/distribution-lists/{group_id}/members")
+async def ws_m365_add_dist_list_member(
+    group_id: str,
+    body: AddMemberRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.add_distribution_list_member(group_id, body.user_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/exchange/distribution-lists/{group_id}/members/{user_id}")
+async def ws_m365_remove_dist_list_member(
+    group_id: str,
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.remove_distribution_list_member(group_id, user_id)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
