@@ -827,14 +827,14 @@ async def ws_create_azure_vault(
             sku=Sku(name="Standard"),
             properties=VaultProperties(public_network_access="Enabled"),
         )
-        poller = svc.recovery_services_client.vaults.begin_create_or_update(
+        # Fire-and-forget — vault provisioning takes ~60s on Azure side; no need to block
+        svc.recovery_services_client.vaults.begin_create_or_update(
             body.resource_group, body.vault_name, vault_body
         )
-        result = poller.result()
         log_activity(db, member.user, "backup.create", "AZURE_VAULT",
-                     resource_id=result.id, resource_name=body.vault_name,
+                     resource_name=body.vault_name,
                      provider="azure", organization_id=member.organization_id, workspace_id=member.workspace_id)
-        return {"id": result.id, "name": result.name, "provisioning_state": result.properties.provisioning_state if result.properties else None}
+        return {"name": body.vault_name, "resource_group": body.resource_group, "provisioning_state": "Creating"}
     except HTTPException:
         raise
     except Exception as e:
@@ -1019,7 +1019,7 @@ async def ws_enable_vm_backup(
         )
         svc.backup_client.protected_items.begin_create_or_update(
             vault_name, vault_rg, fabric, container_name, item_name, protected_item
-        ).result()
+        )
         log_activity(db, member.user, "backup.create", "AZURE_VM_BACKUP",
                      resource_name=body.vm_name, provider="azure",
                      organization_id=member.organization_id, workspace_id=member.workspace_id)
@@ -1055,7 +1055,7 @@ async def ws_trigger_backup_now(
                     recovery_point_expiry_time_in_utc=datetime.now(timezone.utc) + timedelta(days=body.retention_days)
                 )
             ),
-        ).result()
+        )
         log_activity(db, member.user, "backup.create", "AZURE_BACKUP_JOB",
                      resource_name=body.vm_name, provider="azure",
                      organization_id=member.organization_id, workspace_id=member.workspace_id)
