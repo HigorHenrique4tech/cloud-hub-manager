@@ -494,7 +494,7 @@ function BackupArchiveTab() {
   const vaultRg = selectedArchive?.resource_group;
   const vaultName = selectedArchive?.name;
 
-  const vaultsQ = useQuery({ queryKey: ['azure-backup-vaults'], queryFn: () => azureService.listArchives(), retry: false });
+  const vaultsQ = useQuery({ queryKey: ['azure-backup-vaults'], queryFn: () => azureService.listVaults(), retry: false });
   const itemsQ = useQuery({
     queryKey: ['azure-backup-items', vaultRg, vaultName],
     queryFn: () => azureService.listProtectedItems(vaultRg, vaultName),
@@ -515,7 +515,7 @@ function BackupArchiveTab() {
   });
 
   const createArchiveMut = useMutation({
-    mutationFn: azureService.createArchive,
+    mutationFn: azureService.createVault,
     onSuccess: () => { qc.invalidateQueries(['azure-backup-vaults']); setCreateArchiveOpen(false); setMutError(''); },
     onError: (e) => setMutError(e?.response?.data?.detail || 'Erro ao criar cofre'),
   });
