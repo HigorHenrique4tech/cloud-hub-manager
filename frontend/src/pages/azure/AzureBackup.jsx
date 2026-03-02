@@ -82,11 +82,16 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
 
   const handleDiskChange = (diskId) => {
     const disk = disks.find(d => d.id === diskId);
+    const diskRg = disk?.resource_group;
+    // Match the disk's RG to the canonical dropdown option (case-insensitive)
+    const canonicalRg = diskRg
+      ? resourceGroups.find(rg => rg.toLowerCase() === diskRg.toLowerCase()) || diskRg
+      : null;
     setForm(f => ({
       ...f,
       source_resource_id: diskId,
       location: disk?.location || f.location,
-      resource_group: disk?.resource_group || f.resource_group,
+      resource_group: canonicalRg || f.resource_group,
     }));
   };
 
