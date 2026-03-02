@@ -61,6 +61,16 @@ export const awsService = {
 
   // Metrics
   getMetrics: async () => (await api.get(wsUrl('/aws/metrics'))).data,
+
+  // Backup — EBS Snapshots
+  listSnapshots: (instanceId) =>
+    api.get(wsUrl('/aws/backups/snapshots'), instanceId ? { params: { instance_id: instanceId } } : {}).then(r => r.data),
+  createSnapshot: (data) => api.post(wsUrl('/aws/backups/snapshots'), data).then(r => r.data),
+  deleteSnapshot: (snapshotId) => api.delete(wsUrl(`/aws/backups/snapshots/${snapshotId}`)).then(r => r.data),
+
+  // Backup — AMIs
+  listOwnedAMIs: () => api.get(wsUrl('/aws/backups/amis')).then(r => r.data),
+  createOwnedAMI: (data) => api.post(wsUrl('/aws/backups/amis'), data).then(r => r.data),
 };
 
 export default awsService;

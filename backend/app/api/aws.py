@@ -606,3 +606,169 @@ async def ws_get_aws_metrics(
         return svc.get_metrics()
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Backup (EBS Snapshots + AMIs) ────────────────────────────────────────────
+
+from pydantic import BaseModel as _BM
+
+class CreateSnapshotRequest(_BM):
+    volume_id: str
+    description: str = ""
+
+class CreateAMIRequest(_BM):
+    instance_id: str
+    name: str
+    description: str = ""
+
+
+@ws_router.get("/backups/snapshots")
+async def ws_list_aws_snapshots(
+    instance_id: Optional[str] = Query(None),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List owned EBS snapshots. Optionally filter by instance_id (looks up attached volumes)."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        filters = [{"Name": "status", "Values": ["completed", "pending", "error"]}]
+
+        if instance_id:
+            # Get volumes attached to this instance first
+            resp = svc.ec2_client.describe_instances(InstanceIds=[instance_id])
+            volume_ids = []
+            for r in resp.get("Reservations", []):
+                for inst in r.get("Instances", []):
+                    for bdm in inst.get("BlockDeviceMappings", []):
+                        vid = bdm.get("Ebs", {}).get("VolumeId")
+                        if vid:
+                            volume_ids.append(vid)
+            if volume_ids:
+                filters.append({"Name": "volume-id", "Values": volume_ids})
+            else:
+                return {"snapshots": []}
+
+        resp = svc.ec2_client.describe_snapshots(OwnerIds=["self"], Filters=filters)
+        snapshots = []
+        for s in resp.get("Snapshots", []):
+            tags = {t["Key"]: t["Value"] for t in s.get("Tags", [])}
+            snapshots.append({
+                "snapshot_id": s["SnapshotId"],
+                "volume_id": s.get("VolumeId", ""),
+                "description": s.get("Description", ""),
+                "state": s.get("State", ""),
+                "size_gb": s.get("VolumeSize"),
+                "start_time": s["StartTime"].isoformat() if s.get("StartTime") else None,
+                "encrypted": s.get("Encrypted", False),
+                "tags": tags,
+            })
+        snapshots.sort(key=lambda x: x["start_time"] or "", reverse=True)
+        return {"snapshots": snapshots}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/snapshots")
+async def ws_create_aws_snapshot(
+    body: CreateSnapshotRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Create an EBS snapshot from a volume."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        resp = svc.ec2_client.create_snapshot(
+            VolumeId=body.volume_id,
+            Description=body.description,
+        )
+        log_activity(db, member.user, "backup.create", "EBS_SNAPSHOT",
+                     resource_id=resp["SnapshotId"], resource_name=body.volume_id,
+                     provider="aws", organization_id=member.org_id, workspace_id=member.workspace_id)
+        return {
+            "snapshot_id": resp["SnapshotId"],
+            "volume_id": resp.get("VolumeId", ""),
+            "state": resp.get("State", ""),
+            "start_time": resp["StartTime"].isoformat() if resp.get("StartTime") else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/backups/snapshots/{snapshot_id}")
+async def ws_delete_aws_snapshot(
+    snapshot_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    """Delete an EBS snapshot."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        svc.ec2_client.delete_snapshot(SnapshotId=snapshot_id)
+        log_activity(db, member.user, "backup.delete", "EBS_SNAPSHOT",
+                     resource_id=snapshot_id, resource_name=snapshot_id,
+                     provider="aws", organization_id=member.org_id, workspace_id=member.workspace_id)
+        return {"deleted": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/backups/amis")
+async def ws_list_aws_amis(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List AMIs owned by this account."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        resp = svc.ec2_client.describe_images(Owners=["self"])
+        amis = []
+        for img in resp.get("Images", []):
+            tags = {t["Key"]: t["Value"] for t in img.get("Tags", [])}
+            amis.append({
+                "image_id": img["ImageId"],
+                "name": img.get("Name", ""),
+                "description": img.get("Description", ""),
+                "state": img.get("State", ""),
+                "creation_date": img.get("CreationDate", ""),
+                "architecture": img.get("Architecture", ""),
+                "root_device_type": img.get("RootDeviceType", ""),
+                "tags": tags,
+            })
+        amis.sort(key=lambda x: x["creation_date"], reverse=True)
+        return {"amis": amis}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/amis")
+async def ws_create_aws_ami(
+    body: CreateAMIRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Create an AMI (machine image backup) from an EC2 instance."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        resp = svc.ec2_client.create_image(
+            InstanceId=body.instance_id,
+            Name=body.name,
+            Description=body.description,
+            NoReboot=True,
+        )
+        image_id = resp["ImageId"]
+        log_activity(db, member.user, "backup.create", "AMI",
+                     resource_id=image_id, resource_name=body.name,
+                     provider="aws", organization_id=member.org_id, workspace_id=member.workspace_id)
+        return {"image_id": image_id, "name": body.name, "state": "pending"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

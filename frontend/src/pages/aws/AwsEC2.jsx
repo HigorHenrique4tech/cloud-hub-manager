@@ -18,6 +18,7 @@ import useCreateResource from '../../hooks/useCreateResource';
 import awsService from '../../services/awsservices';
 import TemplateBar from '../../components/common/TemplateBar';
 import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
+import VMBackupSection from '../../components/backup/VMBackupSection';
 
 const defaultForm = { instance_type: 't3.micro', associate_public_ip: false, volumes: [], security_group_ids: [], tags: {}, tags_list: [] };
 
@@ -277,6 +278,12 @@ const AwsEC2 = () => {
           ]},
         ]}
         tags={(detail) => detail?.tags}
+        extraContent={detailTarget && (
+          <VMBackupSection
+            provider="aws"
+            instanceId={detailTarget.instance_id}
+          />
+        )}
       />
     </Layout>
   );

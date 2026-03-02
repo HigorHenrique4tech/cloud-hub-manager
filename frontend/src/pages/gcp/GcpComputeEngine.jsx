@@ -8,6 +8,8 @@ import EmptyState from '../../components/common/emptystate';
 import SkeletonTable from '../../components/common/SkeletonTable';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import PermissionGate from '../../components/common/PermissionGate';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
+import VMBackupSection from '../../components/backup/VMBackupSection';
 import gcpService from '../../services/gcpService';
 
 const STATUS_STYLES = {
@@ -30,6 +32,7 @@ const GcpComputeEngine = () => {
   const qc = useQueryClient();
   const [toDelete, setToDelete] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
+  const [detailTarget, setDetailTarget] = useState(null);
 
   const { data: instances = [], isLoading, error, refetch } = useQuery({
     queryKey: ['gcp-instances'],
@@ -117,7 +120,7 @@ const GcpComputeEngine = () => {
                   const loading = actionLoading[key];
                   const externalIp = inst.network_interfaces?.[0]?.external_ip || '—';
                   return (
-                    <tr key={inst.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
+                    <tr key={inst.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => setDetailTarget(inst)}>
                       <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100">{inst.name}</td>
                       <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs font-mono">{inst.zone}</td>
                       <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">{inst.machine_type}</td>
@@ -125,7 +128,7 @@ const GcpComputeEngine = () => {
                       <td className="py-3 px-4">
                         <StatusBadge status={inst.status} />
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           <PermissionGate permission="resources.manage">
                             {inst.status !== 'RUNNING' && inst.status !== 'STAGING' && (
@@ -177,6 +180,36 @@ const GcpComputeEngine = () => {
         description={`Deseja deletar permanentemente a instância "${toDelete?.name}" na zona ${toDelete?.zone}?`}
         confirmLabel="Deletar"
         isLoading={deleteMutation.isPending}
+      />
+
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="GCP Compute Engine"
+        statusText={detailTarget?.status}
+        statusColor={detailTarget?.status === 'RUNNING' ? 'green' : detailTarget?.status === 'TERMINATED' || detailTarget?.status === 'STOPPED' ? 'red' : 'yellow'}
+        queryKey={['gcp-instance-detail', detailTarget?.zone, detailTarget?.name]}
+        queryFn={detailTarget ? () => Promise.resolve(detailTarget) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Zona', value: detailTarget?.zone },
+            { label: 'Tipo de Máquina', value: detailTarget?.machine_type },
+            { label: 'Status', value: detailTarget?.status },
+          ]},
+          { title: 'Rede', fields: [
+            { label: 'IP Externo', value: detailTarget?.network_interfaces?.[0]?.external_ip || '—' },
+            { label: 'IP Interno', value: detailTarget?.network_interfaces?.[0]?.internal_ip || '—' },
+          ]},
+        ]}
+        extraContent={detailTarget && (
+          <VMBackupSection
+            provider="gcp"
+            vmName={detailTarget.name}
+            zone={detailTarget.zone}
+          />
+        )}
       />
     </Layout>
   );

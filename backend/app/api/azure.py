@@ -620,3 +620,104 @@ async def ws_get_azure_metrics(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Backup (Managed Disk Snapshots) ─────────────────────────────────────────
+
+from pydantic import BaseModel as _BM
+from azure.mgmt.compute.models import Snapshot, CreationData, DiskCreateOption
+
+class CreateAzureSnapshotRequest(_BM):
+    resource_group: str
+    source_resource_id: str
+    snapshot_name: str
+    location: str
+
+
+@ws_router.get("/backups/snapshots")
+async def ws_list_azure_snapshots(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List all managed disk snapshots in the subscription."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        snapshots = []
+        for s in svc.compute_client.snapshots.list():
+            rg = ""
+            try:
+                rg = s.id.split("/resourceGroups/")[1].split("/")[0]
+            except Exception:
+                pass
+            snapshots.append({
+                "snapshot_id": s.id,
+                "name": s.name,
+                "resource_group": rg,
+                "location": s.location,
+                "disk_size_gb": s.disk_size_gb,
+                "provisioning_state": s.provisioning_state,
+                "time_created": s.time_created.isoformat() if s.time_created else None,
+                "source_resource_id": s.creation_data.source_resource_id if s.creation_data else None,
+                "sku_name": s.sku.name if s.sku else None,
+                "tags": s.tags or {},
+            })
+        snapshots.sort(key=lambda x: x["time_created"] or "", reverse=True)
+        return {"snapshots": snapshots}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/snapshots")
+async def ws_create_azure_snapshot(
+    body: CreateAzureSnapshotRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Create a managed disk snapshot."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        snapshot_body = Snapshot(
+            location=body.location,
+            creation_data=CreationData(
+                create_option=DiskCreateOption.COPY,
+                source_resource_id=body.source_resource_id,
+            ),
+        )
+        result = svc.compute_client.snapshots.begin_create_or_update(
+            body.resource_group, body.snapshot_name, snapshot_body
+        ).result()
+        log_activity(db, member.user, "backup.create", "AZURE_SNAPSHOT",
+                     resource_id=result.id, resource_name=body.snapshot_name,
+                     provider="azure", organization_id=member.org_id, workspace_id=member.workspace_id)
+        return {
+            "snapshot_id": result.id,
+            "name": result.name,
+            "provisioning_state": result.provisioning_state,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/backups/snapshots/{resource_group}/{snapshot_name}")
+async def ws_delete_azure_snapshot(
+    resource_group: str,
+    snapshot_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    """Delete a managed disk snapshot."""
+    svc = _get_single_azure_service(member, db)
+    try:
+        svc.compute_client.snapshots.begin_delete(resource_group, snapshot_name).result()
+        log_activity(db, member.user, "backup.delete", "AZURE_SNAPSHOT",
+                     resource_id=snapshot_name, resource_name=snapshot_name,
+                     provider="azure", organization_id=member.org_id, workspace_id=member.workspace_id)
+        return {"deleted": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

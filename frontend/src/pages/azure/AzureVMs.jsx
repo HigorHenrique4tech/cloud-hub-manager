@@ -19,6 +19,7 @@ import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
 import TemplateBar from '../../components/common/TemplateBar';
 import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
+import VMBackupSection from '../../components/backup/VMBackupSection';
 
 const defaultForm = { name: '', resource_group: '', location: '', vm_size: 'Standard_B1s', image_publisher: '', image_offer: '', image_sku: '', image_version: 'latest', admin_username: '', admin_password: '', create_public_ip: false, os_disk_type: 'Standard_LRS', data_disks: [], tags: {}, tags_list: [] };
 
@@ -333,6 +334,13 @@ const AzureVMs = () => {
           },
         ]}
         tags={(detail) => detail?.tags}
+        extraContent={detailTarget && (
+          <VMBackupSection
+            provider="azure"
+            resourceGroup={detailTarget.resource_group}
+            vmName={detailTarget.name}
+          />
+        )}
       />
     </Layout>
   );

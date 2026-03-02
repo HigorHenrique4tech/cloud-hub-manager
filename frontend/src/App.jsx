@@ -17,6 +17,7 @@ import AzureVNets from './pages/azure/AzureVNets';
 import AzureDatabases from './pages/azure/AzureDatabases';
 import AzureAppServices from './pages/azure/AzureAppServices';
 import AzureSecurity from './pages/azure/AzureSecurity';
+import AzureBackup from './pages/azure/AzureBackup';
 // GCP
 import GcpOverview from './pages/gcp/GcpOverview';
 import GcpComputeEngine from './pages/gcp/GcpComputeEngine';
@@ -25,6 +26,7 @@ import GcpCloudSQL from './pages/gcp/GcpCloudSQL';
 import GcpFunctions from './pages/gcp/GcpFunctions';
 import GcpVPC from './pages/gcp/GcpVPC';
 import GcpSecurity from './pages/gcp/GcpSecurity';
+import GcpBackup from './pages/gcp/GcpBackup';
 // AWS
 import AwsOverview from './pages/aws/AwsOverview';
 import AwsEC2 from './pages/aws/AwsEC2';
@@ -33,6 +35,7 @@ import AwsRDS from './pages/aws/AwsRDS';
 import AwsLambda from './pages/aws/AwsLambda';
 import AwsVPC from './pages/aws/AwsVPC';
 import AwsSecurity from './pages/aws/AwsSecurity';
+import AwsBackup from './pages/aws/AwsBackup';
 import Logs from './pages/logs';
 import FinOps from './pages/FinOps';
 import Schedules from './pages/Schedules';
@@ -92,6 +95,7 @@ function App() {
                 <Route path="/aws/lambda" element={<PR><AwsLambda /></PR>} />
                 <Route path="/aws/vpc" element={<PR><AwsVPC /></PR>} />
                 <Route path="/aws/security" element={<PR><AwsSecurity /></PR>} />
+                <Route path="/aws/backup" element={<PR><AwsBackup /></PR>} />
                 {/* GCP */}
                 <Route path="/gcp" element={<PR><GcpOverview /></PR>} />
                 <Route path="/gcp/compute" element={<PR><GcpComputeEngine /></PR>} />
@@ -100,6 +104,7 @@ function App() {
                 <Route path="/gcp/functions" element={<PR><GcpFunctions /></PR>} />
                 <Route path="/gcp/networks" element={<PR><GcpVPC /></PR>} />
                 <Route path="/gcp/security" element={<PR><GcpSecurity /></PR>} />
+                <Route path="/gcp/backup" element={<PR><GcpBackup /></PR>} />
                 {/* Azure */}
                 <Route path="/azure" element={<PR><AzureOverview /></PR>} />
                 <Route path="/azure/vms" element={<PR><AzureVMs /></PR>} />
@@ -108,6 +113,7 @@ function App() {
                 <Route path="/azure/databases" element={<PR><AzureDatabases /></PR>} />
                 <Route path="/azure/app-services" element={<PR><AzureAppServices /></PR>} />
                 <Route path="/azure/security" element={<PR><AzureSecurity /></PR>} />
+                <Route path="/azure/backup" element={<PR><AzureBackup /></PR>} />
                 {/* Other */}
                 <Route path="/costs" element={<PR><Costs /></PR>} />
                 <Route path="/finops" element={<PR><FinOps /></PR>} />

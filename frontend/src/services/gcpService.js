@@ -34,6 +34,11 @@ const gcpService = {
 
   // Metrics
   getMetrics: () => api.get(wsUrl('/gcp/metrics')).then(r => r.data),
+
+  // Backup — Persistent Disk Snapshots
+  listSnapshots: () => api.get(wsUrl('/gcp/backups/snapshots')).then(r => r.data),
+  createSnapshot: (data) => api.post(wsUrl('/gcp/backups/snapshots'), data).then(r => r.data),
+  deleteSnapshot: (name) => api.delete(wsUrl(`/gcp/backups/snapshots/${name}`)).then(r => r.data),
 };
 
 export default gcpService;

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, MonitorPlay, HardDrive, Database, Zap, Network, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, MonitorPlay, HardDrive, Database, Zap, Network, ShieldAlert, HardDriveDownload, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const awsNavItems = [
   { to: '/aws', label: 'Visão Geral', icon: LayoutGrid, end: true },
@@ -9,6 +9,7 @@ const awsNavItems = [
   { to: '/aws/rds', label: 'RDS', icon: Database },
   { to: '/aws/lambda', label: 'Lambda', icon: Zap },
   { to: '/aws/vpc', label: 'VPC', icon: Network },
+  { to: '/aws/backup', label: 'Backup', icon: HardDriveDownload },
   { to: '/aws/security', label: 'Segurança', icon: ShieldAlert },
 ];
 

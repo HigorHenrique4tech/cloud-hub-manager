@@ -403,3 +403,100 @@ async def ws_get_gcp_metrics(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Backup (Persistent Disk Snapshots) ────────────────────────────────────────
+
+class CreateGCPSnapshotRequest(BaseModel):
+    zone: str
+    disk_name: str
+    snapshot_name: str
+    description: str = ""
+
+
+@ws_router.get("/backups/snapshots")
+async def ws_list_gcp_snapshots(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List persistent disk snapshots for this GCP project."""
+    account = _get_gcp_account(member, db)
+    svc = _build_gcp_service(account)
+    try:
+        from google.cloud import compute_v1
+        client = compute_v1.SnapshotsClient(credentials=svc.credentials)
+        snapshots = []
+        for s in client.list(project=svc.project_id):
+            snapshots.append({
+                "name": s.name,
+                "status": s.status,
+                "disk_size_gb": s.disk_size_gb,
+                "source_disk": s.source_disk or "",
+                "creation_timestamp": s.creation_timestamp,
+                "storage_bytes": s.storage_bytes,
+                "description": s.description or "",
+                "labels": dict(s.labels) if s.labels else {},
+            })
+        snapshots.sort(key=lambda x: x["creation_timestamp"] or "", reverse=True)
+        return {"snapshots": snapshots}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/snapshots")
+async def ws_create_gcp_snapshot(
+    body: CreateGCPSnapshotRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Create a persistent disk snapshot."""
+    account = _get_gcp_account(member, db)
+    svc = _build_gcp_service(account)
+    try:
+        from google.cloud import compute_v1
+        disks_client = compute_v1.DisksClient(credentials=svc.credentials)
+        snapshot_resource = compute_v1.Snapshot(
+            name=body.snapshot_name,
+            description=body.description,
+        )
+        operation = disks_client.create_snapshot(
+            project=svc.project_id,
+            zone=body.zone,
+            disk=body.disk_name,
+            snapshot_resource=snapshot_resource,
+        )
+        operation.result()
+        log_activity(db, member.user, "backup.create", "GCP_SNAPSHOT",
+                     resource_id=body.snapshot_name, resource_name=body.snapshot_name,
+                     provider="gcp", organization_id=member.org_id, workspace_id=member.workspace_id)
+        return {"name": body.snapshot_name, "status": "CREATING"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/backups/snapshots/{snapshot_name}")
+async def ws_delete_gcp_snapshot(
+    snapshot_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    """Delete a persistent disk snapshot."""
+    account = _get_gcp_account(member, db)
+    svc = _build_gcp_service(account)
+    try:
+        from google.cloud import compute_v1
+        client = compute_v1.SnapshotsClient(credentials=svc.credentials)
+        operation = client.delete(project=svc.project_id, snapshot=snapshot_name)
+        operation.result()
+        log_activity(db, member.user, "backup.delete", "GCP_SNAPSHOT",
+                     resource_id=snapshot_name, resource_name=snapshot_name,
+                     provider="gcp", organization_id=member.org_id, workspace_id=member.workspace_id)
+        return {"deleted": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

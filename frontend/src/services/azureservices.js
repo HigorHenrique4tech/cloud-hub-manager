@@ -57,6 +57,11 @@ export const azureService = {
 
   // Metrics
   getMetrics: async () => (await api.get(wsUrl('/azure/metrics'))).data,
+
+  // Backup — Managed Disk Snapshots
+  listSnapshots: () => api.get(wsUrl('/azure/backups/snapshots')).then(r => r.data),
+  createSnapshot: (data) => api.post(wsUrl('/azure/backups/snapshots'), data).then(r => r.data),
+  deleteSnapshot: (rg, name) => api.delete(wsUrl(`/azure/backups/snapshots/${rg}/${name}`)).then(r => r.data),
 };
 
 export default azureService;

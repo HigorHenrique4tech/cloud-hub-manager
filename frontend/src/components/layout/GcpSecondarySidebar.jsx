@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, MonitorPlay, HardDrive, Database, Zap, Network, ShieldAlert, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, MonitorPlay, HardDrive, Database, Zap, Network, ShieldAlert, HardDriveDownload, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const gcpNavItems = [
   { to: '/gcp', label: 'Visão Geral', icon: LayoutGrid, end: true },
@@ -9,6 +9,7 @@ const gcpNavItems = [
   { to: '/gcp/sql', label: 'Cloud SQL', icon: Database },
   { to: '/gcp/functions', label: 'Cloud Functions', icon: Zap },
   { to: '/gcp/networks', label: 'VPC Networks', icon: Network },
+  { to: '/gcp/backup', label: 'Backup', icon: HardDriveDownload },
   { to: '/gcp/security', label: 'Segurança', icon: ShieldAlert },
 ];
 
