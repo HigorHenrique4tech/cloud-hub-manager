@@ -405,11 +405,14 @@ class M365Service:
         nickname = re.sub(r"[^a-zA-Z0-9-]", "", raw) or "group"
         is_m365 = group_type == "m365"
         is_dist = group_type == "distribution"
+        # Graph API only supports: M365 Group, Security Group, Mail-enabled Security Group.
+        # Pure distribution groups (mailEnabled=true, securityEnabled=false) are NOT creatable
+        # via Graph API — use mail-enabled security group instead (functionally identical for email).
         body: dict = {
             "displayName": display_name,
             "mailNickname": nickname,
             "mailEnabled": is_m365 or is_dist,
-            "securityEnabled": not (is_m365 or is_dist),
+            "securityEnabled": not is_m365,   # true for dist (mail-enabled security) and plain security
             "groupTypes": ["Unified"] if is_m365 else [],
         }
         if description:
@@ -1412,7 +1415,9 @@ class M365Service:
         Reuses get_groups() and filters client-side."""
         try:
             all_groups = self.get_groups()
-            dist = [g for g in all_groups if g.get("groupType") == "Distribution"]
+            # Include both legacy "Distribution" AND "Mail-enabled Security" groups —
+            # newly created ones via Graph API are mail-enabled security groups.
+            dist = [g for g in all_groups if g.get("groupType") in ("Distribution", "Mail-enabled Security")]
             return {"distribution_lists": dist, "total": len(dist)}
         except Exception as e:
             logger.error(f"Error getting distribution lists: {e}")
