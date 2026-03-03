@@ -21,7 +21,7 @@ router = APIRouter(
 
 
 class AccountCreate(BaseModel):
-    provider: str       # 'aws' | 'azure'
+    provider: str       # 'aws' | 'azure' | 'gcp' | 'm365'
     label: str = "default"
     account_id: Optional[str] = None  # AWS account ID or Azure subscription ID (display)
     data: Dict          # credential fields to encrypt
@@ -92,8 +92,8 @@ async def create_account(
             detail=f"Limite de contas cloud atingido para o plano {org.plan_tier.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
         )
 
-    if payload.provider not in ("aws", "azure"):
-        raise HTTPException(status_code=400, detail="Provider deve ser 'aws' ou 'azure'")
+    if payload.provider not in ("aws", "azure", "gcp", "m365"):
+        raise HTTPException(status_code=400, detail="Provider deve ser 'aws', 'azure', 'gcp' ou 'm365'")
 
     account = CloudAccount(
         workspace_id=member.workspace_id,
