@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Layers, Plus, Trash2, TestTube2, CheckCircle2, XCircle, ArrowUpRight, Users, RotateCcw } from 'lucide-react';
+import { Layers, Plus, Trash2, TestTube2, CheckCircle2, XCircle, ArrowUpRight, Users, RotateCcw, Upload } from 'lucide-react';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
@@ -114,6 +114,29 @@ const WorkspaceSettings = () => {
   const azureFields = ['subscription_id', 'tenant_id', 'client_id', 'client_secret'];
   const gcpFields = ['project_id', 'client_email', 'private_key_id', 'private_key'];
   const fields = provider === 'aws' ? awsFields : provider === 'gcp' ? gcpFields : azureFields;
+
+  const handleGcpJsonImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const json = JSON.parse(ev.target.result);
+        setFormData({
+          project_id: json.project_id || '',
+          client_email: json.client_email || '',
+          private_key_id: json.private_key_id || '',
+          private_key: json.private_key || '',
+        });
+        if (!label) setLabel(json.project_id || 'gcp-account');
+      } catch {
+        alert('Arquivo JSON inválido. Certifique-se de usar o arquivo da Service Account do GCP.');
+      }
+    };
+    reader.readAsText(file);
+    // reset input so the same file can be re-imported
+    e.target.value = '';
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -314,9 +337,21 @@ const WorkspaceSettings = () => {
                   </div>
                 </div>
                 {provider === 'gcp' && (
-                  <p className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
-                    Preencha com os campos do arquivo JSON da Service Account do GCP.
-                  </p>
+                  <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                    <Upload className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                    <p className="text-xs text-blue-700 dark:text-blue-300 flex-1">
+                      Importe o arquivo JSON da Service Account para preencher os campos automaticamente.
+                    </p>
+                    <label className="cursor-pointer px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg whitespace-nowrap">
+                      Importar JSON
+                      <input
+                        type="file"
+                        accept=".json,application/json"
+                        className="hidden"
+                        onChange={handleGcpJsonImport}
+                      />
+                    </label>
+                  </div>
                 )}
                 {fields.map((field) => (
                   <div key={field}>
