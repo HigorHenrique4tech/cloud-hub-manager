@@ -40,6 +40,7 @@ class M365Service:
     def __init__(self, tenant_id: str, client_id: str, client_secret: str):
         if not _MSAL_AVAILABLE:
             raise RuntimeError("msal package is not installed. Add msal>=1.28.0 to requirements.txt")
+        self._tenant_id = tenant_id
         self._app = msal.ConfidentialClientApplication(
             client_id,
             authority=f"https://login.microsoftonline.com/{tenant_id}",
@@ -103,6 +104,67 @@ class M365Service:
                 err_body = r.text
             logger.error(f"Graph API POST {path} {r.status_code}: {err_body}")
             raise Exception(f"Graph API {r.status_code}: {err_body}")
+        return r.json() if r.content else {}
+
+    # ── Exchange Online Admin API helpers ─────────────────────────────────────
+
+    def _get_exo_token(self) -> str:
+        """Acquire token for Exchange Online Admin API scope."""
+        result = self._app.acquire_token_for_client(
+            scopes=["https://outlook.office365.com/.default"]
+        )
+        if "access_token" not in result:
+            raise M365AuthError(
+                result.get("error_description") or result.get("error") or "EXO auth error"
+            )
+        return result["access_token"]
+
+    def _exo_invoke(self, cmdlet: str, params: dict) -> dict:
+        """Call Exchange Online Admin API beta InvokeCommand (requires Exchange.ManageAsApp)."""
+        token = self._get_exo_token()
+        url = f"https://outlook.office365.com/adminapi/beta/{self._tenant_id}/InvokeCommand"
+        body = {"CmdletInput": {"CmdletName": cmdlet, "Parameters": params}}
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "X-ResponseFormat": "json",
+            },
+            json=body,
+            timeout=30,
+        )
+        if not r.ok:
+            try:
+                err = r.json()
+            except Exception:
+                err = r.text
+            logger.error(f"EXO InvokeCommand {cmdlet} {r.status_code}: {err}")
+            raise Exception(f"EXO API {r.status_code}: {err}")
+        return r.json() if r.content else {}
+
+    def _exo_mailbox(self, cmdlet: str, params: dict) -> dict:
+        """Call Exchange Online Admin API v2.0 /Mailbox endpoint (official, for Set/Get-Mailbox)."""
+        token = self._get_exo_token()
+        url = f"https://outlook.office365.com/adminapi/v2.0/{self._tenant_id}/Mailbox"
+        body = {"CmdletInput": {"CmdletName": cmdlet, "Parameters": params}}
+        r = requests.post(
+            url,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+                "X-ResponseFormat": "json",
+            },
+            json=body,
+            timeout=30,
+        )
+        if not r.ok:
+            try:
+                err = r.json()
+            except Exception:
+                err = r.text
+            logger.error(f"EXO Mailbox {cmdlet} {r.status_code}: {err}")
+            raise Exception(f"EXO API {r.status_code}: {err}")
         return r.json() if r.content else {}
 
     # ── Public API ────────────────────────────────────────────────────────────
@@ -1385,31 +1447,48 @@ class M365Service:
     # ─────────────────────────────────────────────────────────────────────
 
     def get_shared_mailboxes(self) -> dict:
-        """List unlicensed member accounts with mail (shared mailboxes, rooms, equipment).
-        Requires User.Read.All + ConsistencyLevel: eventual."""
+        """List shared mailboxes by filtering disabled accounts and verifying userPurpose='shared'.
+        Requires User.Read.All + MailboxSettings.Read."""
         try:
             token = self._get_token()
+            # Shared mailboxes always have accountEnabled=false in Azure AD
             resp = requests.get(
                 f"{GRAPH_V1}/users",
-                headers={"Authorization": f"Bearer {token}", "ConsistencyLevel": "eventual"},
+                headers={"Authorization": f"Bearer {token}"},
                 params={
-                    "$filter": "assignedLicenses/$count eq 0 and mail ne null and userType eq 'Member'",
-                    "$count": "true",
+                    "$filter": "accountEnabled eq false and mail ne null and userType eq 'Member'",
                     "$select": "id,displayName,mail,userPrincipalName,accountEnabled",
                     "$top": "100",
                 },
                 timeout=30,
             )
             resp.raise_for_status()
+            candidates = resp.json().get("value", [])
+
+            # Verify each candidate is actually a shared mailbox via mailboxSettings/userPurpose
+            shared = []
+            for user in candidates:
+                try:
+                    purpose_r = requests.get(
+                        f"{GRAPH_V1}/users/{user['id']}/mailboxSettings",
+                        headers={"Authorization": f"Bearer {token}"},
+                        params={"$select": "userPurpose"},
+                        timeout=10,
+                    )
+                    if purpose_r.ok and purpose_r.json().get("userPurpose") == "shared":
+                        shared.append(user)
+                except Exception:
+                    pass
+
             mailboxes = [
                 {
                     "id": u.get("id"),
                     "display_name": u.get("displayName"),
                     "mail": u.get("mail"),
                     "upn": u.get("userPrincipalName"),
-                    "account_enabled": u.get("accountEnabled", True),
+                    "account_enabled": u.get("accountEnabled", False),
                 }
-                for u in resp.json().get("value", [])
+                for u in shared
             ]
             return {"mailboxes": mailboxes, "total": len(mailboxes)}
         except Exception as e:
@@ -1474,3 +1553,150 @@ class M365Service:
         if resp.status_code not in (200, 204):
             raise Exception(f"Remove member failed: {resp.status_code} {resp.text}")
         return {"removed": True}
+
+    # ── Domains ───────────────────────────────────────────────────────────────
+
+    def get_domains(self) -> list:
+        """List verified tenant domains. Requires Domain.Read.All."""
+        try:
+            resp = self._get("/domains?$select=id,isDefault,isInitial,isVerified")
+            domains = [
+                {
+                    "id": d.get("id"),
+                    "is_default": d.get("isDefault", False),
+                    "is_initial": d.get("isInitial", False),
+                }
+                for d in resp.get("value", [])
+                if d.get("isVerified")
+            ]
+            return sorted(domains, key=lambda d: (not d["is_default"], d["is_initial"], d["id"]))
+        except Exception as e:
+            logger.error(f"Error getting domains: {e}")
+            return []
+
+    # ── Shared Mailbox Management ─────────────────────────────────────────────
+
+    def create_shared_mailbox(
+        self, display_name: str, alias: str, domain: str, description: str = ""
+    ) -> dict:
+        """Create a shared mailbox via Exchange Online Admin API beta InvokeCommand.
+        Requires Exchange.ManageAsApp permission + Recipient Management RBAC role."""
+        import re
+        clean_alias = re.sub(r"[^a-zA-Z0-9._-]", "", alias)
+        params: dict = {
+            "Shared": True,
+            "Name": display_name,
+            "DisplayName": display_name,
+            "Alias": clean_alias,
+            "PrimarySmtpAddress": f"{clean_alias}@{domain}",
+        }
+        if description:
+            params["Notes"] = description
+        return self._exo_invoke("New-Mailbox", params)
+
+    # ── Mailbox Delegation ────────────────────────────────────────────────────
+
+    def get_mailbox_delegates(self, mailbox_upn: str) -> dict:
+        """Get Full Access, Send As and Send on Behalf delegates for a mailbox.
+        Requires Exchange.ManageAsApp permission."""
+        result: dict = {"full_access": [], "send_as": [], "send_on_behalf": []}
+
+        # Full Access (Read and Manage)
+        try:
+            r = self._exo_invoke("Get-MailboxPermission", {"Identity": mailbox_upn})
+            result["full_access"] = [
+                {"user": p.get("User"), "access_rights": p.get("AccessRights")}
+                for p in (r.get("value") or [])
+                if p.get("User") and "NT AUTHORITY" not in str(p.get("User", ""))
+                and "FullAccess" in str(p.get("AccessRights", ""))
+            ]
+        except Exception as e:
+            logger.warning(f"Could not get FullAccess delegates: {e}")
+            result["full_access_error"] = str(e)
+
+        # Send As
+        try:
+            r = self._exo_invoke("Get-RecipientPermission", {"Identity": mailbox_upn})
+            result["send_as"] = [
+                {"user": p.get("Trustee"), "access_rights": p.get("AccessRights")}
+                for p in (r.get("value") or [])
+                if p.get("Trustee") and "NT AUTHORITY" not in str(p.get("Trustee", ""))
+            ]
+        except Exception as e:
+            logger.warning(f"Could not get SendAs delegates: {e}")
+            result["send_as_error"] = str(e)
+
+        # Send on Behalf (via official v2.0 Mailbox endpoint)
+        try:
+            r = self._exo_mailbox("Get-Mailbox", {"Identity": mailbox_upn})
+            mb = (r.get("value") or [{}])[0]
+            raw = mb.get("GrantSendOnBehalfToWithDisplayNames") or mb.get("GrantSendOnBehalfTo") or []
+            result["send_on_behalf"] = [{"user": u} for u in raw if u]
+        except Exception as e:
+            logger.warning(f"Could not get SendOnBehalf delegates: {e}")
+            result["send_on_behalf_error"] = str(e)
+
+        return result
+
+    def add_mailbox_delegate(
+        self, mailbox_upn: str, delegate_upn: str, permission_type: str
+    ) -> dict:
+        """Add a mailbox delegate. permission_type: full_access | send_as | send_on_behalf"""
+        if permission_type == "full_access":
+            self._exo_invoke("Add-MailboxPermission", {
+                "Identity": mailbox_upn,
+                "User": delegate_upn,
+                "AccessRights": ["FullAccess"],
+                "InheritanceType": "All",
+                "AutoMapping": False,
+                "Confirm": False,
+            })
+        elif permission_type == "send_as":
+            self._exo_invoke("Add-RecipientPermission", {
+                "Identity": mailbox_upn,
+                "Trustee": delegate_upn,
+                "AccessRights": ["SendAs"],
+                "Confirm": False,
+            })
+        elif permission_type == "send_on_behalf":
+            self._exo_mailbox("Set-Mailbox", {
+                "Identity": mailbox_upn,
+                "GrantSendOnBehalfTo": {
+                    "add": [delegate_upn],
+                    "@odata.type": "#Exchange.GenericHashTable",
+                },
+            })
+        else:
+            raise ValueError(f"Unknown permission_type: {permission_type}")
+        return {"added": True, "permission_type": permission_type}
+
+    def remove_mailbox_delegate(
+        self, mailbox_upn: str, delegate_upn: str, permission_type: str
+    ) -> dict:
+        """Remove a mailbox delegate."""
+        if permission_type == "full_access":
+            self._exo_invoke("Remove-MailboxPermission", {
+                "Identity": mailbox_upn,
+                "User": delegate_upn,
+                "AccessRights": ["FullAccess"],
+                "InheritanceType": "All",
+                "Confirm": False,
+            })
+        elif permission_type == "send_as":
+            self._exo_invoke("Remove-RecipientPermission", {
+                "Identity": mailbox_upn,
+                "Trustee": delegate_upn,
+                "AccessRights": ["SendAs"],
+                "Confirm": False,
+            })
+        elif permission_type == "send_on_behalf":
+            self._exo_mailbox("Set-Mailbox", {
+                "Identity": mailbox_upn,
+                "GrantSendOnBehalfTo": {
+                    "remove": [delegate_upn],
+                    "@odata.type": "#Exchange.GenericHashTable",
+                },
+            })
+        else:
+            raise ValueError(f"Unknown permission_type: {permission_type}")
+        return {"removed": True, "permission_type": permission_type}

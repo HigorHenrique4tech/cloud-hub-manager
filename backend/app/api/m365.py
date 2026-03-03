@@ -107,6 +107,18 @@ class CreateDistributionListRequest(BaseModel):
     description: str = ""
 
 
+class CreateSharedMailboxRequest(BaseModel):
+    display_name: str
+    alias: str
+    domain: str
+    description: str = ""
+
+
+class AddMailboxDelegateRequest(BaseModel):
+    delegate_upn: str
+    permission_type: str  # full_access | send_as | send_on_behalf
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -1024,6 +1036,17 @@ async def ws_m365_email_activity(
     return svc.get_email_activity()
 
 
+@ws_router.get("/exchange/domains")
+async def ws_m365_domains(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    return {"domains": svc.get_domains()}
+
+
 @ws_router.get("/exchange/shared-mailboxes")
 async def ws_m365_shared_mailboxes(
     member: MemberContext = Depends(require_permission("m365.view")),
@@ -1033,6 +1056,84 @@ async def ws_m365_shared_mailboxes(
     _require_enterprise(plan, "Exchange Admin")
     svc = _get_service_or_404(db, member.workspace_id)
     return svc.get_shared_mailboxes()
+
+
+@ws_router.post("/exchange/shared-mailboxes")
+async def ws_m365_create_shared_mailbox(
+    body: CreateSharedMailboxRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        return svc.create_shared_mailbox(
+            display_name=body.display_name,
+            alias=body.alias,
+            domain=body.domain,
+            description=body.description,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/exchange/shared-mailboxes/{mailbox_id}/delegates")
+async def ws_m365_mailbox_delegates(
+    mailbox_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        user = svc._get(f"/users/{mailbox_id}?$select=userPrincipalName")
+        upn = user.get("userPrincipalName")
+        if not upn:
+            raise HTTPException(status_code=404, detail="Mailbox not found")
+        return svc.get_mailbox_delegates(upn)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/exchange/shared-mailboxes/{mailbox_id}/delegates")
+async def ws_m365_add_mailbox_delegate(
+    mailbox_id: str,
+    body: AddMailboxDelegateRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        user = svc._get(f"/users/{mailbox_id}?$select=userPrincipalName")
+        upn = user.get("userPrincipalName")
+        return svc.add_mailbox_delegate(upn, body.delegate_upn, body.permission_type)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/exchange/shared-mailboxes/{mailbox_id}/delegates/{permission_type}/{delegate_upn:path}")
+async def ws_m365_remove_mailbox_delegate(
+    mailbox_id: str,
+    permission_type: str,
+    delegate_upn: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Exchange Admin")
+    svc = _get_service_or_404(db, member.workspace_id)
+    try:
+        user = svc._get(f"/users/{mailbox_id}?$select=userPrincipalName")
+        upn = user.get("userPrincipalName")
+        return svc.remove_mailbox_delegate(upn, delegate_upn, permission_type)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 @ws_router.get("/exchange/distribution-lists")

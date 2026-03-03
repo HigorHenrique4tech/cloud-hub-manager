@@ -191,7 +191,12 @@ const m365Service = {
   offboardUser: (userId, data) => api.post(wsUrl(`/m365/users/${userId}/offboard`), data).then(r => r.data),
 
   // ── Shared Mailboxes & Distribution Lists ────────────────────────────────────
+  getDomains: () => api.get(wsUrl('/m365/exchange/domains')).then(r => r.data),
   getSharedMailboxes: () => api.get(wsUrl('/m365/exchange/shared-mailboxes')).then(r => r.data),
+  createSharedMailbox: (data) => api.post(wsUrl('/m365/exchange/shared-mailboxes'), data).then(r => r.data),
+  getMailboxDelegates: (mailboxId) => api.get(wsUrl(`/m365/exchange/shared-mailboxes/${mailboxId}/delegates`)).then(r => r.data),
+  addMailboxDelegate: (mailboxId, data) => api.post(wsUrl(`/m365/exchange/shared-mailboxes/${mailboxId}/delegates`), data).then(r => r.data),
+  removeMailboxDelegate: (mailboxId, permType, delegateUpn) => api.delete(wsUrl(`/m365/exchange/shared-mailboxes/${mailboxId}/delegates/${permType}/${delegateUpn}`)).then(r => r.data),
   getDistributionLists: () => api.get(wsUrl('/m365/exchange/distribution-lists')).then(r => r.data),
   getDistributionListMembers: (groupId) => api.get(wsUrl(`/m365/exchange/distribution-lists/${groupId}/members`)).then(r => r.data),
   addDistributionListMember: (groupId, userId) => api.post(wsUrl(`/m365/exchange/distribution-lists/${groupId}/members`), { user_id: userId }).then(r => r.data),
