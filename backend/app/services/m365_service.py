@@ -140,6 +140,14 @@ class M365Service:
             except Exception:
                 err = r.text
             logger.error(f"EXO InvokeCommand {cmdlet} {r.status_code}: {err}")
+            if r.status_code == 401:
+                raise Exception(
+                    "EXO_PERMISSION_REQUIRED: Permissão Exchange.ManageAsApp não configurada."
+                )
+            if ("isn't supported in this scenario" in str(err) or
+                    "CmdletAccessDeniedException" in str(err) or
+                    r.status_code == 403):
+                raise Exception("EXO_RBAC_REQUIRED: Papel RBAC do Exchange não atribuído.")
             raise Exception(f"EXO API {r.status_code}: {err}")
         return r.json() if r.content else {}
 
@@ -164,6 +172,10 @@ class M365Service:
             except Exception:
                 err = r.text
             logger.error(f"EXO Mailbox {cmdlet} {r.status_code}: {err}")
+            if r.status_code == 401:
+                raise Exception(
+                    "EXO_PERMISSION_REQUIRED: Permissão Exchange.ManageAsApp não configurada."
+                )
             raise Exception(f"EXO API {r.status_code}: {err}")
         return r.json() if r.content else {}
 

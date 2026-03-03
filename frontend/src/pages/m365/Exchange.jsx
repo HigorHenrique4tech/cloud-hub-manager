@@ -461,7 +461,31 @@ function CreateSharedMailboxModal({ onClose }) {
                 <label className={labelCls}>Descrição</label>
                 <input type="text" value={form.description} onChange={e => set('description', e.target.value)} placeholder="Opcional" className={inputCls} />
               </div>
-              {createMut.isError && <p className="text-xs text-red-500">{createMut.error?.response?.data?.detail || 'Erro ao criar caixa.'}</p>}
+              {createMut.isError && (() => {
+                const detail = createMut.error?.response?.data?.detail || '';
+                if (detail.includes('EXO_PERMISSION_REQUIRED')) return (
+                  <div className="rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 p-3 space-y-1">
+                    <p className="text-xs font-semibold text-red-700 dark:text-red-300">Falta permissão Exchange.ManageAsApp:</p>
+                    <ol className="text-xs text-red-600 dark:text-red-400 space-y-1 list-decimal list-inside">
+                      <li>Azure AD → <strong>Registros de aplicativo</strong> → seu app → Permissões de API</li>
+                      <li>Adicionar → "APIs da minha organização" → <strong>Office 365 Exchange Online</strong></li>
+                      <li>Permissões de aplicativo → <strong>Exchange.ManageAsApp</strong> → Conceder consentimento</li>
+                    </ol>
+                  </div>
+                );
+                if (detail.includes('EXO_RBAC_REQUIRED')) return (
+                  <div className="rounded-lg border border-orange-300 dark:border-orange-700 bg-orange-50 dark:bg-orange-900/20 p-3 space-y-1">
+                    <p className="text-xs font-semibold text-orange-700 dark:text-orange-300">Falta papel Exchange Administrator — siga os passos:</p>
+                    <ol className="text-xs text-orange-600 dark:text-orange-400 space-y-1 list-decimal list-inside">
+                      <li>Azure Portal → Azure AD → <strong>Funções e administradores</strong></li>
+                      <li>Buscar e clicar em <strong>"Administrador do Exchange"</strong></li>
+                      <li><strong>Adicionar atribuições</strong> → buscar o nome do seu aplicativo → Adicionar</li>
+                    </ol>
+                    <p className="text-xs text-orange-500 mt-1">Aguarde até 5 minutos após salvar e tente novamente.</p>
+                  </div>
+                );
+                return <p className="text-xs text-red-500">{detail || 'Erro ao criar caixa.'}</p>;
+              })()}
               <button onClick={() => createMut.mutate()} disabled={!form.display_name || !form.alias || !form.domain || createMut.isPending}
                 className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-lg disabled:opacity-50">
                 {createMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
