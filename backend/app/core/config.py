@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     GCP_PRIVATE_KEY: str = ""
     GCP_PRIVATE_KEY_ID: str = ""
 
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+
     @model_validator(mode='after')
     def validate_production_secrets(self) -> 'Settings':
         """Prevent the app from starting with insecure defaults in production."""

@@ -19,6 +19,20 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  # ── Cache (Redis) ─────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: cloudatlas-redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    networks:
+      - cloudatlas-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   # ── Database ─────────────────────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
@@ -75,10 +89,14 @@ services:
       # Payments
       - ABACATEPAY_API_KEY=${ABACATEPAY_API_KEY:-}
       - ABACATEPAY_WEBHOOK_SECRET=${ABACATEPAY_WEBHOOK_SECRET:-}
+      # Cache
+      - REDIS_URL=redis://redis:6379/0
     networks:
       - cloudatlas-network
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

@@ -1,10 +1,10 @@
 # CloudAtlas
 
-Plataforma multi-cloud centralizada para gerenciar, monitorar e otimizar recursos de nuvem em um único lugar — com hierarquia de organizações, controle de acesso por papel (RBAC), FinOps e monitoramento integrado.
+Plataforma multi-cloud + Microsoft 365 centralizada para gerenciar, monitorar e otimizar recursos de nuvem em um único lugar — com hierarquia de organizações, controle de acesso por papel (RBAC), FinOps e monitoramento integrado.
 
 ## Visão Geral
 
-O CloudAtlas permite que times de infraestrutura e engenharia visualizem e operem recursos AWS + Azure, controlem custos, recebam alertas, identifiquem desperdícios automaticamente e apliquem economias reais — tudo sem precisar alternar entre consoles.
+O CloudAtlas permite que times de infraestrutura e engenharia visualizem e operem recursos AWS + Azure + GCP, administrem o ambiente Microsoft 365 (usuários, licenças, Exchange, SharePoint, Teams), controlem custos, recebam alertas, identifiquem desperdícios automaticamente e apliquem economias reais — tudo sem precisar alternar entre consoles.
 
 ---
 
@@ -21,6 +21,8 @@ O CloudAtlas permite que times de infraestrutura e engenharia visualizem e opere
 | Criptografia de credenciais | Fernet (cryptography) |
 | AWS SDK | boto3 + CloudWatch |
 | Azure SDK | azure-identity + azure-mgmt-compute + azure-mgmt-network + azure-mgmt-monitor + azure-mgmt-costmanagement |
+| GCP SDK | google-cloud-compute + google-cloud-storage + google-cloud-functions + google-api-python-client |
+| Microsoft 365 | MSAL + Microsoft Graph API v1.0 + Exchange Online Admin API (beta + v2.0) |
 | Frontend | React 18 + Vite |
 | Estilização | Tailwind CSS |
 | Gráficos | Recharts |
@@ -46,8 +48,11 @@ O CloudAtlas permite que times de infraestrutura e engenharia visualizem e opere
 │  └─────────┘   └──────────┘   └──────────┘   └────────────┘  │
 │       │               │            │                          │
 │       └───────────────┘      ┌─────┴──────┐                  │
-│                              ▼            ▼                   │
-│                          AWS API      Azure API               │
+│                              ▼            ▼            ▼      │
+│                          AWS API    Azure API    GCP API      │
+│                                                    ▼          │
+│                                            Microsoft Graph    │
+│                                          Exchange Online API  │
 │                                                               │
 │  ┌──────────┐   ┌──────────┐                                  │
 │  │Prometheus│──▶│ Grafana  │                                   │
@@ -118,6 +123,52 @@ Organization (org)
 - **SQL Databases** — listar servidores e bancos; criar banco (SKU, servidor, credenciais)
 - **App Services** — listar, iniciar, parar; criar app (plano, runtime, região)
 - Custos via Azure Cost Management
+
+### GCP
+- Overview com contagens por serviço
+- **Compute Engine** — listar instâncias, iniciar, parar; criar VM
+- **Cloud Storage** — listar buckets; criar bucket
+- **Cloud SQL** — listar instâncias; criar banco
+- **Cloud Functions** — listar funções; criar função
+- **VPC Networks** — listar redes; criar VPC
+- Custos estimados via Cloud Billing API
+
+### Microsoft 365 (Enterprise)
+- **Dashboard M365** — 5 abas: Visão Geral (KPIs), Usuários, Licenças, Equipes, Segurança (MFA)
+- **Wizard de Criação de Usuário** — modal 4 etapas: dados básicos → licença → grupos → confirmar/executar
+- **Usuários** — listagem, filtro por tipo (membro/guest), offboarding workflow (desabilitar + revogar sessões + remover licenças)
+- **Licenças** — SKUs com nomes amigáveis, atribuição/remoção por usuário, contagem disponível/total
+- **Equipes** — listar, criar, editar, arquivar; gerenciar canais (CRUD) e membros (roles owner/member)
+- **Atividade Teams** — relatório D30: usuários ativos, reuniões, mensagens (via Graph Reports API)
+
+#### Exchange Admin
+- **Caixas de Correio** — listagem, MailboxDrawer com auto-reply + timezone + delegação
+- **Delegação** — Full Access, Enviar Como, Enviar em Nome de (via Exchange Online Admin API)
+- **Caixas Compartilhadas** — listagem via EXO `Get-Mailbox -RecipientTypeDetails SharedMailbox`; criação com seleção de domínio; configuração (auto-reply + delegação)
+- **Listas de Distribuição** — listagem, criação com seleção de domínio, gerenciamento de membros (add/remove)
+- **Atividade de E-mail** — gráfico barras 30 dias (via Graph Reports API)
+
+#### SharePoint Admin
+- **Sites** — listagem, metadados, SiteDrawer com detalhes
+- **Bibliotecas** — seleção de site → drives → itens com navegação por pasta
+- **Visão Geral** — uso de armazenamento SharePoint
+
+#### Permissões M365 necessárias (Application)
+| Permissão | Recurso |
+|-----------|---------|
+| `User.ReadWrite.All` | Usuários |
+| `Group.ReadWrite.All` | Grupos e distribuição |
+| `Directory.Read.All` | Leitura do diretório |
+| `Sites.Read.All` | SharePoint sites |
+| `MailboxSettings.ReadWrite` | Configurações de caixa |
+| `TeamSettings.ReadWrite.All` | Times |
+| `Channel.ReadBasic.All` | Canais |
+| `ChannelMember.ReadWrite.All` | Membros de canais |
+| `Reports.Read.All` | Relatórios de atividade |
+| `AuditLog.Read.All` | Audit logs |
+| `Exchange.ManageAsApp` | Exchange Online (EXO API) |
+
+> **RBAC Azure AD adicional:** Atribuir o papel "Administrador do Exchange" ao service principal para operações EXO.
 
 ### Dashboard Customizável
 - **6 widgets independentes**, cada um com seus próprios dados:
@@ -434,17 +485,26 @@ O Caddy gerencia SSL automaticamente via Let's Encrypt.
 ### Concluído recentemente
 - [x] Dashboard customizável com drag-and-drop e persistência por usuário
 - [x] Agendamentos automáticos de start/stop (APScheduler + SQLAlchemyJobStore)
-- [x] Seletor de recurso real no modal de agendamento (busca EC2, VMs, App Services)
-- [x] Integração FinOps → Schedules (recomendação `schedule` cria par START+STOP)
+- [x] FinOps — detecção de desperdício AWS + Azure, aplicar/desfazer com 1 clique
+- [x] Webhooks de eventos com assinatura HMAC-SHA256
+- [x] Google Cloud Platform (GCP) — Compute Engine, Storage, SQL, Functions, VPC
+- [x] MSP / Enterprise — hierarquia master/partner, orgs gerenciadas
+- [x] MFA por e-mail — OTP 6 dígitos, JWT separado, toggle em configurações
+- [x] Microsoft 365 — painel completo (usuários, licenças, equipes, segurança)
+- [x] Microsoft 365 — Exchange Admin (caixas, shared mailboxes, listas de distribuição, delegação)
+- [x] Microsoft 365 — SharePoint Admin (sites, bibliotecas, armazenamento)
+- [x] Microsoft 365 — Teams Admin (times, canais, membros, atividade)
+- [x] Microsoft 365 — Wizard de criação de usuário 4 etapas
+- [x] Microsoft 365 — Exchange Online Admin API (EXO) para caixas compartilhadas e delegação
 
 ### Próximos
-- [ ] Scan FinOps agendado recorrente (sem clique manual)
+- [ ] Testes automatizados (`pytest` backend + `vitest` frontend)
 - [ ] Approval workflow para ações FinOps (Enterprise)
-- [ ] Chargeback por tag (Enterprise)
-- [ ] Export de recomendações CSV/PDF
+- [ ] M365 — Calendários e salas via Graph API
+- [ ] M365 — Conditional Access — visualizar políticas
+- [ ] Export de relatórios M365 em CSV/PDF
 - [ ] Suporte a múltiplas regiões AWS simultâneas
-- [ ] Google Cloud Platform (GCP) — Compute Engine
-- [ ] Notificações webhook (Slack, Teams)
+- [ ] Retentativa automática de webhooks (backoff exponencial)
 
 ---
 

@@ -5,7 +5,9 @@ Workspace endpoints: /orgs/{org_slug}/workspaces/{workspace_id}/m365/...
 Org-level endpoint:  /orgs/{org_slug}/m365/tenants  (MSP master only)
 """
 
+import asyncio
 import logging
+import threading
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -18,8 +20,36 @@ from app.database import get_db
 from app.models.db_models import CloudAccount, Organization, Workspace
 from app.services.auth_service import decrypt_credential, encrypt_credential
 from app.services.m365_service import M365AuthError, M365Service
+from app.core.cache import cache_get, cache_set, cache_delete, cache_invalidate_prefix
 
 logger = logging.getLogger(__name__)
+
+# ── M365Service instance cache ────────────────────────────────────────────────
+# Reuses msal.ConfidentialClientApplication across requests so the MSAL
+# internal token cache persists (avoids a round-trip to Azure AD per request).
+_svc_cache: dict = {}
+_svc_lock = threading.Lock()
+
+
+def _get_cached_service(acct) -> "M365Service":
+    """Return a cached M365Service for this cloud account, building it if necessary."""
+    key = acct.id
+    with _svc_lock:
+        if key not in _svc_cache:
+            _svc_cache[key] = _build_service(acct)
+        return _svc_cache[key]
+
+
+def _evict_service(acct) -> None:
+    """Remove a cached M365Service (call when credentials change)."""
+    with _svc_lock:
+        _svc_cache.pop(acct.id, None)
+
+
+async def _run(fn, *args, **kwargs):
+    """Run a synchronous function in a thread pool, freeing the asyncio event loop."""
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
@@ -160,7 +190,7 @@ def _get_service_or_404(db: Session, workspace_id) -> M365Service:
     acct = _get_m365_account(db, workspace_id)
     if not acct:
         raise HTTPException(status_code=404, detail="Conta M365 não encontrada. Configure as credenciais primeiro.")
-    return _build_service(acct)
+    return _get_cached_service(acct)
 
 
 def _acct_to_dict(acct: Optional[CloudAccount]) -> dict:
@@ -228,6 +258,7 @@ async def save_credentials(
 
     db.commit()
     db.refresh(acct)
+    _evict_service(acct)
     return _acct_to_dict(acct)
 
 
@@ -240,6 +271,7 @@ async def delete_credentials(
     acct = _get_m365_account(db, member.workspace_id)
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
+    _evict_service(acct)
     db.delete(acct)
     db.commit()
     return {"detail": "M365 credentials removed"}
@@ -253,14 +285,18 @@ async def get_overview(
     """Return M365 tenant overview: users, licenses, teams."""
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan)
-
     acct = _get_m365_account(db, member.workspace_id)
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
-
+    cache_key = f"m365:{member.workspace_id}:overview"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        svc = _build_service(acct)
-        return svc.get_overview()
+        svc = _get_cached_service(acct)
+        result = await _run(svc.get_overview)
+        cache_set(cache_key, result, ttl=120)
+        return result
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -281,9 +317,15 @@ async def get_users(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
+    cache_key = f"m365:{member.workspace_id}:users"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        svc = _build_service(acct)
-        return {"users": svc.get_users()}
+        svc = _get_cached_service(acct)
+        result = {"users": await _run(svc.get_users)}
+        cache_set(cache_key, result, ttl=300)
+        return result
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -304,9 +346,15 @@ async def get_licenses(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
+    cache_key = f"m365:{member.workspace_id}:licenses"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        svc = _build_service(acct)
-        return {"licenses": svc.get_licenses()}
+        svc = _get_cached_service(acct)
+        result = {"licenses": await _run(svc.get_licenses)}
+        cache_set(cache_key, result, ttl=300)
+        return result
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -327,9 +375,15 @@ async def get_groups(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
+    cache_key = f"m365:{member.workspace_id}:groups"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        svc = _build_service(acct)
-        return {"groups": svc.get_groups()}
+        svc = _get_cached_service(acct)
+        result = {"groups": await _run(svc.get_groups)}
+        cache_set(cache_key, result, ttl=300)
+        return result
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -350,9 +404,15 @@ async def get_teams(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
+    cache_key = f"m365:{member.workspace_id}:teams"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        svc = _build_service(acct)
-        return {"teams": svc.get_teams()}
+        svc = _get_cached_service(acct)
+        result = {"teams": await _run(svc.get_teams)}
+        cache_set(cache_key, result, ttl=300)
+        return result
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -373,9 +433,15 @@ async def get_security(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
+    cache_key = f"m365:{member.workspace_id}:mfa"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
     try:
-        svc = _build_service(acct)
-        return svc.get_security_overview()
+        svc = _get_cached_service(acct)
+        result = await _run(svc.get_security_overview)
+        cache_set(cache_key, result, ttl=300)
+        return result
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -398,8 +464,8 @@ async def get_team_members(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        return {"members": svc.get_team_members(team_id)}
+        svc = _get_cached_service(acct)
+        return {"members": await _run(svc.get_team_members, team_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -423,8 +489,8 @@ async def add_team_member(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        result = svc.add_team_member(team_id, body.user_id, body.roles)
+        svc = _get_cached_service(acct)
+        result = await _run(svc.add_team_member, team_id, body.user_id, body.roles)
         return {"detail": "Membro adicionado com sucesso", "member": result}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -459,8 +525,9 @@ async def create_user(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        result = svc.create_user(
+        svc = _get_cached_service(acct)
+        result = await _run(
+            svc.create_user,
             display_name=body.display_name,
             upn=body.upn,
             password=body.password,
@@ -473,6 +540,7 @@ async def create_user(
             account_enabled=body.account_enabled,
             force_change_password=body.force_change_password,
         )
+        cache_delete(f"m365:{member.workspace_id}:users")
         return {"detail": "Usuário criado com sucesso", "user": result}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -496,14 +564,16 @@ async def create_group(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        result = svc.create_group(
+        svc = _get_cached_service(acct)
+        result = await _run(
+            svc.create_group,
             display_name=body.display_name,
             mail_nickname=body.mail_nickname,
             description=body.description,
             group_type=body.group_type,
             visibility=body.visibility,
         )
+        cache_delete(f"m365:{member.workspace_id}:groups")
         return {"detail": "Grupo criado com sucesso", "group": result}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -527,8 +597,8 @@ async def get_group_members(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        return {"members": svc.get_team_members(group_id)}
+        svc = _get_cached_service(acct)
+        return {"members": await _run(svc.get_team_members, group_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -552,8 +622,9 @@ async def add_group_member(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        result = svc.add_team_member(group_id, body.user_id, body.roles)
+        svc = _get_cached_service(acct)
+        result = await _run(svc.add_team_member, group_id, body.user_id, body.roles)
+        cache_delete(f"m365:{member.workspace_id}:groups")
         return {"detail": "Membro adicionado com sucesso", "member": result}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -572,6 +643,33 @@ async def add_group_member(
         raise HTTPException(status_code=502, detail=f"Falha ao adicionar membro: {exc}")
 
 
+@ws_router.delete("/groups/{group_id}/members/{user_id}")
+async def remove_group_member(
+    group_id: str,
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Remove a user from a Group."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+
+    acct = _get_m365_account(db, member.workspace_id)
+    if not acct:
+        raise HTTPException(status_code=404, detail="M365 tenant not connected")
+
+    try:
+        svc = _get_cached_service(acct)
+        result = await _run(svc.remove_team_member, group_id, user_id)
+        cache_delete(f"m365:{member.workspace_id}:groups")
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 remove group member error for group %s: %s", group_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao remover membro: {exc}")
+
+
 @ws_router.get("/users/{user_id}/auth-methods")
 async def get_user_auth_methods(
     user_id: str,
@@ -587,8 +685,8 @@ async def get_user_auth_methods(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        return {"methods": svc.get_user_auth_methods(user_id)}
+        svc = _get_cached_service(acct)
+        return {"methods": await _run(svc.get_user_auth_methods, user_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -611,8 +709,8 @@ async def revoke_user_sessions(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        result = svc.revoke_user_sessions(user_id)
+        svc = _get_cached_service(acct)
+        result = await _run(svc.revoke_user_sessions, user_id)
         return {"detail": "Sessões revogadas com sucesso", "result": result}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -638,8 +736,8 @@ async def delete_user_auth_method(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _build_service(acct)
-        svc.delete_user_auth_method(user_id, method_type, method_id)
+        svc = _get_cached_service(acct)
+        await _run(svc.delete_user_auth_method, user_id, method_type, method_id)
         return {"detail": "Método de autenticação removido com sucesso"}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -678,8 +776,8 @@ async def toggle_user_account(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _build_service(acct)
-        return svc.toggle_user_account(user_id, body.enabled)
+        svc = _get_cached_service(acct)
+        return await _run(svc.toggle_user_account, user_id, body.enabled)
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -701,8 +799,8 @@ async def reset_user_password(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _build_service(acct)
-        return svc.reset_user_password(user_id, body.new_password, body.force_change)
+        svc = _get_cached_service(acct)
+        return await _run(svc.reset_user_password, user_id, body.new_password, body.force_change)
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -724,8 +822,8 @@ async def create_tap(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _build_service(acct)
-        return svc.create_tap(user_id, body.lifetime_minutes, body.is_usable_once)
+        svc = _get_cached_service(acct)
+        return await _run(svc.create_tap, user_id, body.lifetime_minutes, body.is_usable_once)
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -746,8 +844,8 @@ async def get_user_groups(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _build_service(acct)
-        return {"groups": svc.get_user_groups(user_id)}
+        svc = _get_cached_service(acct)
+        return {"groups": await _run(svc.get_user_groups, user_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -767,8 +865,8 @@ async def get_service_health(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _build_service(acct)
-        return {"services": svc.get_service_health()}
+        svc = _get_cached_service(acct)
+        return {"services": await _run(svc.get_service_health)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -796,8 +894,8 @@ async def get_license_users(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _build_service(acct)
-        return {"users": svc.get_license_users(sku_id)}
+        svc = _get_cached_service(acct)
+        return {"users": await _run(svc.get_license_users, sku_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:
@@ -819,8 +917,10 @@ async def assign_license(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _build_service(acct)
-        svc.assign_license(body.user_id, sku_id)
+        svc = _get_cached_service(acct)
+        await _run(svc.assign_license, body.user_id, sku_id)
+        cache_delete(f"m365:{member.workspace_id}:licenses")
+        cache_delete(f"m365:{member.workspace_id}:users")
         return {"detail": "Licença atribuída com sucesso"}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -843,8 +943,10 @@ async def remove_license(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _build_service(acct)
-        svc.remove_license(user_id, sku_id)
+        svc = _get_cached_service(acct)
+        await _run(svc.remove_license, user_id, sku_id)
+        cache_delete(f"m365:{member.workspace_id}:licenses")
+        cache_delete(f"m365:{member.workspace_id}:users")
         return {"detail": "Licença removida com sucesso"}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -905,8 +1007,8 @@ async def list_m365_tenants(
             }
             if acct:
                 try:
-                    svc = _build_service(acct)
-                    entry["overview"] = svc.get_overview()
+                    svc = _get_cached_service(acct)
+                    entry["overview"] = await _run(svc.get_overview)
                 except Exception as exc:
                     logger.warning(
                         "M365 overview failed for ws %s (org %s): %s",
@@ -930,8 +1032,20 @@ async def ws_m365_list_sites(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "SharePoint Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_sites(search=search)
+    cache_key = f"m365:{member.workspace_id}:sp_sites"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_sites, search=search)
+        cache_set(cache_key, result, ttl=600)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 sharepoint sites error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch SharePoint sites")
 
 
 @ws_router.get("/sharepoint/sites/{site_id}")
@@ -942,8 +1056,14 @@ async def ws_m365_get_site(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "SharePoint Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_site(site_id)
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.get_site, site_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 get site error for %s: %s", site_id, exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch SharePoint site")
 
 
 @ws_router.get("/sharepoint/sites/{site_id}/drives")
@@ -954,8 +1074,14 @@ async def ws_m365_get_site_drives(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "SharePoint Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_site_drives(site_id)
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.get_site_drives, site_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 get site drives error for %s: %s", site_id, exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch site drives")
 
 
 @ws_router.get("/sharepoint/drives/{drive_id}/items")
@@ -967,8 +1093,14 @@ async def ws_m365_get_drive_items(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "SharePoint Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_drive_items(drive_id, folder_id=folder_id)
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.get_drive_items, drive_id, folder_id=folder_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 get drive items error for %s: %s", drive_id, exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch drive items")
 
 
 @ws_router.get("/sharepoint/usage")
@@ -978,8 +1110,20 @@ async def ws_m365_sharepoint_usage(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "SharePoint Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_sharepoint_usage()
+    cache_key = f"m365:{member.workspace_id}:sp_usage"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_sharepoint_usage)
+        cache_set(cache_key, result, ttl=600)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 sharepoint usage error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch SharePoint usage")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -993,8 +1137,20 @@ async def ws_m365_list_mailboxes(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_mailboxes()
+    cache_key = f"m365:{member.workspace_id}:mailboxes"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_mailboxes)
+        cache_set(cache_key, result, ttl=180)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 mailboxes error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch mailboxes")
 
 
 @ws_router.get("/exchange/users/{user_id}/mailbox-settings")
@@ -1005,8 +1161,14 @@ async def ws_m365_get_mailbox_settings(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_mailbox_settings(user_id)
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.get_mailbox_settings, user_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 mailbox settings error for %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 @ws_router.patch("/exchange/users/{user_id}/mailbox-settings")
@@ -1018,9 +1180,13 @@ async def ws_m365_update_mailbox_settings(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.update_mailbox_settings(user_id, body.model_dump(exclude_none=True))
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.update_mailbox_settings, user_id, body.model_dump(exclude_none=True))
+        cache_delete(f"m365:{member.workspace_id}:mailboxes")
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1032,8 +1198,20 @@ async def ws_m365_email_activity(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_email_activity()
+    cache_key = f"m365:{member.workspace_id}:email_activity"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_email_activity)
+        cache_set(cache_key, result, ttl=600)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 email activity error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch email activity")
 
 
 @ws_router.get("/exchange/domains")
@@ -1043,8 +1221,20 @@ async def ws_m365_domains(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return {"domains": svc.get_domains()}
+    cache_key = f"m365:{member.workspace_id}:domains"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = {"domains": await _run(svc.get_domains)}
+        cache_set(cache_key, result, ttl=3600)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 domains error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch domains")
 
 
 @ws_router.get("/exchange/shared-mailboxes")
@@ -1054,8 +1244,20 @@ async def ws_m365_shared_mailboxes(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_shared_mailboxes()
+    cache_key = f"m365:{member.workspace_id}:shared_mailboxes"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_shared_mailboxes)
+        cache_set(cache_key, result, ttl=180)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 shared mailboxes error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch shared mailboxes")
 
 
 @ws_router.post("/exchange/shared-mailboxes")
@@ -1066,14 +1268,19 @@ async def ws_m365_create_shared_mailbox(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.create_shared_mailbox(
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(
+            svc.create_shared_mailbox,
             display_name=body.display_name,
             alias=body.alias,
             domain=body.domain,
             description=body.description,
         )
+        cache_delete(f"m365:{member.workspace_id}:shared_mailboxes")
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1086,13 +1293,13 @@ async def ws_m365_mailbox_delegates(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        user = svc._get(f"/users/{mailbox_id}?$select=userPrincipalName")
+        svc = _get_service_or_404(db, member.workspace_id)
+        user = await _run(svc._get, f"/users/{mailbox_id}?$select=userPrincipalName")
         upn = user.get("userPrincipalName")
         if not upn:
             raise HTTPException(status_code=404, detail="Mailbox not found")
-        return svc.get_mailbox_delegates(upn)
+        return await _run(svc.get_mailbox_delegates, upn)
     except HTTPException:
         raise
     except Exception as e:
@@ -1108,11 +1315,11 @@ async def ws_m365_add_mailbox_delegate(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        user = svc._get(f"/users/{mailbox_id}?$select=userPrincipalName")
+        svc = _get_service_or_404(db, member.workspace_id)
+        user = await _run(svc._get, f"/users/{mailbox_id}?$select=userPrincipalName")
         upn = user.get("userPrincipalName")
-        return svc.add_mailbox_delegate(upn, body.delegate_upn, body.permission_type)
+        return await _run(svc.add_mailbox_delegate, upn, body.delegate_upn, body.permission_type)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1127,11 +1334,11 @@ async def ws_m365_remove_mailbox_delegate(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        user = svc._get(f"/users/{mailbox_id}?$select=userPrincipalName")
+        svc = _get_service_or_404(db, member.workspace_id)
+        user = await _run(svc._get, f"/users/{mailbox_id}?$select=userPrincipalName")
         upn = user.get("userPrincipalName")
-        return svc.remove_mailbox_delegate(upn, delegate_upn, permission_type)
+        return await _run(svc.remove_mailbox_delegate, upn, delegate_upn, permission_type)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1143,8 +1350,20 @@ async def ws_m365_distribution_lists(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_distribution_lists()
+    cache_key = f"m365:{member.workspace_id}:dist_lists"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_distribution_lists)
+        cache_set(cache_key, result, ttl=180)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 distribution lists error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch distribution lists")
 
 
 @ws_router.post("/exchange/distribution-lists")
@@ -1155,18 +1374,22 @@ async def ws_m365_create_distribution_list(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
+        svc = _get_service_or_404(db, member.workspace_id)
         # Graph API does not support creating traditional Exchange distribution lists.
         # Create an M365 Group (mail-enabled, supports email distribution) as the equivalent.
-        result = svc.create_group(
+        result = await _run(
+            svc.create_group,
             display_name=body.display_name,
             mail_nickname=body.mail_nickname,
             description=body.description,
             group_type="m365",
             visibility="Private",
         )
+        cache_delete(f"m365:{member.workspace_id}:dist_lists")
         return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1179,8 +1402,14 @@ async def ws_m365_dist_list_members(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_distribution_list_members(group_id)
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.get_distribution_list_members, group_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 dist list members error for %s: %s", group_id, exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch distribution list members")
 
 
 @ws_router.post("/exchange/distribution-lists/{group_id}/members")
@@ -1192,9 +1421,11 @@ async def ws_m365_add_dist_list_member(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.add_distribution_list_member(group_id, body.user_id)
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.add_distribution_list_member, group_id, body.user_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1208,9 +1439,11 @@ async def ws_m365_remove_dist_list_member(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Exchange Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.remove_distribution_list_member(group_id, user_id)
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.remove_distribution_list_member, group_id, user_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1227,9 +1460,13 @@ async def ws_m365_create_team(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.create_team(body.display_name, body.description, body.visibility)
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.create_team, body.display_name, body.description, body.visibility)
+        cache_delete(f"m365:{member.workspace_id}:teams")
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1243,9 +1480,13 @@ async def ws_m365_update_team(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.update_team(team_id, body.model_dump(exclude_none=True))
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.update_team, team_id, body.model_dump(exclude_none=True))
+        cache_delete(f"m365:{member.workspace_id}:teams")
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1258,10 +1499,13 @@ async def ws_m365_archive_team(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        svc.archive_team(team_id)
+        svc = _get_service_or_404(db, member.workspace_id)
+        await _run(svc.archive_team, team_id)
+        cache_delete(f"m365:{member.workspace_id}:teams")
         return {"archived": True, "team_id": team_id}
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1274,8 +1518,14 @@ async def ws_m365_list_channels(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_channels(team_id)
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.get_channels, team_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 list channels error for %s: %s", team_id, exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch channels")
 
 
 @ws_router.post("/teams/{team_id}/channels")
@@ -1287,9 +1537,11 @@ async def ws_m365_create_channel(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.create_channel(team_id, body.display_name, body.description, body.channel_type)
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.create_channel, team_id, body.display_name, body.description, body.channel_type)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1303,9 +1555,11 @@ async def ws_m365_delete_channel(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.delete_channel(team_id, channel_id)
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.delete_channel, team_id, channel_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1320,9 +1574,11 @@ async def ws_m365_update_member_role(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.update_member_role(team_id, member_id, body.roles)
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.update_member_role, team_id, member_id, body.roles)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1336,9 +1592,11 @@ async def ws_m365_remove_team_member(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.remove_team_member(team_id, member_id)
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.remove_team_member, team_id, member_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1350,8 +1608,20 @@ async def ws_m365_teams_activity(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Teams Admin")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_teams_activity()
+    cache_key = f"m365:{member.workspace_id}:teams_activity"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_teams_activity)
+        cache_set(cache_key, result, ttl=600)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 teams activity error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch teams activity")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1365,8 +1635,20 @@ async def ws_m365_list_guests(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Guest Users")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_guests()
+    cache_key = f"m365:{member.workspace_id}:guests"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_guests)
+        cache_set(cache_key, result, ttl=300)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 guests error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch guest users")
 
 
 @ws_router.post("/guests/invite")
@@ -1377,9 +1659,11 @@ async def ws_m365_invite_guest(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Guest Users")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.invite_guest(body.email, body.display_name, body.redirect_url, body.message)
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.invite_guest, body.email, body.display_name, body.redirect_url, body.message)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1392,9 +1676,14 @@ async def ws_m365_delete_guest(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Guest Users")
-    svc = _get_service_or_404(db, member.workspace_id)
     try:
-        return svc.delete_guest(user_id)
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.delete_guest, user_id)
+        cache_delete(f"m365:{member.workspace_id}:users")
+        cache_delete(f"m365:{member.workspace_id}:guests")
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -1413,8 +1702,20 @@ async def ws_m365_sign_ins(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Audit Logs")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_sign_ins(limit=min(limit, 200), upn=upn, status=status)
+    cache_key = f"m365:{member.workspace_id}:audit_logs"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_sign_ins, limit=min(limit, 200), upn=upn, status=status)
+        cache_set(cache_key, result, ttl=120)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 sign-ins error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch sign-in logs")
 
 
 @ws_router.get("/audit/directory")
@@ -1426,8 +1727,14 @@ async def ws_m365_directory_audits(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Audit Logs")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_directory_audits(limit=min(limit, 200), category=category)
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.get_directory_audits, limit=min(limit, 200), category=category)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 directory audits error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch directory audit logs")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1441,8 +1748,20 @@ async def ws_m365_onedrive_usage(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "OneDrive Usage")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.get_onedrive_usage()
+    cache_key = f"m365:{member.workspace_id}:onedrive_usage"
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.get_onedrive_usage)
+        cache_set(cache_key, result, ttl=600)
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 onedrive usage error: %s", exc)
+        raise HTTPException(status_code=502, detail="Failed to fetch OneDrive usage")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -1458,5 +1777,13 @@ async def ws_m365_offboard_user(
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Offboarding")
-    svc = _get_service_or_404(db, member.workspace_id)
-    return svc.offboard_user(user_id, body.dict())
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        result = await _run(svc.offboard_user, user_id, body.dict())
+        cache_delete(f"m365:{member.workspace_id}:users")
+        return result
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 offboard user error for %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao fazer offboard do usuário: {exc}")

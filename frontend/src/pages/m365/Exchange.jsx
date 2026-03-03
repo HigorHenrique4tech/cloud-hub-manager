@@ -41,7 +41,7 @@ const DELEGATE_LABELS = {
   send_on_behalf: { label: 'Enviar em Nome de',              color: 'green'  },
 };
 
-function DelegationSection({ mailbox, allUsers }) {
+function DelegationSection({ mailbox }) {
   const qc = useQueryClient();
   const [addType, setAddType] = useState('full_access');
   const [addUpn, setAddUpn] = useState('');
@@ -51,6 +51,14 @@ function DelegationSection({ mailbox, allUsers }) {
     queryFn: () => m365Service.getMailboxDelegates(mailbox.id),
     enabled: !!mailbox,
     retry: false,
+  });
+
+  // Load users directly — don't rely on parent prop which may not be loaded yet
+  const usersQ = useQuery({
+    queryKey: ['m365-users'],
+    queryFn: () => m365Service.getUsers(),
+    staleTime: 300_000,
+    enabled: !!mailbox,
   });
 
   const addMut = useMutation({
@@ -66,7 +74,8 @@ function DelegationSection({ mailbox, allUsers }) {
   const delegates = delegatesQ.data || {};
   const exoError = delegates.full_access_error || delegates.send_as_error;
 
-  const userOptions = (allUsers || []).filter(u => u.mail && u.mail !== mailbox?.mail);
+  const allUsers = usersQ.data?.users || [];
+  const userOptions = allUsers.filter(u => u.mail && u.mail !== mailbox?.mail);
 
   if (delegatesQ.isLoading) return <div className="space-y-2">{[1,2].map(i=><div key={i} className="h-8 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"/>)}</div>;
 
@@ -113,7 +122,10 @@ function DelegationSection({ mailbox, allUsers }) {
         </select>
         <select className={inputCls} value={addUpn} onChange={e => setAddUpn(e.target.value)}>
           <option value="">Selecionar usuário…</option>
-          {userOptions.map(u => <option key={u.id} value={u.userPrincipalName || u.upn}>{u.displayName || u.display_name} — {u.mail}</option>)}
+          {usersQ.isLoading
+            ? <option disabled>Carregando usuários…</option>
+            : userOptions.map(u => <option key={u.id} value={u.upn || u.userPrincipalName}>{u.display_name || u.displayName} — {u.mail}</option>)
+          }
         </select>
         {addMut.isError && <p className="text-xs text-red-500">{addMut.error?.response?.data?.detail || 'Erro ao adicionar.'}</p>}
         <button
@@ -239,7 +251,7 @@ function MailboxDrawer({ mailbox, onClose, allUsers }) {
               </>
             )
           ) : (
-            <DelegationSection mailbox={mailbox} allUsers={allUsers} />
+            <DelegationSection mailbox={mailbox} />
           )}
         </div>
 
