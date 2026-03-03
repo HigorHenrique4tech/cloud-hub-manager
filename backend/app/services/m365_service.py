@@ -96,7 +96,13 @@ class M365Service:
         """POST to a Graph URL and return JSON response."""
         full_url = path if path.startswith("https://") else f"{GRAPH_V1}{path}"
         r = requests.post(full_url, headers=self._headers(), json=body, timeout=30)
-        r.raise_for_status()
+        if not r.ok:
+            try:
+                err_body = r.json()
+            except Exception:
+                err_body = r.text
+            logger.error(f"Graph API POST {path} {r.status_code}: {err_body}")
+            raise Exception(f"Graph API {r.status_code}: {err_body}")
         return r.json() if r.content else {}
 
     # ── Public API ────────────────────────────────────────────────────────────
