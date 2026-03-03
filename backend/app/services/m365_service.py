@@ -1459,11 +1459,50 @@ class M365Service:
     # ─────────────────────────────────────────────────────────────────────
 
     def get_shared_mailboxes(self) -> dict:
-        """List shared mailboxes by filtering disabled accounts and verifying userPurpose='shared'.
-        Requires User.Read.All + MailboxSettings.Read."""
+        """List shared mailboxes.
+        Primary: Exchange Admin API Get-Mailbox -RecipientTypeDetails SharedMailbox (accurate, real-time).
+        Fallback: Graph API filter on accountEnabled=false + mailboxSettings/userPurpose check."""
+        # ── Primary: Exchange Admin API ───────────────────────────────────────
+        try:
+            r = self._exo_invoke("Get-Mailbox", {
+                "RecipientTypeDetails": "SharedMailbox",
+                "ResultSize": "Unlimited",
+            })
+            raw = r.get("value") or []
+            # Cross-reference with Graph to get Azure AD object IDs
+            graph_token = self._get_token()
+            mailboxes = []
+            for mb in raw:
+                upn = mb.get("UserPrincipalName") or mb.get("PrimarySmtpAddress", "")
+                display = mb.get("DisplayName", upn)
+                mail = mb.get("PrimarySmtpAddress", "")
+                # Look up Azure AD ID by UPN for delegate/settings endpoints
+                obj_id = None
+                try:
+                    u = requests.get(
+                        f"{GRAPH_V1}/users/{upn}",
+                        headers={"Authorization": f"Bearer {graph_token}"},
+                        params={"$select": "id"},
+                        timeout=10,
+                    )
+                    if u.ok:
+                        obj_id = u.json().get("id")
+                except Exception:
+                    pass
+                mailboxes.append({
+                    "id": obj_id or upn,
+                    "display_name": display,
+                    "mail": mail,
+                    "upn": upn,
+                    "account_enabled": False,
+                })
+            return {"mailboxes": mailboxes, "total": len(mailboxes)}
+        except Exception as exo_err:
+            logger.warning(f"EXO Get-Mailbox failed, falling back to Graph filter: {exo_err}")
+
+        # ── Fallback: Graph API filter ────────────────────────────────────────
         try:
             token = self._get_token()
-            # Shared mailboxes always have accountEnabled=false in Azure AD
             resp = requests.get(
                 f"{GRAPH_V1}/users",
                 headers={"Authorization": f"Bearer {token}"},
@@ -1477,7 +1516,6 @@ class M365Service:
             resp.raise_for_status()
             candidates = resp.json().get("value", [])
 
-            # Verify each candidate is actually a shared mailbox via mailboxSettings/userPurpose
             shared = []
             for user in candidates:
                 try:

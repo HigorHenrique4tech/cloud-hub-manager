@@ -270,6 +270,14 @@ function MailboxesTab({ onSelectMailbox }) {
   const mailboxes = mbxQ.data?.mailboxes || [];
 
   return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500 dark:text-gray-400">{mbxQ.isLoading ? '…' : `${mailboxes.length} caixas`}</p>
+        <button onClick={() => mbxQ.refetch()} disabled={mbxQ.isFetching}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
+          <RefreshCw className={`w-3.5 h-3.5 ${mbxQ.isFetching ? 'animate-spin' : ''}`} /> Atualizar
+        </button>
+      </div>
     <div className="card rounded-xl overflow-hidden">
       <table className="w-full">
         <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
@@ -314,6 +322,7 @@ function MailboxesTab({ onSelectMailbox }) {
           }
         </tbody>
       </table>
+    </div>
     </div>
   );
 }
@@ -514,10 +523,16 @@ function SharedMailboxesTab({ onSelectMailbox, allUsers }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500 dark:text-gray-400">{mbxQ.isLoading ? '…' : `${mailboxes.length} caixas`}</p>
-        <button onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium rounded-lg">
-          <Plus className="w-3.5 h-3.5" /> Criar Caixa
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => mbxQ.refetch()} disabled={mbxQ.isFetching}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
+            <RefreshCw className={`w-3.5 h-3.5 ${mbxQ.isFetching ? 'animate-spin' : ''}`} /> Atualizar
+          </button>
+          <button onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium rounded-lg">
+            <Plus className="w-3.5 h-3.5" /> Criar Caixa
+          </button>
+        </div>
       </div>
       <div className="card rounded-xl overflow-hidden">
         <table className="w-full">
@@ -779,13 +794,17 @@ function DistributionListsTab({ allUsers }) {
   return (
     <>
       <div className="flex items-center justify-between mb-4">
-        <p className="text-sm text-gray-500 dark:text-gray-400">{lists.length} lista{lists.length !== 1 ? 's' : ''}</p>
-        <button
-          onClick={() => setShowCreate(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg"
-        >
-          <Plus className="w-4 h-4" /> Criar Lista
-        </button>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{listsQ.isLoading ? '…' : `${lists.length} lista${lists.length !== 1 ? 's' : ''}`}</p>
+        <div className="flex items-center gap-2">
+          <button onClick={() => listsQ.refetch()} disabled={listsQ.isFetching}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50">
+            <RefreshCw className={`w-3.5 h-3.5 ${listsQ.isFetching ? 'animate-spin' : ''}`} /> Atualizar
+          </button>
+          <button onClick={() => setShowCreate(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg">
+            <Plus className="w-4 h-4" /> Criar Lista
+          </button>
+        </div>
       </div>
       <div className="card rounded-xl overflow-hidden">
         <table className="w-full">
