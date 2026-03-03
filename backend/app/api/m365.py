@@ -1056,11 +1056,14 @@ async def ws_m365_create_distribution_list(
     _require_enterprise(plan, "Exchange Admin")
     svc = _get_service_or_404(db, member.workspace_id)
     try:
+        # Graph API does not support creating traditional Exchange distribution lists.
+        # Create an M365 Group (mail-enabled, supports email distribution) as the equivalent.
         result = svc.create_group(
             display_name=body.display_name,
             mail_nickname=body.mail_nickname,
             description=body.description,
-            group_type="distribution",
+            group_type="m365",
+            visibility="Private",
         )
         return result
     except Exception as e:

@@ -1417,13 +1417,12 @@ class M365Service:
             return {"mailboxes": [], "total": 0, "error": str(e)}
 
     def get_distribution_lists(self) -> dict:
-        """List distribution groups (mail-enabled, non-unified, non-security).
-        Reuses get_groups() and filters client-side."""
+        """List mail-enabled groups (distribution, mail-enabled security, M365).
+        Graph API only supports creating M365 Groups as mail-enabled groups, so newly
+        created distribution groups appear as M365 Groups. Reuses get_groups()."""
         try:
             all_groups = self.get_groups()
-            # Include both legacy "Distribution" AND "Mail-enabled Security" groups —
-            # newly created ones via Graph API are mail-enabled security groups.
-            dist = [g for g in all_groups if g.get("groupType") in ("Distribution", "Mail-enabled Security")]
+            dist = [g for g in all_groups if g.get("groupType") in ("Distribution", "Mail-enabled Security", "M365 Group")]
             return {"distribution_lists": dist, "total": len(dist)}
         except Exception as e:
             logger.error(f"Error getting distribution lists: {e}")
