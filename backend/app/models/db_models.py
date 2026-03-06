@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text, Float, UniqueConstraint, Index, text
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text, Float, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -629,7 +629,7 @@ class Ticket(Base):
 
     organization = relationship("Organization")
     creator      = relationship("User", foreign_keys=[creator_id])
-    messages     = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan", order_by=text("ticket_messages.created_at asc"))
+    messages     = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan")
 
 
 class TicketMessage(Base):

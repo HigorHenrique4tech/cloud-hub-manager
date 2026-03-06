@@ -216,9 +216,11 @@ def get_ticket(
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket não encontrado")
 
-    # Clients don't see internal notes
+    # Clients don't see internal notes; sort messages chronologically
+    msgs = sorted(ticket.messages, key=lambda m: m.created_at or datetime.min)
     if not user.is_admin:
-        ticket.messages = [m for m in ticket.messages if not m.is_internal]
+        msgs = [m for m in msgs if not m.is_internal]
+    ticket.messages = msgs
 
     return _ticket_dict(ticket, include_messages=True)
 
@@ -325,6 +327,7 @@ def admin_get_ticket(
     )
     if not ticket:
         raise HTTPException(status_code=404, detail="Ticket não encontrado")
+    ticket.messages = sorted(ticket.messages, key=lambda m: m.created_at or datetime.min)
     return _ticket_dict(ticket, include_messages=True, include_org=True)
 
 
