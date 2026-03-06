@@ -32,7 +32,7 @@ function StatusBadge({ status }) {
   );
 }
 
-function ResolveModal({ approval, mode, onClose, onConfirm, isLoading }) {
+function ResolveModal({ approval, mode, onClose, onConfirm, isLoading, error }) {
   const [notes, setNotes] = useState('');
   const isApprove = mode === 'approve';
 
@@ -70,6 +70,12 @@ function ResolveModal({ approval, mode, onClose, onConfirm, isLoading }) {
           />
         </label>
 
+        {error && (
+          <p className="mb-3 text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
+            {error}
+          </p>
+        )}
+
         <div className="flex gap-2 justify-end">
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
             Cancelar
@@ -94,16 +100,19 @@ function ResolveModal({ approval, mode, onClose, onConfirm, isLoading }) {
 function ApprovalCard({ approval, onRefresh }) {
   const [expanded, setExpanded] = useState(false);
   const [modal, setModal] = useState(null); // 'approve' | 'reject'
+  const [mutError, setMutError] = useState(null);
   const qc = useQueryClient();
 
   const approveMut = useMutation({
     mutationFn: (notes) => approvalService.approve(approval.id, notes),
     onSuccess: () => { qc.invalidateQueries(['approvals']); qc.invalidateQueries(['approvals-count']); setModal(null); },
+    onError: (err) => { setMutError(err?.response?.data?.detail || 'Erro ao aprovar.'); },
   });
 
   const rejectMut = useMutation({
     mutationFn: (notes) => approvalService.reject(approval.id, notes),
     onSuccess: () => { qc.invalidateQueries(['approvals']); qc.invalidateQueries(['approvals-count']); setModal(null); },
+    onError: (err) => { setMutError(err?.response?.data?.detail || 'Erro ao rejeitar.'); },
   });
 
   const cancelMut = useMutation({
@@ -217,9 +226,10 @@ function ApprovalCard({ approval, onRefresh }) {
         <ResolveModal
           approval={approval}
           mode={modal}
-          onClose={() => setModal(null)}
-          onConfirm={(notes) => modal === 'approve' ? approveMut.mutate(notes) : rejectMut.mutate(notes)}
+          onClose={() => { setModal(null); setMutError(null); }}
+          onConfirm={(notes) => { setMutError(null); modal === 'approve' ? approveMut.mutate(notes) : rejectMut.mutate(notes); }}
           isLoading={approveMut.isPending || rejectMut.isPending}
+          error={mutError}
         />
       )}
     </>

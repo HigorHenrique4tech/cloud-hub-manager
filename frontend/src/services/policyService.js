@@ -21,6 +21,9 @@ const policyService = {
 
   getLogs: (id, { page = 1, page_size = 20 } = {}) =>
     api.get(wsUrl(`/policies/${id}/logs`), { params: { page, page_size } }).then(r => r.data),
+
+  getResources: (provider) =>
+    api.get(wsUrl('/policies/resources'), { params: { provider } }).then(r => r.data),
 };
 
 export default policyService;

@@ -34,10 +34,12 @@ ws_router = APIRouter(
 
 
 class ConditionSchema(BaseModel):
-    metric: str                  # cost_increase_pct | cost_absolute | instance_count | anomaly_detected
+    metric: str                  # cost_increase_pct | cost_absolute | instance_count | anomaly_detected | cpu_usage_pct | memory_usage_pct
     operator: str = "gt"         # gt | gte | lt | lte | increase_pct
     threshold: float
     window_hours: int = 24
+    resource_id: Optional[str] = None    # required for cpu_usage_pct / memory_usage_pct
+    resource_name: Optional[str] = None  # display name, stored for reference
 
 
 class ActionSchema(BaseModel):
@@ -95,6 +97,86 @@ def _log_to_dict(log: PolicyLog) -> dict:
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
+
+@ws_router.get("/resources")
+def list_policy_resources(
+    provider: str = Query(...),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List available compute resources (VMs/instances) that can be targeted by a policy."""
+    from app.models.db_models import CloudAccount
+    from app.services.auth_service import decrypt_credential
+
+    if provider not in ("aws", "azure", "gcp"):
+        raise HTTPException(status_code=400, detail="provider must be aws, azure or gcp")
+
+    accounts = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == provider,
+        CloudAccount.is_active == True,
+    ).all()
+
+    resources = []
+    for account in accounts:
+        try:
+            creds = decrypt_credential(account.encrypted_data)
+            if provider == "aws":
+                import boto3
+                ec2 = boto3.client(
+                    "ec2",
+                    aws_access_key_id=creds.get("access_key_id"),
+                    aws_secret_access_key=creds.get("secret_access_key"),
+                    region_name=creds.get("region", "us-east-1"),
+                )
+                resp = ec2.describe_instances()
+                for reservation in resp.get("Reservations", []):
+                    for inst in reservation.get("Instances", []):
+                        name = next(
+                            (t["Value"] for t in inst.get("Tags", []) if t["Key"] == "Name"),
+                            inst["InstanceId"],
+                        )
+                        resources.append({
+                            "id": inst["InstanceId"],
+                            "name": name,
+                            "state": inst["State"]["Name"],
+                            "type": inst.get("InstanceType", ""),
+                        })
+            elif provider == "azure":
+                from app.services.azure_service import AzureService
+                svc = AzureService(
+                    tenant_id=creds.get("tenant_id", ""),
+                    client_id=creds.get("client_id", ""),
+                    client_secret=creds.get("client_secret", ""),
+                    subscription_id=creds.get("subscription_id", ""),
+                )
+                for vm in svc.list_virtual_machines():
+                    resources.append({
+                        "id": f"{vm['resource_group']}/{vm['name']}",
+                        "name": vm["name"],
+                        "state": vm.get("power_state", "unknown"),
+                        "type": vm.get("size", ""),
+                    })
+            elif provider == "gcp":
+                from app.services.gcp_service import GCPService
+                svc = GCPService(
+                    project_id=creds.get("project_id", ""),
+                    client_email=creds.get("client_email", ""),
+                    private_key=creds.get("private_key", ""),
+                    private_key_id=creds.get("private_key_id", ""),
+                )
+                for inst in svc.list_instances():
+                    resources.append({
+                        "id": inst.get("name", ""),
+                        "name": inst.get("name", ""),
+                        "state": inst.get("status", "unknown"),
+                        "type": inst.get("machine_type", ""),
+                    })
+        except Exception as exc:
+            logger.warning("list_policy_resources: account %s error: %s", account.id, exc)
+
+    return {"resources": resources, "total": len(resources)}
 
 
 @ws_router.get("")

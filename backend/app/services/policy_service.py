@@ -124,6 +124,174 @@ def _get_open_anomaly_max(db: Session, workspace_id: UUID, provider: str) -> flo
     return max(a.deviation_pct for a in anomalies)
 
 
+def _get_vm_cpu(db: Session, workspace_id: UUID, provider: str, resource_id: str) -> float:
+    """Return average CPU % for a specific VM over the last 10 minutes."""
+    from datetime import timedelta
+    from app.models.db_models import CloudAccount
+    from app.services.auth_service import decrypt_credential
+
+    account = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == workspace_id,
+        CloudAccount.provider == provider,
+        CloudAccount.is_active == True,
+    ).first()
+    if not account:
+        return 0.0
+
+    creds = decrypt_credential(account.encrypted_data)
+
+    if provider == "aws":
+        import boto3
+        cw = boto3.client(
+            "cloudwatch",
+            aws_access_key_id=creds.get("access_key_id"),
+            aws_secret_access_key=creds.get("secret_access_key"),
+            region_name=creds.get("region", "us-east-1"),
+        )
+        resp = cw.get_metric_statistics(
+            Namespace="AWS/EC2",
+            MetricName="CPUUtilization",
+            Dimensions=[{"Name": "InstanceId", "Value": resource_id}],
+            StartTime=datetime.utcnow() - timedelta(minutes=10),
+            EndTime=datetime.utcnow(),
+            Period=300,
+            Statistics=["Average"],
+        )
+        datapoints = sorted(resp.get("Datapoints", []), key=lambda d: d["Timestamp"])
+        return datapoints[-1]["Average"] if datapoints else 0.0
+
+    elif provider == "azure":
+        try:
+            from azure.mgmt.monitor import MonitorManagementClient
+            from azure.identity import ClientSecretCredential as AzureCredential
+            sub_id = creds.get("subscription_id", "")
+            # resource_id format: "resource_group/vm_name"
+            rg, vm_name = resource_id.split("/", 1) if "/" in resource_id else ("", resource_id)
+            resource_uri = (
+                f"/subscriptions/{sub_id}/resourceGroups/{rg}"
+                f"/providers/Microsoft.Compute/virtualMachines/{vm_name}"
+            )
+            cred = AzureCredential(
+                tenant_id=creds.get("tenant_id", ""),
+                client_id=creds.get("client_id", ""),
+                client_secret=creds.get("client_secret", ""),
+            )
+            monitor = MonitorManagementClient(cred, sub_id)
+            now = datetime.utcnow()
+            metrics_data = monitor.metrics.list(
+                resource_uri,
+                timespan=f"{(now - timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%SZ')}/{now.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                interval="PT5M",
+                metricnames="Percentage CPU",
+                aggregation="Average",
+            )
+            for item in metrics_data.value:
+                for series in item.timeseries:
+                    vals = [d.average for d in series.data if d.average is not None]
+                    if vals:
+                        return vals[-1]
+        except Exception as exc:
+            logger.warning("policy_service: Azure CPU metric error: %s", exc)
+        return 0.0
+
+    elif provider == "gcp":
+        try:
+            from google.cloud import monitoring_v3
+            from google.oauth2 import service_account
+            import json
+            project_id = creds.get("project_id", "")
+            sa_info = {
+                "type": "service_account",
+                "project_id": project_id,
+                "private_key_id": creds.get("private_key_id", ""),
+                "private_key": creds.get("private_key", ""),
+                "client_email": creds.get("client_email", ""),
+                "token_uri": "https://oauth2.googleapis.com/token",
+            }
+            credentials = service_account.Credentials.from_service_account_info(
+                sa_info, scopes=["https://www.googleapis.com/auth/monitoring.read"]
+            )
+            client = monitoring_v3.MetricServiceClient(credentials=credentials)
+            now = datetime.utcnow()
+            interval = monitoring_v3.TimeInterval()
+            interval.end_time.FromDatetime(now)
+            interval.start_time.FromDatetime(now - timedelta(minutes=10))
+            results = client.list_time_series(request={
+                "name": f"projects/{project_id}",
+                "filter": (
+                    'metric.type = "compute.googleapis.com/instance/cpu/utilization"'
+                    f' AND resource.labels.instance_id = "{resource_id}"'
+                ),
+                "interval": interval,
+                "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+            })
+            for result in results:
+                if result.points:
+                    return result.points[-1].value.double_value * 100
+        except Exception as exc:
+            logger.warning("policy_service: GCP CPU metric error: %s", exc)
+        return 0.0
+
+    return 0.0
+
+
+def _get_vm_memory(db: Session, workspace_id: UUID, provider: str, resource_id: str) -> float:
+    """Return memory usage % for a specific VM. Supported: Azure. AWS/GCP require monitoring agents."""
+    from datetime import timedelta
+    from app.models.db_models import CloudAccount
+    from app.services.auth_service import decrypt_credential
+
+    account = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == workspace_id,
+        CloudAccount.provider == provider,
+        CloudAccount.is_active == True,
+    ).first()
+    if not account:
+        return 0.0
+
+    creds = decrypt_credential(account.encrypted_data)
+
+    if provider == "azure":
+        try:
+            from azure.mgmt.monitor import MonitorManagementClient
+            from azure.identity import ClientSecretCredential as AzureCredential
+            sub_id = creds.get("subscription_id", "")
+            rg, vm_name = resource_id.split("/", 1) if "/" in resource_id else ("", resource_id)
+            resource_uri = (
+                f"/subscriptions/{sub_id}/resourceGroups/{rg}"
+                f"/providers/Microsoft.Compute/virtualMachines/{vm_name}"
+            )
+            cred = AzureCredential(
+                tenant_id=creds.get("tenant_id", ""),
+                client_id=creds.get("client_id", ""),
+                client_secret=creds.get("client_secret", ""),
+            )
+            monitor = MonitorManagementClient(cred, sub_id)
+            now = datetime.utcnow()
+            metrics_data = monitor.metrics.list(
+                resource_uri,
+                timespan=f"{(now - timedelta(minutes=10)).strftime('%Y-%m-%dT%H:%M:%SZ')}/{now.strftime('%Y-%m-%dT%H:%M:%SZ')}",
+                interval="PT5M",
+                metricnames="Available Memory Bytes",
+                aggregation="Average",
+            )
+            for item in metrics_data.value:
+                for series in item.timeseries:
+                    vals = [d.average for d in series.data if d.average is not None]
+                    if vals:
+                        # Azure returns available bytes; approximate % from 4GB baseline
+                        avail_gb = vals[-1] / (1024 ** 3)
+                        total_gb_approx = 4.0  # fallback; ideally read from VM size
+                        return max(0.0, min(100.0, (1 - avail_gb / total_gb_approx) * 100))
+        except Exception as exc:
+            logger.warning("policy_service: Azure memory metric error: %s", exc)
+
+    # AWS memory requires CloudWatch agent — not collected by default
+    # GCP memory requires Ops Agent — not collected by default
+    logger.info("policy_service: memory metric not available for provider '%s' without monitoring agent", provider)
+    return 0.0
+
+
 def check_condition(db: Session, workspace_id: UUID, conditions: dict, provider: str) -> tuple[bool, dict]:
     """
     Evaluate a policy condition against current workspace data.
@@ -155,6 +323,22 @@ def check_condition(db: Session, workspace_id: UUID, conditions: dict, provider:
         elif metric == "anomaly_detected":
             actual_value = _get_open_anomaly_max(db, workspace_id, provider)
             snapshot.update({"max_deviation_pct": actual_value})
+
+        elif metric == "cpu_usage_pct":
+            resource_id = conditions.get("resource_id", "")
+            if not resource_id:
+                logger.warning("Policy engine: cpu_usage_pct requires resource_id")
+                return False, snapshot
+            actual_value = _get_vm_cpu(db, workspace_id, provider, resource_id)
+            snapshot.update({"resource_id": resource_id, "resource_name": conditions.get("resource_name", resource_id), "cpu_pct": actual_value})
+
+        elif metric == "memory_usage_pct":
+            resource_id = conditions.get("resource_id", "")
+            if not resource_id:
+                logger.warning("Policy engine: memory_usage_pct requires resource_id")
+                return False, snapshot
+            actual_value = _get_vm_memory(db, workspace_id, provider, resource_id)
+            snapshot.update({"resource_id": resource_id, "resource_name": conditions.get("resource_name", resource_id), "memory_pct": actual_value})
 
         else:
             logger.warning("Policy engine: unknown metric '%s'", metric)

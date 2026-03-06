@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Clock, Plus, Zap, Shield, ChevronDown, ChevronUp, Power, PowerOff,
@@ -28,7 +28,12 @@ const METRIC_LABELS = {
   cost_absolute:     'Custo diário (US$)',
   instance_count:    'Qtd. instâncias rodando',
   anomaly_detected:  'Desvio de anomalia (%)',
+  cpu_usage_pct:     'Uso de CPU (%)',
+  memory_usage_pct:  'Uso de memória (%)',
 };
+
+// Metrics that require selecting a specific resource
+const RESOURCE_METRICS = new Set(['cpu_usage_pct', 'memory_usage_pct']);
 
 const OPERATOR_LABELS = {
   gt:           'maior que',
@@ -47,12 +52,14 @@ const ACTION_LABELS = {
 
 // ── Policy form modal ─────────────────────────────────────────────────────────
 
+const INPUT_CLS = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500';
+
 function PolicyModal({ initial, onClose, onSave, isSaving }) {
   const [form, setForm] = useState(initial || {
     name: '',
     description: '',
     provider: 'all',
-    conditions: { metric: 'cost_increase_pct', operator: 'gt', threshold: 30, window_hours: 24 },
+    conditions: { metric: 'cost_increase_pct', operator: 'gt', threshold: 30, window_hours: 24, resource_id: '', resource_name: '' },
     action: { type: 'notify', params: {}, also_notify: true },
   });
 
@@ -70,6 +77,39 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
     });
   };
 
+  const isResourceMetric = RESOURCE_METRICS.has(form.conditions.metric);
+  const canLoadResources = isResourceMetric && form.provider !== 'all';
+
+  // Load resources when provider + metric trigger it
+  const resourcesQ = useQuery({
+    queryKey: ['policy-resources', form.provider],
+    queryFn: () => policyService.getResources(form.provider),
+    enabled: canLoadResources,
+    staleTime: 60000,
+  });
+  const resources = resourcesQ.data?.resources || [];
+
+  // Clear resource_id when metric or provider changes
+  useEffect(() => {
+    if (!isResourceMetric) {
+      set('conditions.resource_id', '');
+      set('conditions.resource_name', '');
+    }
+  }, [form.conditions.metric]);
+
+  useEffect(() => {
+    set('conditions.resource_id', '');
+    set('conditions.resource_name', '');
+  }, [form.provider]);
+
+  const handleResourceSelect = (e) => {
+    const selected = resources.find(r => r.id === e.target.value);
+    set('conditions.resource_id', e.target.value);
+    set('conditions.resource_name', selected?.name || e.target.value);
+  };
+
+  const canSave = form.name && (!isResourceMetric || (form.provider !== 'all' && form.conditions.resource_id));
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
       <div className="card w-full max-w-lg max-h-[90vh] overflow-y-auto">
@@ -83,58 +123,119 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
         </div>
 
         <div className="space-y-4">
+          {/* Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nome</label>
             <input value={form.name} onChange={e => set('name', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              placeholder="Ex: Alerta custo AWS alto" />
+              className={INPUT_CLS} placeholder="Ex: Alerta CPU alta — servidor web" />
           </div>
 
+          {/* Provider */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Provedor</label>
-            <select value={form.provider} onChange={e => set('provider', e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+            <select value={form.provider} onChange={e => set('provider', e.target.value)} className={INPUT_CLS}>
               {['all', 'aws', 'azure', 'gcp'].map(p => (
                 <option key={p} value={p}>{p === 'all' ? 'Todos' : p.toUpperCase()}</option>
               ))}
             </select>
           </div>
 
+          {/* Condition */}
           <fieldset className="border border-gray-200 dark:border-gray-600 rounded-lg p-3">
             <legend className="text-xs font-semibold text-gray-500 dark:text-gray-400 px-1 uppercase">Condição</legend>
             <div className="space-y-3 mt-1">
+              {/* Metric */}
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Métrica</label>
-                <select value={form.conditions.metric} onChange={e => set('conditions.metric', e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
-                  {Object.entries(METRIC_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                <select value={form.conditions.metric} onChange={e => set('conditions.metric', e.target.value)} className={INPUT_CLS}>
+                  <optgroup label="Workspace">
+                    {['cost_increase_pct', 'cost_absolute', 'instance_count', 'anomaly_detected'].map(k => (
+                      <option key={k} value={k}>{METRIC_LABELS[k]}</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="Recurso específico">
+                    {['cpu_usage_pct', 'memory_usage_pct'].map(k => (
+                      <option key={k} value={k}>{METRIC_LABELS[k]}</option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
+
+              {/* Resource picker — only for resource metrics */}
+              {isResourceMetric && (
+                <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 space-y-2">
+                  <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Recurso alvo</p>
+
+                  {form.provider === 'all' && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Selecione um provedor específico para escolher o recurso.
+                    </p>
+                  )}
+
+                  {canLoadResources && (
+                    <>
+                      {resourcesQ.isLoading && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Carregando instâncias...</p>
+                      )}
+                      {resourcesQ.isError && (
+                        <p className="text-xs text-red-500 dark:text-red-400">Erro ao carregar recursos.</p>
+                      )}
+                      {!resourcesQ.isLoading && resources.length === 0 && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Nenhuma instância encontrada.</p>
+                      )}
+                      {resources.length > 0 && (
+                        <select
+                          value={form.conditions.resource_id}
+                          onChange={handleResourceSelect}
+                          className={INPUT_CLS}
+                        >
+                          <option value="">— Selecione uma instância —</option>
+                          {resources.map(r => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}{r.state ? ` (${r.state})` : ''}{r.type ? ` · ${r.type}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </>
+                  )}
+
+                  {form.conditions.resource_id && (
+                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-mono truncate">
+                      ID: {form.conditions.resource_id}
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Operator + Threshold */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Operador</label>
-                  <select value={form.conditions.operator} onChange={e => set('conditions.operator', e.target.value)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                  <select value={form.conditions.operator} onChange={e => set('conditions.operator', e.target.value)} className={INPUT_CLS}>
                     {Object.entries(OPERATOR_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Limite</label>
-                  <input type="number" value={form.conditions.threshold}
+                  <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                    Limite {isResourceMetric ? '(%)' : ''}
+                  </label>
+                  <input type="number" min="0" max={isResourceMetric ? 100 : undefined}
+                    value={form.conditions.threshold}
                     onChange={e => set('conditions.threshold', parseFloat(e.target.value) || 0)}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100" />
+                    className={INPUT_CLS} />
                 </div>
               </div>
             </div>
           </fieldset>
 
+          {/* Action */}
           <fieldset className="border border-gray-200 dark:border-gray-600 rounded-lg p-3">
             <legend className="text-xs font-semibold text-gray-500 dark:text-gray-400 px-1 uppercase">Ação</legend>
             <div className="space-y-3 mt-1">
               <div>
                 <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Tipo de ação</label>
-                <select value={form.action.type} onChange={e => set('action.type', e.target.value)}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100">
+                <select value={form.action.type} onChange={e => set('action.type', e.target.value)} className={INPUT_CLS}>
                   {Object.entries(ACTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
@@ -152,7 +253,7 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
             Cancelar
           </button>
-          <button onClick={() => onSave(form)} disabled={isSaving || !form.name}
+          <button onClick={() => onSave(form)} disabled={isSaving || !canSave}
             className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50">
             {isSaving ? 'Salvando...' : initial ? 'Salvar' : 'Criar'}
           </button>
@@ -231,11 +332,14 @@ function PolicyCard({ policy, onEdit, onDelete, onToggle }) {
           </div>
 
           <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
+            {cond.resource_name && (
+              <p className="text-indigo-600 dark:text-indigo-400 font-medium">{cond.resource_name}</p>
+            )}
             <p>
               <span className="text-gray-400">Se</span>{' '}
               <strong className="text-gray-700 dark:text-gray-300">{METRIC_LABELS[cond.metric] || cond.metric}</strong>{' '}
               {OPERATOR_LABELS[cond.operator] || cond.operator}{' '}
-              <strong className="text-gray-700 dark:text-gray-300">{cond.threshold}</strong>
+              <strong className="text-gray-700 dark:text-gray-300">{cond.threshold}{RESOURCE_METRICS.has(cond.metric) ? '%' : ''}</strong>
             </p>
             <p>
               <span className="text-gray-400">→</span>{' '}
