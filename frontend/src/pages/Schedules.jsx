@@ -41,8 +41,8 @@ const Schedules = () => {
               <Clock size={20} className="text-indigo-400" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-slate-100">Agendamentos</h1>
-              <p className="text-sm text-slate-400">
+              <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">Agendamentos</h1>
+              <p className="text-sm text-gray-500 dark:text-slate-400">
                 Ligar e desligar recursos automaticamente por horário
               </p>
             </div>
@@ -76,18 +76,18 @@ const Schedules = () => {
             )}
 
             {error && (
-              <div className="rounded-lg border border-red-700/40 bg-red-900/20 px-4 py-3 text-sm text-red-300">
+              <div className="rounded-lg border border-red-300 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
                 Erro ao carregar agendamentos: {error?.response?.data?.detail || error.message}
               </div>
             )}
 
             {!isLoading && !error && schedules.length === 0 && (
-              <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-slate-700 bg-slate-900/40 py-14 text-center">
-                <Zap size={28} className="text-slate-500" />
-                <p className="text-sm font-medium text-slate-300">Nenhum agendamento configurado</p>
-                <p className="text-xs text-slate-500 max-w-xs">
+              <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 py-14 text-center">
+                <Zap size={28} className="text-gray-400 dark:text-slate-500" />
+                <p className="text-sm font-medium text-gray-700 dark:text-slate-300">Nenhum agendamento configurado</p>
+                <p className="text-xs text-gray-500 dark:text-slate-500 max-w-xs">
                   Use o FinOps para detectar candidatos automaticamente, ou clique em{' '}
-                  <span className="text-slate-300">"Novo"</span> para criar manualmente.
+                  <span className="text-gray-700 dark:text-slate-300">"Novo"</span> para criar manualmente.
                 </p>
                 <PermissionGate permission="resources.start_stop">
                   <button
@@ -103,7 +103,7 @@ const Schedules = () => {
             {/* AWS group */}
             {awsSchedules.length > 0 && (
               <section className="space-y-2">
-                <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-orange-400">
+                <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
                   <span className="rounded bg-orange-500/20 px-1.5 py-0.5">AWS</span>
                   {awsSchedules.length} agendamento{awsSchedules.length > 1 ? 's' : ''}
                 </h2>
@@ -118,7 +118,7 @@ const Schedules = () => {
             {/* Azure group */}
             {azureSchedules.length > 0 && (
               <section className="space-y-2">
-                <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-400">
+                <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-400">
                   <span className="rounded bg-sky-500/20 px-1.5 py-0.5">Azure</span>
                   {azureSchedules.length} agendamento{azureSchedules.length > 1 ? 's' : ''}
                 </h2>

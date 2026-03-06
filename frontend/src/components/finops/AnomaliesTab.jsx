@@ -89,7 +89,7 @@ const AnomaliesTab = ({ anomaliesQ, anomalyScanMut, acknowledgeAnomalyMut }) => 
       </div>
 
       {anomalyScanMut.isSuccess && (
-        <div className="flex items-center gap-2 rounded-lg border border-green-700/40 bg-green-900/20 px-4 py-2.5 text-sm text-green-300">
+        <div className="flex items-center gap-2 rounded-lg border border-green-300 dark:border-green-700/40 bg-green-50 dark:bg-green-900/20 px-4 py-2.5 text-sm text-green-700 dark:text-green-300">
           <CheckCircle size={14} />
           Scan iniciado — os resultados aparecem em instantes.
         </div>
@@ -98,7 +98,7 @@ const AnomaliesTab = ({ anomaliesQ, anomalyScanMut, acknowledgeAnomalyMut }) => 
       {anomaliesQ.isLoading ? (
         <div className="flex justify-center py-12"><LoadingSpinner /></div>
       ) : anomaliesQ.isError ? (
-        <div className="rounded-lg border border-red-700/40 bg-red-900/20 p-4 text-sm text-red-300">
+        <div className="rounded-lg border border-red-300 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300">
           Erro ao carregar anomalias. Verifique as permissões.
         </div>
       ) : (anomaliesQ.data?.items ?? []).length === 0 ? (

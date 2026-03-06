@@ -5,8 +5,8 @@ import scheduleService from '../../services/scheduleService';
 import PermissionGate from '../common/PermissionGate';
 
 const PROVIDER_BADGE = {
-  aws:   'bg-orange-500/20 text-orange-300',
-  azure: 'bg-sky-500/20 text-sky-300',
+  aws:   'bg-orange-500/20 text-orange-700 dark:text-orange-300',
+  azure: 'bg-sky-500/20 text-sky-700 dark:text-sky-300',
 };
 
 const SCHEDULE_TYPE_LABEL = {
@@ -16,8 +16,8 @@ const SCHEDULE_TYPE_LABEL = {
 };
 
 const ACTION_STYLES = {
-  start: 'bg-green-500/20 text-green-300 border border-green-500/30',
-  stop:  'bg-red-500/20 text-red-300 border border-red-500/30',
+  start: 'bg-green-500/20 text-green-700 dark:text-green-300 border border-green-500/30',
+  stop:  'bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/30',
 };
 
 const fmtDateTime = (iso) => {
@@ -53,10 +53,12 @@ const ScheduleCard = ({ schedule, onEdit }) => {
   };
 
   return (
-    <div className={`rounded-xl border transition-colors ${
+    <div className={`rounded-xl border-l-4 border border-l-4 transition-colors ${
       schedule.is_enabled
-        ? 'border-gray-300 bg-white hover:border-gray-400 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
-        : 'border-gray-200 bg-gray-50/50 opacity-60 dark:border-slate-700/40 dark:bg-slate-900/30'
+        ? schedule.action === 'start'
+          ? 'border-l-green-500 border-gray-300 bg-white hover:border-gray-400 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
+          : 'border-l-red-500 border-gray-300 bg-white hover:border-gray-400 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
+        : 'border-l-gray-300 dark:border-l-slate-700 border-gray-200 bg-gray-50/50 opacity-60 dark:border-slate-700/40 dark:bg-slate-900/30'
     }`}>
       <div className="flex items-start gap-3 p-4">
         {/* Action badge */}
@@ -100,7 +102,7 @@ const ScheduleCard = ({ schedule, onEdit }) => {
               <span>Último: {fmtDateTime(schedule.last_run_at)}</span>
             )}
             {schedule.next_run_at && (
-              <span className="text-gray-300 dark:text-slate-600">· Próximo: {fmtDateTime(schedule.next_run_at)}</span>
+              <span className="text-gray-500 dark:text-slate-600">· Próximo: {fmtDateTime(schedule.next_run_at)}</span>
             )}
           </div>
 

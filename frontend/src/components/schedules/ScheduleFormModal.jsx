@@ -176,15 +176,18 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
 
   if (!isOpen) return null;
 
+  const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none';
+  const labelCls = 'block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1';
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
-          <h2 className="text-base font-semibold text-slate-100">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">
             {isEdit ? 'Editar Agendamento' : 'Novo Agendamento'}
           </h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 transition-colors">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -198,22 +201,22 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
               {/* Provider + type */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Provedor</label>
+                  <label className={labelCls}>Provedor</label>
                   <select
                     value={form.provider}
                     onChange={handleProviderChange}
-                    className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                    className={inputCls}
                   >
                     <option value="aws">AWS</option>
                     <option value="azure">Azure</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">Tipo</label>
+                  <label className={labelCls}>Tipo</label>
                   <select
                     value={form.resource_type}
                     onChange={handleTypeChange}
-                    className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                    className={inputCls}
                   >
                     {form.provider === 'aws'
                       ? <option value="ec2">EC2</option>
@@ -228,10 +231,10 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
 
               {/* Resource picker */}
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">Recurso</label>
+                <label className={labelCls}>Recurso</label>
 
                 {resourcesLoading ? (
-                  <div className="flex items-center gap-2 h-10 px-3 rounded-lg border border-slate-600 bg-slate-800 text-slate-500 text-sm">
+                  <div className="flex items-center gap-2 h-10 px-3 rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 text-gray-500 dark:text-slate-500 text-sm">
                     <Loader2 size={14} className="animate-spin" />
                     Carregando recursos…
                   </div>
@@ -239,13 +242,13 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                   /* Fallback: manual text input */
                   <div className="space-y-2">
                     {resourcesError && (
-                      <div className="flex items-center gap-1.5 text-xs text-yellow-400">
+                      <div className="flex items-center gap-1.5 text-xs text-yellow-600 dark:text-yellow-400">
                         <AlertCircle size={12} />
                         Não foi possível listar recursos. Insira manualmente.
                       </div>
                     )}
                     {options.length === 0 && !resourcesError && (
-                      <p className="text-xs text-slate-500">Nenhum recurso encontrado. Insira o ID manualmente.</p>
+                      <p className="text-xs text-gray-500 dark:text-slate-500">Nenhum recurso encontrado. Insira o ID manualmente.</p>
                     )}
                     <input
                       type="text"
@@ -253,7 +256,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                       onChange={set('resource_id')}
                       required
                       placeholder={form.provider === 'aws' ? 'i-0abc12345' : 'meu-rg/minha-vm'}
-                      className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+                      className={inputCls}
                     />
                   </div>
                 ) : (
@@ -261,7 +264,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                     value={form.resource_id}
                     onChange={handleResourceSelect}
                     required
-                    className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                    className={inputCls}
                   >
                     <option value="">Selecionar recurso…</option>
                     {options.map((o) => (
@@ -277,10 +280,10 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
 
           {/* Resource name — auto-filled on select, editable */}
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">
+            <label className={labelCls}>
               Nome do Recurso
               {!isEdit && form.resource_id && (
-                <span className="ml-1 text-slate-600">(editável)</span>
+                <span className="ml-1 text-gray-400 dark:text-slate-600">(editável)</span>
               )}
             </label>
             <input
@@ -289,14 +292,14 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
               onChange={set('resource_name')}
               required
               placeholder="meu-servidor-dev"
-              className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+              className={inputCls}
             />
           </div>
 
           {/* Action (create only) */}
           {!isEdit && (
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1.5">Ação</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1.5">Ação</label>
               <div className="flex gap-2">
                 {['start', 'stop'].map((a) => (
                   <button
@@ -306,9 +309,9 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                     className={`flex-1 rounded-lg border py-2 text-sm font-medium transition-colors ${
                       form.action === a
                         ? a === 'start'
-                          ? 'border-green-500 bg-green-500/20 text-green-300'
-                          : 'border-red-500 bg-red-500/20 text-red-300'
-                        : 'border-slate-600 bg-slate-800 text-slate-400 hover:border-slate-500'
+                          ? 'border-green-500 bg-green-500/20 text-green-700 dark:text-green-300'
+                          : 'border-red-500 bg-red-500/20 text-red-700 dark:text-red-300'
+                        : 'border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-500 dark:text-slate-400 hover:border-gray-400 dark:hover:border-slate-500'
                     }`}
                   >
                     {a === 'start' ? '▶ Ligar' : '■ Desligar'}
@@ -320,7 +323,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
 
           {/* Schedule type */}
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1.5">Dias</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1.5">Dias</label>
             <div className="flex gap-2">
               {SCHEDULE_TYPES.map(({ value, label }) => (
                 <button
@@ -329,8 +332,8 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                   onClick={() => setDirect('schedule_type', value)}
                   className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
                     form.schedule_type === value
-                      ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300'
-                      : 'border-slate-600 bg-slate-800 text-slate-400 hover:border-slate-500'
+                      ? 'border-indigo-500 bg-indigo-500/20 text-indigo-700 dark:text-indigo-300'
+                      : 'border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-500 dark:text-slate-400 hover:border-gray-400 dark:hover:border-slate-500'
                   }`}
                 >
                   {label}
@@ -342,21 +345,21 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
           {/* Time + timezone */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Horário</label>
+              <label className={labelCls}>Horário</label>
               <input
                 type="time"
                 value={form.schedule_time}
                 onChange={set('schedule_time')}
                 required
-                className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                className={inputCls}
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-400 mb-1">Fuso horário</label>
+              <label className={labelCls}>Fuso horário</label>
               <select
                 value={form.timezone}
                 onChange={set('timezone')}
-                className="w-full rounded-lg border border-slate-600 bg-slate-800 px-3 py-2 text-sm text-slate-100 focus:border-indigo-500 focus:outline-none"
+                className={inputCls}
               >
                 {TIMEZONES.map((tz) => (
                   <option key={tz} value={tz}>{tz}</option>
@@ -366,7 +369,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
           </div>
 
           {error && (
-            <p className="rounded-lg bg-red-900/30 border border-red-700/40 px-3 py-2 text-xs text-red-300">
+            <p className="rounded-lg bg-red-50 dark:bg-red-900/30 border border-red-300 dark:border-red-700/40 px-3 py-2 text-xs text-red-700 dark:text-red-300">
               {error}
             </p>
           )}
@@ -376,7 +379,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:border-slate-400 hover:text-white transition-colors"
+              className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:border-gray-400 dark:hover:border-slate-400 transition-colors"
             >
               Cancelar
             </button>

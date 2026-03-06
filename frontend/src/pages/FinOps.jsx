@@ -302,25 +302,25 @@ const FinOps = () => {
 
         {/* Scan result toasts */}
         {scanJobStatus?.status === 'queued' && (
-          <div className="flex items-center gap-2 rounded-lg border border-slate-600 bg-slate-800/60 px-4 py-2.5 text-sm text-slate-300 animate-slide-down">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+          <div className="flex items-center gap-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-100 dark:bg-slate-800/60 px-4 py-2.5 text-sm text-gray-600 dark:text-slate-300 animate-slide-down">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-400 dark:border-slate-400 border-t-transparent" />
             Scan na fila, aguardando início...
           </div>
         )}
         {scanJobStatus?.status === 'running' && (
-          <div className="flex items-center gap-2 rounded-lg border border-blue-700/40 bg-blue-900/20 px-4 py-2.5 text-sm text-blue-300 animate-slide-down">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+          <div className="flex items-center gap-2 rounded-lg border border-blue-300 dark:border-blue-700/40 bg-blue-50 dark:bg-blue-900/20 px-4 py-2.5 text-sm text-blue-700 dark:text-blue-300 animate-slide-down">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-blue-500 dark:border-blue-400 border-t-transparent" />
             Escaneando recursos cloud... isso pode levar até 1 minuto.
           </div>
         )}
         {scanJobStatus?.status === 'done' && (
-          <div className="flex items-center gap-2 rounded-lg border border-green-700/40 bg-green-900/20 px-4 py-2.5 text-sm text-green-300 animate-slide-down">
+          <div className="flex items-center gap-2 rounded-lg border border-green-300 dark:border-green-700/40 bg-green-50 dark:bg-green-900/20 px-4 py-2.5 text-sm text-green-700 dark:text-green-300 animate-slide-down">
             <Zap size={14} />
             Scan concluído: <strong>{scanJobStatus.new_findings}</strong> novos desperdícios detectados.
           </div>
         )}
         {(scanMut.isError || scanJobStatus?.status === 'error') && (
-          <div className="flex items-center gap-2 rounded-lg border border-red-700/40 bg-red-900/20 px-4 py-2.5 text-sm text-red-300 animate-slide-down">
+          <div className="flex items-center gap-2 rounded-lg border border-red-300 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 px-4 py-2.5 text-sm text-red-700 dark:text-red-300 animate-slide-down">
             <AlertTriangle size={14} />
             {scanJobStatus?.error || 'Erro ao escanear. Verifique as credenciais da conta cloud.'}
           </div>
