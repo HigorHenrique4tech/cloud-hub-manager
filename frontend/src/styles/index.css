@@ -10,24 +10,34 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-primary hover:bg-primary-dark text-white font-medium py-2 px-4 rounded-lg transition-colors;
+    @apply bg-primary hover:bg-primary-dark text-white font-medium py-2 px-4 rounded-lg
+           transition-all duration-150 active:scale-[0.97];
   }
 
   .btn-secondary {
-    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg transition-colors
+    @apply bg-gray-200 hover:bg-gray-300 text-gray-800 font-medium py-2 px-4 rounded-lg
+           transition-all duration-150 active:scale-[0.97]
            dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-100;
   }
 
   .btn-success {
-    @apply bg-success hover:bg-success-dark text-white font-medium py-2 px-4 rounded-lg transition-colors;
+    @apply bg-success hover:bg-success-dark text-white font-medium py-2 px-4 rounded-lg
+           transition-all duration-150 active:scale-[0.97];
   }
 
   .btn-danger {
-    @apply bg-danger hover:bg-danger-dark text-white font-medium py-2 px-4 rounded-lg transition-colors;
+    @apply bg-danger hover:bg-danger-dark text-white font-medium py-2 px-4 rounded-lg
+           transition-all duration-150 active:scale-[0.97];
   }
 
   .card {
     @apply bg-white rounded-lg shadow-sm border border-gray-300 p-6 dark:bg-gray-800 dark:border-gray-700;
+  }
+
+  /* ── Card com hover premium ─────────────────────── */
+  .card-interactive {
+    @apply card transition-all duration-200 ease-out
+           hover:-translate-y-0.5 hover:shadow-card-hover cursor-pointer;
   }
 
   .badge {
@@ -50,12 +60,57 @@
     @apply badge bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300;
   }
 
+  /* ── Badge com dot animado (status live) ─────────── */
+  .badge-live {
+    @apply badge relative;
+  }
+  .badge-live::before {
+    content: '';
+    @apply absolute -left-1 top-1/2 -translate-y-1/2
+           w-2 h-2 rounded-full bg-green-500 animate-pulse-soft;
+  }
+
   .input {
     @apply block w-full rounded-lg border border-gray-300 bg-white px-3 py-2
            text-sm text-gray-900 placeholder-gray-400
            focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary
            dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100
            dark:placeholder-gray-400 dark:focus:border-primary;
+  }
+
+  /* ── Overlay de Modais ──────────────────────────── */
+  .modal-overlay {
+    @apply fixed inset-0 z-50 flex items-center justify-center
+           bg-black/40 backdrop-blur-sm animate-fade-in;
+  }
+
+  .modal-content {
+    @apply bg-white dark:bg-gray-800 rounded-2xl shadow-modal
+           w-full max-h-[90vh] overflow-y-auto animate-scale-in;
+  }
+
+  /* ── Tabela Premium ─────────────────────────────── */
+  .table-row-hover {
+    @apply transition-colors duration-150
+           hover:bg-gray-50 dark:hover:bg-gray-800/50;
+  }
+
+  /* ── Skeleton Loading ───────────────────────────── */
+  .skeleton {
+    @apply bg-gray-200 dark:bg-gray-700 rounded animate-pulse-soft;
+  }
+
+  /* ── Focus Ring Acessível ───────────────────────── */
+  .focus-ring {
+    @apply focus:outline-none focus-visible:ring-2
+           focus-visible:ring-primary/50 focus-visible:ring-offset-2
+           dark:focus-visible:ring-offset-gray-900;
+  }
+
+  /* ── Toast / Notification ───────────────────────── */
+  .toast {
+    @apply fixed bottom-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg
+           text-sm font-medium animate-slide-up;
   }
 }
 

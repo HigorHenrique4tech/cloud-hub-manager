@@ -65,3 +65,7 @@ export const formatInstanceType = (type) => {
   if (!type) return 'N/A';
   return type.toUpperCase();
 };
+
+// Format USD currency
+export const fmtUSD = (v) =>
+  v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
