@@ -32,6 +32,7 @@ class Permission(str, Enum):
     RESOURCES_CREATE     = "resources.create"
     RESOURCES_START_STOP = "resources.start_stop"
     RESOURCES_DELETE     = "resources.delete"
+    RESOURCES_MANAGE     = "resources.manage"   # policies, approvals, reports settings
 
     # Costs
     COSTS_VIEW = "costs.view"
@@ -76,6 +77,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.RESOURCES_VIEW,
         Permission.RESOURCES_CREATE,
         Permission.RESOURCES_START_STOP,
+        Permission.RESOURCES_MANAGE,
         Permission.COSTS_VIEW,
         Permission.ALERTS_VIEW,
         Permission.LOGS_VIEW,

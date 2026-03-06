@@ -127,12 +127,12 @@ def approval_to_dict(a: ApprovalRequest) -> dict:
         "workspace_id": str(a.workspace_id),
         "requester_id": str(a.requester_id) if a.requester_id else None,
         "requester_name": (
-            f"{a.requester.first_name} {a.requester.last_name}".strip()
+            a.requester.name or a.requester.email
             if a.requester else None
         ),
         "resolved_by": str(a.resolved_by) if a.resolved_by else None,
         "resolver_name": (
-            f"{a.resolver.first_name} {a.resolver.last_name}".strip()
+            a.resolver.name or a.resolver.email
             if a.resolver else None
         ),
         "action_type": a.action_type,
