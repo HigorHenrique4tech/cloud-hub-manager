@@ -67,7 +67,7 @@ class AWSService:
 
     # ── EC2 ──────────────────────────────────────────────────────────────────
 
-    async def list_ec2_instances(self) -> Dict:
+    def list_ec2_instances(self) -> Dict:
         try:
             response = self.ec2_client.describe_instances()
             instances = []
@@ -97,7 +97,7 @@ class AWSService:
             logger.error(f"list_ec2_instances error: {e}")
             return {'success': False, 'error': str(e), 'instances': []}
 
-    async def start_ec2_instance(self, instance_id: str) -> Dict:
+    def start_ec2_instance(self, instance_id: str) -> Dict:
         try:
             response = self.ec2_client.start_instances(InstanceIds=[instance_id])
             state = response['StartingInstances'][0]['CurrentState']['Name']
@@ -106,7 +106,7 @@ class AWSService:
             logger.error(f"start_ec2_instance error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def stop_ec2_instance(self, instance_id: str) -> Dict:
+    def stop_ec2_instance(self, instance_id: str) -> Dict:
         try:
             response = self.ec2_client.stop_instances(InstanceIds=[instance_id])
             state = response['StoppingInstances'][0]['CurrentState']['Name']
@@ -115,7 +115,7 @@ class AWSService:
             logger.error(f"stop_ec2_instance error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def list_amis(self, search: str = '') -> Dict:
+    def list_amis(self, search: str = '') -> Dict:
         """List AMIs filtered by search term (amazon-owned + self-owned)."""
         try:
             filters = [
@@ -144,7 +144,7 @@ class AWSService:
             logger.error(f"list_amis error: {e}")
             return {'success': False, 'error': str(e), 'amis': []}
 
-    async def list_instance_types(self) -> Dict:
+    def list_instance_types(self) -> Dict:
         try:
             types = []
             paginator = self.ec2_client.get_paginator('describe_instance_types')
@@ -161,7 +161,7 @@ class AWSService:
             logger.error(f"list_instance_types error: {e}")
             return {'success': False, 'error': str(e), 'instance_types': []}
 
-    async def list_key_pairs(self) -> Dict:
+    def list_key_pairs(self) -> Dict:
         try:
             response = self.ec2_client.describe_key_pairs()
             pairs = [
@@ -173,7 +173,7 @@ class AWSService:
             logger.error(f"list_key_pairs error: {e}")
             return {'success': False, 'error': str(e), 'key_pairs': []}
 
-    async def list_security_groups(self) -> Dict:
+    def list_security_groups(self) -> Dict:
         try:
             response = self.ec2_client.describe_security_groups()
             groups = [
@@ -190,7 +190,7 @@ class AWSService:
             logger.error(f"list_security_groups error: {e}")
             return {'success': False, 'error': str(e), 'security_groups': []}
 
-    async def list_subnets(self) -> Dict:
+    def list_subnets(self) -> Dict:
         try:
             response = self.ec2_client.describe_subnets()
             subnets = []
@@ -209,7 +209,7 @@ class AWSService:
             logger.error(f"list_subnets error: {e}")
             return {'success': False, 'error': str(e), 'subnets': []}
 
-    async def list_availability_zones(self) -> Dict:
+    def list_availability_zones(self) -> Dict:
         try:
             response = self.ec2_client.describe_availability_zones(
                 Filters=[{'Name': 'state', 'Values': ['available']}]
@@ -223,7 +223,7 @@ class AWSService:
             logger.error(f"list_availability_zones error: {e}")
             return {'success': False, 'error': str(e), 'availability_zones': []}
 
-    async def list_regions(self) -> Dict:
+    def list_regions(self) -> Dict:
         try:
             response = self.ec2_client.describe_regions()
             regions = [
@@ -235,7 +235,7 @@ class AWSService:
             logger.error(f"list_regions error: {e}")
             return {'success': False, 'error': str(e), 'regions': []}
 
-    async def create_ec2_instance(self, params: dict) -> Dict:
+    def create_ec2_instance(self, params: dict) -> Dict:
         try:
             tags = [{'Key': 'Name', 'Value': params['name']}]
             for k, v in params.get('tags', {}).items():
@@ -292,7 +292,7 @@ class AWSService:
             logger.error(f"create_ec2_instance error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def create_vpc(self, params: dict) -> Dict:
+    def create_vpc(self, params: dict) -> Dict:
         try:
             tags = [{'Key': 'Name', 'Value': params['name']}]
             for k, v in params.get('tags', {}).items():
@@ -325,7 +325,7 @@ class AWSService:
             logger.error(f"create_vpc error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def list_vpcs(self) -> Dict:
+    def list_vpcs(self) -> Dict:
         try:
             response = self.ec2_client.describe_vpcs()
             subnets_resp = self.ec2_client.describe_subnets()
@@ -356,7 +356,7 @@ class AWSService:
 
     # ── S3 ───────────────────────────────────────────────────────────────────
 
-    async def list_s3_buckets(self) -> Dict:
+    def list_s3_buckets(self) -> Dict:
         try:
             response = self.s3_client.list_buckets()
             buckets = []
@@ -390,7 +390,7 @@ class AWSService:
             logger.error(f"list_s3_buckets error: {e}")
             return {'success': False, 'error': str(e), 'buckets': []}
 
-    async def create_s3_bucket(self, params: dict) -> Dict:
+    def create_s3_bucket(self, params: dict) -> Dict:
         try:
             bucket_name = params['bucket_name']
             region = params.get('region', 'us-east-1')
@@ -430,7 +430,7 @@ class AWSService:
 
     # ── RDS ──────────────────────────────────────────────────────────────────
 
-    async def list_rds_instances(self) -> Dict:
+    def list_rds_instances(self) -> Dict:
         try:
             response = self.rds_client.describe_db_instances()
             instances = []
@@ -453,7 +453,7 @@ class AWSService:
             logger.error(f"list_rds_instances error: {e}")
             return {'success': False, 'error': str(e), 'instances': []}
 
-    async def list_rds_engine_versions(self, engine: str = 'mysql') -> Dict:
+    def list_rds_engine_versions(self, engine: str = 'mysql') -> Dict:
         try:
             response = self.rds_client.describe_db_engine_versions(Engine=engine)
             versions = [
@@ -469,7 +469,7 @@ class AWSService:
             logger.error(f"list_rds_engine_versions error: {e}")
             return {'success': False, 'error': str(e), 'versions': []}
 
-    async def list_rds_instance_classes(self, engine: str = 'mysql') -> Dict:
+    def list_rds_instance_classes(self, engine: str = 'mysql') -> Dict:
         try:
             classes = set()
             paginator = self.rds_client.get_paginator('describe_orderable_db_instance_options')
@@ -481,7 +481,7 @@ class AWSService:
             logger.error(f"list_rds_instance_classes error: {e}")
             return {'success': False, 'error': str(e), 'instance_classes': []}
 
-    async def list_db_subnet_groups(self) -> Dict:
+    def list_db_subnet_groups(self) -> Dict:
         try:
             response = self.rds_client.describe_db_subnet_groups()
             groups = [
@@ -497,7 +497,7 @@ class AWSService:
             logger.error(f"list_db_subnet_groups error: {e}")
             return {'success': False, 'error': str(e), 'subnet_groups': []}
 
-    async def create_rds_instance(self, params: dict) -> Dict:
+    def create_rds_instance(self, params: dict) -> Dict:
         try:
             tags = [{'Key': k, 'Value': v} for k, v in params.get('tags', {}).items()]
             create_args = {
@@ -540,7 +540,7 @@ class AWSService:
 
     # ── Lambda ───────────────────────────────────────────────────────────────
 
-    async def list_lambda_functions(self) -> Dict:
+    def list_lambda_functions(self) -> Dict:
         try:
             functions = []
             paginator = self.lambda_client.get_paginator('list_functions')
@@ -561,7 +561,7 @@ class AWSService:
             logger.error(f"list_lambda_functions error: {e}")
             return {'success': False, 'error': str(e), 'functions': []}
 
-    async def list_iam_roles(self, service_filter: str = 'lambda') -> Dict:
+    def list_iam_roles(self, service_filter: str = 'lambda') -> Dict:
         try:
             roles = []
             paginator = self.iam_client.get_paginator('list_roles')
@@ -575,7 +575,7 @@ class AWSService:
             logger.error(f"list_iam_roles error: {e}")
             return {'success': False, 'error': str(e), 'roles': []}
 
-    async def create_lambda_function(self, params: dict) -> Dict:
+    def create_lambda_function(self, params: dict) -> Dict:
         try:
             import base64
             code = {}
@@ -617,7 +617,7 @@ class AWSService:
 
     # ── Overview ─────────────────────────────────────────────────────────────
 
-    async def get_overview(self) -> Dict:
+    def get_overview(self) -> Dict:
         try:
             ec2_resp = self.ec2_client.describe_instances()
             ec2_total = sum(len(r.get('Instances', [])) for r in ec2_resp.get('Reservations', []))
@@ -719,7 +719,7 @@ class AWSService:
 
     # ── Costs ─────────────────────────────────────────────────────────────────
 
-    async def get_cost_and_usage(self, start_date: str, end_date: str, granularity: str = 'DAILY') -> Dict:
+    def get_cost_and_usage(self, start_date: str, end_date: str, granularity: str = 'DAILY') -> Dict:
         try:
             response = self.ce_client.get_cost_and_usage(
                 TimePeriod={'Start': start_date, 'End': end_date},
@@ -762,7 +762,7 @@ class AWSService:
 
     # ── Delete operations ─────────────────────────────────────────────────────
 
-    async def terminate_ec2_instance(self, instance_id: str) -> Dict:
+    def terminate_ec2_instance(self, instance_id: str) -> Dict:
         try:
             self.ec2_client.terminate_instances(InstanceIds=[instance_id])
             return {'success': True}
@@ -773,7 +773,7 @@ class AWSService:
             logger.error(f"terminate_ec2_instance error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_s3_bucket(self, bucket_name: str) -> Dict:
+    def delete_s3_bucket(self, bucket_name: str) -> Dict:
         try:
             self.s3_client.delete_bucket(Bucket=bucket_name)
             return {'success': True}
@@ -787,7 +787,7 @@ class AWSService:
             logger.error(f"delete_s3_bucket error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_rds_instance(self, db_instance_id: str) -> Dict:
+    def delete_rds_instance(self, db_instance_id: str) -> Dict:
         try:
             self.rds_client.delete_db_instance(
                 DBInstanceIdentifier=db_instance_id,
@@ -802,7 +802,7 @@ class AWSService:
             logger.error(f"delete_rds_instance error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_lambda_function(self, function_name: str) -> Dict:
+    def delete_lambda_function(self, function_name: str) -> Dict:
         try:
             self.lambda_client.delete_function(FunctionName=function_name)
             return {'success': True}
@@ -813,7 +813,7 @@ class AWSService:
             logger.error(f"delete_lambda_function error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_vpc(self, vpc_id: str) -> Dict:
+    def delete_vpc(self, vpc_id: str) -> Dict:
         try:
             self.ec2_client.delete_vpc(VpcId=vpc_id)
             return {'success': True}
@@ -829,7 +829,7 @@ class AWSService:
 
     # ── Detail operations ─────────────────────────────────────────────────────
 
-    async def get_ec2_instance_detail(self, instance_id: str) -> Dict:
+    def get_ec2_instance_detail(self, instance_id: str) -> Dict:
         try:
             resp = self.ec2_client.describe_instances(InstanceIds=[instance_id])
             reservations = resp.get('Reservations', [])
@@ -872,7 +872,7 @@ class AWSService:
             logger.error(f"get_ec2_instance_detail error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def get_s3_bucket_detail(self, bucket_name: str) -> Dict:
+    def get_s3_bucket_detail(self, bucket_name: str) -> Dict:
         try:
             # Versioning
             try:
@@ -910,7 +910,7 @@ class AWSService:
             logger.error(f"get_s3_bucket_detail error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def get_rds_instance_detail(self, db_instance_id: str) -> Dict:
+    def get_rds_instance_detail(self, db_instance_id: str) -> Dict:
         try:
             resp = self.rds_client.describe_db_instances(DBInstanceIdentifier=db_instance_id)
             instances = resp.get('DBInstances', [])
@@ -944,7 +944,7 @@ class AWSService:
             logger.error(f"get_rds_instance_detail error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def get_lambda_function_detail(self, function_name: str) -> Dict:
+    def get_lambda_function_detail(self, function_name: str) -> Dict:
         try:
             resp = self.lambda_client.get_function(FunctionName=function_name)
             config = resp.get('Configuration', {})
@@ -976,7 +976,7 @@ class AWSService:
             logger.error(f"get_lambda_function_detail error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def get_vpc_detail(self, vpc_id: str) -> Dict:
+    def get_vpc_detail(self, vpc_id: str) -> Dict:
         try:
             # VPC attributes
             vpc_resp = self.ec2_client.describe_vpcs(VpcIds=[vpc_id])
@@ -1030,7 +1030,7 @@ class AWSService:
 
     # ── Connection test ───────────────────────────────────────────────────────
 
-    async def test_connection(self) -> Dict:
+    def test_connection(self) -> Dict:
         try:
             self.ec2_client.describe_regions()
             return {'success': True, 'message': 'AWS connection successful', 'region': self.region}

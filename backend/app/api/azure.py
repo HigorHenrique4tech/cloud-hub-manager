@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Depends, Query
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -39,6 +41,11 @@ def _build_azure_service_from_account(account: CloudAccount) -> AzureService:
     )
 
 
+async def _run(fn, *args, **kwargs):
+    """Run a synchronous Azure SDK call in a thread pool, freeing the event loop."""
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+
 def _get_single_azure_service(member: MemberContext, db: Session) -> AzureService:
     account = (
         db.query(CloudAccount)
@@ -63,7 +70,7 @@ async def ws_test_azure_connection(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.test_connection()
+    return await _run(svc.test_connection)
 
 
 # ── Helpers for form dropdowns ─────────────────────────────────────────────
@@ -74,7 +81,7 @@ async def ws_list_locations(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_locations()
+    return await _run(svc.list_locations)
 
 
 @ws_router.get("/vm-sizes")
@@ -84,7 +91,7 @@ async def ws_list_vm_sizes(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_vm_sizes(location=location)
+    return await _run(svc.list_vm_sizes, location)
 
 
 @ws_router.get("/vm-images/publishers")
@@ -94,7 +101,7 @@ async def ws_list_vm_image_publishers(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_vm_image_publishers(location=location)
+    return await _run(svc.list_vm_image_publishers, location)
 
 
 @ws_router.get("/vm-images/offers")
@@ -105,7 +112,7 @@ async def ws_list_vm_image_offers(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_vm_image_offers(location=location, publisher=publisher)
+    return await _run(svc.list_vm_image_offers, location, publisher)
 
 
 @ws_router.get("/vm-images/skus")
@@ -117,7 +124,7 @@ async def ws_list_vm_image_skus(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_vm_image_skus(location=location, publisher=publisher, offer=offer)
+    return await _run(svc.list_vm_image_skus, location, publisher, offer)
 
 
 # ── VMs ─────────────────────────────────────────────────────────────────────
@@ -137,9 +144,10 @@ async def ws_list_virtual_machines(
         ).first()
         if not account:
             raise HTTPException(status_code=404, detail="Conta Azure não encontrada")
-        return await _build_azure_service_from_account(account).list_virtual_machines()
+        _svc = _build_azure_service_from_account(account)
+        return await _run(_svc.list_virtual_machines)
     svc = _get_single_azure_service(member, db)
-    return await svc.list_virtual_machines()
+    return await _run(svc.list_virtual_machines)
 
 
 @ws_router.post("/vms")
@@ -149,7 +157,7 @@ async def ws_create_virtual_machine(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.create_virtual_machine(body.model_dump())
+    result = await _run(svc.create_virtual_machine, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar VM'))
     log_activity(db, member.user, 'azurevm.create', 'AzureVM',
@@ -166,7 +174,7 @@ async def ws_start_vm(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.start_virtual_machine(resource_group, vm_name)
+    result = await _run(svc.start_virtual_machine, resource_group, vm_name)
     if not result['success']:
         raise HTTPException(status_code=500, detail=result.get('error', 'Failed to start VM'))
     log_activity(db, member.user, 'azurevm.start', 'AzureVM',
@@ -182,7 +190,7 @@ async def ws_stop_vm(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.stop_virtual_machine(resource_group, vm_name)
+    result = await _run(svc.stop_virtual_machine, resource_group, vm_name)
     if not result['success']:
         raise HTTPException(status_code=500, detail=result.get('error', 'Failed to stop VM'))
     log_activity(db, member.user, 'azurevm.stop', 'AzureVM',
@@ -199,7 +207,7 @@ async def ws_list_resource_groups(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.list_resource_groups()
+    result = await _run(svc.list_resource_groups)
     if not result.get('success') and result.get('error'):
         logger.warning(f"Error listing resource groups: {result['error']}")
     return result
@@ -212,7 +220,7 @@ async def ws_list_rg_resources(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_resource_group_resources(rg_name)
+    return await _run(svc.list_resource_group_resources, rg_name)
 
 
 # ── Storage Accounts ─────────────────────────────────────────────────────
@@ -223,7 +231,7 @@ async def ws_list_storage_accounts(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_storage_accounts()
+    return await _run(svc.list_storage_accounts)
 
 
 @ws_router.post("/storage-accounts")
@@ -233,7 +241,7 @@ async def ws_create_storage_account(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.create_storage_account(body.model_dump())
+    result = await _run(svc.create_storage_account, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar Storage Account'))
     log_activity(db, member.user, 'storage.create', 'StorageAccount',
@@ -251,7 +259,7 @@ async def ws_list_vnets(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_vnets()
+    return await _run(svc.list_vnets)
 
 
 @ws_router.post("/vnets")
@@ -261,7 +269,7 @@ async def ws_create_vnet(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.create_vnet(body.model_dump())
+    result = await _run(svc.create_vnet, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar VNet'))
     log_activity(db, member.user, 'vnet.create', 'VNet',
@@ -279,7 +287,7 @@ async def ws_list_databases(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_databases()
+    return await _run(svc.list_databases)
 
 
 @ws_router.post("/databases")
@@ -289,7 +297,7 @@ async def ws_create_sql_database(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.create_sql_database(body.model_dump())
+    result = await _run(svc.create_sql_database, body.model_dump())
     if not result.get('success'):
         status_code = 400 if result.get('code') == 'REGION_NOT_ALLOWED' else 500
         raise HTTPException(status_code=status_code, detail=result.get('error', 'Erro ao criar banco de dados SQL'))
@@ -308,7 +316,7 @@ async def ws_list_app_services(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_app_services()
+    return await _run(svc.list_app_services)
 
 
 @ws_router.post("/app-services")
@@ -318,7 +326,7 @@ async def ws_create_app_service(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.create_app_service(body.model_dump())
+    result = await _run(svc.create_app_service, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar App Service'))
     log_activity(db, member.user, 'appservice.create', 'AppService',
@@ -335,7 +343,7 @@ async def ws_start_app_service(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.start_app_service(resource_group, app_name)
+    result = await _run(svc.start_app_service, resource_group, app_name)
     if not result['success']:
         raise HTTPException(status_code=500, detail=result.get('error', 'Failed to start App Service'))
     log_activity(db, member.user, 'appservice.start', 'AppService',
@@ -351,7 +359,7 @@ async def ws_stop_app_service(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.stop_app_service(resource_group, app_name)
+    result = await _run(svc.stop_app_service, resource_group, app_name)
     if not result['success']:
         raise HTTPException(status_code=500, detail=result.get('error', 'Failed to stop App Service'))
     log_activity(db, member.user, 'appservice.stop', 'AppService',
@@ -368,7 +376,7 @@ async def ws_list_subscriptions(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    return await svc.list_subscriptions()
+    return await _run(svc.list_subscriptions)
 
 
 # ── Detail ──────────────────────────────────────────────────────────────────
@@ -381,7 +389,7 @@ async def ws_get_vm_detail(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.get_vm_detail(resource_group, vm_name)
+    result = await _run(svc.get_vm_detail, resource_group, vm_name)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da VM'))
     return result
@@ -395,7 +403,7 @@ async def ws_get_sql_server_detail(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.get_sql_server_detail(resource_group, server_name)
+    result = await _run(svc.get_sql_server_detail, resource_group, server_name)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe do servidor SQL'))
     return result
@@ -409,7 +417,7 @@ async def ws_get_app_service_detail(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.get_app_service_detail(resource_group, app_name)
+    result = await _run(svc.get_app_service_detail, resource_group, app_name)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe do App Service'))
     return result
@@ -423,7 +431,7 @@ async def ws_get_storage_account_detail(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.get_storage_account_detail(resource_group, account_name)
+    result = await _run(svc.get_storage_account_detail, resource_group, account_name)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da Storage Account'))
     return result
@@ -437,7 +445,7 @@ async def ws_get_vnet_detail(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.get_vnet_detail(resource_group, vnet_name)
+    result = await _run(svc.get_vnet_detail, resource_group, vnet_name)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da VNet'))
     return result
@@ -453,7 +461,7 @@ async def ws_delete_azure_vm(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.delete_virtual_machine(resource_group, vm_name)
+    result = await _run(svc.delete_virtual_machine, resource_group, vm_name)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir VM'))
     log_activity(db, member.user, 'vm.delete', 'AzureVM',
@@ -470,7 +478,7 @@ async def ws_delete_azure_storage(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.delete_storage_account(resource_group, account_name)
+    result = await _run(svc.delete_storage_account, resource_group, account_name)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir Storage Account'))
     log_activity(db, member.user, 'storage.delete', 'AzureStorage',
@@ -487,7 +495,7 @@ async def ws_delete_azure_vnet(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.delete_virtual_network(resource_group, vnet_name)
+    result = await _run(svc.delete_virtual_network, resource_group, vnet_name)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir VNet'))
     log_activity(db, member.user, 'vnet.delete', 'AzureVNet',
@@ -504,7 +512,7 @@ async def ws_delete_azure_sql_server(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.delete_sql_server(resource_group, server_name)
+    result = await _run(svc.delete_sql_server, resource_group, server_name)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir servidor SQL'))
     log_activity(db, member.user, 'sql.delete', 'AzureSQL',
@@ -521,7 +529,7 @@ async def ws_delete_azure_app_service(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await svc.delete_app_service(resource_group, app_name)
+    result = await _run(svc.delete_app_service, resource_group, app_name)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir App Service'))
     log_activity(db, member.user, 'appservice.delete', 'AzureAppService',
@@ -553,9 +561,7 @@ async def ws_get_azure_costs(
         svc = _build_azure_service_from_account(account)
     else:
         svc = _get_single_azure_service(member, db)
-    result = await svc.get_cost_by_subscription(
-        start_date=start_date, end_date=end_date, granularity=granularity.capitalize()
-    )
+    result = await _run(svc.get_cost_by_subscription, start_date, end_date, granularity.capitalize())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo Azure'))
     return result

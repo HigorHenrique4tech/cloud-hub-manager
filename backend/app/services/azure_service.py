@@ -97,7 +97,7 @@ class AzureService:
 
     # ── Helpers for form dropdowns ────────────────────────────────────────────
 
-    async def list_locations(self) -> Dict:
+    def list_locations(self) -> Dict:
         try:
             sub_client = SubscriptionClient(credential=self.credential)
             locations = []
@@ -109,7 +109,7 @@ class AzureService:
             logger.error(f"list_locations error: {e}")
             return {'success': False, 'error': str(e), 'locations': []}
 
-    async def list_vm_sizes(self, location: str) -> Dict:
+    def list_vm_sizes(self, location: str) -> Dict:
         try:
             sizes = []
             for size in self.compute_client.virtual_machine_sizes.list(location):
@@ -126,7 +126,7 @@ class AzureService:
             logger.error(f"list_vm_sizes error: {e}")
             return {'success': False, 'error': str(e), 'sizes': []}
 
-    async def list_vm_image_publishers(self, location: str) -> Dict:
+    def list_vm_image_publishers(self, location: str) -> Dict:
         try:
             publishers = [p.name for p in self.compute_client.virtual_machine_images.list_publishers(location)]
             return {'success': True, 'publishers': sorted(publishers)}
@@ -134,7 +134,7 @@ class AzureService:
             logger.error(f"list_vm_image_publishers error: {e}")
             return {'success': False, 'error': str(e), 'publishers': []}
 
-    async def list_vm_image_offers(self, location: str, publisher: str) -> Dict:
+    def list_vm_image_offers(self, location: str, publisher: str) -> Dict:
         try:
             offers = [o.name for o in self.compute_client.virtual_machine_images.list_offers(location, publisher)]
             return {'success': True, 'offers': sorted(offers)}
@@ -142,7 +142,7 @@ class AzureService:
             logger.error(f"list_vm_image_offers error: {e}")
             return {'success': False, 'error': str(e), 'offers': []}
 
-    async def list_vm_image_skus(self, location: str, publisher: str, offer: str) -> Dict:
+    def list_vm_image_skus(self, location: str, publisher: str, offer: str) -> Dict:
         try:
             skus = [s.name for s in self.compute_client.virtual_machine_images.list_skus(location, publisher, offer)]
             return {'success': True, 'skus': sorted(skus)}
@@ -152,7 +152,7 @@ class AzureService:
 
     # ── VMs ─────────────────────────────────────────────────────────────────
 
-    async def list_virtual_machines(self) -> Dict:
+    def list_virtual_machines(self) -> Dict:
         try:
             vms = []
             resource_groups = list(self.resource_client.resource_groups.list())
@@ -187,7 +187,7 @@ class AzureService:
             logger.error(f"Error listing Azure VMs: {e}")
             return {'success': False, 'error': str(e), 'virtual_machines': []}
 
-    async def start_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+    def start_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
         try:
             poller = self.compute_client.virtual_machines.begin_start(
                 resource_group_name=resource_group, vm_name=vm_name
@@ -198,7 +198,7 @@ class AzureService:
             logger.error(f"Error starting VM {vm_name}: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def stop_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+    def stop_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
         try:
             poller = self.compute_client.virtual_machines.begin_deallocate(
                 resource_group_name=resource_group, vm_name=vm_name
@@ -209,9 +209,8 @@ class AzureService:
             logger.error(f"Error stopping VM {vm_name}: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def create_virtual_machine(self, params: dict) -> Dict:
+    def create_virtual_machine(self, params: dict) -> Dict:
         try:
-            import asyncio
             from azure.mgmt.network.models import (
                 NetworkInterface, NetworkInterfaceIPConfiguration,
                 PublicIPAddress, IPAllocationMethod,
@@ -222,7 +221,6 @@ class AzureService:
                 ManagedDiskParameters, LinuxConfiguration, SshConfiguration, SshPublicKey, DataDisk,
                 DiskCreateOptionTypes,
             )
-            loop = asyncio.get_event_loop()
 
             rg = params['resource_group']
             location = params['location']
@@ -245,7 +243,7 @@ class AzureService:
                     rg, pip_name,
                     PublicIPAddress(location=location, sku={'name': 'Standard'}, public_ip_allocation_method='Static'),
                 )
-                pip_result = await loop.run_in_executor(None, pip_poller.result)
+                pip_result = pip_poller.result()
                 ip_config_kwargs['public_ip_address'] = {'id': pip_result.id}
 
             nic_poller = self.network_client.network_interfaces.begin_create_or_update(
@@ -255,7 +253,7 @@ class AzureService:
                     ip_configurations=[NetworkInterfaceIPConfiguration(**ip_config_kwargs)],
                 ),
             )
-            nic_result = await loop.run_in_executor(None, nic_poller.result)
+            nic_result = nic_poller.result()
 
             # OS Profile
             os_profile_kwargs = {
@@ -315,7 +313,7 @@ class AzureService:
             )
 
             poller = self.compute_client.virtual_machines.begin_create_or_update(rg, vm_name, vm_params)
-            result = await loop.run_in_executor(None, poller.result)
+            result = poller.result()
             return {'success': True, 'vm_name': result.name, 'vm_id': result.id}
         except Exception as e:
             logger.error(f"create_virtual_machine error: {e}")
@@ -323,7 +321,7 @@ class AzureService:
 
     # ── Resource Groups ───────────────────────────────────────────────────────
 
-    async def list_resource_groups(self) -> Dict:
+    def list_resource_groups(self) -> Dict:
         try:
             resource_groups = []
             for rg in self.resource_client.resource_groups.list():
@@ -338,7 +336,7 @@ class AzureService:
             logger.error(f"Error listing resource groups: {e}")
             return {'success': False, 'error': str(e), 'resource_groups': []}
 
-    async def list_resource_group_resources(self, rg_name: str) -> Dict:
+    def list_resource_group_resources(self, rg_name: str) -> Dict:
         try:
             resources = []
             for r in self.resource_client.resources.list_by_resource_group(rg_name):
@@ -357,7 +355,7 @@ class AzureService:
 
     # ── Storage ───────────────────────────────────────────────────────────────
 
-    async def list_storage_accounts(self) -> Dict:
+    def list_storage_accounts(self) -> Dict:
         try:
             accounts = []
             for sa in self.storage_client.storage_accounts.list():
@@ -378,7 +376,7 @@ class AzureService:
             logger.error(f"Error listing storage accounts: {e}")
             return {'success': False, 'error': str(e), 'storage_accounts': []}
 
-    async def create_storage_account(self, params: dict) -> Dict:
+    def create_storage_account(self, params: dict) -> Dict:
         try:
             from azure.mgmt.storage.models import StorageAccountCreateParameters, Sku, Kind
             sa_params = StorageAccountCreateParameters(
@@ -402,7 +400,7 @@ class AzureService:
 
     # ── VNets ────────────────────────────────────────────────────────────────
 
-    async def list_vnets(self) -> Dict:
+    def list_vnets(self) -> Dict:
         try:
             vnets = []
             for vnet in self.network_client.virtual_networks.list_all():
@@ -427,7 +425,7 @@ class AzureService:
             logger.error(f"Error listing VNets: {e}")
             return {'success': False, 'error': str(e), 'vnets': []}
 
-    async def create_vnet(self, params: dict) -> Dict:
+    def create_vnet(self, params: dict) -> Dict:
         try:
             from azure.mgmt.network.models import VirtualNetwork, AddressSpace, Subnet
             subnets = [
@@ -451,7 +449,7 @@ class AzureService:
 
     # ── Databases ────────────────────────────────────────────────────────────
 
-    async def list_databases(self) -> Dict:
+    def list_databases(self) -> Dict:
         try:
             servers = []
             for server in self.sql_client.servers.list():
@@ -478,11 +476,9 @@ class AzureService:
             logger.error(f"Error listing databases: {e}")
             return {'success': False, 'error': str(e), 'servers': []}
 
-    async def create_sql_database(self, params: dict) -> Dict:
+    def create_sql_database(self, params: dict) -> Dict:
         try:
-            import asyncio
             from azure.mgmt.sql.models import Server, Database, Sku
-            loop = asyncio.get_event_loop()
             server_params = Server(
                 location=params['location'],
                 administrator_login=params['admin_login'],
@@ -492,7 +488,7 @@ class AzureService:
             server_poller = self.sql_client.servers.begin_create_or_update(
                 params['resource_group'], params['server_name'], server_params
             )
-            server_result = await loop.run_in_executor(None, server_poller.result)
+            server_result = server_poller.result()
 
             db_params = Database(
                 location=params['location'],
@@ -505,7 +501,7 @@ class AzureService:
             db_poller = self.sql_client.databases.begin_create_or_update(
                 params['resource_group'], params['server_name'], params['database_name'], db_params
             )
-            db_result = await loop.run_in_executor(None, db_poller.result)
+            db_result = db_poller.result()
             return {
                 'success': True,
                 'server_name': server_result.name,
@@ -525,7 +521,7 @@ class AzureService:
 
     # ── App Services ──────────────────────────────────────────────────────────
 
-    async def list_app_services(self) -> Dict:
+    def list_app_services(self) -> Dict:
         try:
             apps = []
             for app in self.web_client.web_apps.list():
@@ -546,7 +542,7 @@ class AzureService:
             logger.error(f"Error listing App Services: {e}")
             return {'success': False, 'error': str(e), 'app_services': []}
 
-    async def start_app_service(self, resource_group: str, app_name: str) -> Dict:
+    def start_app_service(self, resource_group: str, app_name: str) -> Dict:
         try:
             self.web_client.web_apps.start(resource_group, app_name)
             return {'success': True, 'message': f'App Service {app_name} iniciado com sucesso'}
@@ -554,7 +550,7 @@ class AzureService:
             logger.error(f"Error starting App Service {app_name}: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def stop_app_service(self, resource_group: str, app_name: str) -> Dict:
+    def stop_app_service(self, resource_group: str, app_name: str) -> Dict:
         try:
             self.web_client.web_apps.stop(resource_group, app_name)
             return {'success': True, 'message': f'App Service {app_name} parado com sucesso'}
@@ -562,11 +558,9 @@ class AzureService:
             logger.error(f"Error stopping App Service {app_name}: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def create_app_service(self, params: dict) -> Dict:
+    def create_app_service(self, params: dict) -> Dict:
         try:
-            import asyncio
             from azure.mgmt.web.models import AppServicePlan, SkuDescription, Site, SiteConfig
-            loop = asyncio.get_event_loop()
             rg = params['resource_group']
             location = params['location']
             app_name = params['name']
@@ -584,7 +578,7 @@ class AzureService:
                 reserved=True,
             )
             plan_poller = self.web_client.app_service_plans.begin_create_or_update(rg, plan_name, plan_params)
-            plan_result = await loop.run_in_executor(None, plan_poller.result)
+            plan_result = plan_poller.result()
 
             site_config = SiteConfig(linux_fx_version=params.get('runtime', 'NODE|18-lts'))
             if params.get('always_on') and sku_name not in ('F1', 'D1'):
@@ -597,7 +591,7 @@ class AzureService:
                 tags=params.get('tags', {}),
             )
             site_poller = self.web_client.web_apps.begin_create_or_update(rg, app_name, site_params)
-            site_result = await loop.run_in_executor(None, site_poller.result)
+            site_result = site_poller.result()
             return {'success': True, 'name': site_result.name, 'default_host_name': site_result.default_host_name}
         except Exception as e:
             logger.error(f"create_app_service error: {e}")
@@ -605,7 +599,7 @@ class AzureService:
 
     # ── Subscriptions ────────────────────────────────────────────────────────
 
-    async def list_subscriptions(self) -> Dict:
+    def list_subscriptions(self) -> Dict:
         try:
             subscription_client = SubscriptionClient(credential=self.credential)
             subs = []
@@ -638,7 +632,7 @@ class AzureService:
 
     # ── Connection test ───────────────────────────────────────────────────────
 
-    async def test_connection(self) -> Dict:
+    def test_connection(self) -> Dict:
         try:
             subscription_client = SubscriptionClient(credential=self.credential)
             subscriptions = list(subscription_client.subscriptions.list())
@@ -654,7 +648,7 @@ class AzureService:
 
     # ── Costs ─────────────────────────────────────────────────────────────────
 
-    async def get_cost_by_subscription(self, start_date: str, end_date: str, granularity: str = 'Monthly') -> Dict:
+    def get_cost_by_subscription(self, start_date: str, end_date: str, granularity: str = 'Monthly') -> Dict:
         try:
             cost_client = CostManagementClient(self.credential)
             scope = f"/subscriptions/{self.subscription_id}"
@@ -714,7 +708,7 @@ class AzureService:
 
     # ── Detail operations ─────────────────────────────────────────────────────
 
-    async def get_vm_detail(self, resource_group: str, vm_name: str) -> Dict:
+    def get_vm_detail(self, resource_group: str, vm_name: str) -> Dict:
         try:
             vm = self.compute_client.virtual_machines.get(resource_group, vm_name, expand='instanceView')
             # OS disk
@@ -778,7 +772,7 @@ class AzureService:
             logger.error(f"get_vm_detail error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def get_sql_server_detail(self, resource_group: str, server_name: str) -> Dict:
+    def get_sql_server_detail(self, resource_group: str, server_name: str) -> Dict:
         try:
             server = self.sql_client.servers.get(resource_group, server_name)
             # Firewall rules
@@ -807,7 +801,7 @@ class AzureService:
             logger.error(f"get_sql_server_detail error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def get_app_service_detail(self, resource_group: str, app_name: str) -> Dict:
+    def get_app_service_detail(self, resource_group: str, app_name: str) -> Dict:
         try:
             app = self.web_client.web_apps.get(resource_group, app_name)
             site_config = app.site_config
@@ -833,7 +827,7 @@ class AzureService:
             logger.error(f"get_app_service_detail error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def get_storage_account_detail(self, resource_group: str, account_name: str) -> Dict:
+    def get_storage_account_detail(self, resource_group: str, account_name: str) -> Dict:
         try:
             sa = self.storage_client.storage_accounts.get_properties(resource_group, account_name)
             endpoints = {}
@@ -860,7 +854,7 @@ class AzureService:
             logger.error(f"get_storage_account_detail error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def get_vnet_detail(self, resource_group: str, vnet_name: str) -> Dict:
+    def get_vnet_detail(self, resource_group: str, vnet_name: str) -> Dict:
         try:
             vnet = self.network_client.virtual_networks.get(resource_group, vnet_name)
             subnets = []
@@ -889,7 +883,7 @@ class AzureService:
 
     # ── Delete operations ─────────────────────────────────────────────────────
 
-    async def delete_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+    def delete_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
         try:
             poller = self.compute_client.virtual_machines.begin_delete(resource_group, vm_name)
             poller.result()
@@ -898,7 +892,7 @@ class AzureService:
             logger.error(f"delete_virtual_machine error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_storage_account(self, resource_group: str, account_name: str) -> Dict:
+    def delete_storage_account(self, resource_group: str, account_name: str) -> Dict:
         try:
             self.storage_client.storage_accounts.delete(resource_group, account_name)
             return {'success': True}
@@ -906,7 +900,7 @@ class AzureService:
             logger.error(f"delete_storage_account error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_virtual_network(self, resource_group: str, vnet_name: str) -> Dict:
+    def delete_virtual_network(self, resource_group: str, vnet_name: str) -> Dict:
         try:
             poller = self.network_client.virtual_networks.begin_delete(resource_group, vnet_name)
             poller.result()
@@ -915,7 +909,7 @@ class AzureService:
             logger.error(f"delete_virtual_network error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_sql_server(self, resource_group: str, server_name: str) -> Dict:
+    def delete_sql_server(self, resource_group: str, server_name: str) -> Dict:
         try:
             poller = self.sql_client.servers.begin_delete(resource_group, server_name)
             poller.result()
@@ -924,7 +918,7 @@ class AzureService:
             logger.error(f"delete_sql_server error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_app_service(self, resource_group: str, app_name: str) -> Dict:
+    def delete_app_service(self, resource_group: str, app_name: str) -> Dict:
         try:
             self.web_client.web_apps.delete(resource_group, app_name)
             return {'success': True}

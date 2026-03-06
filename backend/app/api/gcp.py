@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Optional
 
@@ -61,10 +62,10 @@ def _get_gcp_service(member: MemberContext, db: Session) -> GCPService:
     return _build_gcp_service(_get_gcp_account(member, db))
 
 
-def _wrap(fn, *args, resource_type: str = "GCP", **kwargs):
-    """Call a GCPService method and convert exceptions to HTTPException."""
+async def _run(fn, *args, **kwargs):
+    """Run a synchronous GCP SDK call in a thread pool, freeing the event loop."""
     try:
-        return fn(*args, **kwargs)
+        return await asyncio.to_thread(fn, *args, **kwargs)
     except HTTPException:
         raise
     except Exception as exc:
@@ -88,43 +89,43 @@ class CreateNetworkRequest(BaseModel):
 # ── Connection ────────────────────────────────────────────────────────────────
 
 @ws_router.get("/test-connection")
-def gcp_test_connection(
+async def gcp_test_connection(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    buckets = _wrap(svc.list_buckets)
+    buckets = await _run(svc.list_buckets)
     return {"success": True, "project_id": svc.project_id, "bucket_count": len(buckets)}
 
 
 # ── Overview ──────────────────────────────────────────────────────────────────
 
 @ws_router.get("/overview")
-def gcp_overview(
+async def gcp_overview(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
     try:
-        instances = svc.list_instances()
+        instances = await _run(svc.list_instances)
         running = sum(1 for i in instances if i["status"] == "RUNNING")
     except Exception:
         instances = []
         running = 0
     try:
-        buckets = svc.list_buckets()
+        buckets = await _run(svc.list_buckets)
     except Exception:
         buckets = []
     try:
-        sql_instances = svc.list_sql_instances()
+        sql_instances = await _run(svc.list_sql_instances)
     except Exception:
         sql_instances = []
     try:
-        networks = svc.list_networks()
+        networks = await _run(svc.list_networks)
     except Exception:
         networks = []
     try:
-        functions = svc.list_functions()
+        functions = await _run(svc.list_functions)
     except Exception:
         functions = []
 
@@ -142,103 +143,103 @@ def gcp_overview(
 # ── Compute Engine ─────────────────────────────────────────────────────────────
 
 @ws_router.get("/compute/instances")
-def gcp_list_instances(
+async def gcp_list_instances(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    return _wrap(svc.list_instances)
+    return await _run(svc.list_instances)
 
 
 @ws_router.post("/compute/instances/{zone}/{name}/start")
-def gcp_start_instance(
+async def gcp_start_instance(
     zone: str,
     name: str,
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    _wrap(svc.start_instance, zone, name)
+    await _run(svc.start_instance, zone, name)
     log_activity(db, member.user, "gcp.compute.start", "Instance", name, {"zone": zone})
     return {"success": True, "instance": name, "zone": zone}
 
 
 @ws_router.post("/compute/instances/{zone}/{name}/stop")
-def gcp_stop_instance(
+async def gcp_stop_instance(
     zone: str,
     name: str,
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    _wrap(svc.stop_instance, zone, name)
+    await _run(svc.stop_instance, zone, name)
     log_activity(db, member.user, "gcp.compute.stop", "Instance", name, {"zone": zone})
     return {"success": True, "instance": name, "zone": zone}
 
 
 @ws_router.delete("/compute/instances/{zone}/{name}")
-def gcp_delete_instance(
+async def gcp_delete_instance(
     zone: str,
     name: str,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    _wrap(svc.delete_instance, zone, name)
+    await _run(svc.delete_instance, zone, name)
     log_activity(db, member.user, "gcp.compute.delete", "Instance", name, {"zone": zone})
     return {"success": True, "instance": name, "zone": zone}
 
 
 @ws_router.get("/compute/zones")
-def gcp_list_zones(
+async def gcp_list_zones(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    return _wrap(svc.list_zones)
+    return await _run(svc.list_zones)
 
 
 @ws_router.get("/compute/machine-types")
-def gcp_list_machine_types(
+async def gcp_list_machine_types(
     zone: str = Query(...),
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    return _wrap(svc.list_machine_types, zone)
+    return await _run(svc.list_machine_types, zone)
 
 
 # ── Cloud Storage ─────────────────────────────────────────────────────────────
 
 @ws_router.get("/storage/buckets")
-def gcp_list_buckets(
+async def gcp_list_buckets(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    return _wrap(svc.list_buckets)
+    return await _run(svc.list_buckets)
 
 
 @ws_router.post("/storage/buckets")
-def gcp_create_bucket(
+async def gcp_create_bucket(
     payload: CreateBucketRequest,
     member: MemberContext = Depends(require_permission("resources.create")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    result = _wrap(svc.create_bucket, payload.name, payload.location, payload.storage_class)
+    result = await _run(svc.create_bucket, payload.name, payload.location, payload.storage_class)
     log_activity(db, member.user, "gcp.storage.create_bucket", "Bucket", payload.name, {})
     return result
 
 
 @ws_router.delete("/storage/buckets/{name}")
-def gcp_delete_bucket(
+async def gcp_delete_bucket(
     name: str,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    _wrap(svc.delete_bucket, name)
+    await _run(svc.delete_bucket, name)
     log_activity(db, member.user, "gcp.storage.delete_bucket", "Bucket", name, {})
     return {"success": True, "bucket": name}
 
@@ -246,22 +247,22 @@ def gcp_delete_bucket(
 # ── Cloud SQL ─────────────────────────────────────────────────────────────────
 
 @ws_router.get("/sql/instances")
-def gcp_list_sql_instances(
+async def gcp_list_sql_instances(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    return _wrap(svc.list_sql_instances)
+    return await _run(svc.list_sql_instances)
 
 
 @ws_router.delete("/sql/instances/{name}")
-def gcp_delete_sql_instance(
+async def gcp_delete_sql_instance(
     name: str,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    _wrap(svc.delete_sql_instance, name)
+    await _run(svc.delete_sql_instance, name)
     log_activity(db, member.user, "gcp.sql.delete", "CloudSQLInstance", name, {})
     return {"success": True, "instance": name}
 
@@ -269,17 +270,17 @@ def gcp_delete_sql_instance(
 # ── Cloud Functions ───────────────────────────────────────────────────────────
 
 @ws_router.get("/functions")
-def gcp_list_functions(
+async def gcp_list_functions(
     region: str = Query("us-central1"),
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    return _wrap(svc.list_functions, region)
+    return await _run(svc.list_functions, region)
 
 
 @ws_router.delete("/functions/{region}/{name}")
-def gcp_delete_function(
+async def gcp_delete_function(
     region: str,
     name: str,
     member: MemberContext = Depends(require_permission("resources.delete")),
@@ -287,7 +288,7 @@ def gcp_delete_function(
 ):
     svc = _get_gcp_service(member, db)
     full_name = f"projects/{svc.project_id}/locations/{region}/functions/{name}"
-    _wrap(svc.delete_function, full_name)
+    await _run(svc.delete_function, full_name)
     log_activity(db, member.user, "gcp.functions.delete", "CloudFunction", name, {"region": region})
     return {"success": True, "function": name, "region": region}
 
@@ -295,34 +296,34 @@ def gcp_delete_function(
 # ── VPC Networks ──────────────────────────────────────────────────────────────
 
 @ws_router.get("/networks")
-def gcp_list_networks(
+async def gcp_list_networks(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    return _wrap(svc.list_networks)
+    return await _run(svc.list_networks)
 
 
 @ws_router.post("/networks")
-def gcp_create_network(
+async def gcp_create_network(
     payload: CreateNetworkRequest,
     member: MemberContext = Depends(require_permission("resources.create")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    result = _wrap(svc.create_network, payload.name, payload.auto_create_subnetworks)
+    result = await _run(svc.create_network, payload.name, payload.auto_create_subnetworks)
     log_activity(db, member.user, "gcp.network.create", "Network", payload.name, {})
     return result
 
 
 @ws_router.delete("/networks/{name}")
-def gcp_delete_network(
+async def gcp_delete_network(
     name: str,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_gcp_service(member, db)
-    _wrap(svc.delete_network, name)
+    await _run(svc.delete_network, name)
     log_activity(db, member.user, "gcp.network.delete", "Network", name, {})
     return {"success": True, "network": name}
 
@@ -348,7 +349,7 @@ async def gcp_security_scan(
         private_key=creds.get("private_key", ""),
         private_key_id=creds.get("private_key_id", ""),
     )
-    findings = scanner.scan_all()
+    findings = await _run(scanner.scan_all)
 
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     findings.sort(key=lambda f: order.get(f.get("severity", "low"), 3))
@@ -379,7 +380,7 @@ async def ws_get_gcp_costs(
     try:
         account = _get_gcp_account(member, db)
         svc = _build_gcp_service(account)
-        result = svc.get_cost_and_usage(start_date=start_date, end_date=end_date)
+        result = await _run(svc.get_cost_and_usage, start_date, end_date)
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Erro ao estimar custos GCP"))
         return result
@@ -398,7 +399,7 @@ async def ws_get_gcp_metrics(
     try:
         account = _get_gcp_account(member, db)
         svc = _build_gcp_service(account)
-        return svc.get_metrics()
+        return await _run(svc.get_metrics)
     except HTTPException:
         raise
     except Exception as e:
@@ -424,21 +425,25 @@ async def ws_list_gcp_snapshots(
     svc = _build_gcp_service(account)
     try:
         from google.cloud import compute_v1
-        client = compute_v1.SnapshotsClient(credentials=svc.credentials)
-        snapshots = []
-        for s in client.list(project=svc.project_id):
-            snapshots.append({
-                "name": s.name,
-                "status": s.status,
-                "disk_size_gb": s.disk_size_gb,
-                "source_disk": s.source_disk or "",
-                "creation_timestamp": s.creation_timestamp,
-                "storage_bytes": s.storage_bytes,
-                "description": s.description or "",
-                "labels": dict(s.labels) if s.labels else {},
-            })
-        snapshots.sort(key=lambda x: x["creation_timestamp"] or "", reverse=True)
-        return {"snapshots": snapshots}
+
+        def _fetch():
+            client = compute_v1.SnapshotsClient(credentials=svc.credentials)
+            snapshots = []
+            for s in client.list(project=svc.project_id):
+                snapshots.append({
+                    "name": s.name,
+                    "status": s.status,
+                    "disk_size_gb": s.disk_size_gb,
+                    "source_disk": s.source_disk or "",
+                    "creation_timestamp": s.creation_timestamp,
+                    "storage_bytes": s.storage_bytes,
+                    "description": s.description or "",
+                    "labels": dict(s.labels) if s.labels else {},
+                })
+            snapshots.sort(key=lambda x: x["creation_timestamp"] or "", reverse=True)
+            return {"snapshots": snapshots}
+
+        return await _run(_fetch)
     except HTTPException:
         raise
     except Exception as e:
@@ -456,18 +461,22 @@ async def ws_create_gcp_snapshot(
     svc = _build_gcp_service(account)
     try:
         from google.cloud import compute_v1
-        disks_client = compute_v1.DisksClient(credentials=svc.credentials)
-        snapshot_resource = compute_v1.Snapshot(
-            name=body.snapshot_name,
-            description=body.description,
-        )
-        operation = disks_client.create_snapshot(
-            project=svc.project_id,
-            zone=body.zone,
-            disk=body.disk_name,
-            snapshot_resource=snapshot_resource,
-        )
-        operation.result()
+
+        def _create():
+            disks_client = compute_v1.DisksClient(credentials=svc.credentials)
+            snapshot_resource = compute_v1.Snapshot(
+                name=body.snapshot_name,
+                description=body.description,
+            )
+            operation = disks_client.create_snapshot(
+                project=svc.project_id,
+                zone=body.zone,
+                disk=body.disk_name,
+                snapshot_resource=snapshot_resource,
+            )
+            operation.result()
+
+        await _run(_create)
         log_activity(db, member.user, "backup.create", "GCP_SNAPSHOT",
                      resource_id=body.snapshot_name, resource_name=body.snapshot_name,
                      provider="gcp", organization_id=member.org_id, workspace_id=member.workspace_id)
@@ -489,9 +498,13 @@ async def ws_delete_gcp_snapshot(
     svc = _build_gcp_service(account)
     try:
         from google.cloud import compute_v1
-        client = compute_v1.SnapshotsClient(credentials=svc.credentials)
-        operation = client.delete(project=svc.project_id, snapshot=snapshot_name)
-        operation.result()
+
+        def _delete():
+            client = compute_v1.SnapshotsClient(credentials=svc.credentials)
+            operation = client.delete(project=svc.project_id, snapshot=snapshot_name)
+            operation.result()
+
+        await _run(_delete)
         log_activity(db, member.user, "backup.delete", "GCP_SNAPSHOT",
                      resource_id=snapshot_name, resource_name=snapshot_name,
                      provider="gcp", organization_id=member.org_id, workspace_id=member.workspace_id)
