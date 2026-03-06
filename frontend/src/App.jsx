@@ -59,6 +59,7 @@ import M365TeamsAdmin from './pages/m365/TeamsAdmin';
 import M365Audit from './pages/m365/Audit';
 import Inventory from './pages/Inventory';
 import Onboarding from './pages/Onboarding';
+import ApprovalsPage from './pages/ApprovalsPage';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -129,6 +130,7 @@ function App() {
                 <Route path="/m365/teams" element={<PR><M365TeamsAdmin /></PR>} />
                 <Route path="/m365/audit" element={<PR><M365Audit /></PR>} />
                 <Route path="/inventory" element={<PR><Inventory /></PR>} />
+                <Route path="/approvals" element={<PR><ApprovalsPage /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
                 {/* Billing */}

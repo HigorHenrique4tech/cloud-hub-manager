@@ -1,10 +1,14 @@
 import { useState } from 'react';
 import {
   ChevronDown, ChevronUp, Zap, Trash2, StopCircle,
-  ArrowRight, Lock, AlertTriangle, CheckCircle2, XCircle, Clock, TrendingDown,
+  ArrowRight, Lock, AlertTriangle, CheckCircle2, XCircle, Clock, TrendingDown, GitPullRequestArrow,
 } from 'lucide-react';
 import PermissionGate from '../common/PermissionGate';
 import PlanGate from '../common/PlanGate';
+
+const HIGH_IMPACT_TYPES = new Set(['stop', 'delete', 'right_size']);
+const needsApproval = (rec) =>
+  rec.severity === 'high' || HIGH_IMPACT_TYPES.has(rec.recommendation_type);
 
 const fmtUSD = (v) =>
   v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -44,7 +48,7 @@ const STATUS_ICON = {
   failed:    <AlertTriangle size={14} className="text-red-400" />,
 };
 
-const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoading, planTier = 'free', selected = false, onToggle }) => {
+const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyLoading, dismissLoading, requestingApprovalId, planTier = 'free', selected = false, onToggle }) => {
   const [expanded, setExpanded] = useState(false);
   const isLocked = rec._locked;
   const isPending = rec.status === 'pending';
@@ -210,6 +214,16 @@ const RecommendationCard = ({ rec, onApply, onDismiss, applyLoading, dismissLoad
                     >
                       <Clock size={12} />
                       {applyLoading ? 'Agendando…' : 'Agendar'}
+                    </button>
+                  ) : needsApproval(rec) ? (
+                    <button
+                      onClick={() => onRequestApproval?.(rec.id)}
+                      disabled={requestingApprovalId === rec.id}
+                      className="inline-flex items-center gap-1.5 rounded-md bg-yellow-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+                      title="Recomendação de alto impacto — requer aprovação de admin/owner"
+                    >
+                      <GitPullRequestArrow size={12} />
+                      {requestingApprovalId === rec.id ? 'Solicitando…' : 'Solicitar Aprovação'}
                     </button>
                   ) : (
                     <button

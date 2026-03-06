@@ -10,6 +10,8 @@ const RecommendationsTab = ({
   dismissingId,
   onApply,
   onDismiss,
+  onRequestApproval,
+  requestingApprovalId,
   selectedIds,
   onToggle,
   toggleAll,
@@ -125,6 +127,8 @@ const RecommendationsTab = ({
             rec={rec}
             onApply={onApply}
             onDismiss={onDismiss}
+            onRequestApproval={onRequestApproval}
+            requestingApprovalId={requestingApprovalId}
             applyLoading={applyingId === rec.id}
             dismissLoading={dismissingId === rec.id}
             planTier={planTier}

@@ -16,6 +16,7 @@ import AnomaliesTab from '../components/finops/AnomaliesTab';
 import ActionsHistoryTab from '../components/finops/ActionsHistoryTab';
 import CostTrendChart from '../components/finops/CostTrendChart';
 import finopsService from '../services/finopsService';
+import approvalService from '../services/approvalService';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import { useFinOpsBudgets } from '../hooks/useFinOpsBudgets';
 import { useFinOpsScans } from '../hooks/useFinOpsScans';
@@ -44,9 +45,10 @@ const FinOps = () => {
   const [showBudgetModal, setShowBudgetModal] = useState(false);
   const [showScanScheduleModal, setShowScanScheduleModal]   = useState(false);
   const [showReportScheduleModal, setShowReportScheduleModal] = useState(false);
-  const [applyingId, setApplyingId]     = useState(null);
-  const [dismissingId, setDismissingId] = useState(null);
-  const [rollbackId, setRollbackId]     = useState(null);
+  const [applyingId, setApplyingId]                   = useState(null);
+  const [dismissingId, setDismissingId]               = useState(null);
+  const [rollbackId, setRollbackId]                   = useState(null);
+  const [requestingApprovalId, setRequestingApprovalId] = useState(null);
   const [selectedIds, setSelectedIds]   = useState(new Set());
   const [scanJobId, setScanJobId]       = useState(null);
   const [scanJobStatus, setScanJobStatus] = useState(null);
@@ -135,6 +137,15 @@ const FinOps = () => {
       setApplyingId(null);
     },
     onError: () => setApplyingId(null),
+  });
+
+  const requestApprovalMut = useMutation({
+    mutationFn: (recId) => approvalService.requestApproval(recId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['approvals-count'] });
+      setRequestingApprovalId(null);
+    },
+    onError: () => setRequestingApprovalId(null),
   });
 
   const dismissMut = useMutation({
@@ -364,6 +375,8 @@ const FinOps = () => {
             dismissingId={dismissingId}
             onApply={handleApply}
             onDismiss={handleDismiss}
+            onRequestApproval={(recId) => { setRequestingApprovalId(recId); requestApprovalMut.mutate(recId); }}
+            requestingApprovalId={requestingApprovalId}
             selectedIds={selectedIds}
             onToggle={toggleSelect}
             toggleAll={toggleAll}

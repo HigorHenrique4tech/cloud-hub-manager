@@ -2,13 +2,15 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
-  ShieldCheck, Webhook, Grid3x3, PackageSearch,
+  ShieldCheck, Webhook, Grid3x3, PackageSearch, GitPullRequestArrow,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { AwsIcon, AzureIcon, GcpIcon } from '../common/CloudProviderIcons';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import PermissionGate from '../common/PermissionGate';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import { useAuth } from '../../contexts/AuthContext';
+import approvalService from '../../services/approvalService';
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
@@ -17,7 +19,7 @@ import { useAuth } from '../../contexts/AuthContext';
  * activeColor: Tailwind classes applied when the route is active.
  * Falls back to the global bg-primary style when not specified.
  */
-const NavItem = ({ to, label, icon: Icon, end, activeColor }) => (
+const NavItem = ({ to, label, icon: Icon, end, activeColor, badge }) => (
   <NavLink
     to={to}
     end={end}
@@ -30,7 +32,12 @@ const NavItem = ({ to, label, icon: Icon, end, activeColor }) => (
     }}
   >
     <Icon className="w-5 h-5 flex-shrink-0" />
-    {label}
+    <span className="flex-1">{label}</span>
+    {badge > 0 && (
+      <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-yellow-500 text-white text-[10px] font-bold">
+        {badge > 99 ? '99+' : badge}
+      </span>
+    )}
   </NavLink>
 );
 
@@ -56,6 +63,15 @@ const Sidebar = () => {
   const { isMasterOrg, currentOrg } = useOrgWorkspace();
   const { user } = useAuth();
   const isEnterprise = currentOrg?.plan_tier === 'enterprise';
+
+  const pendingCountQ = useQuery({
+    queryKey: ['approvals-count'],
+    queryFn: approvalService.getCount,
+    refetchInterval: 30000,
+    select: (d) => d?.pending ?? 0,
+  });
+
+  const pendingCount = pendingCountQ.data ?? 0;
 
   return (
     <aside className="w-56 min-h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4 flex-shrink-0">
@@ -98,6 +114,9 @@ const Sidebar = () => {
         </PermissionGate>
         <PermissionGate permission="resources.view">
           <NavItem to="/schedules" label="Agendamentos" icon={Clock} />
+        </PermissionGate>
+        <PermissionGate permission="resources.manage">
+          <NavItem to="/approvals" label="Aprovações" icon={GitPullRequestArrow} badge={pendingCount} />
         </PermissionGate>
         <PermissionGate permission="webhooks.view">
           <NavItem to="/webhooks" label="Webhooks" icon={Webhook} />

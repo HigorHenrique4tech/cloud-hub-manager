@@ -899,6 +899,60 @@ def export_recommendations(
     )
 
 
+@ws_router.post("/recommendations/{rec_id}/request-approval", status_code=201)
+def request_recommendation_approval(
+    rec_id: UUID,
+    member: MemberContext = Depends(require_permission("finops.execute")),
+    db: Session = Depends(get_db),
+):
+    """
+    Create an ApprovalRequest for a high-impact recommendation.
+    Called by the frontend when the user clicks 'Solicitar Aprovação'.
+    """
+    plan = _get_org_plan(member, db)
+    _require_plan(plan, "pro", "Solicitar aprovação")
+
+    rec = db.query(FinOpsRecommendation).filter(
+        FinOpsRecommendation.id == rec_id,
+        FinOpsRecommendation.workspace_id == member.workspace_id,
+    ).first()
+    if not rec:
+        raise HTTPException(status_code=404, detail="Recomendação não encontrada.")
+    if rec.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Status atual é '{rec.status}', não pode ser solicitada.")
+
+    from app.services.approval_service import create_approval
+
+    approval = create_approval(
+        db=db,
+        workspace_id=member.workspace_id,
+        requester_id=member.user.id,
+        action_type="apply_recommendation",
+        action_payload={
+            "action_type": "apply_recommendation",
+            "recommendation_id": str(rec.id),
+            "provider": rec.provider,
+            "resource_id": rec.resource_id,
+            "resource_name": rec.resource_name,
+            "resource_type": rec.resource_type,
+            "recommendation_type": rec.recommendation_type,
+            "severity": rec.severity,
+            "estimated_saving_monthly": rec.estimated_saving_monthly,
+            "reasoning": rec.reasoning,
+        },
+    )
+
+    log_activity(
+        db=db, user=member.user,
+        action="finops.request_approval",
+        resource_type=rec.resource_type,
+        resource_id=rec.resource_id,
+        resource_name=rec.resource_name,
+    )
+
+    return {"approval_id": str(approval.id), "status": "pending"}
+
+
 @ws_router.post("/recommendations/{rec_id}/apply", status_code=200)
 def apply_recommendation(
     rec_id: UUID,

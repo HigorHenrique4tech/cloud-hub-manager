@@ -386,6 +386,105 @@ class FinOpsScanSchedule(Base):
     creator   = relationship("User", foreign_keys=[created_by])
 
 
+# ── Approval Flow ─────────────────────────────────────────────────────────────
+
+
+class ApprovalRequest(Base):
+    __tablename__ = "approval_requests"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id   = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    requester_id   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_by    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action_type    = Column(String(100), nullable=False)   # apply_recommendation | stop_instance | delete_resource
+    action_payload = Column(JSONB, nullable=False)          # all data needed to execute the action
+    status         = Column(String(20), nullable=False, default="pending", index=True)  # pending | approved | rejected | cancelled
+    notes          = Column(Text, nullable=True)
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    resolved_at    = Column(DateTime, nullable=True)
+
+    workspace  = relationship("Workspace")
+    requester  = relationship("User", foreign_keys=[requester_id])
+    resolver   = relationship("User", foreign_keys=[resolved_by])
+
+
+# ── Policy Engine ─────────────────────────────────────────────────────────────
+
+
+class Policy(Base):
+    __tablename__ = "policies"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id      = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name              = Column(String(255), nullable=False)
+    description       = Column(Text, nullable=True)
+    provider          = Column(String(20), nullable=False, default="all")  # aws | azure | gcp | all
+    conditions        = Column(JSONB, nullable=False)   # {"metric": ..., "operator": ..., "threshold": ..., "window_hours": ...}
+    action            = Column(JSONB, nullable=False)   # {"type": ..., "params": {}, "also_notify": bool}
+    is_active         = Column(Boolean, default=True, nullable=False)
+    last_triggered_at = Column(DateTime, nullable=True)
+    trigger_count     = Column(Integer, default=0, nullable=False)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    creator   = relationship("User", foreign_keys=[created_by])
+    logs      = relationship("PolicyLog", back_populates="policy", cascade="all, delete-orphan")
+
+
+class PolicyLog(Base):
+    __tablename__ = "policy_logs"
+
+    id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    policy_id          = Column(UUID(as_uuid=True), ForeignKey("policies.id", ondelete="CASCADE"), nullable=False, index=True)
+    triggered_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    condition_snapshot = Column(JSONB, nullable=True)   # actual values that triggered the rule
+    action_taken       = Column(String(100), nullable=True)
+    result             = Column(String(50), nullable=True)   # success | failed | skipped
+    error              = Column(Text, nullable=True)
+
+    policy = relationship("Policy", back_populates="logs")
+
+
+# ── Executive Reports ─────────────────────────────────────────────────────────
+
+
+class ExecutiveReportSettings(Base):
+    __tablename__ = "executive_report_settings"
+    __table_args__ = (UniqueConstraint("workspace_id", name="uq_exec_report_settings_ws"),)
+
+    id                      = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id            = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_enabled              = Column(Boolean, default=False, nullable=False)
+    recipients              = Column(JSONB, nullable=False, default=list)  # ["email1", "email2"]
+    send_day                = Column(Integer, nullable=False, default=1)   # 1-28
+    include_costs           = Column(Boolean, default=True, nullable=False)
+    include_anomalies       = Column(Boolean, default=True, nullable=False)
+    include_recommendations = Column(Boolean, default=True, nullable=False)
+    include_schedules       = Column(Boolean, default=True, nullable=False)
+    updated_at              = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+
+
+class ExecutiveReport(Base):
+    __tablename__ = "executive_reports"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    period       = Column(String(7), nullable=False)   # "2025-03"
+    status       = Column(String(20), nullable=False, default="generating")  # generating | ready | failed
+    pdf_bytes    = Column(Text, nullable=True)          # base64-encoded PDF
+    summary_data = Column(JSONB, nullable=True)         # data snapshot used to generate
+    generated_at = Column(DateTime, nullable=True)
+    sent_at      = Column(DateTime, nullable=True)
+    recipients   = Column(JSONB, nullable=True)         # snapshot of recipients at send time
+    error        = Column(Text, nullable=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+
+
 # ── User Dashboard Config ────────────────────────────────────────────────────
 
 

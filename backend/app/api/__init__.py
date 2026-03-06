@@ -18,6 +18,9 @@ from .webhooks import ws_router as webhooks_ws_router
 from .m365 import ws_router as m365_ws_router, org_router as m365_org_router
 from .pricing import ws_router as pricing_ws_router
 from .inventory import ws_router as inventory_ws_router
+from .approvals import ws_router as approvals_ws_router
+from .policies import ws_router as policies_ws_router
+from .executive_reports import ws_router as executive_reports_ws_router
 
 api_router = APIRouter()
 
@@ -50,5 +53,8 @@ api_router.include_router(m365_ws_router)
 api_router.include_router(m365_org_router)
 api_router.include_router(pricing_ws_router)
 api_router.include_router(inventory_ws_router)
+api_router.include_router(approvals_ws_router)
+api_router.include_router(policies_ws_router)
+api_router.include_router(executive_reports_ws_router)
 
 __all__ = ["api_router"]

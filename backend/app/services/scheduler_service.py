@@ -793,6 +793,33 @@ def load_report_schedules(db) -> int:
     except Exception as exc:
         logger.error(f"Failed to register anomaly_detection_daily job: {exc}")
 
+    # Register Policy Engine job (every 15 minutes)
+    try:
+        from app.services.policy_service import evaluate_all_policies_job
+        scheduler.add_job(
+            evaluate_all_policies_job,
+            "interval",
+            minutes=15,
+            id="policy_engine",
+            replace_existing=True,
+        )
+        logger.info("Policy engine job registered (every 15 min)")
+    except Exception as exc:
+        logger.error(f"Failed to register policy_engine job: {exc}")
+
+    # Register Monthly Executive Reports job (1st of each month at 08:00 UTC)
+    try:
+        from app.services.report_service import monthly_reports_job
+        scheduler.add_job(
+            monthly_reports_job,
+            CronTrigger(day=1, hour=8, minute=0),
+            id="executive_reports_monthly",
+            replace_existing=True,
+        )
+        logger.info("Monthly executive reports job registered")
+    except Exception as exc:
+        logger.error(f"Failed to register executive_reports_monthly job: {exc}")
+
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count
 
