@@ -608,3 +608,39 @@ class ReportSchedule(Base):
 
     workspace = relationship("Workspace")
     creator   = relationship("User", foreign_keys=[created_by])
+
+
+# ── Support Tickets ───────────────────────────────────────────────────────────
+
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    creator_id      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    title           = Column(String(255), nullable=False)
+    category        = Column(String(50), nullable=False, default="other")   # billing | technical | feature_request | other
+    priority        = Column(String(20), nullable=False, default="normal")  # low | normal | high | urgent
+    status          = Column(String(30), nullable=False, default="open", index=True)  # open | in_progress | waiting_client | resolved | closed
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    resolved_at     = Column(DateTime, nullable=True)
+
+    organization = relationship("Organization")
+    creator      = relationship("User", foreign_keys=[creator_id])
+    messages     = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan", order_by="TicketMessage.created_at")
+
+
+class TicketMessage(Base):
+    __tablename__ = "ticket_messages"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id   = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_id   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    content     = Column(Text, nullable=False)
+    is_internal = Column(Boolean, default=False, nullable=False)  # True = admin-only note
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    ticket = relationship("Ticket", back_populates="messages")
+    sender = relationship("User", foreign_keys=[sender_id])

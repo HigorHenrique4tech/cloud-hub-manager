@@ -1,8 +1,13 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { ShieldCheck, Users, Building2, ChevronDown, ChevronUp, Search, Check, Phone, MessageSquare, Mail, Calendar } from 'lucide-react';
+import {
+  ShieldCheck, Users, Building2, ChevronDown, ChevronUp, Search, Check,
+  Phone, MessageSquare, Mail, Calendar, LifeBuoy, Loader2, ArrowRight,
+  AlertCircle, Clock as ClockIcon,
+} from 'lucide-react';
 import Layout from '../components/layout/layout';
 import adminService from '../services/adminService';
+import supportService from '../services/supportService';
 
 /* ── Constants ───────────────────────────────────────────────────────────── */
 
@@ -326,6 +331,258 @@ const OrgsTab = () => {
   );
 };
 
+/* ── Admin Tickets Tab ───────────────────────────────────────────────────── */
+
+const TICKET_STATUS_CONFIG = {
+  open:           { label: 'Aberto',          cls: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' },
+  in_progress:    { label: 'Em Andamento',    cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400' },
+  waiting_client: { label: 'Aguardando',      cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/20 dark:text-yellow-400' },
+  resolved:       { label: 'Resolvido',       cls: 'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400' },
+  closed:         { label: 'Encerrado',       cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' },
+};
+
+const PRIORITY_CONFIG = {
+  low:    { label: 'Baixa',   cls: 'text-gray-500' },
+  normal: { label: 'Normal',  cls: 'text-blue-600 dark:text-blue-400' },
+  high:   { label: 'Alta',    cls: 'text-orange-600 dark:text-orange-400' },
+  urgent: { label: 'Urgente', cls: 'text-red-600 dark:text-red-400 font-semibold' },
+};
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+}
+
+function TicketStatusBadge({ status }) {
+  const cfg = TICKET_STATUS_CONFIG[status] || TICKET_STATUS_CONFIG.open;
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${cfg.cls}`}>{cfg.label}</span>;
+}
+
+function AdminTicketDrawer({ ticket: initial, onClose }) {
+  const qc = useQueryClient();
+  const [reply, setReply] = useState('');
+  const [isInternal, setIsInternal] = useState(false);
+  const [statusSel, setStatusSel] = useState(initial.status);
+
+  const { data: ticket } = useQuery({
+    queryKey: ['admin-ticket', initial.id],
+    queryFn: () => supportService.adminGet(initial.id),
+    initialData: initial,
+  });
+
+  const statusMut = useMutation({
+    mutationFn: (s) => supportService.adminUpdateStatus(ticket.id, s),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-tickets'] });
+      qc.invalidateQueries({ queryKey: ['admin-ticket', ticket.id] });
+    },
+  });
+
+  const msgMut = useMutation({
+    mutationFn: () => supportService.adminAddMessage(ticket.id, { content: reply, is_internal: isInternal }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-ticket', ticket.id] });
+      qc.invalidateQueries({ queryKey: ['admin-tickets'] });
+      setReply('');
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 font-mono">#{ticket.id?.slice(0, 8)}</p>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{ticket.title}</h3>
+            {ticket.organization && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{ticket.organization.name}</p>
+            )}
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">×</button>
+        </div>
+
+        {/* Status change */}
+        <div className="px-6 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center gap-3">
+          <span className="text-xs text-gray-500 dark:text-gray-400">Status:</span>
+          <select
+            value={statusSel}
+            onChange={(e) => { setStatusSel(e.target.value); statusMut.mutate(e.target.value); }}
+            className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-2 py-1 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary"
+          >
+            <option value="open">Aberto</option>
+            <option value="in_progress">Em Andamento</option>
+            <option value="waiting_client">Aguardando Cliente</option>
+            <option value="resolved">Resolvido</option>
+            <option value="closed">Encerrado</option>
+          </select>
+          {statusMut.isPending && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4 min-h-[200px]">
+          {(ticket.messages || []).map((msg) => (
+            <div key={msg.id} className={`flex gap-3 ${msg.sender?.is_admin ? 'flex-row-reverse' : 'flex-row'}`}>
+              <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs flex-shrink-0 ${msg.sender?.is_admin ? 'bg-primary' : 'bg-gray-400'}`}>
+                {msg.sender?.is_admin ? <ShieldCheck className="w-3.5 h-3.5" /> : <Users className="w-3.5 h-3.5" />}
+              </div>
+              <div className={`max-w-[75%] flex flex-col gap-1 ${msg.sender?.is_admin ? 'items-end' : 'items-start'}`}>
+                <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                  <span>{msg.sender?.full_name || '—'}</span>
+                  <span>{fmtDate(msg.created_at)}</span>
+                  {msg.is_internal && (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">Interna</span>
+                  )}
+                </div>
+                <div className={`px-3 py-2 rounded-xl text-sm whitespace-pre-wrap ${
+                  msg.sender?.is_admin
+                    ? 'bg-primary text-white'
+                    : msg.is_internal
+                      ? 'bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+                }`}>
+                  {msg.content}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Reply */}
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 space-y-2">
+          <textarea
+            value={reply}
+            onChange={(e) => setReply(e.target.value)}
+            rows={2}
+            placeholder={isInternal ? 'Nota interna (não visível ao cliente)…' : 'Responder ao cliente…'}
+            className={`w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:border-primary resize-none ${
+              isInternal
+                ? 'border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-900 dark:text-yellow-200'
+                : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100'
+            }`}
+          />
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isInternal}
+                onChange={(e) => setIsInternal(e.target.checked)}
+                className="rounded"
+              />
+              Nota interna (invisível ao cliente)
+            </label>
+            <button
+              onClick={() => msgMut.mutate()}
+              disabled={msgMut.isPending || !reply.trim()}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+            >
+              {msgMut.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Enviar
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const AdminTicketsTab = () => {
+  const [statusFilter, setStatusFilter] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState('');
+  const [selected, setSelected] = useState(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-tickets', statusFilter, priorityFilter],
+    queryFn: () => supportService.adminList({
+      ...(statusFilter ? { status: statusFilter } : {}),
+      ...(priorityFilter ? { priority: priorityFilter } : {}),
+    }),
+  });
+
+  const tickets = data?.tickets || [];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3 flex-wrap">
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-primary"
+        >
+          <option value="">Todos os status</option>
+          <option value="open">Aberto</option>
+          <option value="in_progress">Em Andamento</option>
+          <option value="waiting_client">Aguardando Cliente</option>
+          <option value="resolved">Resolvido</option>
+          <option value="closed">Encerrado</option>
+        </select>
+        <select
+          value={priorityFilter}
+          onChange={(e) => setPriorityFilter(e.target.value)}
+          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-700 dark:text-gray-300 focus:outline-none focus:border-primary"
+        >
+          <option value="">Todas as prioridades</option>
+          <option value="urgent">Urgente</option>
+          <option value="high">Alta</option>
+          <option value="normal">Normal</option>
+          <option value="low">Baixa</option>
+        </select>
+        <span className="text-sm text-gray-500 dark:text-gray-400">{tickets.length} chamado(s)</span>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-16">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      ) : tickets.length === 0 ? (
+        <div className="text-center py-16 text-gray-400 dark:text-gray-500">
+          <LifeBuoy size={40} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">Nenhum chamado encontrado</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Assunto</th>
+                <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Organização</th>
+                <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Status</th>
+                <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Prioridade</th>
+                <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Atualizado</th>
+                <th className="py-3 px-4 w-8" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
+              {tickets.map((t) => {
+                const pCfg = PRIORITY_CONFIG[t.priority] || PRIORITY_CONFIG.normal;
+                return (
+                  <tr
+                    key={t.id}
+                    onClick={() => setSelected(t)}
+                    className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer"
+                  >
+                    <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100 max-w-xs truncate">
+                      <span className="text-xs text-gray-400 font-mono mr-1">#{t.id?.slice(0, 8)}</span>
+                      {t.title}
+                    </td>
+                    <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">{t.organization?.name || '—'}</td>
+                    <td className="py-3 px-4"><TicketStatusBadge status={t.status} /></td>
+                    <td className={`py-3 px-4 text-xs ${pCfg.cls}`}>{pCfg.label}</td>
+                    <td className="py-3 px-4 text-xs text-gray-500 dark:text-gray-400">{fmtDate(t.updated_at)}</td>
+                    <td className="py-3 px-4"><ArrowRight className="w-4 h-4 text-gray-400" /></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {selected && <AdminTicketDrawer ticket={selected} onClose={() => setSelected(null)} />}
+    </div>
+  );
+};
+
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 
 const AdminPanel = () => {
@@ -350,6 +607,7 @@ const AdminPanel = () => {
           {[
             { id: 'leads', label: 'Leads Enterprise', icon: Users },
             { id: 'orgs', label: 'Organizações', icon: Building2 },
+            { id: 'tickets', label: 'Atendimento', icon: LifeBuoy },
           ].map(({ id, label, icon: Icon }) => (
             <button
               key={id}
@@ -367,7 +625,9 @@ const AdminPanel = () => {
         </div>
 
         {/* Tab content */}
-        {tab === 'leads' ? <LeadsTab /> : <OrgsTab />}
+        {tab === 'leads' && <LeadsTab />}
+        {tab === 'orgs' && <OrgsTab />}
+        {tab === 'tickets' && <AdminTicketsTab />}
       </div>
     </Layout>
   );

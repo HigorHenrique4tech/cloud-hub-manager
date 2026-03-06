@@ -21,6 +21,7 @@ from .inventory import ws_router as inventory_ws_router
 from .approvals import ws_router as approvals_ws_router
 from .policies import ws_router as policies_ws_router
 from .executive_reports import ws_router as executive_reports_ws_router
+from .support import org_router as support_org_router, admin_support_router
 
 api_router = APIRouter()
 
@@ -56,5 +57,7 @@ api_router.include_router(inventory_ws_router)
 api_router.include_router(approvals_ws_router)
 api_router.include_router(policies_ws_router)
 api_router.include_router(executive_reports_ws_router)
+api_router.include_router(support_org_router)
+api_router.include_router(admin_support_router)
 
 __all__ = ["api_router"]

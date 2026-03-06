@@ -3,6 +3,7 @@ import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
   ShieldCheck, Webhook, Grid3x3, PackageSearch, GitPullRequestArrow,
+  LifeBuoy,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AwsIcon, AzureIcon, GcpIcon } from '../common/CloudProviderIcons';
@@ -124,6 +125,7 @@ const Sidebar = () => {
         <PermissionGate permission="logs.view">
           <NavItem to="/logs" label="Logs" icon={FileText} />
         </PermissionGate>
+        <NavItem to="/support" label="Suporte" icon={LifeBuoy} />
 
         {/* ── Conta / Org ── */}
         <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-1">
