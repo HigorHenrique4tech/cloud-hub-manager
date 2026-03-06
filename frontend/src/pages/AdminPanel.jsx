@@ -428,7 +428,7 @@ function AdminTicketDrawer({ ticket: initial, onClose }) {
               </div>
               <div className={`max-w-[75%] flex flex-col gap-1 ${msg.sender?.is_admin ? 'items-end' : 'items-start'}`}>
                 <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                  <span>{msg.sender?.full_name || '—'}</span>
+                  <span>{msg.sender?.name || '—'}</span>
                   <span>{fmtDate(msg.created_at)}</span>
                   {msg.is_internal && (
                     <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">Interna</span>

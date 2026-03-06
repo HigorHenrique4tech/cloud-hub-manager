@@ -51,7 +51,7 @@ function MessageBubble({ msg, isOwn }) {
       {/* Bubble */}
       <div className={`max-w-[70%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
         <div className={`flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-          <span className="font-medium">{isAdmin ? 'Suporte CloudAtlas' : (msg.sender?.full_name || 'Usuário')}</span>
+          <span className="font-medium">{isAdmin ? 'Suporte CloudAtlas' : (msg.sender?.name || 'Usuário')}</span>
           <span>{fmtTime(msg.created_at)}</span>
           {isInternal && (
             <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800">
@@ -137,10 +137,10 @@ function TicketSidebar({ ticket }) {
           <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">Solicitante</h3>
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center text-xs font-bold text-gray-600 dark:text-gray-300">
-              {ticket.creator.full_name?.[0]?.toUpperCase() || '?'}
+              {ticket.creator.name?.[0]?.toUpperCase() || '?'}
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{ticket.creator.full_name}</p>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{ticket.creator.name}</p>
               <p className="text-xs text-gray-500 dark:text-gray-400">{ticket.creator.email}</p>
             </div>
           </div>

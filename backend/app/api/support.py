@@ -43,7 +43,7 @@ def _sender_dict(user) -> dict:
         return None
     return {
         "id": str(user.id),
-        "full_name": user.full_name,
+        "name": user.name,
         "email": user.email,
         "is_admin": user.is_admin,
     }
