@@ -586,7 +586,7 @@ async def aws_security_scan(
             secret_key=creds.get("secret_access_key", ""),
             region=creds.get("region", "us-east-1"),
         )
-        all_findings.extend(scanner.scan_all())
+        all_findings.extend(await _run(scanner.scan_all))
 
     # Sort by severity
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}

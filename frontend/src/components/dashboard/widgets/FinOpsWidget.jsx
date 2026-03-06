@@ -74,7 +74,7 @@ const FinOpsWidget = () => {
               <p className="text-xs text-green-600 dark:text-green-400 font-medium">Economia potencial</p>
             </div>
             <p className="text-lg font-bold text-green-700 dark:text-green-300">
-              {fmtUSD(data?.potential_savings_monthly)}<span className="text-xs font-normal text-green-600 dark:text-green-500">/mês</span>
+              {fmtUSD(data?.potential_saving_monthly)}<span className="text-xs font-normal text-green-600 dark:text-green-500">/mês</span>
             </p>
           </div>
 
@@ -84,7 +84,7 @@ const FinOpsWidget = () => {
               <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Recomendações</p>
             </div>
             <p className="text-lg font-bold text-blue-700 dark:text-blue-300">
-              {data?.pending_recommendations ?? 0}
+              {data?.recommendations?.pending ?? 0}
               <span className="text-xs font-normal text-blue-600 dark:text-blue-500 ml-1">pendentes</span>
             </p>
           </div>
@@ -106,7 +106,7 @@ const FinOpsWidget = () => {
               <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">Economia realizada</p>
             </div>
             <p className="text-lg font-bold text-purple-700 dark:text-purple-300">
-              {fmtUSD(data?.realized_savings_30d)}
+              {fmtUSD(data?.realized_saving_30d)}
               <span className="text-xs font-normal text-purple-600 dark:text-purple-500 ml-1">30d</span>
             </p>
           </div>
