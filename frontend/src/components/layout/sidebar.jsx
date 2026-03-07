@@ -125,10 +125,13 @@ const Sidebar = () => {
         <PermissionGate permission="logs.view">
           <NavItem to="/logs" label="Logs" icon={FileText} />
         </PermissionGate>
-        <NavItem to="/support" label="Suporte" icon={LifeBuoy} />
 
         {/* ── Conta / Org ── */}
         <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-1">
+          <NavItem to="/support" label="Suporte" icon={LifeBuoy} />
+          {(user?.is_admin || user?.is_helpdesk) && (
+            <NavItem to="/suporte" label="Helpdesk" icon={ShieldCheck} />
+          )}
           <PermissionGate permission="costs.view">
             <NavItem to="/billing" label="Faturamento" icon={CreditCard} />
           </PermissionGate>

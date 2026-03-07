@@ -163,6 +163,7 @@ class User(Base):
     mfa_otp_expires_at = Column(DateTime, nullable=True)
     mfa_otp_attempts   = Column(Integer, default=0, nullable=False)
     is_admin           = Column(Boolean, default=False, nullable=False)
+    is_helpdesk        = Column(Boolean, default=False, nullable=False)
     onboarding_completed = Column(Boolean, default=False, nullable=False)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -617,7 +618,9 @@ class Ticket(Base):
     __tablename__ = "tickets"
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_number   = Column(Integer, nullable=True, index=True)            # TKT-001, auto from sequence
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True)
     creator_id      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     title           = Column(String(255), nullable=False)
     category        = Column(String(50), nullable=False, default="other")   # billing | technical | feature_request | other
@@ -628,6 +631,7 @@ class Ticket(Base):
     resolved_at     = Column(DateTime, nullable=True)
 
     organization = relationship("Organization")
+    workspace    = relationship("Workspace")
     creator      = relationship("User", foreign_keys=[creator_id])
     messages     = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan")
 

@@ -3,10 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   LifeBuoy, Plus, Clock, CheckCircle, AlertCircle, Loader2,
-  AlertTriangle, ArrowRight, X,
+  AlertTriangle, ArrowRight, X, Layers,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import supportService from '../services/supportService';
+import orgService from '../services/orgService';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -37,6 +38,11 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+function fmtTicketId(t) {
+  if (t.ticket_number) return `TKT-${String(t.ticket_number).padStart(4, '0')}`;
+  return `#${t.id.slice(0, 8)}`;
+}
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }) {
@@ -49,14 +55,26 @@ function StatusBadge({ status }) {
 }
 
 function NewTicketModal({ onClose, onCreated }) {
-  const [form, setForm] = useState({ title: '', category: 'technical', priority: 'normal', message: '' });
+  const orgSlug = localStorage.getItem('selectedOrg');
+  const [form, setForm] = useState({
+    title: '', category: 'technical', priority: 'normal', message: '', workspace_id: '',
+  });
   const [error, setError] = useState('');
 
+  const workspacesQ = useQuery({
+    queryKey: ['workspaces', orgSlug],
+    queryFn: () => orgService.listWorkspaces(orgSlug),
+    enabled: !!orgSlug,
+  });
+
+  const workspaces = workspacesQ.data?.workspaces || workspacesQ.data || [];
+
   const mut = useMutation({
-    mutationFn: () => supportService.create(form),
-    onSuccess: (data) => {
-      onCreated(data.id);
-    },
+    mutationFn: () => supportService.create({
+      ...form,
+      workspace_id: form.workspace_id || undefined,
+    }),
+    onSuccess: (data) => onCreated(data.id),
     onError: (e) => setError(e.response?.data?.detail || 'Erro ao criar chamado'),
   });
 
@@ -73,6 +91,23 @@ function NewTicketModal({ onClose, onCreated }) {
         </div>
 
         <div className="px-6 py-5 space-y-4">
+          {/* Workspace */}
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5" /> Workspace relacionado <span className="text-gray-400">(opcional)</span>
+            </span>
+            <select
+              value={form.workspace_id}
+              onChange={set('workspace_id')}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary"
+            >
+              <option value="">Nenhum workspace específico</option>
+              {workspaces.map((ws) => (
+                <option key={ws.id} value={ws.id}>{ws.name}</option>
+              ))}
+            </select>
+          </label>
+
           <div className="grid grid-cols-2 gap-4">
             <label className="block">
               <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 block">Categoria</span>
@@ -184,7 +219,7 @@ const Support = () => {
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Suporte</h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Abra e acompanhe seus chamados</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Acompanhe seus chamados de suporte</p>
             </div>
           </div>
           <button
@@ -264,8 +299,9 @@ const Support = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                  <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium w-28">Número</th>
                   <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Assunto</th>
-                  <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium hidden sm:table-cell">Categoria</th>
+                  <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium hidden sm:table-cell">Workspace</th>
                   <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Status</th>
                   <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium hidden md:table-cell">Prioridade</th>
                   <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium hidden lg:table-cell">Atualizado em</th>
@@ -281,11 +317,18 @@ const Support = () => {
                       onClick={() => navigate(`/support/${t.id}`)}
                       className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer"
                     >
-                      <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100 max-w-xs truncate">
-                        #{t.id.slice(0, 8)} — {t.title}
+                      <td className="py-3 px-4 font-mono text-xs font-semibold text-primary">
+                        {fmtTicketId(t)}
                       </td>
-                      <td className="py-3 px-4 text-gray-500 dark:text-gray-400 hidden sm:table-cell">
-                        {CATEGORY_LABELS[t.category] || t.category}
+                      <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100 max-w-xs truncate">
+                        {t.title}
+                      </td>
+                      <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs hidden sm:table-cell">
+                        {t.workspace ? (
+                          <span className="flex items-center gap-1">
+                            <Layers className="w-3 h-3" /> {t.workspace.name}
+                          </span>
+                        ) : '—'}
                       </td>
                       <td className="py-3 px-4">
                         <StatusBadge status={t.status} />

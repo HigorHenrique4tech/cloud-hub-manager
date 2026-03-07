@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Send, ShieldCheck, User, AlertTriangle,
-  Clock, Tag, Zap,
+  Clock, Tag, Zap, Layers, RefreshCw,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import supportService from '../services/supportService';
@@ -35,37 +35,34 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
+function fmtTicketId(t) {
+  if (t?.ticket_number) return `TKT-${String(t.ticket_number).padStart(4, '0')}`;
+  return t?.id ? `#${t.id.slice(0, 8)}` : '';
+}
+
 // ── Message bubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({ msg, isOwn }) {
-  const isInternal = msg.is_internal;
-  const isAdmin = msg.sender?.is_admin;
+  const isAdmin = msg.sender?.is_admin || msg.sender?.is_helpdesk;
 
   return (
     <div className={`flex gap-3 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-      {/* Avatar */}
       <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${isAdmin ? 'bg-primary' : 'bg-gray-400'}`}>
         {isAdmin ? <ShieldCheck className="w-4 h-4" /> : <User className="w-4 h-4" />}
       </div>
 
-      {/* Bubble */}
       <div className={`max-w-[70%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
         <div className={`flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
-          <span className="font-medium">{isAdmin ? 'Suporte CloudAtlas' : (msg.sender?.name || 'Usuário')}</span>
+          <span className="font-medium">
+            {isAdmin ? 'Suporte CloudAtlas' : (msg.sender?.name || 'Usuário')}
+          </span>
           <span>{fmtTime(msg.created_at)}</span>
-          {isInternal && (
-            <span className="px-1.5 py-0.5 rounded text-[10px] bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-800">
-              Nota interna
-            </span>
-          )}
         </div>
         <div
           className={`px-4 py-2.5 rounded-2xl text-sm whitespace-pre-wrap break-words ${
             isOwn
               ? 'bg-primary text-white rounded-tr-sm'
-              : isInternal
-                ? 'bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800 text-yellow-800 dark:text-yellow-300 rounded-tl-sm'
-                : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 rounded-tl-sm'
+              : 'bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 text-gray-900 dark:text-gray-100 rounded-tl-sm'
           }`}
         >
           {msg.content}
@@ -107,6 +104,22 @@ function TicketSidebar({ ticket }) {
 
         <div className="pt-2 border-t border-gray-100 dark:border-gray-700 space-y-1.5">
           <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+            <Tag className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+            <div>
+              <p className="font-medium text-gray-700 dark:text-gray-300">Número</p>
+              <p className="font-mono font-semibold text-primary">{fmtTicketId(ticket)}</p>
+            </div>
+          </div>
+          {ticket.workspace && (
+            <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
+              <Layers className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="font-medium text-gray-700 dark:text-gray-300">Workspace</p>
+                <p>{ticket.workspace.name}</p>
+              </div>
+            </div>
+          )}
+          <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
             <Clock className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
             <div>
               <p className="font-medium text-gray-700 dark:text-gray-300">Aberto em</p>
@@ -122,13 +135,6 @@ function TicketSidebar({ ticket }) {
               </div>
             </div>
           )}
-          <div className="flex items-start gap-2 text-xs text-gray-500 dark:text-gray-400">
-            <Tag className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-            <div>
-              <p className="font-medium text-gray-700 dark:text-gray-300">ID do Chamado</p>
-              <p className="font-mono">{ticket.id.slice(0, 8)}</p>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -160,15 +166,37 @@ const TicketDetails = () => {
   const [reply, setReply] = useState('');
   const [error, setError] = useState('');
   const messagesEndRef = useRef(null);
+  const prevMsgCount = useRef(0);
 
+  // Initial ticket load (no polling — just for metadata)
   const { data: ticket, isLoading } = useQuery({
     queryKey: ['ticket', ticketId],
     queryFn: () => supportService.get(ticketId),
+    staleTime: 30000,
   });
+
+  // Messages with 5s polling
+  const { data: messagesData } = useQuery({
+    queryKey: ['ticket-messages', ticketId],
+    queryFn: () => supportService.getMessages(ticketId),
+    refetchInterval: 5000,
+    enabled: !!ticket,
+  });
+
+  const messages = messagesData?.messages || ticket?.messages || [];
+
+  // Auto-scroll only when new messages arrive
+  useEffect(() => {
+    if (messages.length > prevMsgCount.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      prevMsgCount.current = messages.length;
+    }
+  }, [messages.length]);
 
   const sendMut = useMutation({
     mutationFn: (content) => supportService.addMessage(ticketId, { content }),
     onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ticket-messages', ticketId] });
       qc.invalidateQueries({ queryKey: ['ticket', ticketId] });
       setReply('');
       setError('');
@@ -176,19 +204,13 @@ const TicketDetails = () => {
     onError: (e) => setError(e.response?.data?.detail || 'Erro ao enviar mensagem'),
   });
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [ticket?.messages?.length]);
-
   const handleSend = () => {
     if (!reply.trim()) return;
     sendMut.mutate(reply.trim());
   };
 
   const handleKeyDown = (e) => {
-    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-      handleSend();
-    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend();
   };
 
   const isClosed = ticket?.status === 'resolved' || ticket?.status === 'closed';
@@ -211,8 +233,6 @@ const TicketDetails = () => {
     );
   }
 
-  const messages = ticket.messages || [];
-
   return (
     <Layout>
       <div className="max-w-6xl mx-auto space-y-4">
@@ -224,16 +244,23 @@ const TicketDetails = () => {
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">{ticket.title}</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">#{ticket.id.slice(0, 8)}</p>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-xs font-semibold text-primary">{fmtTicketId(ticket)}</span>
+              <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">{ticket.title}</h1>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Atualizado: {fmtTime(ticket.updated_at)}
+              <span className="ml-2 inline-flex items-center gap-1 text-gray-400">
+                <RefreshCw className="w-3 h-3" /> atualiza a cada 5s
+              </span>
+            </p>
           </div>
         </div>
 
         <div className="flex gap-6 items-start">
           {/* Chat area */}
           <div className="flex-1 flex flex-col gap-4">
-            {/* Messages */}
             <div className="card p-4 min-h-[400px] max-h-[520px] overflow-y-auto flex flex-col gap-4">
               {messages.length === 0 && (
                 <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
@@ -250,7 +277,6 @@ const TicketDetails = () => {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Reply box */}
             {isClosed ? (
               <div className="card p-4 text-center text-sm text-gray-500 dark:text-gray-400">
                 Este chamado foi encerrado. Abra um novo chamado se precisar de ajuda.
@@ -284,7 +310,6 @@ const TicketDetails = () => {
             )}
           </div>
 
-          {/* Sidebar */}
           <TicketSidebar ticket={ticket} />
         </div>
       </div>

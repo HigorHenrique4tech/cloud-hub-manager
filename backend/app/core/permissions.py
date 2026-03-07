@@ -62,6 +62,9 @@ class Permission(str, Enum):
     M365_VIEW   = "m365.view"   # view M365 tenant data (users, licenses, teams, security)
     M365_MANAGE = "m365.manage" # save / delete M365 credentials, configure integration
 
+    # Helpdesk (platform-level)
+    HELPDESK_MANAGE = "helpdesk.manage"  # manage support tickets (used by helpdesk role)
+
 
 _ALL_PERMISSIONS: Set[str] = {p.value for p in Permission}
 
@@ -112,6 +115,11 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.FINOPS_RECOMMEND,
         Permission.TEMPLATES_VIEW,
         Permission.M365_VIEW,
+    },
+
+    # Platform-level helpdesk role (org-role entry, but only ticket access)
+    "helpdesk": {
+        Permission.HELPDESK_MANAGE,
     },
 }
 
