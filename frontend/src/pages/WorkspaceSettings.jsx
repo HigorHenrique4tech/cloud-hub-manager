@@ -49,8 +49,11 @@ function ExecutiveReportSection() {
     onSuccess: () => qc.invalidateQueries(['exec-report-settings']),
   });
 
+  const [sendMsg, setSendMsg] = useState(null);
   const sendMut = useMutation({
     mutationFn: (id) => reportService.send(id),
+    onSuccess: () => setSendMsg({ ok: true, text: 'E-mail enviado com sucesso.' }),
+    onError: (e) => setSendMsg({ ok: false, text: e?.response?.data?.detail || 'Erro ao enviar o e-mail.' }),
   });
 
   const retryMut = useMutation({
@@ -261,6 +264,11 @@ function ExecutiveReportSection() {
               );
             })}
           </div>
+          {sendMsg && (
+            <p className={`text-xs mt-1 ${sendMsg.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {sendMsg.text}
+            </p>
+          )}
         </div>
       )}
     </section>

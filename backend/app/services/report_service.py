@@ -689,17 +689,20 @@ def _send_email(recipients: List[str], subject: str, body_html: str, pdf_bytes: 
     msg.attach(attachment)
 
     try:
-        if settings.SMTP_USE_TLS:
-            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
-            server.starttls()
+        # Port 465 uses implicit SSL; all other ports use STARTTLS
+        if settings.SMTP_PORT == 465:
+            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+                if settings.SMTP_USER:
+                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.sendmail(settings.SMTP_FROM, recipients, msg.as_string())
         else:
-            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30)
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=30) as server:
+                if settings.SMTP_USE_TLS:
+                    server.starttls()
+                if settings.SMTP_USER:
+                    server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                server.sendmail(settings.SMTP_FROM, recipients, msg.as_string())
 
-        if settings.SMTP_USER:
-            server.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
-
-        server.sendmail(settings.SMTP_FROM, recipients, msg.as_string())
-        server.quit()
         logger.info("Executive report sent to %s for period %s", recipients, period)
     except Exception as exc:
         logger.error("Failed to send executive report email: %s", exc)
