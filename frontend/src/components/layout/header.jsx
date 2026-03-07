@@ -1,4 +1,4 @@
-import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Wallet, Clock, Zap, LifeBuoy } from 'lucide-react';
+import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Wallet, Clock, Zap, Headphones } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -163,11 +163,11 @@ const Header = () => {
             <button
               onClick={() => navigate('/support')}
               title="Suporte"
-              className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100
-                         dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700
+              className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100
+                         dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700
                          transition-colors"
             >
-              <LifeBuoy className="w-5 h-5" />
+              <Headphones className="w-5 h-5" />
             </button>
 
             {/* Bell notification */}
