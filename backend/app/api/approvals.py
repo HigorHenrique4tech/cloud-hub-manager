@@ -52,7 +52,7 @@ def _is_approver(member: MemberContext, db: Session) -> bool:
     org_member = (
         db.query(OrganizationMember)
         .filter(
-            OrganizationMember.organization_id == member.org_id,
+            OrganizationMember.organization_id == member.organization_id,
             OrganizationMember.user_id == member.user.id,
             OrganizationMember.is_active == True,
         )

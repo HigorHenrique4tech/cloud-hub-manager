@@ -399,7 +399,7 @@ const Suporte = () => {
   return (
     <Layout>
       {/* Full-viewport panel layout */}
-      <div className="flex h-[calc(100vh-64px)] -mx-6 -my-6 overflow-hidden">
+      <div className="flex h-[calc(100vh-64px)] -mx-6 -my-8 overflow-hidden">
 
         {/* ── Left: Queue sidebar ───────────────────────────────────── */}
         <div className="w-52 flex-shrink-0 border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 flex flex-col">
@@ -450,16 +450,16 @@ const Suporte = () => {
         </div>
 
         {/* ── Center: Ticket list ───────────────────────────────────── */}
-        <div className={`flex flex-col border-r border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 ${selectedTicket ? 'w-80 flex-shrink-0' : 'flex-1'}`}>
+        <div className={`flex flex-col border-r border-gray-200 dark:border-gray-700 bg-slate-50 dark:bg-slate-800/60 ${selectedTicket ? 'w-80 flex-shrink-0' : 'flex-1'}`}>
           {/* Search */}
-          <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+          <div className="p-3 border-b border-gray-200 dark:border-gray-700/60 bg-slate-100/60 dark:bg-slate-800/80">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Buscar tickets..."
-                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:border-primary"
+                className="w-full pl-9 pr-3 py-1.5 rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700/80 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 focus:outline-none focus:border-primary"
               />
             </div>
           </div>
