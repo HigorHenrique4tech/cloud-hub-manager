@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Layers, Mail, FileDown, Send, Plus, X, CheckCircle, RefreshCw } from 'lucide-react';
+import { Layers, Mail, FileDown, Send, Plus, X, CheckCircle, RefreshCw, RotateCcw } from 'lucide-react';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
@@ -20,6 +20,19 @@ function ExecutiveReportSection() {
   const [newEmail, setNewEmail] = useState('');
   const [generating, setGenerating] = useState(false);
   const [generateMsg, setGenerateMsg] = useState(null);
+  const [selectedPeriod, setSelectedPeriod] = useState('');
+
+  const periodOptions = useMemo(() => {
+    const opts = [];
+    const now = new Date();
+    for (let i = 0; i <= 5; i++) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+      opts.push({ val, label });
+    }
+    return opts;
+  }, []);
 
   const settingsQ = useQuery({
     queryKey: ['exec-report-settings'],
@@ -38,6 +51,11 @@ function ExecutiveReportSection() {
 
   const sendMut = useMutation({
     mutationFn: (id) => reportService.send(id),
+  });
+
+  const retryMut = useMutation({
+    mutationFn: (id) => reportService.retry(id),
+    onSuccess: () => setTimeout(() => qc.invalidateQueries(['exec-reports']), 3000),
   });
 
   const s = settingsQ.data || {};
@@ -60,7 +78,7 @@ function ExecutiveReportSection() {
     setGenerating(true);
     setGenerateMsg(null);
     try {
-      await reportService.generate(null);
+      await reportService.generate(selectedPeriod || null);
       setGenerateMsg({ ok: true, text: 'Geração iniciada em segundo plano. Atualize em alguns segundos.' });
       setTimeout(() => qc.invalidateQueries(['exec-reports']), 5000);
     } catch (e) {
@@ -159,11 +177,23 @@ function ExecutiveReportSection() {
       </div>
 
       {/* Generate now */}
-      <div className="flex items-center gap-3 pt-1 border-t border-gray-100 dark:border-gray-700">
+      <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-gray-100 dark:border-gray-700">
+        <select
+          value={selectedPeriod}
+          onChange={e => setSelectedPeriod(e.target.value)}
+          className="px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg
+                     bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none
+                     focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Mês atual</option>
+          {periodOptions.slice(1).map(o => (
+            <option key={o.val} value={o.val}>{o.label}</option>
+          ))}
+        </select>
         <button onClick={handleGenerate} disabled={generating}
           className="flex items-center gap-2 px-4 py-2 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50">
           <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-          {generating ? 'Gerando...' : 'Gerar agora'}
+          {generating ? 'Gerando...' : 'Gerar'}
         </button>
         {generateMsg && (
           <span className={`text-xs ${generateMsg.ok ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
@@ -177,35 +207,59 @@ function ExecutiveReportSection() {
         <div>
           <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-2">Relatórios gerados</h3>
           <div className="space-y-2">
-            {reports.map(r => (
-              <div key={r.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                <div>
-                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{r.period}</span>
-                  <span className={`ml-2 text-xs ${STATUS_COLOR[r.status] || 'text-gray-400'}`}>
-                    {r.status === 'ready' ? '✓ Pronto' : r.status === 'generating' ? '⏳ Gerando...' : '✗ Falhou'}
-                  </span>
-                  {r.sent_at && (
-                    <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">
-                      · Enviado em {new Date(r.sent_at).toLocaleDateString('pt-BR')}
-                    </span>
+            {reports.map(r => {
+              const delta = r.summary_data?.costs?.delta_pct;
+              return (
+                <div key={r.id} className="p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg space-y-1">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5">
+                      <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{r.period}</span>
+                      <span className={`text-xs ${STATUS_COLOR[r.status] || 'text-gray-400'}`}>
+                        {r.status === 'ready' ? '✓ Pronto' : r.status === 'generating' ? '⏳ Gerando...' : '✗ Falhou'}
+                      </span>
+                      {delta != null && r.status === 'ready' && (
+                        <span className={`text-xs font-medium ${delta > 0 ? 'text-red-500 dark:text-red-400' : 'text-green-600 dark:text-green-400'}`}>
+                          {delta > 0 ? '▲' : '▼'} {Math.abs(delta).toFixed(1)}% vs mês anterior
+                        </span>
+                      )}
+                      {r.sent_at && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          · Enviado {new Date(r.sent_at).toLocaleDateString('pt-BR')}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {r.status === 'ready' && (
+                        <>
+                          <button onClick={() => reportService.downloadPdf(r.id, r.period)}
+                            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors">
+                            <FileDown className="w-3.5 h-3.5" /> PDF
+                          </button>
+                          <button onClick={() => sendMut.mutate(r.id)} disabled={sendMut.isPending}
+                            className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-md transition-colors">
+                            <Send className="w-3.5 h-3.5" /> Enviar
+                          </button>
+                        </>
+                      )}
+                      {r.status === 'failed' && (
+                        <button
+                          onClick={() => retryMut.mutate(r.id)}
+                          disabled={retryMut.isPending}
+                          className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-md transition-colors disabled:opacity-50"
+                        >
+                          <RotateCcw className="w-3.5 h-3.5" /> Tentar novamente
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {r.status === 'failed' && r.error && (
+                    <p className="text-xs text-red-500 dark:text-red-400 truncate" title={r.error}>
+                      {r.error}
+                    </p>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
-                  {r.status === 'ready' && (
-                    <>
-                      <button onClick={() => reportService.downloadPdf(r.id, r.period)}
-                        className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-md transition-colors">
-                        <FileDown className="w-3.5 h-3.5" /> PDF
-                      </button>
-                      <button onClick={() => sendMut.mutate(r.id)} disabled={sendMut.isPending}
-                        className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-600 rounded-md transition-colors">
-                        <Send className="w-3.5 h-3.5" /> Enviar
-                      </button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

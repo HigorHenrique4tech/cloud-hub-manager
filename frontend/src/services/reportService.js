@@ -25,6 +25,9 @@ const reportService = {
 
   send: (id) =>
     api.post(wsUrl(`/executive-reports/${id}/send`)).then(r => r.data),
+
+  retry: (id) =>
+    api.post(wsUrl(`/executive-reports/${id}/retry`)).then(r => r.data),
 };
 
 export default reportService;

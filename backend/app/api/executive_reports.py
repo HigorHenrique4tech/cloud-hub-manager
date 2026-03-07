@@ -213,6 +213,37 @@ def download_pdf(
     )
 
 
+@ws_router.post("/{report_id}/retry", status_code=202)
+def retry_report(
+    report_id: UUID,
+    background_tasks: BackgroundTasks,
+    member: MemberContext = Depends(require_permission("resources.manage")),
+    db: Session = Depends(get_db),
+):
+    """Re-trigger generation for a failed report (same period, same record)."""
+    report = db.query(ExecutiveReport).filter(
+        ExecutiveReport.id == report_id,
+        ExecutiveReport.workspace_id == member.workspace_id,
+    ).first()
+    if not report:
+        raise HTTPException(status_code=404, detail="Relatório não encontrado.")
+    if report.status != "failed":
+        raise HTTPException(status_code=409, detail="Só é possível re-tentar relatórios com falha.")
+
+    report.status = "generating"
+    report.error = None
+    db.commit()
+
+    def _bg(report_id_):
+        from app.database import SessionLocal
+        with SessionLocal() as bg_db:
+            from app.services.report_service import retry_report as _retry
+            _retry(bg_db, report_id_)
+
+    background_tasks.add_task(_bg, report_id)
+    return {"status": "queued", "period": report.period, "message": "Re-tentativa iniciada em segundo plano."}
+
+
 @ws_router.post("/{report_id}/send")
 def send_report(
     report_id: UUID,
