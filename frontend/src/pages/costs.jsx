@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { DollarSign, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, X } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
 import CostReportModal from '../components/finops/CostReportModal';
@@ -9,6 +9,7 @@ import AlertModal from '../components/costs/AlertModal';
 import CostCharts from '../components/costs/CostCharts';
 import CostTable from '../components/costs/CostTable';
 import CostExport from '../components/costs/CostExport';
+import CostHeatmap from '../components/costs/CostHeatmap';
 import costService from '../services/costService';
 import alertService from '../services/alertService';
 
@@ -24,20 +25,50 @@ const PERIODS = [
   { label: '1 ano', days: 365 },
 ];
 
+const PROVIDER_FILTERS = [
+  { key: 'all',   label: 'Todos' },
+  { key: 'aws',   label: 'AWS',   color: 'text-orange-500' },
+  { key: 'azure', label: 'Azure', color: 'text-sky-500' },
+  { key: 'gcp',   label: 'GCP',   color: 'text-emerald-500' },
+];
+
+function calcDelta(current, previous) {
+  if (!previous || previous === 0) return null;
+  return ((current - previous) / previous) * 100;
+}
+
 const Costs = () => {
-  const [periodIdx, setPeriodIdx] = useState(0);
-  const [showModal, setShowModal] = useState(false);
-  const [showReport, setShowReport] = useState(false);
+  const [periodIdx, setPeriodIdx]         = useState(0);
+  const [isCustom, setIsCustom]           = useState(false);
+  const [customStart, setCustomStart]     = useState('');
+  const [customEnd, setCustomEnd]         = useState('');
+  const [providerFilter, setProviderFilter] = useState('all');
+  const [showModal, setShowModal]         = useState(false);
+  const [showReport, setShowReport]       = useState(false);
   const qc = useQueryClient();
 
+  // ── Date range ─────────────────────────────────────────────────────────────
   const { days } = PERIODS[periodIdx];
-  const endDate   = fmt(today);
-  const startDate = fmt(new Date(today.getTime() - days * 86400000));
+  const endDate   = isCustom && customEnd   ? customEnd   : fmt(today);
+  const startDate = isCustom && customStart ? customStart : fmt(new Date(today.getTime() - days * 86400000));
 
+  // Previous period (same duration, shifted back)
+  const periodMs = (new Date(endDate) - new Date(startDate));
+  const prevEndDate   = fmt(new Date(new Date(startDate).getTime() - 86400000));
+  const prevStartDate = fmt(new Date(new Date(startDate).getTime() - periodMs - 86400000));
+
+  // ── Queries ────────────────────────────────────────────────────────────────
   const { data, isLoading } = useQuery({
     queryKey: ['combined-costs', startDate, endDate],
     queryFn: () => costService.getCombinedCosts(startDate, endDate, 'DAILY'),
     retry: false,
+  });
+
+  const { data: prevData } = useQuery({
+    queryKey: ['combined-costs', prevStartDate, prevEndDate],
+    queryFn: () => costService.getCombinedCosts(prevStartDate, prevEndDate, 'DAILY'),
+    retry: false,
+    staleTime: 600_000,
   });
 
   const { data: alerts = [] } = useQuery({
@@ -53,6 +84,7 @@ const Costs = () => {
   });
   const events = eventsData?.events || eventsData || [];
 
+  // ── Mutations ──────────────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (d) => alertService.createAlert(d),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['alerts'] }); setShowModal(false); },
@@ -71,6 +103,7 @@ const Costs = () => {
     },
   });
 
+  // ── Metrics + deltas ───────────────────────────────────────────────────────
   const metrics = useMemo(() => {
     if (!data) return null;
     const total = data.total || 0;
@@ -81,8 +114,15 @@ const Costs = () => {
       ? avgDaily * daysLeft + total
       : 0;
     const topService = data.by_service?.[0];
-    return { total, avgDaily, projection, topService };
-  }, [data]);
+
+    // Deltas vs previous period
+    const prevTotal    = prevData?.total || 0;
+    const prevAvg      = prevData?.combined?.length ? prevTotal / prevData.combined.length : 0;
+    const deltaTotal   = calcDelta(total, prevTotal);
+    const deltaAvgDay  = calcDelta(avgDaily, prevAvg);
+
+    return { total, avgDaily, projection, topService, deltaTotal, deltaAvgDay };
+  }, [data, prevData]);
 
   if (isLoading) return <Layout><LoadingSpinner text="Carregando dados de custos..." /></Layout>;
 
@@ -90,6 +130,10 @@ const Costs = () => {
   const hasAzure = !!data?.azure;
   const hasGcp   = !!data?.gcp;
   const hasAny   = hasAws || hasAzure || hasGcp;
+
+  const activePeriodLabel = isCustom
+    ? `${customStart} → ${customEnd}`
+    : PERIODS[periodIdx].label;
 
   return (
     <Layout>
@@ -104,7 +148,7 @@ const Costs = () => {
         <CostReportModal
           data={data} metrics={metrics}
           startDate={startDate} endDate={endDate}
-          periodLabel={PERIODS[periodIdx].label} days={days}
+          periodLabel={activePeriodLabel} days={days}
           onClose={() => setShowReport(false)}
         />
       )}
@@ -120,29 +164,97 @@ const Costs = () => {
             {hasGcp && data?.gcp?.estimated && <span className="ml-2 text-green-600 dark:text-green-400">(GCP estimado)</span>}
           </p>
         </div>
+
         <div className="flex items-center gap-2 flex-wrap no-print">
-          {/* Period selector */}
-          <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-            {PERIODS.map((p, i) => (
-              <button
-                key={p.label}
-                onClick={() => setPeriodIdx(i)}
-                className={`px-3 py-1.5 text-sm font-medium transition-colors
-                  ${i === periodIdx
-                    ? 'bg-primary text-white'
-                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
+          {/* Preset period buttons */}
+          {!isCustom && (
+            <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+              {PERIODS.map((p, i) => (
+                <button
+                  key={p.label}
+                  onClick={() => setPeriodIdx(i)}
+                  className={`px-3 py-1.5 text-sm font-medium transition-colors ${
+                    i === periodIdx
+                      ? 'bg-primary text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700'
                   }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Custom date picker */}
+          {isCustom ? (
+            <div className="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-1.5">
+              <Calendar className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className="text-sm bg-transparent text-gray-700 dark:text-gray-300 border-none outline-none"
+              />
+              <span className="text-gray-400 text-xs">→</span>
+              <input
+                type="date"
+                value={customEnd}
+                max={fmt(today)}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className="text-sm bg-transparent text-gray-700 dark:text-gray-300 border-none outline-none"
+              />
+              <button
+                onClick={() => { setIsCustom(false); setCustomStart(''); setCustomEnd(''); }}
+                className="p-0.5 text-gray-400 hover:text-red-500 transition-colors"
+                title="Remover filtro customizado"
               >
-                {p.label}
+                <X className="w-3.5 h-3.5" />
               </button>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setIsCustom(true); setCustomStart(startDate); setCustomEnd(endDate); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              title="Período personalizado"
+            >
+              <Calendar className="w-4 h-4" /> Personalizado
+            </button>
+          )}
+
           <CostExport
             data={data} startDate={startDate} endDate={endDate}
             hasAny={hasAny} onShowReport={setShowReport}
           />
         </div>
       </div>
+
+      {/* Provider filter chips */}
+      {hasAny && (
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <span className="text-xs text-gray-500 dark:text-gray-400">Filtrar:</span>
+          {PROVIDER_FILTERS.map(({ key, label, color }) => {
+            const disabled = key !== 'all' && (
+              (key === 'aws'   && !hasAws)   ||
+              (key === 'azure' && !hasAzure) ||
+              (key === 'gcp'   && !hasGcp)
+            );
+            if (disabled) return null;
+            return (
+              <button
+                key={key}
+                onClick={() => setProviderFilter(key)}
+                className={`px-3 py-1 text-xs font-medium rounded-full border transition-all ${
+                  providerFilter === key
+                    ? 'border-primary bg-primary/10 text-primary dark:text-primary'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+                } ${color || ''}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* No credentials warning */}
       {!hasAny && (
@@ -155,9 +267,27 @@ const Costs = () => {
       {/* Metric Cards */}
       {metrics && (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-          <MetricCard icon={DollarSign} label={`Total (${PERIODS[periodIdx].label})`} value={fmtUSD(metrics.total)} color="blue" />
-          <MetricCard icon={TrendingUp}   label="Média Diária"     value={fmtUSD(metrics.avgDaily)}  color="green"  />
-          <MetricCard icon={TrendingDown} label="Projeção do Mês"  value={fmtUSD(metrics.projection)} sub="baseado na média diária" color="purple" />
+          <MetricCard
+            icon={DollarSign}
+            label={`Total (${activePeriodLabel})`}
+            value={fmtUSD(metrics.total)}
+            color="blue"
+            delta={metrics.deltaTotal}
+          />
+          <MetricCard
+            icon={TrendingUp}
+            label="Média Diária"
+            value={fmtUSD(metrics.avgDaily)}
+            color="green"
+            delta={metrics.deltaAvgDay}
+          />
+          <MetricCard
+            icon={TrendingDown}
+            label="Projeção do Mês"
+            value={fmtUSD(metrics.projection)}
+            sub="baseado na média diária"
+            color="purple"
+          />
           <MetricCard
             icon={AlertCircle}
             label="Maior Serviço"
@@ -170,13 +300,23 @@ const Costs = () => {
 
       {/* Charts */}
       {hasAny && data?.combined?.length > 0 && (
-        <CostCharts data={data} hasAws={hasAws} hasAzure={hasAzure} hasGcp={hasGcp} />
+        <CostCharts
+          data={data}
+          hasAws={hasAws} hasAzure={hasAzure} hasGcp={hasGcp}
+          providerFilter={providerFilter}
+        />
+      )}
+
+      {/* Heatmap */}
+      {hasAny && data?.combined?.length > 0 && (
+        <CostHeatmap combined={data.combined} providerFilter={providerFilter} />
       )}
 
       {/* Alerts Table + Events */}
       <CostTable
         alerts={alerts}
         events={events}
+        costData={data}
         onAddAlert={() => setShowModal(true)}
         onDeleteAlert={(id) => deleteMutation.mutate(id)}
         onMarkEventRead={(id) => markReadMutation.mutate(id)}

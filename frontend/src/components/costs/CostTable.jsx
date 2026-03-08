@@ -3,7 +3,60 @@ import { Bell, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react';
 const fmtUSD = (v) =>
   v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
-const CostTable = ({ alerts, events, onAddAlert, onDeleteAlert, onMarkEventRead }) => (
+// Calculate current spend for a given alert using cost data
+function getCurrentSpend(alert, costData) {
+  if (!costData || !alert) return null;
+  const combined = costData.combined || [];
+  if (!combined.length) return null;
+
+  const now = new Date();
+  const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+
+  const getVal = (d) => {
+    if (alert.provider === 'all') return d.total || 0;
+    return d[alert.provider] || 0;
+  };
+
+  if (alert.period === 'monthly') {
+    return combined
+      .filter((d) => d.date >= monthStart)
+      .reduce((s, d) => s + getVal(d), 0);
+  } else {
+    // daily: use the last day in dataset
+    const last = [...combined].reverse().find((d) => getVal(d) > 0);
+    return last ? getVal(last) : 0;
+  }
+}
+
+function AlertProgressBar({ alert, costData }) {
+  if (alert.threshold_type !== 'fixed') return null;
+  const current = getCurrentSpend(alert, costData);
+  if (current == null) return null;
+
+  const pct = Math.min(100, (current / alert.threshold_value) * 100);
+  const barColor =
+    pct >= 100 ? 'bg-red-500' :
+    pct >= 80  ? 'bg-orange-400' :
+    pct >= 60  ? 'bg-yellow-400' :
+                 'bg-green-500';
+
+  return (
+    <div className="mt-1.5">
+      <div className="flex justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">
+        <span>{fmtUSD(current)} consumido</span>
+        <span className={pct >= 100 ? 'text-red-500 font-semibold' : ''}>{pct.toFixed(0)}%</span>
+      </div>
+      <div className="h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+        <div
+          className={`h-full ${barColor} rounded-full transition-all`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+const CostTable = ({ alerts, events, onAddAlert, onDeleteAlert, onMarkEventRead, costData }) => (
   <>
     {/* Alert Management */}
     <div className="card mb-6">
@@ -28,7 +81,7 @@ const CostTable = ({ alerts, events, onAddAlert, onDeleteAlert, onMarkEventRead 
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
             <thead className="bg-gray-50 dark:bg-gray-900/50">
               <tr>
-                {['Nome', 'Provedor', 'Período', 'Tipo', 'Limite', 'Ativo', ''].map((h) => (
+                {['Nome / Progresso', 'Provedor', 'Período', 'Tipo', 'Limite', 'Ativo', ''].map((h) => (
                   <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -36,7 +89,10 @@ const CostTable = ({ alerts, events, onAddAlert, onDeleteAlert, onMarkEventRead 
             <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
               {alerts.map((a) => (
                 <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                  <td className="px-4 py-2.5 text-sm font-medium text-gray-900 dark:text-gray-100">{a.name}</td>
+                  <td className="px-4 py-2.5 min-w-[180px]">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{a.name}</p>
+                    <AlertProgressBar alert={a} costData={costData} />
+                  </td>
                   <td className="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 uppercase">{a.provider}</td>
                   <td className="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">{a.period === 'daily' ? 'Diário' : 'Mensal'}</td>
                   <td className="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">{a.threshold_type === 'fixed' ? 'Fixo' : '%'}</td>

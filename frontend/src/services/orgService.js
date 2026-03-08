@@ -37,12 +37,16 @@ export const orgService = {
   deleteWorkspace: async (slug, wsId) =>
     (await api.delete(`/orgs/${slug}/workspaces/${wsId}`)).data,
 
-  // ── Workspace Members (role overrides) ───────────────────────────────────
+  // ── Workspace Members ────────────────────────────────────────────────────
   listWorkspaceMembers: async (slug, wsId) =>
     (await api.get(`/orgs/${slug}/workspaces/${wsId}/members`)).data,
+  listAvailableWorkspaceMembers: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/members/available`)).data,
+  addWorkspaceMember: async (slug, wsId, userId, roleOverride = null) =>
+    (await api.post(`/orgs/${slug}/workspaces/${wsId}/members`, { user_id: userId, role_override: roleOverride })).data,
   updateWorkspaceMemberRole: async (slug, wsId, userId, roleOverride) =>
     (await api.put(`/orgs/${slug}/workspaces/${wsId}/members/${userId}`, { role_override: roleOverride })).data,
-  removeWorkspaceMemberOverride: async (slug, wsId, userId) =>
+  removeWorkspaceMember: async (slug, wsId, userId) =>
     (await api.delete(`/orgs/${slug}/workspaces/${wsId}/members/${userId}`)).data,
 
   // ── Managed Orgs (MSP / Enterprise) ─────────────────────────────────────

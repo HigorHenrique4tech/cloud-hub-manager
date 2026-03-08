@@ -40,6 +40,11 @@ class WorkspaceMemberUpdate(BaseModel):
     role_override: Optional[str] = None
 
 
+class AddWorkspaceMember(BaseModel):
+    user_id: str
+    role_override: Optional[str] = None
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -68,16 +73,35 @@ async def list_workspaces(
     member: MemberContext = Depends(get_current_member),
     db: Session = Depends(get_db),
 ):
-    """List all workspaces in the organization."""
-    workspaces = (
-        db.query(Workspace)
-        .filter(
-            Workspace.organization_id == member.organization_id,
-            Workspace.is_active == True,
+    """List workspaces. Owners/admins see all; others see only their workspaces."""
+    if member.role in ("owner", "admin"):
+        workspaces = (
+            db.query(Workspace)
+            .filter(
+                Workspace.organization_id == member.organization_id,
+                Workspace.is_active == True,
+            )
+            .order_by(Workspace.name)
+            .all()
         )
-        .order_by(Workspace.name)
-        .all()
-    )
+    else:
+        # Only workspaces where user has an explicit WorkspaceMember row
+        member_ws_ids = [
+            wm.workspace_id
+            for wm in db.query(WorkspaceMember)
+            .filter(WorkspaceMember.user_id == member.user.id)
+            .all()
+        ]
+        workspaces = (
+            db.query(Workspace)
+            .filter(
+                Workspace.organization_id == member.organization_id,
+                Workspace.is_active == True,
+                Workspace.id.in_(member_ws_ids),
+            )
+            .order_by(Workspace.name)
+            .all()
+        )
     return {"workspaces": [_ws_to_dict(ws) for ws in workspaces]}
 
 
@@ -115,6 +139,15 @@ async def create_workspace(
         description=payload.description,
     )
     db.add(ws)
+    db.flush()
+
+    # Auto-add creator as workspace member
+    db.add(WorkspaceMember(
+        workspace_id=ws.id,
+        user_id=member.user.id,
+        role_override=None,
+    ))
+
     db.commit()
     db.refresh(ws)
 
@@ -189,7 +222,7 @@ async def delete_workspace(
     return None
 
 
-# ── Workspace Members (role overrides) ───────────────────────────────────────
+# ── Workspace Members ─────────────────────────────────────────────────────────
 
 
 def _resolve_workspace(db: Session, workspace_id: str, org_id) -> Workspace:
@@ -209,42 +242,123 @@ async def list_workspace_members(
     member: MemberContext = Depends(require_org_permission("org.members.view")),
     db: Session = Depends(get_db),
 ):
-    """List all org members with their effective role in this workspace."""
+    """List workspace members (only users with explicit WorkspaceMember rows)."""
     ws = _resolve_workspace(db, workspace_id, member.organization_id)
 
-    org_members = (
-        db.query(OrganizationMember)
-        .filter(
-            OrganizationMember.organization_id == member.organization_id,
-            OrganizationMember.is_active == True,
-        )
-        .all()
-    )
+    ws_members = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == ws.id,
+    ).all()
 
-    # Build map of workspace-level overrides
-    ws_overrides = {
-        wm.user_id: wm.role_override
+    result = []
+    for wm in ws_members:
+        user = db.query(User).filter(User.id == wm.user_id).first()
+        if not user:
+            continue
+        org_member = db.query(OrganizationMember).filter(
+            OrganizationMember.organization_id == member.organization_id,
+            OrganizationMember.user_id == wm.user_id,
+            OrganizationMember.is_active == True,
+        ).first()
+        org_role = org_member.role if org_member else "viewer"
+        result.append({
+            "user_id": str(user.id),
+            "name": user.name,
+            "email": user.email,
+            "org_role": org_role,
+            "role_override": wm.role_override,
+            "effective_role": wm.role_override if wm.role_override else org_role,
+        })
+
+    return {"members": result}
+
+
+@router.get("/{workspace_id}/members/available")
+async def list_available_members(
+    workspace_id: str = Path(...),
+    member: MemberContext = Depends(require_org_permission("org.members.manage")),
+    db: Session = Depends(get_db),
+):
+    """List org members not yet added to this workspace."""
+    ws = _resolve_workspace(db, workspace_id, member.organization_id)
+
+    already_in = {
+        wm.user_id
         for wm in db.query(WorkspaceMember).filter(
-            WorkspaceMember.workspace_id == ws.id,
+            WorkspaceMember.workspace_id == ws.id
         ).all()
     }
 
+    org_members = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == member.organization_id,
+        OrganizationMember.is_active == True,
+    ).all()
+
     result = []
     for om in org_members:
+        if om.user_id in already_in:
+            continue
         user = db.query(User).filter(User.id == om.user_id).first()
         if not user:
             continue
-        override = ws_overrides.get(user.id)
         result.append({
             "user_id": str(user.id),
             "name": user.name,
             "email": user.email,
             "org_role": om.role,
-            "role_override": override,
-            "effective_role": override if override else om.role,
         })
 
     return {"members": result}
+
+
+@router.post("/{workspace_id}/members", status_code=201)
+async def add_workspace_member(
+    payload: AddWorkspaceMember,
+    workspace_id: str = Path(...),
+    member: MemberContext = Depends(require_org_permission("org.members.manage")),
+    db: Session = Depends(get_db),
+):
+    """Add an org member to this workspace."""
+    ws = _resolve_workspace(db, workspace_id, member.organization_id)
+
+    # Verify user is an active org member
+    org_member = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == member.organization_id,
+        OrganizationMember.user_id == payload.user_id,
+        OrganizationMember.is_active == True,
+    ).first()
+    if not org_member:
+        raise HTTPException(status_code=404, detail="Membro não encontrado na organização")
+
+    existing = db.query(WorkspaceMember).filter(
+        WorkspaceMember.workspace_id == ws.id,
+        WorkspaceMember.user_id == payload.user_id,
+    ).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Usuário já é membro deste workspace")
+
+    if payload.role_override and payload.role_override not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role inválida. Opções: {', '.join(VALID_ROLES)}")
+
+    wm = WorkspaceMember(
+        workspace_id=ws.id,
+        user_id=payload.user_id,
+        role_override=payload.role_override,
+    )
+    db.add(wm)
+    db.commit()
+
+    target_user = db.query(User).filter(User.id == payload.user_id).first()
+    log_activity(
+        db, member.user, "workspace.member.add", "WorkspaceMember",
+        resource_id=str(ws.id), resource_name=target_user.email if target_user else payload.user_id,
+    )
+
+    return {
+        "user_id": payload.user_id,
+        "org_role": org_member.role,
+        "role_override": payload.role_override,
+        "effective_role": payload.role_override if payload.role_override else org_member.role,
+    }
 
 
 @router.put("/{workspace_id}/members/{user_id}")
@@ -255,64 +369,43 @@ async def update_workspace_member_role(
     member: MemberContext = Depends(require_org_permission("org.members.manage")),
     db: Session = Depends(get_db),
 ):
-    """Set or update a workspace-level role override for a member."""
+    """Update role override for an existing workspace member."""
     ws = _resolve_workspace(db, workspace_id, member.organization_id)
 
-    # Verify user is an active org member
-    org_member = db.query(OrganizationMember).filter(
-        OrganizationMember.organization_id == member.organization_id,
-        OrganizationMember.user_id == user_id,
-        OrganizationMember.is_active == True,
-    ).first()
-    if not org_member:
-        raise HTTPException(status_code=404, detail="Membro não encontrado na organização")
-
-    if payload.role_override is not None and payload.role_override not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"Role inválida. Opções: {', '.join(VALID_ROLES)}")
-
-    # Upsert WorkspaceMember
     ws_member = db.query(WorkspaceMember).filter(
         WorkspaceMember.workspace_id == ws.id,
         WorkspaceMember.user_id == user_id,
     ).first()
+    if not ws_member:
+        raise HTTPException(status_code=404, detail="Membro não encontrado neste workspace")
 
-    if payload.role_override is None:
-        # Remove override
-        if ws_member:
-            db.delete(ws_member)
-            db.commit()
-        return {"user_id": user_id, "role_override": None, "effective_role": org_member.role}
+    if payload.role_override is not None and payload.role_override not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Role inválida. Opções: {', '.join(VALID_ROLES)}")
 
-    if ws_member:
-        ws_member.role_override = payload.role_override
-    else:
-        ws_member = WorkspaceMember(
-            workspace_id=ws.id,
-            user_id=user_id,
-            role_override=payload.role_override,
-        )
-        db.add(ws_member)
-
+    ws_member.role_override = payload.role_override
     db.commit()
 
-    target_user = db.query(User).filter(User.id == user_id).first()
-    log_activity(
-        db, member.user, "workspace.member.override", "WorkspaceMember",
-        resource_id=str(ws.id), resource_name=target_user.email if target_user else user_id,
-        detail=f"role_override={payload.role_override}",
-    )
+    org_member = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == member.organization_id,
+        OrganizationMember.user_id == user_id,
+    ).first()
+    org_role = org_member.role if org_member else "viewer"
 
-    return {"user_id": user_id, "role_override": payload.role_override, "effective_role": payload.role_override}
+    return {
+        "user_id": user_id,
+        "role_override": payload.role_override,
+        "effective_role": payload.role_override if payload.role_override else org_role,
+    }
 
 
 @router.delete("/{workspace_id}/members/{user_id}", status_code=204)
-async def remove_workspace_member_override(
+async def remove_workspace_member(
     workspace_id: str = Path(...),
     user_id: str = Path(...),
     member: MemberContext = Depends(require_org_permission("org.members.manage")),
     db: Session = Depends(get_db),
 ):
-    """Remove the workspace-level role override. Member keeps their org role."""
+    """Remove a member from this workspace (revokes access)."""
     ws = _resolve_workspace(db, workspace_id, member.organization_id)
 
     ws_member = db.query(WorkspaceMember).filter(

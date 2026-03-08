@@ -8,7 +8,7 @@ from typing import Optional
 
 from app.database import get_db
 from app.models.db_models import (
-    User, Organization, OrganizationMember, Workspace, PendingInvitation,
+    User, Organization, OrganizationMember, Workspace, WorkspaceMember, PendingInvitation,
 )
 from app.core.dependencies import (
     get_current_user, get_current_member, require_org_permission,
@@ -134,6 +134,14 @@ async def create_org(
         slug="default",
     )
     db.add(ws)
+    db.flush()
+
+    # Add creator as workspace member
+    db.add(WorkspaceMember(
+        workspace_id=ws.id,
+        user_id=current_user.id,
+        role_override=None,
+    ))
 
     # Set as user's default org if they don't have one
     if not current_user.default_org_id:
@@ -652,6 +660,14 @@ async def create_managed_org(
         slug="default",
     )
     db.add(ws)
+    db.flush()
+
+    # Add creator as workspace member
+    db.add(WorkspaceMember(
+        workspace_id=ws.id,
+        user_id=member.user.id,
+        role_override=None,
+    ))
 
     # Promote master org type if needed
     if master_org.org_type == "standalone":

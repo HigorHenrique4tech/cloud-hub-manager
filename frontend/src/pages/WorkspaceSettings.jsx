@@ -341,12 +341,33 @@ const WorkspaceSettings = () => {
   });
   const wsMembers = membersData?.members || [];
 
+  const { data: availableData } = useQuery({
+    queryKey: ['ws-members-available', slug, wsId],
+    queryFn: () => orgService.listAvailableWorkspaceMembers(slug, wsId),
+    enabled: !!slug && !!wsId,
+  });
+  const availableMembers = availableData?.members || [];
+
+  const invalidateMembers = () => {
+    qc.invalidateQueries({ queryKey: ['ws-members', slug, wsId] });
+    qc.invalidateQueries({ queryKey: ['ws-members-available', slug, wsId] });
+  };
+
   const overrideMutation = useMutation({
     mutationFn: ({ userId, roleOverride }) =>
-      roleOverride
-        ? orgService.updateWorkspaceMemberRole(slug, wsId, userId, roleOverride)
-        : orgService.removeWorkspaceMemberOverride(slug, wsId, userId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['ws-members', slug, wsId] }),
+      orgService.updateWorkspaceMemberRole(slug, wsId, userId, roleOverride),
+    onSuccess: () => invalidateMembers(),
+  });
+
+  const addMemberMutation = useMutation({
+    mutationFn: ({ userId, roleOverride }) =>
+      orgService.addWorkspaceMember(slug, wsId, userId, roleOverride),
+    onSuccess: () => invalidateMembers(),
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (userId) => orgService.removeWorkspaceMember(slug, wsId, userId),
+    onSuccess: () => invalidateMembers(),
   });
 
   if (!currentOrg || !currentWorkspace) return null;
@@ -373,8 +394,11 @@ const WorkspaceSettings = () => {
 
           <WorkspaceMembersSection
             wsMembers={wsMembers}
+            availableMembers={availableMembers}
             membersLoading={membersLoading}
             overrideMutation={overrideMutation}
+            addMemberMutation={addMemberMutation}
+            removeMemberMutation={removeMemberMutation}
           />
 
           <CloudAccountsSection

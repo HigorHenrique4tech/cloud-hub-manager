@@ -1,26 +1,91 @@
 import { Download, Printer, FileText } from 'lucide-react';
 
+const fmt2 = (v) => (v == null ? '0.00' : Number(v).toFixed(2));
+const fmtVal = (v) => (v == null || v === 0 ? '—' : Number(v).toFixed(2));
+
 const CostExport = ({ data, startDate, endDate, hasAny, onShowReport }) => {
   const exportCSV = () => {
     if (!data) return;
-    const date = new Date().toLocaleDateString('pt-BR');
+
+    const genDate = new Date().toLocaleDateString('pt-BR');
+    const daily = data.combined || [];
+    const services = data.by_service || [];
+
+    // ── Aggregate totals ────────────────────────────────────────────────────
+    const totals = daily.reduce(
+      (acc, d) => ({
+        aws:   acc.aws   + (d.aws   ?? 0),
+        azure: acc.azure + (d.azure ?? 0),
+        gcp:   acc.gcp   + (d.gcp   ?? 0),
+        total: acc.total + (d.total ?? 0),
+      }),
+      { aws: 0, azure: 0, gcp: 0, total: 0 }
+    );
+    const days = daily.length || 1;
+    const avgDaily = totals.total / days;
+    const projected = avgDaily * 30;
+    const serviceTotal = services.reduce((s, sv) => s + (sv.amount ?? 0), 0);
+
+    // ── Build rows ──────────────────────────────────────────────────────────
     const rows = [
-      ['Relatório de Custos CloudAtlas', '', ''],
-      [`Período: ${startDate} a ${endDate}`, '', ''],
-      [`Gerado em: ${date}`, '', ''],
-      [''],
+      // Header metadata
+      ['Relatório de Custos CloudAtlas', '', '', '', ''],
+      [`Período: ${startDate} a ${endDate}`, '', '', '', ''],
+      [`Gerado em: ${genDate}`, '', '', '', ''],
+      ['', '', '', '', ''],
+
+      // Summary block
+      ['=== RESUMO ===', '', '', '', ''],
+      [`Custo Total (USD)`, fmt2(totals.total), '', '', ''],
+      [`Média Diária (USD)`, fmt2(avgDaily), '', '', ''],
+      [`Projeção 30 dias (USD)`, fmt2(projected), '', '', ''],
+      [`Total de dias no período`, String(days), '', '', ''],
+      ['', '', '', '', ''],
+
+      // Daily costs table
+      ['=== CUSTOS DIÁRIOS ===', '', '', '', ''],
       ['Data', 'AWS (USD)', 'Azure (USD)', 'GCP (USD)', 'Total (USD)'],
-      ...(data.combined || []).map((d) => [d.date, d.aws?.toFixed(4) || 0, d.azure?.toFixed(4) || 0, d.gcp?.toFixed(4) || 0, d.total?.toFixed(4) || 0]),
-      [''],
-      ['Serviço', 'Valor (USD)', ''],
-      ...(data.by_service || []).map((s) => [s.name, s.amount?.toFixed(4), '']),
+      ...daily.map((d) => [
+        d.date,
+        fmtVal(d.aws),
+        fmtVal(d.azure),
+        fmtVal(d.gcp),
+        fmt2(d.total),
+      ]),
+      // Totals row
+      [
+        'TOTAL',
+        fmtVal(totals.aws),
+        fmtVal(totals.azure),
+        fmtVal(totals.gcp),
+        fmt2(totals.total),
+      ],
+      ['', '', '', '', ''],
+
+      // Services breakdown table
+      ['=== CUSTOS POR SERVIÇO ===', '', '', '', ''],
+      ['Serviço', 'Valor (USD)', '% do Total', '', ''],
+      ...services.map((s) => {
+        const pct = serviceTotal > 0
+          ? ((s.amount ?? 0) / serviceTotal * 100).toFixed(1) + '%'
+          : '—';
+        return [s.name, fmt2(s.amount), pct, '', ''];
+      }),
+      // Services total row
+      ['TOTAL', fmt2(serviceTotal), '100.0%', '', ''],
     ];
-    const csv = rows.map((r) => r.join(',')).join('\n');
+
+    const csv = rows.map((r) => r.map((cell) => {
+      // Wrap cells containing commas or quotes in double quotes
+      const str = String(cell ?? '');
+      return str.includes(',') || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
+    }).join(',')).join('\n');
+
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `custos-cloud-${date.replace(/\//g, '-')}.csv`;
+    a.download = `custos-cloud-${genDate.replace(/\//g, '-')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };

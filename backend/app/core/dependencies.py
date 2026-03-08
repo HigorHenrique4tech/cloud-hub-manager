@@ -103,11 +103,18 @@ def get_workspace_member(
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace não encontrado")
 
-    # Check for workspace-level role override
+    # Check for workspace-level membership
     ws_member = db.query(WorkspaceMember).filter(
         WorkspaceMember.workspace_id == ws.id,
         WorkspaceMember.user_id == member.user.id,
     ).first()
+
+    # Owner and admin bypass the membership gate (they manage all workspaces)
+    if not ws_member and member.role not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Você não tem acesso a este workspace",
+        )
 
     effective_role = (
         ws_member.role_override
