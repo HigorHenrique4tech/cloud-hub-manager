@@ -1,3 +1,59 @@
+# 📋 Plano de Implementação — Integração com Microsoft Defender (M365)
+
+> **Projeto:** CloudAtlas (cloud-hub-manager)
+> **Data:** 08/03/2026  
+> **Foco:** Adicionar a visualização de Incidentes e Alertas de Segurança (Defender) ao módulo M365 existente.
+
+---
+
+## 🎯 Visão Geral
+Adicionar capacidades avançadas de segurança ao painel administrativo Microsoft 365, trazendo alertas de segurança (incidentes) consolidados pelo Microsoft Defender para visibilidade e auditoria dentro do CloudHub Manager.
+
+## 🛡️ 1. Consentimento e Permissões (Azure AD)
+A integração exigirá novas permissões do tipo **Application** no Azure AD (Entra ID) App Registration utilizado no CloudHub Manager.
+- O consentimento do administrador global será necessário no portal do Azure para:
+  - `SecurityIncident.Read.All` (ou `SecurityEvents.Read.All`)
+  - Opcional para endpoints: `Machine.Read.All`
+
+---
+
+## ⚙️ 2. API Endpoints (Backend - FastAPI)
+
+### Modificações no Service (`m365_service.py`)
+Adicionar métodos na classe `M365Service` para consumir a Graph API focada em segurança:
+- **`get_security_incidents(self)`**: Buscar incidentes de segurança via `/security/incidents`.
+  - Retornar lista de incidentes com status, severidade, data e título.
+- **`get_security_alerts(self)`**: Buscar alertas de segurança `/security/alerts_v2` (opcional).
+
+### Modificações no Router (`m365.py`)
+Adicionar novo endpoint para servir o front-end:
+- `GET /orgs/{org_slug}/workspaces/{workspace_id}/m365/security/incidents`
+- Integrar com caching (ex: 1 minuto) no backend para não esgotar cotas de chamadas (Throttling) da Graph API.
+
+---
+
+## 💻 3. Interface do Administrador (Frontend)
+
+### Nova Aba "Defender / Ameaças" (`M365Dashboard.jsx`)
+Na tela existente de administração do M365 (`/m365`):
+- **Nova Tab "Defender"** ou atualização da atual Aba "Segurança".
+- **Painel de Indicadores (KPIs)**: Total de alertas ativos, incidentes de Alta Severidade ou Não Resolvidos.
+- **Tabela de Incidentes**: Lista detalhada.
+  - Colunas: ID do Incidente, Título da Ameaça, Severidade (Alto/Médio/Baixo), Status, Produtos Relacionados (ex: Defender for Endpoint, Defender for Office 365), e Data de Criação.
+- **Integração no Service**: Atualizar `m365Service.js` no frontend para fazer fetch do novo endpoint de incidentes.
+
+---
+
+## 🚀 Próximos Passos
+1. Validar as permissões de consentimento (`SecurityIncident.Read.All`) no AAD via painel real do usuário.
+2. Codificar os métodos de busca na Graph API dentro de `m365_service.py` lidando com paginação e erros de auth.
+3. Expor os dados via FastAPI (`m365.py`).
+4. Criar a tela visual (Tab Defender) no componente `M365Dashboard.jsx` utilizando os dados consumidos.
+
+---
+
+<br/><hr/><br/>
+
 # 📋 Plano de Implementação — Módulo de Suporte (Helpdesk)
 
 > **Projeto:** CloudAtlas (cloud-hub-manager)
@@ -9,7 +65,7 @@
 ## 🎯 Visão Geral
 Adicionar uma funcionalidade nativa de suporte, permitindo que usuários do sistema abram chamados (tickets) diretamente na plataforma. O administrador master terá um painel centralizado no `/admin` para gerenciar, responder e fechar esses chamados.
 
-## �️ 1. Modelagem de Dados (Backend - SQLAlchemy)
+## 🗄️ 1. Modelagem de Dados (Backend - SQLAlchemy)
 
 Criaremos dois novos modelos no banco de dados (`app/models/db_models.py`):
 

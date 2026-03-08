@@ -117,27 +117,36 @@ function OverviewTab() {
   const totalStorage = usage.reduce((acc, s) => acc + s.storage_used_bytes, 0);
   const top5 = usage.slice(0, 5);
 
-  // Build URL → display_name map from Graph API sites (which always returns real names)
+  // Build URL → display_name map from Graph API sites (case-insensitive, always returns real names)
   const siteNameMap = useMemo(() => {
     const map = {};
     (sitesQ.data?.sites || []).forEach(s => {
-      if (s.web_url) map[s.web_url.replace(/\/$/, '')] = s.display_name || s.name;
+      if (s.web_url) map[s.web_url.replace(/\/$/, '').toLowerCase()] = s.display_name || s.name;
     });
     return map;
   }, [sitesQ.data]);
 
   const getSiteName = (s) => {
     if (!s) return '—';
-    // 1. Prefer display name from Graph API sites (always returns real names)
-    const key = (s.site_url || '').replace(/\/$/, '');
-    if (siteNameMap[key]) return siteNameMap[key];
-    // 2. Use backend-parsed site_name (extracted from URL path)
+    const siteUrl = s.site_url || '';
+    // 1. Prefer display name from Graph API sites (case-insensitive match)
+    const key = siteUrl.replace(/\/$/, '').toLowerCase();
+    if (key && siteNameMap[key]) return siteNameMap[key];
+    // 2. Use backend-parsed site_name
     if (s.site_name) return s.site_name;
-    // 3. Last resort: parse URL in frontend
-    if (!s.site_url) return '—';
-    const sitePart = s.site_url.split('/sites/')[1]?.split('/')[0];
-    const personalPart = s.site_url.split('/personal/')[1]?.split('/')[0];
-    return sitePart || personalPart || s.site_url;
+    if (!siteUrl) return '—';
+    // 3. Extract from /sites/ path
+    const sitePart = siteUrl.split('/sites/')[1]?.split('/')[0];
+    if (sitePart) return decodeURIComponent(sitePart).replace(/[-_]/g, ' ');
+    // 4. Extract from /personal/ path (OneDrive)
+    const personalPart = siteUrl.split('/personal/')[1]?.split('/')[0];
+    if (personalPart) return personalPart.split('_')[0];
+    // 5. Root site — extract subdomain from hostname
+    try {
+      return new URL(siteUrl).hostname.split('.')[0];
+    } catch {
+      return siteUrl;
+    }
   };
 
   return (

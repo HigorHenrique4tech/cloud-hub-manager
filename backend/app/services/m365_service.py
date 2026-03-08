@@ -488,15 +488,18 @@ class M365Service:
         nickname = re.sub(r"[^a-zA-Z0-9-]", "", raw) or "group"
         is_m365 = group_type == "m365"
         is_dist = group_type == "distribution"
-        # Distribution groups: mailEnabled=true, securityEnabled=false, groupTypes=[].
-        # M365 Groups: mailEnabled=true, securityEnabled=false, groupTypes=["Unified"].
-        # Security Groups: mailEnabled=false, securityEnabled=true, groupTypes=[].
+        # Graph API v1.0 only supports:
+        #   M365 Group: mailEnabled=true, securityEnabled=false, groupTypes=["Unified"]
+        #   Security Group: mailEnabled=false, securityEnabled=true, groupTypes=[]
+        # Pure distribution groups (no Unified, securityEnabled=false) are NOT supported by Graph API.
+        # Distribution lists are created as M365 Groups (mail-enabled, functional equivalent for
+        # email distribution). They appear under "Microsoft 365" in Exchange Admin Center.
         body: dict = {
             "displayName": display_name,
             "mailNickname": nickname,
             "mailEnabled": is_m365 or is_dist,
             "securityEnabled": not (is_m365 or is_dist),
-            "groupTypes": ["Unified"] if is_m365 else [],
+            "groupTypes": ["Unified"] if (is_m365 or is_dist) else [],
         }
         if description:
             body["description"] = description

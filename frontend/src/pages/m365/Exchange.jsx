@@ -637,9 +637,9 @@ function CreateDistListModal({ onClose }) {
             </div>
           ) : (
             <>
-              <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
-                <span className="text-blue-500 mt-0.5 text-xs">ℹ</span>
-                <p className="text-xs text-blue-700 dark:text-blue-300">A lista será criada via Microsoft Graph API como grupo habilitado para e-mail. Ela aparecerá na seção <strong>Grupos</strong> do Exchange Admin Center.</p>
+              <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                <span className="text-amber-500 mt-0.5 text-xs">⚠</span>
+                <p className="text-xs text-amber-700 dark:text-amber-300">A API do Microsoft Graph não suporta criar listas de distribuição clássicas. A lista será criada como <strong>Grupo Microsoft 365</strong> (mail-enabled), funcional para distribuição de e-mails. Aparecerá em <strong>Exchange Admin Center → Grupos → Microsoft 365</strong>.</p>
               </div>
               <div>
                 <label className={labelCls}>Nome da lista *</label>
