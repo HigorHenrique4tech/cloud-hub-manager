@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Globe, HardDrive, BarChart2, Search, ChevronRight, X, FileText, Folder, RefreshCw, ExternalLink, Cloud } from 'lucide-react';
 import Layout from '../../components/layout/layout';
@@ -117,6 +117,29 @@ function OverviewTab() {
   const totalStorage = usage.reduce((acc, s) => acc + s.storage_used_bytes, 0);
   const top5 = usage.slice(0, 5);
 
+  // Build URL → display_name map from Graph API sites (which always returns real names)
+  const siteNameMap = useMemo(() => {
+    const map = {};
+    (sitesQ.data?.sites || []).forEach(s => {
+      if (s.web_url) map[s.web_url.replace(/\/$/, '')] = s.display_name || s.name;
+    });
+    return map;
+  }, [sitesQ.data]);
+
+  const getSiteName = (s) => {
+    if (!s) return '—';
+    // 1. Prefer display name from Graph API sites (always returns real names)
+    const key = (s.site_url || '').replace(/\/$/, '');
+    if (siteNameMap[key]) return siteNameMap[key];
+    // 2. Use backend-parsed site_name (extracted from URL path)
+    if (s.site_name) return s.site_name;
+    // 3. Last resort: parse URL in frontend
+    if (!s.site_url) return '—';
+    const sitePart = s.site_url.split('/sites/')[1]?.split('/')[0];
+    const personalPart = s.site_url.split('/personal/')[1]?.split('/')[0];
+    return sitePart || personalPart || s.site_url;
+  };
+
   return (
     <div className="space-y-6">
       {/* KPI Cards */}
@@ -149,7 +172,7 @@ function OverviewTab() {
               return (
                 <div key={idx} className="px-4 py-3">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-xs">{s.site_url.split('/sites/')[1] || s.site_url}</span>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-xs">{getSiteName(s)}</span>
                     <span className="text-xs text-gray-500 dark:text-gray-400">{fmtBytes(s.storage_used_bytes)} / {fmtBytes(s.storage_allocated_bytes)}</span>
                   </div>
                   <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full">

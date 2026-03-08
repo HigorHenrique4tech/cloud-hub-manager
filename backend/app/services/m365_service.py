@@ -231,7 +231,7 @@ class M365Service:
         without that field so users still load (lastSignIn will be null).
         """
         base_select = (
-            "id,displayName,userPrincipalName,jobTitle,department,"
+            "id,displayName,userPrincipalName,mail,jobTitle,department,"
             "accountEnabled,assignedLicenses"
         )
         try:
@@ -266,7 +266,10 @@ class M365Service:
             {
                 "id": u["id"],
                 "displayName": u.get("displayName"),
+                "display_name": u.get("displayName"),
                 "userPrincipalName": u.get("userPrincipalName"),
+                "upn": u.get("userPrincipalName"),
+                "mail": u.get("mail") or u.get("userPrincipalName"),
                 "jobTitle": u.get("jobTitle"),
                 "department": u.get("department"),
                 "accountEnabled": u.get("accountEnabled"),
@@ -485,14 +488,14 @@ class M365Service:
         nickname = re.sub(r"[^a-zA-Z0-9-]", "", raw) or "group"
         is_m365 = group_type == "m365"
         is_dist = group_type == "distribution"
-        # Graph API only supports: M365 Group, Security Group, Mail-enabled Security Group.
-        # Pure distribution groups (mailEnabled=true, securityEnabled=false) are NOT creatable
-        # via Graph API — use mail-enabled security group instead (functionally identical for email).
+        # Distribution groups: mailEnabled=true, securityEnabled=false, groupTypes=[].
+        # M365 Groups: mailEnabled=true, securityEnabled=false, groupTypes=["Unified"].
+        # Security Groups: mailEnabled=false, securityEnabled=true, groupTypes=[].
         body: dict = {
             "displayName": display_name,
             "mailNickname": nickname,
             "mailEnabled": is_m365 or is_dist,
-            "securityEnabled": not is_m365,   # true for dist (mail-enabled security) and plain security
+            "securityEnabled": not (is_m365 or is_dist),
             "groupTypes": ["Unified"] if is_m365 else [],
         }
         if description:
@@ -968,8 +971,20 @@ class M365Service:
             sites = []
             for row in reader:
                 try:
+                    site_url = row.get("Site URL", "")
+                    # Extract a human-readable site name from the URL path
+                    site_name = row.get("Site Name") or row.get("Site Title") or ""
+                    if not site_name and site_url:
+                        import re as _re
+                        m = _re.search(r"/sites/([^/]+)", site_url)
+                        if m:
+                            site_name = m.group(1).replace("-", " ").replace("_", " ").title()
+                        else:
+                            m2 = _re.search(r"/personal/([^/]+)", site_url)
+                            site_name = m2.group(1).split("_")[0].title() if m2 else site_url
                     sites.append({
-                        "site_url": row.get("Site URL", ""),
+                        "site_url": site_url,
+                        "site_name": site_name,
                         "owner": row.get("Owner Display Name", ""),
                         "storage_used_bytes": int(row.get("Storage Used (Byte)", 0) or 0),
                         "storage_allocated_bytes": int(row.get("Storage Allocated (Byte)", 0) or 0),
@@ -1060,8 +1075,31 @@ class M365Service:
             logger.error(f"Error updating mailbox settings for {user_id}: {e}")
             raise
 
+    def _build_user_name_map(self) -> dict:
+        """Fetch all users and return a UPN→displayName lookup.
+        Used to enrich report CSV data when M365 privacy settings obfuscate names."""
+        try:
+            items = self._get_all_pages(
+                "/users",
+                select="id,displayName,mail,userPrincipalName",
+            )
+            lookup = {}
+            for u in items:
+                upn = (u.get("userPrincipalName") or "").lower()
+                mail = (u.get("mail") or "").lower()
+                name = u.get("displayName") or ""
+                if upn:
+                    lookup[upn] = name
+                if mail and mail != upn:
+                    lookup[mail] = name
+            return lookup
+        except Exception as e:
+            logger.warning(f"Could not build user name map: {e}")
+            return {}
+
     def get_email_activity(self) -> dict:
-        """Get email activity report for the last 30 days."""
+        """Get email activity report for the last 30 days.
+        Enriches display names from Graph API users to handle obfuscated privacy report data."""
         import csv, io
         try:
             token = self._get_token()
@@ -1085,6 +1123,15 @@ class M365Service:
                     })
                 except Exception:
                     continue
+            # Enrich display names — M365 privacy settings may obfuscate names in CSV reports.
+            # The /users endpoint always returns real names regardless of privacy settings.
+            name_map = self._build_user_name_map()
+            if name_map:
+                for row in activity:
+                    upn_key = (row.get("upn") or "").lower()
+                    real_name = name_map.get(upn_key)
+                    if real_name:
+                        row["display_name"] = real_name
             return {"activity": activity, "total": len(activity)}
         except Exception as e:
             logger.error(f"Error getting email activity: {e}")
@@ -1373,7 +1420,8 @@ class M365Service:
     # ─────────────────────────────────────────────────────────────────────
 
     def get_onedrive_usage(self) -> dict:
-        """Get OneDrive usage per user (last 30 days). Requires Reports.Read.All."""
+        """Get OneDrive usage per user (last 30 days). Requires Reports.Read.All.
+        Enriches display names from Graph API users to handle obfuscated privacy report data."""
         import csv, io
         try:
             token = self._get_token()
@@ -1398,6 +1446,14 @@ class M365Service:
                     })
                 except Exception:
                     continue
+            # Enrich display names — M365 privacy settings may obfuscate names in CSV reports.
+            name_map = self._build_user_name_map()
+            if name_map:
+                for row in usage:
+                    upn_key = (row.get("upn") or "").lower()
+                    real_name = name_map.get(upn_key)
+                    if real_name:
+                        row["display_name"] = real_name
             usage.sort(key=lambda x: x["storage_used_bytes"], reverse=True)
             return {"usage": usage, "total": len(usage)}
         except Exception as e:

@@ -75,7 +75,11 @@ function DelegationSection({ mailbox }) {
   const exoError = delegates.full_access_error || delegates.send_as_error;
 
   const allUsers = usersQ.data?.users || [];
-  const userOptions = allUsers.filter(u => u.mail && u.mail !== mailbox?.mail);
+  const mailboxIdentifier = (mailbox?.upn || mailbox?.mail || '').toLowerCase();
+  const userOptions = allUsers.filter(u => {
+    const uUpn = (u.userPrincipalName || u.upn || '').toLowerCase();
+    return uUpn && uUpn !== mailboxIdentifier;
+  });
 
   if (delegatesQ.isLoading) return <div className="space-y-2">{[1,2].map(i=><div key={i} className="h-8 bg-gray-100 dark:bg-gray-800 rounded animate-pulse"/>)}</div>;
 
@@ -124,7 +128,7 @@ function DelegationSection({ mailbox }) {
           <option value="">Selecionar usuário…</option>
           {usersQ.isLoading
             ? <option disabled>Carregando usuários…</option>
-            : userOptions.map(u => <option key={u.id} value={u.upn || u.userPrincipalName}>{u.display_name || u.displayName} — {u.mail}</option>)
+            : userOptions.map(u => <option key={u.id} value={u.userPrincipalName || u.upn}>{u.displayName || u.display_name} — {u.mail || u.userPrincipalName}</option>)
           }
         </select>
         {addMut.isError && <p className="text-xs text-red-500">{addMut.error?.response?.data?.detail || 'Erro ao adicionar.'}</p>}
@@ -628,14 +632,14 @@ function CreateDistListModal({ onClose }) {
           {done ? (
             <div className="flex flex-col items-center gap-3 py-4">
               <Check className="w-10 h-10 text-green-500" />
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Grupo de e-mail criado com sucesso!</p>
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Lista de distribuição criada com sucesso!</p>
               <button onClick={onClose} className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg">Fechar</button>
             </div>
           ) : (
             <>
               <div className="flex items-start gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                 <span className="text-blue-500 mt-0.5 text-xs">ℹ</span>
-                <p className="text-xs text-blue-700 dark:text-blue-300">A API do Microsoft Graph não permite criar listas de distribuição tradicionais. O grupo será criado como <strong>Grupo Microsoft 365</strong>, que suporta distribuição de e-mails de forma equivalente.</p>
+                <p className="text-xs text-blue-700 dark:text-blue-300">A lista será criada via Microsoft Graph API como grupo habilitado para e-mail. Ela aparecerá na seção <strong>Grupos</strong> do Exchange Admin Center.</p>
               </div>
               <div>
                 <label className={labelCls}>Nome da lista *</label>
