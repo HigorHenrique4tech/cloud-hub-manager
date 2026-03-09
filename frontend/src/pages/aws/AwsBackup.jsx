@@ -37,9 +37,7 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error, instan
   const [selectedVolume, setSelectedVolume] = useState('');
   const [description, setDescription] = useState('');
 
-  if (!isOpen) return null;
-
-  // Build flat list of volumes from all instances
+  // Build flat list of volumes from all instances — must be before early return
   const volumeOptions = useMemo(() => {
     if (!instances?.length) return [];
     const opts = [];
@@ -51,6 +49,8 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error, instan
     });
     return opts;
   }, [instances]);
+
+  if (!isOpen) return null;
 
   // When an instance is selected, filter its volumes
   const filteredVolumes = selectedInstance
