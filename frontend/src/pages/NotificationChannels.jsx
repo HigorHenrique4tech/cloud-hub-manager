@@ -5,7 +5,7 @@ import {
   CheckCircle2, XCircle, Clock, MessageSquare, Send,
 } from 'lucide-react';
 import notificationChannelService from '../services/notificationChannelService';
-import { PlanGate } from '../components/common/PermissionGate';
+import { RoleGate } from '../components/common/PermissionGate';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -447,7 +447,7 @@ const NotificationChannels = () => {
   };
 
   return (
-    <PlanGate feature="webhooks">
+    <RoleGate allowed={['owner', 'admin', 'operator', 'viewer', 'billing']}>
       <div className="p-6 max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
@@ -539,7 +539,7 @@ const NotificationChannels = () => {
           isPending={createMutation.isPending || updateMutation.isPending}
         />
       )}
-    </PlanGate>
+    </RoleGate>
   );
 };
 
