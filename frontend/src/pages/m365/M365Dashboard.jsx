@@ -5,7 +5,7 @@ import {
   CheckCircle, XCircle, AlertTriangle, RefreshCw, Pencil,
   MessageSquare, ChevronDown, ChevronRight, UserPlus, Search, Plus,
   Smartphone, Phone, Mail, Fingerprint, Monitor, Clock, Lock, LogOut,
-  Download, Activity, UserCheck, Send, CheckCheck,
+  Download, Activity, UserCheck, Send, CheckCheck, ShieldAlert, Siren,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
@@ -23,6 +23,7 @@ const TABS = [
   { id: 'equipes',     label: 'Grupos',         icon: MessageSquare },
   { id: 'seguranca',   label: 'Segurança',      icon: Shield },
   { id: 'convidados',  label: 'Convidados',     icon: UserCheck },
+  { id: 'defender',    label: 'Defender',       icon: ShieldAlert },
 ];
 
 const REQUIRED_PERMISSIONS = [
@@ -2944,6 +2945,254 @@ const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser, serviceHealt
   );
 };
 
+// ── Defender Tab ──────────────────────────────────────────────────────────────
+
+const SEVERITY_META = {
+  high:     { cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',     dot: 'bg-red-500',    label: 'Alta' },
+  medium:   { cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', dot: 'bg-orange-500', label: 'Média' },
+  low:      { cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', dot: 'bg-yellow-500', label: 'Baixa' },
+  informational: { cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', dot: 'bg-blue-400', label: 'Info' },
+  unknown:  { cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',   dot: 'bg-gray-400',   label: '—' },
+};
+
+const INCIDENT_STATUS_META = {
+  active:    { cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',     label: 'Ativo' },
+  resolved:  { cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', label: 'Resolvido' },
+  inProgress: { cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', label: 'Em Progresso' },
+  redirected: { cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', label: 'Redirecionado' },
+};
+
+const fmtDateShort = (iso) => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+const SERVICE_SOURCE_LABEL = {
+  'microsoftDefenderForEndpoint':  'Defender for Endpoint',
+  'microsoftDefenderForOffice365': 'Defender for Office 365',
+  'microsoftDefenderForIdentity':  'Defender for Identity',
+  'microsoftDefenderForCloudApps': 'Defender for Cloud Apps',
+  'microsoftDefenderForCloud':     'Defender for Cloud',
+  'azureActiveDirectory':          'Entra ID',
+  'microsoftSentinel':             'Microsoft Sentinel',
+};
+
+const srcLabel = (s) => SERVICE_SOURCE_LABEL[s] || s || '—';
+
+const DefenderTab = ({ incidentsData, incidentsLoading, incidentsError, alertsData, alertsLoading, alertsError, onRefresh }) => {
+  const [activeSection, setActiveSection] = useState('incidents');
+  const [severityFilter, setSeverityFilter] = useState('all');
+
+  const incidents = incidentsData?.incidents || [];
+  const permError = incidentsData?.error === 'permission_denied';
+
+  const alerts = alertsData?.alerts || [];
+  const alertsPermError = alertsData?.error === 'permission_denied';
+
+  const kpiIncidents = {
+    total: incidents.length,
+    active: incidents.filter(i => i.status === 'active').length,
+    highSeverity: incidents.filter(i => i.severity === 'high').length,
+    resolved: incidents.filter(i => i.status === 'resolved').length,
+  };
+
+  const filteredAlerts = severityFilter === 'all' ? alerts : alerts.filter(a => a.severity === severityFilter);
+
+  return (
+    <div className="space-y-5">
+      {/* Permission warning */}
+      {permError && (
+        <div className="flex items-start gap-3 rounded-xl border border-orange-300/50 bg-orange-50 dark:bg-orange-900/10 dark:border-orange-700/30 px-4 py-3">
+          <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-orange-500" />
+          <div>
+            <p className="text-sm font-medium text-orange-700 dark:text-orange-400">Permissão insuficiente</p>
+            <p className="mt-0.5 text-xs text-orange-600 dark:text-orange-500">
+              Adicione a permissão <code className="font-mono bg-orange-100 dark:bg-orange-900/30 px-1 rounded">SecurityIncident.Read.All</code> (Application) com admin consent no App Registration do Azure AD.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* KPIs — Incidents */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: 'Total de Incidentes', value: kpiIncidents.total, cls: 'text-gray-700 dark:text-slate-200', icon: Siren },
+          { label: 'Incidentes Ativos',   value: kpiIncidents.active, cls: 'text-red-600 dark:text-red-400', icon: ShieldAlert },
+          { label: 'Alta Severidade',     value: kpiIncidents.highSeverity, cls: 'text-orange-600 dark:text-orange-400', icon: AlertTriangle },
+          { label: 'Resolvidos',          value: kpiIncidents.resolved, cls: 'text-green-600 dark:text-green-400', icon: CheckCircle },
+        ].map(({ label, value, cls, icon: Icon }) => (
+          <div key={label} className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-4 flex items-center gap-3">
+            <Icon size={18} className={cls} />
+            <div>
+              <p className="text-xs text-gray-500 dark:text-slate-400">{label}</p>
+              <p className={`text-2xl font-bold ${cls}`}>{incidentsLoading ? '—' : value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Section toggle */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-slate-700">
+        {[{ id: 'incidents', label: 'Incidentes' }, { id: 'alerts', label: 'Alertas' }].map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => setActiveSection(id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeSection === id
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Incidents Table ── */}
+      {activeSection === 'incidents' && (
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
+            <p className="text-sm font-semibold text-gray-700 dark:text-slate-200">Incidentes de Segurança</p>
+            <button onClick={onRefresh} className="text-xs text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 flex items-center gap-1">
+              <RefreshCw size={11} /> Recarregar
+            </button>
+          </div>
+          {incidentsLoading ? (
+            <div className="p-6 flex justify-center"><div className="h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
+          ) : incidents.length === 0 ? (
+            <div className="p-8 text-center">
+              <ShieldAlert size={32} className="mx-auto mb-2 text-gray-300 dark:text-slate-600" />
+              <p className="text-sm text-gray-400 dark:text-slate-500">{permError ? 'Sem permissão para listar incidentes.' : 'Nenhum incidente encontrado.'}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-700/50">
+                  <tr>
+                    {['ID', 'Título', 'Severidade', 'Status', 'Produtos', 'Alertas', 'Criado em'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                  {incidents.map((inc) => {
+                    const sevMeta = SEVERITY_META[inc.severity] || SEVERITY_META.unknown;
+                    const stMeta = INCIDENT_STATUS_META[inc.status] || { cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400', label: inc.status };
+                    return (
+                      <tr key={inc.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-400 dark:text-slate-500 whitespace-nowrap">{inc.id}</td>
+                        <td className="px-4 py-3 max-w-xs">
+                          <p className="font-medium text-gray-800 dark:text-slate-100 truncate">{inc.title}</p>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${sevMeta.cls}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${sevMeta.dot}`} />
+                            {sevMeta.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stMeta.cls}`}>{stMeta.label}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {(inc.products || []).length === 0
+                              ? <span className="text-xs text-gray-400 dark:text-slate-500">—</span>
+                              : (inc.products || []).map(p => (
+                                <span key={p} className="rounded px-1.5 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700/30">{srcLabel(p)}</span>
+                              ))
+                            }
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center text-xs text-gray-500 dark:text-slate-400">{inc.alert_count ?? 0}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{fmtDateShort(inc.created_at)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Alerts Table ── */}
+      {activeSection === 'alerts' && (
+        <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-slate-700">
+            <p className="text-sm font-semibold text-gray-700 dark:text-slate-200">Alertas de Segurança</p>
+            <div className="flex items-center gap-2">
+              <select
+                value={severityFilter}
+                onChange={e => setSeverityFilter(e.target.value)}
+                className="rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-xs px-2 py-1 text-gray-700 dark:text-slate-200"
+              >
+                <option value="all">Todas as severidades</option>
+                <option value="high">Alta</option>
+                <option value="medium">Média</option>
+                <option value="low">Baixa</option>
+                <option value="informational">Informacional</option>
+              </select>
+            </div>
+          </div>
+          {alertsPermError && (
+            <div className="px-4 py-3 flex items-center gap-2 bg-orange-50 dark:bg-orange-900/10 border-b border-orange-200 dark:border-orange-700/30">
+              <AlertTriangle size={13} className="text-orange-500" />
+              <p className="text-xs text-orange-600 dark:text-orange-400">Permissão <code className="font-mono">SecurityEvents.Read.All</code> necessária para alertas.</p>
+            </div>
+          )}
+          {alertsLoading ? (
+            <div className="p-6 flex justify-center"><div className="h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
+          ) : filteredAlerts.length === 0 ? (
+            <div className="p-8 text-center">
+              <Shield size={32} className="mx-auto mb-2 text-gray-300 dark:text-slate-600" />
+              <p className="text-sm text-gray-400 dark:text-slate-500">{alertsPermError ? 'Sem permissão para listar alertas.' : 'Nenhum alerta encontrado.'}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-slate-700/50">
+                  <tr>
+                    {['Título', 'Severidade', 'Status', 'Categoria', 'Fonte', 'Incidente', 'Criado em'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-slate-400 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                  {filteredAlerts.map((a) => {
+                    const sevMeta = SEVERITY_META[a.severity] || SEVERITY_META.unknown;
+                    const stMeta = INCIDENT_STATUS_META[a.status] || { cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400', label: a.status };
+                    return (
+                      <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-slate-700/30 transition-colors">
+                        <td className="px-4 py-3 max-w-xs">
+                          <p className="font-medium text-gray-800 dark:text-slate-100 truncate">{a.title}</p>
+                          {a.description && <p className="text-xs text-gray-400 dark:text-slate-500 truncate max-w-[260px]">{a.description}</p>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${sevMeta.cls}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${sevMeta.dot}`} />
+                            {sevMeta.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stMeta.cls}`}>{stMeta.label}</span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{a.category || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{srcLabel(a.service_source)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-400 dark:text-slate-500 font-mono whitespace-nowrap">{a.incident_id || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 whitespace-nowrap">{fmtDateShort(a.created_at)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function M365Dashboard() {
@@ -2995,6 +3244,20 @@ export default function M365Dashboard() {
     enabled: connected && isEnterprise && activeTab === 'seguranca',
   });
 
+  const defenderIncidentsQ = useQuery({
+    queryKey: ['m365-defender-incidents'],
+    queryFn: () => m365Service.getSecurityIncidents(50),
+    enabled: connected && isEnterprise && activeTab === 'defender',
+    staleTime: 60_000,
+  });
+
+  const defenderAlertsQ = useQuery({
+    queryKey: ['m365-defender-alerts'],
+    queryFn: () => m365Service.getSecurityAlerts(50),
+    enabled: connected && isEnterprise && activeTab === 'defender',
+    staleTime: 60_000,
+  });
+
   const serviceHealthQ = useQuery({
     queryKey: ['m365-service-health'],
     queryFn: m365Service.getServiceHealth,
@@ -3033,8 +3296,8 @@ export default function M365Dashboard() {
             {connected && (
               <div className="flex items-center gap-2">
                 {(() => {
-                  const activeQ = { 'visao-geral': overviewQ, usuarios: usersQ, licencas: licensesQ, equipes: groupsQ, seguranca: securityQ }[activeTab];
-                  const isFetching = activeQ?.isFetching || (activeTab === 'seguranca' && serviceHealthQ.isFetching);
+                  const activeQ = { 'visao-geral': overviewQ, usuarios: usersQ, licencas: licensesQ, equipes: groupsQ, seguranca: securityQ, defender: defenderIncidentsQ }[activeTab];
+                  const isFetching = activeQ?.isFetching || (activeTab === 'seguranca' && serviceHealthQ.isFetching) || (activeTab === 'defender' && defenderAlertsQ.isFetching);
                   return (
                     <button
                       onClick={() => {
@@ -3044,6 +3307,8 @@ export default function M365Dashboard() {
                         qc.invalidateQueries({ queryKey: ['m365-teams'] });
                         qc.invalidateQueries({ queryKey: ['m365-security'] });
                         qc.invalidateQueries({ queryKey: ['m365-service-health'] });
+                        qc.invalidateQueries({ queryKey: ['m365-defender-incidents'] });
+                        qc.invalidateQueries({ queryKey: ['m365-defender-alerts'] });
                       }}
                       disabled={isFetching}
                       className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-700 px-3 py-1.5 text-sm text-gray-600 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-50"
@@ -3124,6 +3389,20 @@ export default function M365Dashboard() {
                 />
               )}
               {activeTab === 'convidados' && <GuestsTab />}
+              {activeTab === 'defender' && (
+                <DefenderTab
+                  incidentsData={defenderIncidentsQ.data}
+                  incidentsLoading={defenderIncidentsQ.isLoading}
+                  incidentsError={defenderIncidentsQ.isError}
+                  alertsData={defenderAlertsQ.data}
+                  alertsLoading={defenderAlertsQ.isLoading}
+                  alertsError={defenderAlertsQ.isError}
+                  onRefresh={() => {
+                    qc.invalidateQueries({ queryKey: ['m365-defender-incidents'] });
+                    qc.invalidateQueries({ queryKey: ['m365-defender-alerts'] });
+                  }}
+                />
+              )}
             </>
           )}
         </div>

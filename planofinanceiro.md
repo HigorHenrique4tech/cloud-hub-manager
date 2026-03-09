@@ -253,7 +253,7 @@ PAID    → REFUNDED  (reembolso manual)
 |----------|-----|-----|
 | 2.000 Free | 0% | R$ 0 |
 | 300 Pro | — | R$ 149.100 |
-| 30 Enterprise | base | R$ 74.910 |
+| 0 Enterprise | base | R$ 74.910 |
 | — | 5 orgs extras/cliente médio | R$ 59.550 |
 | **Total** | | **R$ 283.560/mês** |
 

@@ -1779,6 +1779,100 @@ class M365Service:
             raise ValueError(f"Unknown permission_type: {permission_type}")
         return {"added": True, "permission_type": permission_type}
 
+    # ── Microsoft Defender / Security ─────────────────────────────────────────
+
+    def get_security_incidents(self, limit: int = 50) -> dict:
+        """
+        Fetch security incidents from Microsoft Defender via Graph API.
+        Requires Application permission: SecurityIncident.Read.All (admin consent).
+        Endpoint: GET /security/incidents
+        """
+        SECURITY_BASE = "https://graph.microsoft.com/v1.0"
+        params = {
+            "$top": min(limit, 100),
+            "$orderby": "createdDateTime desc",
+            "$select": (
+                "id,displayName,severity,status,classification,"
+                "determination,createdDateTime,lastUpdateDateTime,"
+                "tags,comments,systemTags"
+            ),
+        }
+        url = f"{SECURITY_BASE}/security/incidents"
+        r = requests.get(url, headers=self._headers(), params=params, timeout=30)
+        if r.status_code == 403:
+            return {"incidents": [], "error": "permission_denied", "total": 0}
+        r.raise_for_status()
+        data = r.json()
+        raw = data.get("value", [])
+        incidents = []
+        for inc in raw:
+            alerts_raw = inc.get("alerts", []) or []
+            products = []
+            for a in alerts_raw:
+                prod = a.get("serviceSource") or a.get("detectionSource") or ""
+                if prod and prod not in products:
+                    products.append(prod)
+            incidents.append({
+                "id": inc.get("id"),
+                "title": inc.get("displayName") or "—",
+                "severity": inc.get("severity", "unknown"),
+                "status": inc.get("status", "unknown"),
+                "classification": inc.get("classification"),
+                "determination": inc.get("determination"),
+                "created_at": inc.get("createdDateTime"),
+                "updated_at": inc.get("lastUpdateDateTime"),
+                "products": products,
+                "alert_count": len(alerts_raw),
+                "tags": inc.get("tags") or [],
+            })
+        return {"incidents": incidents, "total": len(incidents)}
+
+    def get_security_alerts(self, limit: int = 50, severity: str = None) -> dict:
+        """
+        Fetch security alerts v2 from Microsoft Defender via Graph API.
+        Requires Application permission: SecurityEvents.Read.All or SecurityAlert.Read.All (admin consent).
+        Endpoint: GET /security/alerts_v2
+        """
+        SECURITY_BASE = "https://graph.microsoft.com/v1.0"
+        params: dict = {
+            "$top": min(limit, 100),
+            "$orderby": "createdDateTime desc",
+            "$select": (
+                "id,title,severity,status,category,serviceSource,detectionSource,"
+                "createdDateTime,lastUpdateDateTime,description,recommendedActions,"
+                "incidentId,assignedTo,classification,determination"
+            ),
+        }
+        if severity:
+            params["$filter"] = f"severity eq '{severity}'"
+        url = f"{SECURITY_BASE}/security/alerts_v2"
+        r = requests.get(url, headers=self._headers(), params=params, timeout=30)
+        if r.status_code == 403:
+            return {"alerts": [], "error": "permission_denied", "total": 0}
+        r.raise_for_status()
+        data = r.json()
+        raw = data.get("value", [])
+        alerts = []
+        for a in raw:
+            alerts.append({
+                "id": a.get("id"),
+                "title": a.get("title") or "—",
+                "severity": a.get("severity", "unknown"),
+                "status": a.get("status", "unknown"),
+                "category": a.get("category"),
+                "service_source": a.get("serviceSource"),
+                "detection_source": a.get("detectionSource"),
+                "incident_id": a.get("incidentId"),
+                "assigned_to": a.get("assignedTo"),
+                "classification": a.get("classification"),
+                "determination": a.get("determination"),
+                "created_at": a.get("createdDateTime"),
+                "updated_at": a.get("lastUpdateDateTime"),
+                "description": a.get("description"),
+                "recommended_actions": a.get("recommendedActions"),
+            })
+        return {"alerts": alerts, "total": len(alerts)}
+
     def remove_mailbox_delegate(
         self, mailbox_upn: str, delegate_upn: str, permission_type: str
     ) -> dict:
