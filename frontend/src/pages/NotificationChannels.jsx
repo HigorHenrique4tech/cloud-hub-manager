@@ -5,6 +5,7 @@ import {
   CheckCircle2, XCircle, Clock, MessageSquare, Send,
 } from 'lucide-react';
 import notificationChannelService from '../services/notificationChannelService';
+import Layout from '../components/layout/layout';
 import { RoleGate } from '../components/common/PermissionGate';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -411,7 +412,9 @@ const NotificationChannels = () => {
   });
 
   const channels = data?.channels || [];
-  const supportedEvents = data?.supported_events || [];
+  const supportedEvents = data?.supported_events?.length
+    ? data.supported_events
+    : Object.keys(EVENT_LABELS);
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['notification-channels'] });
 
@@ -447,8 +450,9 @@ const NotificationChannels = () => {
   };
 
   return (
-    <RoleGate allowed={['owner', 'admin', 'operator', 'viewer', 'billing']}>
-      <div className="p-6 max-w-3xl mx-auto">
+    <Layout>
+      <RoleGate allowed={['owner', 'admin', 'operator', 'viewer', 'billing']}>
+      <div className="max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -540,6 +544,7 @@ const NotificationChannels = () => {
         />
       )}
     </RoleGate>
+    </Layout>
   );
 };
 
