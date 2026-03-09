@@ -108,46 +108,16 @@ function SiteDrawer({ site, onClose, onBrowse }) {
 }
 
 // ─ Overview Tab ─────────────────────────────────────────────────────────────
-function OverviewTab() {
-  const usageQ = useQuery({ queryKey: ['m365-sp-usage'], queryFn: m365Service.getSharePointUsage, retry: false, staleTime: 300_000 });
+function OverviewTab({ onSelectSite }) {
   const sitesQ = useQuery({ queryKey: ['m365-sp-sites'], queryFn: () => m365Service.getSites(), retry: false, staleTime: 120_000 });
 
-  const usage = usageQ.data?.sites || [];
+  const sites = sitesQ.data?.sites || [];
   const total = sitesQ.data?.total || 0;
-  const totalStorage = usage.reduce((acc, s) => acc + s.storage_used_bytes, 0);
-  const top5 = usage.slice(0, 5);
 
-  // Build URL → display_name map from Graph API sites (case-insensitive, always returns real names)
-  const siteNameMap = useMemo(() => {
-    const map = {};
-    (sitesQ.data?.sites || []).forEach(s => {
-      if (s.web_url) map[s.web_url.replace(/\/$/, '').toLowerCase()] = s.display_name || s.name;
-    });
-    return map;
-  }, [sitesQ.data]);
-
-  const getSiteName = (s) => {
-    if (!s) return '—';
-    const siteUrl = s.site_url || '';
-    // 1. Prefer display name from Graph API sites (case-insensitive match)
-    const key = siteUrl.replace(/\/$/, '').toLowerCase();
-    if (key && siteNameMap[key]) return siteNameMap[key];
-    // 2. Use backend-parsed site_name
-    if (s.site_name) return s.site_name;
-    if (!siteUrl) return '—';
-    // 3. Extract from /sites/ path
-    const sitePart = siteUrl.split('/sites/')[1]?.split('/')[0];
-    if (sitePart) return decodeURIComponent(sitePart).replace(/[-_]/g, ' ');
-    // 4. Extract from /personal/ path (OneDrive)
-    const personalPart = siteUrl.split('/personal/')[1]?.split('/')[0];
-    if (personalPart) return personalPart.split('_')[0];
-    // 5. Root site — extract subdomain from hostname
-    try {
-      return new URL(siteUrl).hostname.split('.')[0];
-    } catch {
-      return siteUrl;
-    }
-  };
+  // Sort by last modified descending for "recently active" list
+  const sorted = useMemo(() =>
+    [...sites].sort((a, b) => new Date(b.last_modified || 0) - new Date(a.last_modified || 0)),
+  [sites]);
 
   return (
     <div className="space-y-6">
@@ -155,8 +125,11 @@ function OverviewTab() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
           { label: 'Total de Sites', value: total || '—', color: 'text-blue-500' },
-          { label: 'Armazenamento Total', value: fmtBytes(totalStorage), color: 'text-purple-500' },
-          { label: 'Sites com Atividade', value: usage.filter(s => s.last_activity).length || '—', color: 'text-green-500' },
+          { label: 'Sites Ativos (modificados)', value: sites.filter(s => s.last_modified).length || '—', color: 'text-green-500' },
+          { label: 'Criados recentemente', value: sites.filter(s => {
+            if (!s.created_at) return false;
+            return (Date.now() - new Date(s.created_at)) < 30 * 86400 * 1000;
+          }).length || '—', color: 'text-purple-500' },
         ].map(({ label, value, color }) => (
           <div key={label} className="card p-4 rounded-xl">
             <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
@@ -165,31 +138,37 @@ function OverviewTab() {
         ))}
       </div>
 
-      {/* Top sites by storage */}
+      {/* Sites list sorted by last modified */}
       <div className="card rounded-xl overflow-hidden">
         <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Top Sites por Armazenamento</p>
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">Sites Recentemente Modificados</p>
         </div>
-        {usageQ.isLoading ? (
-          <div className="p-4 space-y-3">{[1,2,3,4,5].map(i => <div key={i} className="h-8 bg-gray-100 dark:bg-gray-700 rounded animate-pulse" />)}</div>
-        ) : top5.length === 0 ? (
-          <p className="p-4 text-sm text-gray-400">Sem dados de uso disponíveis. Verifique a permissão <code>Reports.Read.All</code>.</p>
+        {sitesQ.isLoading ? (
+          <div className="p-4 space-y-3">{[1,2,3,4,5].map(i => <div key={i} className="h-10 bg-gray-100 dark:bg-gray-700 rounded animate-pulse" />)}</div>
+        ) : sorted.length === 0 ? (
+          <p className="p-4 text-sm text-gray-400">Nenhum site encontrado. Verifique a permissão <code>Sites.Read.All</code>.</p>
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {top5.map((s, idx) => {
-              const pct = s.storage_allocated_bytes > 0 ? Math.min(100, (s.storage_used_bytes / s.storage_allocated_bytes) * 100) : 0;
-              return (
-                <div key={idx} className="px-4 py-3">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate max-w-xs">{getSiteName(s)}</span>
-                    <span className="text-xs text-gray-500 dark:text-gray-400">{fmtBytes(s.storage_used_bytes)} / {fmtBytes(s.storage_allocated_bytes)}</span>
-                  </div>
-                  <div className="w-full h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full">
-                    <div className={`h-1.5 rounded-full ${pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-yellow-500' : 'bg-blue-500'}`} style={{ width: `${pct}%` }} />
-                  </div>
+            {sorted.slice(0, 8).map((s) => (
+              <button
+                key={s.id}
+                onClick={() => onSelectSite(s)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  <Globe className="w-4 h-4 text-blue-400 flex-shrink-0" />
+                  <span className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                    {s.display_name || s.name}
+                  </span>
                 </div>
-              );
-            })}
+                <div className="flex items-center gap-4 flex-shrink-0 ml-4">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 hidden sm:block">
+                    Modificado: {fmtDate(s.last_modified)}
+                  </span>
+                  <ChevronRight className="w-4 h-4 text-gray-400" />
+                </div>
+              </button>
+            ))}
           </div>
         )}
       </div>
@@ -510,7 +489,7 @@ export default function SharePoint() {
         </div>
 
         {/* Content */}
-        {activeTab === 'overview'   && <OverviewTab />}
+        {activeTab === 'overview'   && <OverviewTab onSelectSite={setSelectedSite} />}
         {activeTab === 'sites'      && <SitesTab onSelectSite={setSelectedSite} />}
         {activeTab === 'libraries'  && <LibrariesTab />}
         {activeTab === 'onedrive'   && <OneDriveTab />}
