@@ -11,11 +11,11 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, field_validator
 from sqlalchemy.orm import Session
 
+from app.core.auth_context import MemberContext
 from app.core.dependencies import get_db, get_workspace_member
 from app.models.db_models import NotificationChannel, NotificationDelivery
 from app.services.notification_channel_service import (
     SUPPORTED_EVENTS,
-    fire_event,
     _send_to_channel,
 )
 
@@ -25,7 +25,6 @@ ws_router = APIRouter(
 )
 
 MAX_CHANNELS = 20
-
 CHANNEL_TYPES = ("teams", "telegram")
 
 
@@ -71,8 +70,9 @@ class ChannelUpdate(BaseModel):
         return v
 
 
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
 def _mask_config(channel_type: str, config: dict) -> dict:
-    """Mask sensitive fields for API responses."""
     masked = dict(config)
     if channel_type == "telegram" and "bot_token" in masked:
         token = masked["bot_token"]
@@ -93,19 +93,48 @@ def _serialize(ch: NotificationChannel) -> dict:
     }
 
 
+def _require_view(ctx: MemberContext) -> None:
+    if not ctx.has_permission("webhooks.view"):
+        raise HTTPException(403, "Permissão insuficiente")
+
+
+def _require_manage(ctx: MemberContext) -> None:
+    if not ctx.has_permission("webhooks.manage"):
+        raise HTTPException(403, "Permissão insuficiente")
+
+
+def _get_channel(db: Session, workspace_id, channel_id: UUID) -> NotificationChannel:
+    ch = db.query(NotificationChannel).filter(
+        NotificationChannel.id == channel_id,
+        NotificationChannel.workspace_id == workspace_id,
+    ).first()
+    if not ch:
+        raise HTTPException(404, "Canal não encontrado")
+    return ch
+
+
+def _validate_config(channel_type: str, config: dict) -> None:
+    if channel_type == "teams":
+        if not config.get("url"):
+            raise HTTPException(422, "config.url é obrigatório para canais Teams")
+    elif channel_type == "telegram":
+        if not config.get("bot_token"):
+            raise HTTPException(422, "config.bot_token é obrigatório para canais Telegram")
+        if not config.get("chat_id"):
+            raise HTTPException(422, "config.chat_id é obrigatório para canais Telegram")
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 @ws_router.get("")
 def list_channels(
-    ctx=Depends(get_workspace_member),
+    ctx: MemberContext = Depends(get_workspace_member),
     db: Session = Depends(get_db),
 ):
-    member, workspace = ctx
-    _require(member, "webhooks.view")
-
+    _require_view(ctx)
     channels = (
         db.query(NotificationChannel)
-        .filter(NotificationChannel.workspace_id == workspace.id)
+        .filter(NotificationChannel.workspace_id == ctx.workspace_id)
         .order_by(NotificationChannel.created_at)
         .all()
     )
@@ -118,14 +147,13 @@ def list_channels(
 @ws_router.post("", status_code=201)
 def create_channel(
     body: ChannelCreate,
-    ctx=Depends(get_workspace_member),
+    ctx: MemberContext = Depends(get_workspace_member),
     db: Session = Depends(get_db),
 ):
-    member, workspace = ctx
-    _require(member, "webhooks.manage")
+    _require_manage(ctx)
 
     count = db.query(NotificationChannel).filter(
-        NotificationChannel.workspace_id == workspace.id
+        NotificationChannel.workspace_id == ctx.workspace_id
     ).count()
     if count >= MAX_CHANNELS:
         raise HTTPException(400, f"Limite de {MAX_CHANNELS} canais atingido")
@@ -133,8 +161,8 @@ def create_channel(
     _validate_config(body.channel_type, body.config)
 
     ch = NotificationChannel(
-        workspace_id=workspace.id,
-        created_by=member.user_id,
+        workspace_id=ctx.workspace_id,
+        created_by=ctx.user.id,
         name=body.name,
         channel_type=body.channel_type,
         config=body.config,
@@ -151,13 +179,12 @@ def create_channel(
 def update_channel(
     channel_id: UUID,
     body: ChannelUpdate,
-    ctx=Depends(get_workspace_member),
+    ctx: MemberContext = Depends(get_workspace_member),
     db: Session = Depends(get_db),
 ):
-    member, workspace = ctx
-    _require(member, "webhooks.manage")
+    _require_manage(ctx)
+    ch = _get_channel(db, ctx.workspace_id, channel_id)
 
-    ch = _get_channel(db, workspace.id, channel_id)
     if body.name is not None:
         ch.name = body.name
     if body.config is not None:
@@ -176,13 +203,11 @@ def update_channel(
 @ws_router.delete("/{channel_id}", status_code=204)
 def delete_channel(
     channel_id: UUID,
-    ctx=Depends(get_workspace_member),
+    ctx: MemberContext = Depends(get_workspace_member),
     db: Session = Depends(get_db),
 ):
-    member, workspace = ctx
-    _require(member, "webhooks.manage")
-
-    ch = _get_channel(db, workspace.id, channel_id)
+    _require_manage(ctx)
+    ch = _get_channel(db, ctx.workspace_id, channel_id)
     db.delete(ch)
     db.commit()
 
@@ -190,17 +215,16 @@ def delete_channel(
 @ws_router.post("/{channel_id}/test")
 def test_channel(
     channel_id: UUID,
-    ctx=Depends(get_workspace_member),
+    ctx: MemberContext = Depends(get_workspace_member),
     db: Session = Depends(get_db),
 ):
-    member, workspace = ctx
-    _require(member, "webhooks.manage")
+    _require_manage(ctx)
+    ch = _get_channel(db, ctx.workspace_id, channel_id)
 
-    ch = _get_channel(db, workspace.id, channel_id)
     payload = {
         "event": "test.ping",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "workspace_id": str(workspace.id),
+        "workspace_id": str(ctx.workspace_id),
         "message": "Teste de conexão do Cloud Hub Manager",
     }
     ok, error = _send_to_channel(ch, "test.ping", payload)
@@ -225,14 +249,15 @@ def list_deliveries(
     channel_id: UUID,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    ctx=Depends(get_workspace_member),
+    ctx: MemberContext = Depends(get_workspace_member),
     db: Session = Depends(get_db),
 ):
-    member, workspace = ctx
-    _require(member, "webhooks.view")
+    _require_view(ctx)
+    ch = _get_channel(db, ctx.workspace_id, channel_id)
 
-    ch = _get_channel(db, workspace.id, channel_id)
-    total = db.query(NotificationDelivery).filter(NotificationDelivery.channel_id == ch.id).count()
+    total = db.query(NotificationDelivery).filter(
+        NotificationDelivery.channel_id == ch.id
+    ).count()
     deliveries = (
         db.query(NotificationDelivery)
         .filter(NotificationDelivery.channel_id == ch.id)
@@ -256,42 +281,3 @@ def list_deliveries(
             for d in deliveries
         ],
     }
-
-
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _require(member, permission: str) -> None:
-    role = getattr(member, "effective_role", None) or getattr(member, "role", "viewer")
-    if role in ("owner", "admin"):
-        return
-    perms = _ROLE_PERMS.get(role, set())
-    if permission not in perms:
-        raise HTTPException(403, "Permissão insuficiente")
-
-
-_ROLE_PERMS: dict[str, set] = {
-    "operator": {"webhooks.view", "webhooks.manage"},
-    "viewer":   {"webhooks.view"},
-    "billing":  {"webhooks.view"},
-}
-
-
-def _get_channel(db: Session, workspace_id, channel_id: UUID) -> NotificationChannel:
-    ch = db.query(NotificationChannel).filter(
-        NotificationChannel.id == channel_id,
-        NotificationChannel.workspace_id == workspace_id,
-    ).first()
-    if not ch:
-        raise HTTPException(404, "Canal não encontrado")
-    return ch
-
-
-def _validate_config(channel_type: str, config: dict) -> None:
-    if channel_type == "teams":
-        if not config.get("url"):
-            raise HTTPException(422, "config.url é obrigatório para canais Teams")
-    elif channel_type == "telegram":
-        if not config.get("bot_token"):
-            raise HTTPException(422, "config.bot_token é obrigatório para canais Telegram")
-        if not config.get("chat_id"):
-            raise HTTPException(422, "config.chat_id é obrigatório para canais Telegram")
