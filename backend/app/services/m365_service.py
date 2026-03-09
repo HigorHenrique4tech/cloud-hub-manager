@@ -961,7 +961,7 @@ class M365Service:
 
     def get_sharepoint_usage(self) -> dict:
         """Get SharePoint site usage report (last 30 days)."""
-        import csv, io
+        import csv, io, re as _re
         try:
             token = self._get_token()
             resp = requests.get(
@@ -970,21 +970,45 @@ class M365Service:
                 timeout=30,
             )
             resp.raise_for_status()
+
+            # Build URL → displayName map from Graph API (bypasses privacy obfuscation)
+            url_name_map = {}
+            try:
+                sp_sites = self._get(f"{GRAPH_V1}/sites?search=*&$select=id,displayName,webUrl&$top=100")
+                for s in sp_sites.get("value", []):
+                    web_url = (s.get("webUrl") or "").rstrip("/").lower()
+                    display_name = s.get("displayName") or s.get("name") or ""
+                    if web_url and display_name:
+                        url_name_map[web_url] = display_name
+            except Exception:
+                pass
+
             reader = csv.DictReader(io.StringIO(resp.text))
             sites = []
             for row in reader:
                 try:
                     site_url = row.get("Site URL", "")
-                    # Extract a human-readable site name from the URL path
-                    site_name = row.get("Site Name") or row.get("Site Title") or ""
+                    url_key = site_url.rstrip("/").lower()
+
+                    # 1. Prefer Graph API display name (always real, ignores privacy settings)
+                    site_name = url_name_map.get(url_key, "")
+
+                    # 2. Fallback: extract from URL path
                     if not site_name and site_url:
-                        import re as _re
                         m = _re.search(r"/sites/([^/]+)", site_url)
                         if m:
                             site_name = m.group(1).replace("-", " ").replace("_", " ").title()
                         else:
                             m2 = _re.search(r"/personal/([^/]+)", site_url)
-                            site_name = m2.group(1).split("_")[0].title() if m2 else site_url
+                            if m2:
+                                site_name = m2.group(1).split("_")[0].title()
+                            elif site_url:
+                                try:
+                                    from urllib.parse import urlparse
+                                    site_name = urlparse(site_url).hostname.split(".")[0].title()
+                                except Exception:
+                                    site_name = site_url
+
                     sites.append({
                         "site_url": site_url,
                         "site_name": site_name,
