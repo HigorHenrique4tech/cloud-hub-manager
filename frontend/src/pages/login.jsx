@@ -7,106 +7,221 @@ import OAuthButtons from '../components/auth/OAuthButtons';
 
 /* ── Animated cloud network SVG ─────────────────────────────────── */
 const CloudAnimation = () => (
-  <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden select-none">
-    <svg
-      viewBox="0 0 480 480"
-      className="w-80 h-80 lg:w-96 lg:h-96"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <defs>
-        <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
-        </radialGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-        <style>{`
-          @keyframes float1 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-          @keyframes float2 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(8px)} }
-          @keyframes float3 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-          @keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-          @keyframes pulse-dash {
-            0%   { stroke-dashoffset: 200; opacity: 0.2; }
-            50%  { opacity: 0.7; }
-            100% { stroke-dashoffset: 0;   opacity: 0.2; }
-          }
-          .n1 { animation: float1 4s ease-in-out infinite; transform-origin: 240px 240px; }
-          .n2 { animation: float2 5s ease-in-out infinite 0.8s; transform-origin: 100px 160px; }
-          .n3 { animation: float3 4.5s ease-in-out infinite 1.4s; transform-origin: 380px 150px; }
-          .n4 { animation: float1 6s ease-in-out infinite 0.3s; transform-origin: 120px 350px; }
-          .n5 { animation: float2 4.2s ease-in-out infinite 1s; transform-origin: 370px 340px; }
-          .n6 { animation: float3 5.5s ease-in-out infinite 0.5s; transform-origin: 240px 100px; }
-          .ring { animation: spin-slow 12s linear infinite; transform-origin: 240px 240px; }
-          .line { stroke-dasharray: 200; animation: pulse-dash 3s linear infinite; }
-          .line2 { stroke-dasharray: 200; animation: pulse-dash 3.5s linear infinite 0.7s; }
-          .line3 { stroke-dasharray: 200; animation: pulse-dash 4s linear infinite 1.3s; }
-          .line4 { stroke-dasharray: 200; animation: pulse-dash 3.2s linear infinite 0.4s; }
-          .line5 { stroke-dasharray: 200; animation: pulse-dash 3.8s linear infinite 1.8s; }
-        `}</style>
-      </defs>
+  <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden select-none p-4 lg:p-12">
+    <div className="relative w-full max-w-2xl aspect-square flex items-center justify-center">
+      {/* Background glow effects */}
+      <div className="absolute inset-0 bg-blue-500/10 rounded-full blur-[120px] animate-pulse" style={{ animationDuration: '4s' }}></div>
+      <div className="absolute inset-1/4 bg-indigo-500/10 rounded-full blur-[80px]"></div>
 
-      {/* Connection lines */}
-      <line className="line"  x1="240" y1="240" x2="100" y2="160" stroke="#3b82f6" strokeWidth="1.5" />
-      <line className="line2" x1="240" y1="240" x2="380" y2="150" stroke="#60a5fa" strokeWidth="1.5" />
-      <line className="line3" x1="240" y1="240" x2="120" y2="350" stroke="#3b82f6" strokeWidth="1.5" />
-      <line className="line4" x1="240" y1="240" x2="370" y2="340" stroke="#60a5fa" strokeWidth="1.5" />
-      <line className="line5" x1="240" y1="240" x2="240" y2="100" stroke="#818cf8" strokeWidth="1.5" />
-      <line className="line"  x1="100" y1="160" x2="240" y2="100" stroke="#3b82f6" strokeWidth="1" strokeOpacity="0.5" />
-      <line className="line2" x1="380" y1="150" x2="240" y2="100" stroke="#60a5fa" strokeWidth="1" strokeOpacity="0.5" />
+      <svg
+        viewBox="0 0 800 800"
+        className="w-full h-full drop-shadow-2xl z-10"
+        xmlns="http://www.w3.org/2000/svg"
+      >
+        <defs>
+          <radialGradient id="hubGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.6" />
+            <stop offset="60%" stopColor="#3b82f6" stopOpacity="0.1" />
+            <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="awsGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#f97316" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="azureGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#0ea5e9" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#0ea5e9" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="gcpGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#ef4444" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#ef4444" stopOpacity="0" />
+          </radialGradient>
+          <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#8b5cf6" stopOpacity="0.4" />
+            <stop offset="100%" stopColor="#8b5cf6" stopOpacity="0" />
+          </radialGradient>
 
-      {/* Rotating ring around center */}
-      <circle className="ring" cx="240" cy="240" r="52" fill="none" stroke="#3b82f6" strokeWidth="1" strokeDasharray="8 6" strokeOpacity="0.5" />
+          <filter id="neonGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="8" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
 
-      {/* Center hub node */}
-      <g className="n1">
-        <circle cx="240" cy="240" r="36" fill="url(#nodeGlow)" />
-        <circle cx="240" cy="240" r="24" fill="#1e3a5f" stroke="#3b82f6" strokeWidth="2" filter="url(#glow)" />
-        {/* CloudAtlas icon */}
-        <text x="240" y="245" textAnchor="middle" dominantBaseline="middle" fontSize="18" fill="#60a5fa">⬡</text>
-      </g>
+          <filter id="softGlow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="4" result="coloredBlur" />
+            <feMerge>
+              <feMergeNode in="coloredBlur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
 
-      {/* AWS node */}
-      <g className="n2">
-        <circle cx="100" cy="160" r="22" fill="#1a1a2e" stroke="#f97316" strokeWidth="2" filter="url(#glow)" />
-        <text x="100" y="165" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="bold" fill="#f97316">AWS</text>
-      </g>
+          <style>{`
+            @keyframes float1 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-18px)} }
+            @keyframes float2 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(18px)} }
+            @keyframes float3 { 0%,100%{transform:translateY(0)} 50%{transform:translateX(12px) translateY(-12px)} }
+            @keyframes float4 { 0%,100%{transform:translateY(0)} 50%{transform:translateX(-12px) translateY(12px)} }
+            @keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+            @keyframes spin-reverse-slow { from{transform:rotate(360deg)} to{transform:rotate(0deg)} }
+            @keyframes pulse-ring { 0% { transform: scale(0.85); opacity: 0.4; } 50% { transform: scale(1.15); opacity: 0.8; } 100% { transform: scale(0.85); opacity: 0.4; } }
+            @keyframes data-flow { 0% { stroke-dashoffset: 200; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+            @keyframes data-flow-reverse { 0% { stroke-dashoffset: 0; opacity: 0; } 10% { opacity: 1; } 90% { opacity: 1; } 100% { stroke-dashoffset: 200; opacity: 0; } }
+            
+            .center-hub { animation: float1 7s ease-in-out infinite; transform-origin: 400px 400px; }
+            .node-aws { animation: float2 8s ease-in-out infinite 0.5s; transform-origin: 200px 250px; }
+            .node-azure { animation: float3 7.5s ease-in-out infinite 1s; transform-origin: 600px 250px; }
+            .node-gcp { animation: float4 9s ease-in-out infinite 1.5s; transform-origin: 400px 650px; }
+            .node-small-1 { animation: float1 6s ease-in-out infinite 0.2s; transform-origin: 150px 500px; }
+            .node-small-2 { animation: float3 6.5s ease-in-out infinite 0.8s; transform-origin: 650px 500px; }
+            .node-small-3 { animation: float2 7s ease-in-out infinite 1.2s; transform-origin: 400px 150px; }
+            
+            .orb-ring-1 { animation: spin-slow 30s linear infinite; transform-origin: 400px 400px; }
+            .orb-ring-2 { animation: spin-reverse-slow 35s linear infinite; transform-origin: 400px 400px; }
+            .orb-ring-3 { animation: pulse-ring 4s ease-in-out infinite; transform-origin: 400px 400px; }
+            
+            .connection { stroke-dasharray: 10 15; animation: data-flow 3s linear infinite; }
+            .connection-reverse { stroke-dasharray: 10 15; animation: data-flow-reverse 3s linear infinite; }
+            .connection-fast { stroke-dasharray: 15 20; animation: data-flow 2s linear infinite; }
+          `}</style>
+        </defs>
 
-      {/* Azure node */}
-      <g className="n3">
-        <circle cx="380" cy="150" r="22" fill="#1a1a2e" stroke="#0ea5e9" strokeWidth="2" filter="url(#glow)" />
-        <text x="380" y="155" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="bold" fill="#0ea5e9">Azure</text>
-      </g>
+        {/* Orbit Rings Background */}
+        <circle cx="400" cy="400" r="180" fill="none" stroke="#1e293b" strokeWidth="2" strokeOpacity="0.6" />
+        <circle cx="400" cy="400" r="280" fill="none" stroke="#1e293b" strokeWidth="2" strokeDasharray="10 20" strokeOpacity="0.4" />
 
-      {/* Small nodes */}
-      <g className="n4">
-        <circle cx="120" cy="350" r="14" fill="#1a1a2e" stroke="#6366f1" strokeWidth="1.5" />
-        <circle cx="120" cy="350" r="5" fill="#6366f1" />
-      </g>
+        {/* Animated Orbits */}
+        <g className="orb-ring-1">
+          <circle cx="400" cy="400" r="180" fill="none" stroke="#3b82f6" strokeWidth="1.5" strokeDasharray="80 300" strokeOpacity="0.7" />
+          <circle cx="220" cy="400" r="5" fill="#60a5fa" filter="url(#softGlow)" />
+        </g>
+        <g className="orb-ring-2">
+          <circle cx="400" cy="400" r="280" fill="none" stroke="#8b5cf6" strokeWidth="1" strokeDasharray="150 500" strokeOpacity="0.5" />
+          <circle cx="680" cy="400" r="7" fill="#a78bfa" filter="url(#softGlow)" />
+          <circle cx="120" cy="400" r="4" fill="#a78bfa" />
+        </g>
 
-      <g className="n5">
-        <circle cx="370" cy="340" r="14" fill="#1a1a2e" stroke="#6366f1" strokeWidth="1.5" />
-        <circle cx="370" cy="340" r="5" fill="#6366f1" />
-      </g>
+        {/* Static Base Connections */}
+        <path d="M400 400 Q 300 325 200 250" fill="none" stroke="#1e293b" strokeWidth="4" />
+        <path d="M400 400 Q 500 325 600 250" fill="none" stroke="#1e293b" strokeWidth="4" />
+        <path d="M400 400 Q 400 525 400 650" fill="none" stroke="#1e293b" strokeWidth="4" />
+        <path d="M200 250 Q 400 150 600 250" fill="none" stroke="#1e293b" strokeWidth="2" strokeDasharray="6 10" />
+        <path d="M200 250 Q 250 450 400 650" fill="none" stroke="#1e293b" strokeWidth="2" strokeDasharray="6 10" />
+        <path d="M600 250 Q 550 450 400 650" fill="none" stroke="#1e293b" strokeWidth="2" strokeDasharray="6 10" />
+        <line x1="200" y1="250" x2="150" y2="500" stroke="#1e293b" strokeWidth="3" />
+        <line x1="600" y1="250" x2="650" y2="500" stroke="#1e293b" strokeWidth="3" />
+        <line x1="200" y1="250" x2="400" y2="150" stroke="#1e293b" strokeWidth="3" />
+        <line x1="600" y1="250" x2="400" y2="150" stroke="#1e293b" strokeWidth="3" />
 
-      <g className="n6">
-        <circle cx="240" cy="100" r="14" fill="#1a1a2e" stroke="#818cf8" strokeWidth="1.5" />
-        <circle cx="240" cy="100" r="5" fill="#818cf8" />
-      </g>
-    </svg>
+        {/* Animated Data Connections */}
+        {/* Hub to AWS */}
+        <path className="connection" d="M400 400 Q 300 325 200 250" fill="none" stroke="#f97316" strokeWidth="3" filter="url(#softGlow)" />
+        {/* Hub to Azure */}
+        <path className="connection-fast" d="M400 400 Q 500 325 600 250" fill="none" stroke="#0ea5e9" strokeWidth="3" filter="url(#softGlow)" />
+        {/* Hub to GCP */}
+        <path className="connection" d="M400 400 Q 400 525 400 650" fill="none" stroke="#ef4444" strokeWidth="3" filter="url(#softGlow)" />
 
-    <p className="mt-6 text-center text-slate-400 text-sm max-w-xs leading-relaxed px-4">
-      Gerencie sua infraestrutura multi-cloud em um só lugar
-    </p>
+        {/* Outer nodes animated connections */}
+        <line className="connection-reverse" x1="200" y1="250" x2="150" y2="500" stroke="#8b5cf6" strokeWidth="2" filter="url(#softGlow)" />
+        <line className="connection-fast" x1="600" y1="250" x2="650" y2="500" stroke="#8b5cf6" strokeWidth="2" filter="url(#softGlow)" />
+        <line className="connection" x1="400" y1="150" x2="200" y2="250" stroke="#8b5cf6" strokeWidth="2" filter="url(#softGlow)" />
 
-    <div className="mt-4 flex gap-4 text-xs text-slate-500">
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> AWS</span>
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Azure</span>
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-400 inline-block" /> Multi-cloud</span>
+        {/* Small Nodes (K8s, DB, API) */}
+        <g className="node-small-1">
+          <circle cx="150" cy="500" r="45" fill="url(#nodeGlow)" />
+          <circle cx="150" cy="500" r="22" fill="#0f172a" stroke="#8b5cf6" strokeWidth="3" filter="url(#neonGlow)" />
+          <circle cx="150" cy="500" r="22" fill="#0f172a" stroke="#8b5cf6" strokeWidth="1" />
+          <text x="150" y="502" textAnchor="middle" dominantBaseline="middle" fontSize="13" fill="#e2e8f0" fontWeight="bold" letterSpacing="0.5">K8s</text>
+        </g>
+
+        <g className="node-small-2">
+          <circle cx="650" cy="500" r="45" fill="url(#nodeGlow)" />
+          <circle cx="650" cy="500" r="22" fill="#0f172a" stroke="#8b5cf6" strokeWidth="3" filter="url(#neonGlow)" />
+          <circle cx="650" cy="500" r="22" fill="#0f172a" stroke="#8b5cf6" strokeWidth="1" />
+          <text x="650" y="502" textAnchor="middle" dominantBaseline="middle" fontSize="13" fill="#e2e8f0" fontWeight="bold" letterSpacing="0.5">DB</text>
+        </g>
+
+        <g className="node-small-3">
+          <circle cx="400" cy="150" r="45" fill="url(#nodeGlow)" />
+          <circle cx="400" cy="150" r="22" fill="#0f172a" stroke="#8b5cf6" strokeWidth="3" filter="url(#neonGlow)" />
+          <circle cx="400" cy="150" r="22" fill="#0f172a" stroke="#8b5cf6" strokeWidth="1" />
+          <text x="400" y="152" textAnchor="middle" dominantBaseline="middle" fontSize="13" fill="#e2e8f0" fontWeight="bold" letterSpacing="0.5">API</text>
+        </g>
+
+        {/* --- Main Cloud Nodes --- */}
+
+        {/* AWS Node */}
+        <g className="node-aws">
+          <circle cx="200" cy="250" r="85" fill="url(#awsGlow)" />
+          <circle cx="200" cy="250" r="50" fill="#0f172a" stroke="#f97316" strokeWidth="4" filter="url(#neonGlow)" />
+          <circle cx="200" cy="250" r="50" fill="#0f172a" stroke="#f97316" strokeWidth="1" />
+          <text x="200" y="244" textAnchor="middle" dominantBaseline="middle" fontSize="24" fontWeight="900" fill="#f97316" letterSpacing="1.5">AWS</text>
+          <text x="200" y="270" textAnchor="middle" dominantBaseline="middle" fontSize="11" fill="#94a3b8" fontWeight="500">us-east-1</text>
+          <circle cx="200" cy="250" r="62" fill="none" stroke="#f97316" strokeWidth="1.5" strokeDasharray="6 18" className="orb-ring-1" opacity="0.6" />
+        </g>
+
+        {/* Azure Node */}
+        <g className="node-azure">
+          <circle cx="600" cy="250" r="85" fill="url(#azureGlow)" />
+          <circle cx="600" cy="250" r="50" fill="#0f172a" stroke="#0ea5e9" strokeWidth="4" filter="url(#neonGlow)" />
+          <circle cx="600" cy="250" r="50" fill="#0f172a" stroke="#0ea5e9" strokeWidth="1" />
+          <text x="600" y="244" textAnchor="middle" dominantBaseline="middle" fontSize="24" fontWeight="900" fill="#0ea5e9" letterSpacing="1.5">Azure</text>
+          <text x="600" y="270" textAnchor="middle" dominantBaseline="middle" fontSize="11" fill="#94a3b8" fontWeight="500">eastus</text>
+          <circle cx="600" cy="250" r="62" fill="none" stroke="#0ea5e9" strokeWidth="1.5" strokeDasharray="12 12" className="orb-ring-2" opacity="0.6" />
+        </g>
+
+        {/* GCP Node */}
+        <g className="node-gcp">
+          <circle cx="400" cy="650" r="85" fill="url(#gcpGlow)" />
+          <circle cx="400" cy="650" r="50" fill="#0f172a" stroke="#ef4444" strokeWidth="4" filter="url(#neonGlow)" />
+          <circle cx="400" cy="650" r="50" fill="#0f172a" stroke="#ef4444" strokeWidth="1" />
+          <text x="400" y="644" textAnchor="middle" dominantBaseline="middle" fontSize="24" fontWeight="900" fill="#ef4444" letterSpacing="1.5">GCP</text>
+          <text x="400" y="670" textAnchor="middle" dominantBaseline="middle" fontSize="11" fill="#94a3b8" fontWeight="500">us-central1</text>
+          <circle cx="400" cy="650" r="62" fill="none" stroke="#ef4444" strokeWidth="1.5" strokeDasharray="4 12" className="orb-ring-1" opacity="0.6" />
+        </g>
+
+        {/* Center Hub Node */}
+        <g className="center-hub">
+          <circle className="orb-ring-3" cx="400" cy="400" r="105" fill="url(#hubGlow)" />
+          <circle cx="400" cy="400" r="75" fill="#0f172a" stroke="#3b82f6" strokeWidth="6" filter="url(#neonGlow)" />
+          <circle cx="400" cy="400" r="75" fill="#0f172a" stroke="#3b82f6" strokeWidth="2" />
+
+          <circle cx="400" cy="400" r="58" fill="#1e293b" />
+
+          {/* Inner Hexagon Icon */}
+          <path d="M400 358 L436 379 L436 421 L400 442 L364 421 L364 379 Z" fill="none" stroke="#60a5fa" strokeWidth="3" filter="url(#softGlow)" />
+          <path d="M400 358 L436 379 L436 421 L400 442 L364 421 L364 379 Z" fill="none" stroke="#60a5fa" strokeWidth="1" />
+
+          {/* Core pulse */}
+          <circle cx="400" cy="400" r="18" fill="#3b82f6" filter="url(#neonGlow)" />
+          <circle cx="400" cy="400" r="18" fill="#60a5fa" />
+
+          <text x="400" y="490" textAnchor="middle" dominantBaseline="middle" fontSize="16" fontWeight="bold" fill="#60a5fa" letterSpacing="2.5" filter="url(#softGlow)">CLOUD ATLAS</text>
+          <text x="400" y="490" textAnchor="middle" dominantBaseline="middle" fontSize="16" fontWeight="bold" fill="#ffffff" letterSpacing="2.5">CLOUD ATLAS</text>
+        </g>
+      </svg>
+    </div>
+
+    {/* Information Card */}
+    <div className="mt-8 z-20 flex flex-col items-center">
+      <div className="bg-slate-900/60 backdrop-blur-xl py-5 px-8 sm:px-12 rounded-2xl border border-slate-700/60 shadow-[0_8px_32px_rgba(0,0,0,0.5)] transform hover:scale-105 transition-transform duration-300">
+        <h2 className="text-xl sm:text-2xl font-bold text-white tracking-wide mb-2 text-center">Visibilidade Total</h2>
+        <p className="text-slate-400 text-sm sm:text-base max-w-sm text-center leading-relaxed">
+          Orquestre seus recursos multi-cloud através de um único painel de alta performance.
+        </p>
+
+        <div className="mt-6 flex flex-wrap justify-center gap-4 sm:gap-6 text-xs sm:text-sm font-semibold">
+          <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/80 border border-orange-500/30 text-slate-200 shadow-[inset_0_0_10px_rgba(249,115,22,0.1)]">
+            <span className="w-2.5 h-2.5 rounded-full bg-orange-500 animate-pulse shadow-[0_0_10px_#f97316]" /> AWS
+          </span>
+          <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/80 border border-sky-500/30 text-slate-200 shadow-[inset_0_0_10px_rgba(14,165,233,0.1)]">
+            <span className="w-2.5 h-2.5 rounded-full bg-sky-500 animate-pulse shadow-[0_0_10px_#0ea5e9]" style={{ animationDelay: '0.4s' }} /> Azure
+          </span>
+          <span className="flex items-center gap-2 px-4 py-2 rounded-full bg-slate-800/80 border border-red-500/30 text-slate-200 shadow-[inset_0_0_10px_rgba(239,68,68,0.1)]">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse shadow-[0_0_10px_#ef4444]" style={{ animationDelay: '0.8s' }} /> GCP
+          </span>
+        </div>
+      </div>
     </div>
   </div>
 );
