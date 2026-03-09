@@ -280,12 +280,12 @@ const Login = () => {
   /* ── Shared style tokens ── */
   const inputStyle = {
     width: '100%',
-    background: 'rgba(255,255,255,0.04)',
-    border: '1px solid rgba(255,255,255,0.07)',
+    background: 'rgba(255,255,255,0.07)',
+    border: '1px solid rgba(255,255,255,0.13)',
     borderRadius: 10,
     padding: '12px 14px 12px 40px',
     fontSize: 14,
-    color: '#e2e8f0',
+    color: '#f1f5f9',
     outline: 'none',
     transition: 'border-color 0.2s, box-shadow 0.2s',
     fontFamily: 'inherit',
@@ -395,7 +395,7 @@ const Login = () => {
             }}>
               <img src="/logo.png" alt="CloudAtlas" style={{ width: 22, height: 22, objectFit: 'contain' }} />
             </div>
-            <span className="logo-text" style={{ fontWeight: 700, fontSize: 18, letterSpacing: '-0.3px', color: '#f1f5f9' }}>
+            <span className="logo-text" style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-0.5px', color: '#f1f5f9' }}>
               CloudAtlas
             </span>
           </div>
