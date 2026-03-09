@@ -140,6 +140,11 @@ async def ws_start_ec2_instance(
     log_activity(db, member.user, 'ec2.start', 'EC2',
                  resource_id=instance_id, resource_name=instance_id, provider='aws',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    from app.services.notification_channel_service import fire_event as _fire
+    _fire(db, member.workspace_id, "resource.started", {
+        "resource_id": instance_id, "resource_name": instance_id,
+        "resource_type": "ec2", "provider": "aws", "action": "start",
+    })
     return result
 
 
@@ -156,6 +161,11 @@ async def ws_stop_ec2_instance(
     log_activity(db, member.user, 'ec2.stop', 'EC2',
                  resource_id=instance_id, resource_name=instance_id, provider='aws',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    from app.services.notification_channel_service import fire_event as _fire
+    _fire(db, member.workspace_id, "resource.stopped", {
+        "resource_id": instance_id, "resource_name": instance_id,
+        "resource_type": "ec2", "provider": "aws", "action": "stop",
+    })
     return result
 
 

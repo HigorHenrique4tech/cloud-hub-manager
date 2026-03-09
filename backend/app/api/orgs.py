@@ -323,6 +323,12 @@ async def invite_member(
             inviter_name=member.user.name or member.user.email,
         )
 
+        from app.services.notification_channel_service import fire_event as _fire
+        _fire(db, member.workspace_id, "org.member.added", {
+            "email": user.email, "name": user.name or user.email,
+            "role": payload.role, "org_name": org.name,
+        })
+
         return {"user_id": str(user.id), "email": user.email, "name": user.name, "role": payload.role, "status": "added"}
 
     # User not found — create pending invitation

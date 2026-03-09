@@ -496,15 +496,38 @@ O Caddy gerencia SSL automaticamente via Let's Encrypt.
 - [x] Microsoft 365 — Teams Admin (times, canais, membros, atividade)
 - [x] Microsoft 365 — Wizard de criação de usuário 4 etapas
 - [x] Microsoft 365 — Exchange Online Admin API (EXO) para caixas compartilhadas e delegação
+- [x] Backup multi-cloud — AWS (EBS/snapshots), Azure (Recovery Services Vault), GCP
+- [x] Segurança multi-cloud — scan por provider (AWS, Azure, GCP) com severidade
+- [x] Inventário unificado — todos os recursos AWS + Azure + GCP com busca, filtro e export CSV
+- [x] Suporte e tickets — CRUD de tickets por org, comentários, atribuição a helpdesk
+- [x] Canais de notificação — Slack, Microsoft Teams, e-mail configuráveis por workspace
+- [x] Aprovações — workflow de aprovação de ações por workspace
+- [x] Templates de recursos — salvar e reutilizar configurações de criação
+- [x] Relatórios executivos — custo por período, utilização e resumo multi-cloud
+- [x] Políticas de conformidade — definir, avaliar e remediar recursos fora de conformidade
+- [x] Onboarding — wizard 4 etapas pós-cadastro (org → workspace → cloud account → tour)
+- [x] Login redesign — dark theme completo com glass morphism, provider badges e animações
 
-### Próximos
-- [ ] Testes automatizados (`pytest` backend + `vitest` frontend)
-- [ ] Approval workflow para ações FinOps (Enterprise)
+### Próximos — Alta Prioridade
+- [ ] AWS — ECS/EKS, DynamoDB, CloudFront, Route 53, API Gateway, SNS/SQS
+- [ ] Azure — AKS, Container Registry, API Management, Service Bus, Function Apps
+- [ ] GCP — Cloud Run, BigQuery, Pub/Sub, Firestore, Cloud Armor
+- [ ] M365 — Intune (dispositivos gerenciados e políticas de conformidade)
+- [ ] M365 — Defender for M365 (alertas e incidents via Graph Security API)
+- [ ] FinOps — Reserved Instance advisor + Spot recommendations + Azure Reservations
+- [ ] Testes automatizados (`pytest` backend + `vitest` + Playwright E2E)
+
+### Próximos — Média Prioridade
+- [ ] Motor de automação visual (workflows if/then multi-cloud)
+- [ ] Integração com IaC (exportar recursos como Terraform / CloudFormation / Bicep)
+- [ ] Showback / Chargeback interno por time ou projeto via tags
+- [ ] Integrações externas: Jira, ServiceNow, PagerDuty, Datadog
+- [ ] SSO/SAML Enterprise (Okta, Azure AD B2C)
+- [ ] M365 — Conditional Access — visualizar e auditar políticas
 - [ ] M365 — Calendários e salas via Graph API
-- [ ] M365 — Conditional Access — visualizar políticas
-- [ ] Export de relatórios M365 em CSV/PDF
-- [ ] Suporte a múltiplas regiões AWS simultâneas
 - [ ] Retentativa automática de webhooks (backoff exponencial)
+
+> Roadmap completo com detalhes técnicos em [`featuresfuturas.md`](./featuresfuturas.md)
 
 ---
 

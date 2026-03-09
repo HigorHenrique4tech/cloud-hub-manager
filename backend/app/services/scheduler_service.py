@@ -82,13 +82,15 @@ def execute_scheduled_action(schedule_id: str) -> None:
 
             _record_run(db, s, "success", None)
             from app.services.notification_channel_service import fire_event as _fire
-            _fire(db, s.workspace_id, f"resource.{s.action}ed", {
+            _action_payload = {
                 "resource_id":   s.resource_id,
                 "resource_name": s.resource_name,
                 "resource_type": s.resource_type,
                 "provider":      s.provider,
                 "action":        s.action,
-            })
+            }
+            _fire(db, s.workspace_id, f"resource.{s.action}ed", _action_payload)
+            _fire(db, s.workspace_id, "schedule.executed", _action_payload)
             from app.services.notification_service import push_notification as _push
             _push(db, s.workspace_id, "schedule",
                   f"Agendamento executado: {s.resource_name} ({s.action})",
@@ -97,14 +99,16 @@ def execute_scheduled_action(schedule_id: str) -> None:
             logger.exception(f"Scheduled action {schedule_id} failed: {exc}")
             _record_run(db, s, "failed", str(exc)[:500])
             from app.services.notification_channel_service import fire_event as _fire
-            _fire(db, s.workspace_id, "resource.failed", {
+            _fail_payload = {
                 "resource_id":   s.resource_id,
                 "resource_name": s.resource_name,
                 "resource_type": s.resource_type,
                 "provider":      s.provider,
                 "action":        s.action,
                 "error":         str(exc)[:200],
-            })
+            }
+            _fire(db, s.workspace_id, "resource.failed", _fail_payload)
+            _fire(db, s.workspace_id, "schedule.failed", _fail_payload)
             from app.services.notification_service import push_notification as _push
             _push(db, s.workspace_id, "schedule",
                   f"Falha no agendamento: {s.resource_name} — {str(exc)[:100]}",

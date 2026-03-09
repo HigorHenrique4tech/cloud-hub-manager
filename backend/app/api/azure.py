@@ -180,6 +180,11 @@ async def ws_start_vm(
     log_activity(db, member.user, 'azurevm.start', 'AzureVM',
                  resource_name=vm_name, provider='azure', detail=f"Resource group: {resource_group}",
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    from app.services.notification_channel_service import fire_event as _fire
+    _fire(db, member.workspace_id, "resource.started", {
+        "resource_name": vm_name, "resource_type": "vm",
+        "provider": "azure", "action": "start",
+    })
     return result
 
 
@@ -196,6 +201,11 @@ async def ws_stop_vm(
     log_activity(db, member.user, 'azurevm.stop', 'AzureVM',
                  resource_name=vm_name, provider='azure', detail=f"Resource group: {resource_group}",
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    from app.services.notification_channel_service import fire_event as _fire
+    _fire(db, member.workspace_id, "resource.stopped", {
+        "resource_name": vm_name, "resource_type": "vm",
+        "provider": "azure", "action": "stop",
+    })
     return result
 
 

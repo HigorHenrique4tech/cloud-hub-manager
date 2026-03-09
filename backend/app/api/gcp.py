@@ -161,6 +161,11 @@ async def gcp_start_instance(
     svc = _get_gcp_service(member, db)
     await _run(svc.start_instance, zone, name)
     log_activity(db, member.user, "gcp.compute.start", "Instance", name, {"zone": zone})
+    from app.services.notification_channel_service import fire_event as _fire
+    _fire(db, member.workspace_id, "resource.started", {
+        "resource_name": name, "resource_type": "instance",
+        "provider": "gcp", "action": "start", "zone": zone,
+    })
     return {"success": True, "instance": name, "zone": zone}
 
 
@@ -174,6 +179,11 @@ async def gcp_stop_instance(
     svc = _get_gcp_service(member, db)
     await _run(svc.stop_instance, zone, name)
     log_activity(db, member.user, "gcp.compute.stop", "Instance", name, {"zone": zone})
+    from app.services.notification_channel_service import fire_event as _fire
+    _fire(db, member.workspace_id, "resource.stopped", {
+        "resource_name": name, "resource_type": "instance",
+        "provider": "gcp", "action": "stop", "zone": zone,
+    })
     return {"success": True, "instance": name, "zone": zone}
 
 
