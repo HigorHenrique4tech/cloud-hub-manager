@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Plus, Trash2, HardDriveDownload, RefreshCw, Camera, Image } from 'lucide-react';
+import { Plus, Trash2, HardDriveDownload, RefreshCw, Camera, Image, Loader2 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import SkeletonTable from '../../components/common/SkeletonTable';
@@ -27,43 +27,134 @@ function formatDate(str) {
   try { return new Date(str).toLocaleString('pt-BR'); } catch { return str; }
 }
 
+const SEL = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400 disabled:opacity-50';
+const INP = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400';
+
 // ── Snapshot Create Modal ──────────────────────────────────────────────────────
 
-function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
-  const [form, setForm] = useState({ volume_id: '', description: '' });
+function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error, instances, instancesLoading }) {
+  const [selectedInstance, setSelectedInstance] = useState('');
+  const [selectedVolume, setSelectedVolume] = useState('');
+  const [description, setDescription] = useState('');
 
   if (!isOpen) return null;
+
+  // Build flat list of volumes from all instances
+  const volumeOptions = useMemo(() => {
+    if (!instances?.length) return [];
+    const opts = [];
+    instances.forEach(inst => {
+      const label = inst.name || inst.instance_id;
+      (inst.volumes || []).forEach(v => {
+        if (v.volume_id) opts.push({ volume_id: v.volume_id, instance_label: label, instance_id: inst.instance_id });
+      });
+    });
+    return opts;
+  }, [instances]);
+
+  // When an instance is selected, filter its volumes
+  const filteredVolumes = selectedInstance
+    ? volumeOptions.filter(v => v.instance_id === selectedInstance)
+    : volumeOptions;
+
+  const handleInstanceChange = (e) => {
+    setSelectedInstance(e.target.value);
+    setSelectedVolume('');
+  };
+
   const submit = (e) => {
     e.preventDefault();
-    if (form.volume_id.trim()) onSubmit(form);
+    const vol = selectedVolume || '';
+    if (vol.trim()) onSubmit({ volume_id: vol, description });
   };
+
+  const reset = () => {
+    setSelectedInstance('');
+    setSelectedVolume('');
+    setDescription('');
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Criar EBS Snapshot</h2>
         <form onSubmit={submit} className="space-y-4">
+
+          {/* Instance filter */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Volume ID *</label>
-            <input
-              value={form.volume_id}
-              onChange={e => setForm({ ...form, volume_id: e.target.value })}
-              placeholder="vol-0123456789abcdef0"
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400"
-              required
-            />
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Instância EC2 (filtrar por)
+            </label>
+            {instancesLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 py-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Carregando instâncias...
+              </div>
+            ) : (
+              <select value={selectedInstance} onChange={handleInstanceChange} className={SEL}>
+                <option value="">— Todas as instâncias —</option>
+                {instances?.map(inst => (
+                  <option key={inst.instance_id} value={inst.instance_id}>
+                    {inst.name || inst.instance_id} ({inst.instance_id})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
+
+          {/* Volume selector */}
+          <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Volume EBS *
+            </label>
+            {instancesLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 py-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Carregando volumes...
+              </div>
+            ) : filteredVolumes.length > 0 ? (
+              <select
+                value={selectedVolume}
+                onChange={e => setSelectedVolume(e.target.value)}
+                className={SEL}
+                required
+              >
+                <option value="">— Selecione um volume —</option>
+                {filteredVolumes.map(v => (
+                  <option key={v.volume_id} value={v.volume_id}>
+                    {v.volume_id} — {v.instance_label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={selectedVolume}
+                onChange={e => setSelectedVolume(e.target.value)}
+                placeholder="vol-0123456789abcdef0"
+                className={INP}
+                required
+              />
+            )}
+            {filteredVolumes.length === 0 && !instancesLoading && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                Nenhum volume encontrado. Digite o ID manualmente.
+              </p>
+            )}
+          </div>
+
+          {/* Description */}
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Descrição</label>
             <input
-              value={form.description}
-              onChange={e => setForm({ ...form, description: e.target.value })}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
               placeholder="Backup manual..."
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className={INP}
             />
           </div>
+
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
+            <button type="button" onClick={reset} className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
             <button type="submit" disabled={loading} className="px-4 py-2 text-sm rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 disabled:opacity-60">
               {loading ? 'Criando...' : 'Criar Snapshot'}
             </button>
@@ -76,51 +167,91 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
 
 // ── AMI Create Modal ───────────────────────────────────────────────────────────
 
-function CreateAMIModal({ isOpen, onClose, onSubmit, loading, error }) {
-  const [form, setForm] = useState({ instance_id: '', name: '', description: '' });
+function CreateAMIModal({ isOpen, onClose, onSubmit, loading, error, instances, instancesLoading }) {
+  const [selectedInstance, setSelectedInstance] = useState('');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
 
   if (!isOpen) return null;
+
   const submit = (e) => {
     e.preventDefault();
-    if (form.instance_id.trim() && form.name.trim()) onSubmit(form);
+    if (selectedInstance && name.trim()) onSubmit({ instance_id: selectedInstance, name, description });
   };
+
+  const reset = () => {
+    setSelectedInstance('');
+    setName('');
+    setDescription('');
+    onClose();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md p-6">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Criar AMI (Backup da Instância)</h2>
         <form onSubmit={submit} className="space-y-4">
+
+          {/* Instance selector */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Instance ID *</label>
-            <input
-              value={form.instance_id}
-              onChange={e => setForm({ ...form, instance_id: e.target.value })}
-              placeholder="i-0123456789abcdef0"
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400"
-              required
-            />
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+              Instância EC2 *
+            </label>
+            {instancesLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 py-2">
+                <Loader2 className="w-4 h-4 animate-spin" /> Carregando instâncias...
+              </div>
+            ) : instances?.length > 0 ? (
+              <select
+                value={selectedInstance}
+                onChange={e => setSelectedInstance(e.target.value)}
+                className={SEL}
+                required
+              >
+                <option value="">— Selecione uma instância —</option>
+                {instances.map(inst => (
+                  <option key={inst.instance_id} value={inst.instance_id}>
+                    {inst.name || inst.instance_id} — {inst.state} ({inst.instance_type || ''})
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                value={selectedInstance}
+                onChange={e => setSelectedInstance(e.target.value)}
+                placeholder="i-0123456789abcdef0"
+                className={INP}
+                required
+              />
+            )}
           </div>
+
+          {/* AMI Name */}
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nome *</label>
             <input
-              value={form.name}
-              onChange={e => setForm({ ...form, name: e.target.value })}
+              value={name}
+              onChange={e => setName(e.target.value)}
               placeholder="meu-servidor-backup-2024"
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className={INP}
               required
             />
           </div>
+
+          {/* Description */}
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Descrição</label>
             <input
-              value={form.description}
-              onChange={e => setForm({ ...form, description: e.target.value })}
+              value={description}
+              onChange={e => setDescription(e.target.value)}
               placeholder="Backup manual..."
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-orange-400"
+              className={INP}
             />
           </div>
+
           {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
           <div className="flex justify-end gap-2 pt-2">
-            <button type="button" onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
+            <button type="button" onClick={reset} className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
             <button type="submit" disabled={loading} className="px-4 py-2 text-sm rounded-lg bg-orange-500 text-white font-medium hover:bg-orange-600 disabled:opacity-60">
               {loading ? 'Criando...' : 'Criar AMI'}
             </button>
@@ -152,6 +283,17 @@ export default function AwsBackup() {
     queryFn: () => awsService.listOwnedAMIs(),
     retry: false,
   });
+
+  // Load instances for modals (enabled only when a modal is open)
+  const instancesQ = useQuery({
+    queryKey: ['aws-ec2-instances-backup'],
+    queryFn: () => awsService.listEC2Instances(),
+    retry: false,
+    enabled: createSnapOpen || createAMIOpen,
+    staleTime: 60_000,
+  });
+
+  const instances = instancesQ.data?.instances || [];
 
   const snapMut = useMutation({
     mutationFn: awsService.createSnapshot,
@@ -337,6 +479,8 @@ export default function AwsBackup() {
         onSubmit={snapMut.mutate}
         loading={snapMut.isPending}
         error={mutError}
+        instances={instances}
+        instancesLoading={instancesQ.isLoading}
       />
 
       <CreateAMIModal
@@ -345,6 +489,8 @@ export default function AwsBackup() {
         onSubmit={amiMut.mutate}
         loading={amiMut.isPending}
         error={mutError}
+        instances={instances}
+        instancesLoading={instancesQ.isLoading}
       />
 
       <ConfirmDeleteModal
