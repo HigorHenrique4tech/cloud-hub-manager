@@ -699,7 +699,7 @@ async def ws_create_aws_snapshot(
                           VolumeId=body.volume_id, Description=body.description)
         log_activity(db, member.user, "backup.create", "EBS_SNAPSHOT",
                      resource_id=resp["SnapshotId"], resource_name=body.volume_id,
-                     provider="aws", organization_id=member.org_id, workspace_id=member.workspace_id)
+                     provider="aws", organization_id=member.organization_id, workspace_id=member.workspace_id)
         return {
             "snapshot_id": resp["SnapshotId"],
             "volume_id": resp.get("VolumeId", ""),
@@ -724,7 +724,7 @@ async def ws_delete_aws_snapshot(
         await _run(svc.ec2_client.delete_snapshot, SnapshotId=snapshot_id)
         log_activity(db, member.user, "backup.delete", "EBS_SNAPSHOT",
                      resource_id=snapshot_id, resource_name=snapshot_id,
-                     provider="aws", organization_id=member.org_id, workspace_id=member.workspace_id)
+                     provider="aws", organization_id=member.organization_id, workspace_id=member.workspace_id)
         return {"deleted": True}
     except HTTPException:
         raise
@@ -777,7 +777,7 @@ async def ws_create_aws_ami(
         image_id = resp["ImageId"]
         log_activity(db, member.user, "backup.create", "AMI",
                      resource_id=image_id, resource_name=body.name,
-                     provider="aws", organization_id=member.org_id, workspace_id=member.workspace_id)
+                     provider="aws", organization_id=member.organization_id, workspace_id=member.workspace_id)
         return {"image_id": image_id, "name": body.name, "state": "pending"}
     except HTTPException:
         raise
