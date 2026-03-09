@@ -188,8 +188,12 @@ def update_channel(
     if body.name is not None:
         ch.name = body.name
     if body.config is not None:
-        _validate_config(ch.channel_type, body.config)
-        ch.config = body.config
+        # Merge with existing config so omitted fields (e.g. bot_token) are preserved
+        merged = {**(ch.config or {}), **body.config}
+        # Remove empty string values that the frontend sends when leaving a field blank
+        merged = {k: v for k, v in merged.items() if v != ""}
+        _validate_config(ch.channel_type, merged)
+        ch.config = merged
     if body.events is not None:
         ch.events = body.events
     if body.is_active is not None:
