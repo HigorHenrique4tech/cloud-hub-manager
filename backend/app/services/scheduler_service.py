@@ -81,7 +81,7 @@ def execute_scheduled_action(schedule_id: str) -> None:
                 raise ValueError(f"Unsupported provider: {s.provider}")
 
             _record_run(db, s, "success", None)
-            from app.services.webhook_service import fire_event as _fire
+            from app.services.notification_channel_service import fire_event as _fire
             _fire(db, s.workspace_id, f"resource.{s.action}ed", {
                 "resource_id":   s.resource_id,
                 "resource_name": s.resource_name,
@@ -96,7 +96,7 @@ def execute_scheduled_action(schedule_id: str) -> None:
         except Exception as exc:
             logger.exception(f"Scheduled action {schedule_id} failed: {exc}")
             _record_run(db, s, "failed", str(exc)[:500])
-            from app.services.webhook_service import fire_event as _fire
+            from app.services.notification_channel_service import fire_event as _fire
             _fire(db, s.workspace_id, "resource.failed", {
                 "resource_id":   s.resource_id,
                 "resource_name": s.resource_name,
@@ -299,7 +299,7 @@ def execute_finops_scan(workspace_id: str) -> None:
 
         _record_finops_scan_run(db, sched, "success", None)
         logger.info(f"FinOps auto-scan: {len(findings)} findings for workspace {workspace_id}")
-        from app.services.webhook_service import fire_event as _fire
+        from app.services.notification_channel_service import fire_event as _fire
         _fire(db, workspace_id, "finops.scan.completed", {
             "findings_count": len(findings),
             "provider":       sched.provider,
@@ -386,7 +386,7 @@ def execute_budget_eval() -> None:
     from app.models.db_models import FinOpsBudget, CloudAccount, Workspace, Organization
     from app.services.auth_service import decrypt_credential
     from app.services.email_service import send_budget_alert_email
-    from app.services.webhook_service import fire_event as _fire
+    from app.services.notification_channel_service import fire_event as _fire
 
     db = SessionLocal()
     try:

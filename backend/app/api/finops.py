@@ -2088,7 +2088,7 @@ async def evaluate_budgets(
 
     from datetime import date
     from app.services.email_service import send_budget_alert_email
-    from app.services.webhook_service import fire_event as _fire
+    from app.services.notification_channel_service import fire_event as _fire
 
     budgets = (
         db.query(FinOpsBudget)

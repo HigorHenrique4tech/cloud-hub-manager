@@ -2,7 +2,7 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
-  ShieldCheck, Webhook, Grid3x3, PackageSearch, GitPullRequestArrow,
+  ShieldCheck, Bell, Grid3x3, PackageSearch, GitPullRequestArrow,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AwsIcon, AzureIcon, GcpIcon } from '../common/CloudProviderIcons';
@@ -119,7 +119,7 @@ const Sidebar = () => {
           <NavItem to="/approvals" label="Aprovações" icon={GitPullRequestArrow} badge={pendingCount} />
         </PermissionGate>
         <PermissionGate permission="webhooks.view">
-          <NavItem to="/webhooks" label="Webhooks" icon={Webhook} />
+          <NavItem to="/notifications" label="Notificações" icon={Bell} />
         </PermissionGate>
         <PermissionGate permission="logs.view">
           <NavItem to="/logs" label="Logs" icon={FileText} />

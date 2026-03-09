@@ -1,5 +1,21 @@
 import api, { wsUrl } from './api';
 
+// Merge provider cost results into a combined summary
+function _mergeCosts(awsResult, azureResult, gcpResult) {
+  const aws   = awsResult.status   === 'fulfilled' ? awsResult.value.data   : null;
+  const azure = azureResult.status === 'fulfilled' ? azureResult.value.data : null;
+  const gcp   = gcpResult.status   === 'fulfilled' ? gcpResult.value.data   : null;
+  return {
+    aws,
+    azure,
+    gcp,
+    total: +((aws?.total || 0) + (azure?.total || 0) + (gcp?.total || 0)).toFixed(4),
+    aws_total:   +(aws?.total   || 0).toFixed(4),
+    azure_total: +(azure?.total || 0).toFixed(4),
+    gcp_total:   +(gcp?.total   || 0).toFixed(4),
+  };
+}
+
 export const costService = {
   /**
    * Get cost data for a specific provider.
@@ -88,6 +104,21 @@ export const costService = {
       by_service,
       total: +((aws?.total || 0) + (azure?.total || 0) + (gcp?.total || 0)).toFixed(4),
     };
+  },
+
+  /**
+   * Fetch combined costs for a specific workspace (explicit org + workspace IDs).
+   * Used for cross-workspace cost comparison in the org settings page.
+   */
+  getCombinedCostsForWorkspace: async (orgSlug, wsId, startDate, endDate) => {
+    const params = { start_date: startDate, end_date: endDate, granularity: 'DAILY' };
+    const base = `/orgs/${orgSlug}/workspaces/${wsId}`;
+    const [awsResult, azureResult, gcpResult] = await Promise.allSettled([
+      api.get(`${base}/aws/costs`, { params }),
+      api.get(`${base}/azure/costs`, { params }),
+      api.get(`${base}/gcp/costs`, { params }),
+    ]);
+    return _mergeCosts(awsResult, azureResult, gcpResult);
   },
 };
 

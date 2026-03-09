@@ -8,6 +8,7 @@ import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import { RoleGate } from '../components/common/PermissionGate';
 import ConfirmDeleteModal from '../components/common/ConfirmDeleteModal';
 import orgService from '../services/orgService';
+import WorkspaceCostComparison from '../components/workspace/WorkspaceCostComparison';
 
 const ROLES = ['owner', 'admin', 'operator', 'viewer', 'billing'];
 
@@ -81,6 +82,15 @@ const OrgSettings = () => {
       window.location.reload();
     },
   });
+
+  // Workspaces (for cost comparison)
+  const { data: workspacesData } = useQuery({
+    queryKey: ['workspaces', slug],
+    queryFn: () => orgService.listWorkspaces(slug),
+    enabled: !!slug,
+    staleTime: 120_000,
+  });
+  const workspaces = workspacesData?.workspaces || [];
 
   // Org name update
   const [orgName, setOrgName] = useState('');
@@ -345,6 +355,11 @@ const OrgSettings = () => {
               </button>
             </div>
           </RoleGate>
+
+          {/* Workspace Cost Comparison */}
+          {workspaces.length > 1 && (
+            <WorkspaceCostComparison orgSlug={slug} workspaces={workspaces} />
+          )}
 
           {/* Modals */}
           <ConfirmDeleteModal

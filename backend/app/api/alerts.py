@@ -281,7 +281,7 @@ async def ws_evaluate_alerts(
 
     # Fire webhook events for each triggered alert
     if triggered:
-        from app.services.webhook_service import fire_event as _fire
+        from app.services.notification_channel_service import fire_event as _fire
         for t in triggered:
             _fire(db, member.workspace_id, "alert.triggered", {
                 "alert_id":      t["alert_id"],

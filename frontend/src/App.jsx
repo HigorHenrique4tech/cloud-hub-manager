@@ -50,7 +50,7 @@ import VerifyCallback from './pages/VerifyCallback';
 import Billing from './pages/Billing';
 import BillingSuccess from './pages/BillingSuccess';
 import AdminPanel from './pages/AdminPanel';
-import Webhooks from './pages/Webhooks';
+import NotificationChannels from './pages/NotificationChannels';
 import OAuthCallback from './pages/OAuthCallback';
 import M365Dashboard from './pages/m365/M365Dashboard';
 import M365SharePoint from './pages/m365/SharePoint';
@@ -126,7 +126,7 @@ function App() {
                 <Route path="/costs" element={<PR><Costs /></PR>} />
                 <Route path="/finops" element={<PR><FinOps /></PR>} />
                 <Route path="/schedules" element={<PR><Schedules /></PR>} />
-                <Route path="/webhooks" element={<PR><Webhooks /></PR>} />
+                <Route path="/notifications" element={<PR><NotificationChannels /></PR>} />
                 <Route path="/m365" element={<PR><M365Dashboard /></PR>} />
                 <Route path="/m365/sharepoint" element={<PR><M365SharePoint /></PR>} />
                 <Route path="/m365/exchange" element={<PR><M365Exchange /></PR>} />
