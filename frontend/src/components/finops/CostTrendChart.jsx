@@ -37,10 +37,11 @@ const CostTrendChart = ({ costTrendQ }) => {
   const fLabels     = trendData.forecast_labels ?? [];
   const awsF        = trendData.aws_forecast  ?? [];
   const azureF      = trendData.azure_forecast ?? [];
+  const gcpF        = trendData.gcp_forecast  ?? [];
   const hasAws      = aws.some((v) => v > 0);
   const hasAzure    = azure.some((v) => v > 0);
   const hasGcp      = gcp.some((v) => v > 0);
-  const hasForecast = awsF.some((v) => v > 0) || azureF.some((v) => v > 0);
+  const hasForecast = awsF.some((v) => v > 0) || azureF.some((v) => v > 0) || gcpF.some((v) => v > 0);
 
   if (!hasAws && !hasAzure && !hasGcp) {
     return (
@@ -66,12 +67,14 @@ const CostTrendChart = ({ costTrendQ }) => {
     date:    label.slice(5),
     AWS_f:   awsF[i]   || 0,
     Azure_f: azureF[i] || 0,
+    GCP_f:   gcpF[i]   || 0,
   }));
   const chartData = [...histData, ...forecastData];
 
   const avgDays      = fLabels.length || 1;
   const awsMonthly   = (awsF.reduce((s, v) => s + v, 0) / avgDays) * 30;
   const azureMonthly = (azureF.reduce((s, v) => s + v, 0) / avgDays) * 30;
+  const gcpMonthly   = (gcpF.reduce((s, v) => s + v, 0) / avgDays) * 30;
 
   return (
     <div className="card p-4">
@@ -119,6 +122,7 @@ const CostTrendChart = ({ costTrendQ }) => {
           {hasGcp   && <Area type="monotone" dataKey="GCP"   stroke="#22c55e" fill="url(#gcpGrad)"   strokeWidth={2} dot={false} connectNulls animationDuration={800} />}
           {hasForecast && hasAws   && <Area type="monotone" dataKey="AWS_f"   stroke="#f97316" fill="none" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls />}
           {hasForecast && hasAzure && <Area type="monotone" dataKey="Azure_f" stroke="#3b82f6" fill="none" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls />}
+          {hasForecast && hasGcp   && <Area type="monotone" dataKey="GCP_f"   stroke="#22c55e" fill="none" strokeWidth={1.5} strokeDasharray="5 3" dot={false} connectNulls />}
           {hasForecast && (
             <ReferenceLine
               x={todayLabel}
@@ -131,23 +135,29 @@ const CostTrendChart = ({ costTrendQ }) => {
       </ResponsiveContainer>
 
       {hasForecast && (
-        <div className="mt-3 grid grid-cols-3 gap-3">
-          {hasAws && (
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {hasAws && awsMonthly > 0 && (
             <div className="rounded-lg border border-orange-200 dark:border-orange-800/30 bg-orange-50 dark:bg-orange-900/10 p-2.5">
               <p className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">AWS (próx. 30d)</p>
               <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(awsMonthly)}</p>
             </div>
           )}
-          {hasAzure && (
+          {hasAzure && azureMonthly > 0 && (
             <div className="rounded-lg border border-blue-200 dark:border-blue-800/30 bg-blue-50 dark:bg-blue-900/10 p-2.5">
               <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Azure (próx. 30d)</p>
               <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(azureMonthly)}</p>
             </div>
           )}
-          {(hasAws || hasAzure) && (
+          {hasGcp && gcpMonthly > 0 && (
+            <div className="rounded-lg border border-green-200 dark:border-green-800/30 bg-green-50 dark:bg-green-900/10 p-2.5">
+              <p className="text-[10px] text-green-600 dark:text-green-400 font-medium">GCP (próx. 30d) *est.</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(gcpMonthly)}</p>
+            </div>
+          )}
+          {(awsMonthly + azureMonthly + gcpMonthly) > 0 && (
             <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 p-2.5">
               <p className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Total (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(awsMonthly + azureMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(awsMonthly + azureMonthly + gcpMonthly)}</p>
             </div>
           )}
         </div>

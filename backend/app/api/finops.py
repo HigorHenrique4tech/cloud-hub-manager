@@ -781,14 +781,31 @@ async def get_cost_trend(
             except Exception as e:
                 logger.warning(f"Azure daily cost trend error: {e}")
 
-        # GCP: no simple per-day billing API without BigQuery export — leave as zeros
+        # GCP: no simple per-day billing API without BigQuery export.
+        # Estimate daily cost from the sum of current_monthly_cost on active GCP recommendations.
+        elif acct.provider == "gcp":
+            try:
+                from app.models.db_models import FinOpsRecommendation
+                gcp_monthly = db.query(
+                    __import__("sqlalchemy", fromlist=["func"]).func.sum(FinOpsRecommendation.current_monthly_cost)
+                ).filter(
+                    FinOpsRecommendation.workspace_id == member.workspace_id,
+                    FinOpsRecommendation.provider == "gcp",
+                    FinOpsRecommendation.status == "pending",
+                    FinOpsRecommendation.current_monthly_cost.isnot(None),
+                ).scalar() or 0.0
+                if gcp_monthly > 0:
+                    daily_est = round(gcp_monthly / 30, 4)
+                    result["gcp"] = [daily_est] * days
+            except Exception as e:
+                logger.warning(f"GCP estimated cost from recommendations error: {e}")
 
     # Append 15-day linear forecast
     FORECAST_DAYS = 15
     result["forecast_labels"] = [(today + timedelta(days=i + 1)).isoformat() for i in range(FORECAST_DAYS)]
     result["aws_forecast"]    = _linear_forecast(result["aws"], FORECAST_DAYS)
     result["azure_forecast"]  = _linear_forecast(result["azure"], FORECAST_DAYS)
-    result["gcp_forecast"]    = [0.0] * FORECAST_DAYS
+    result["gcp_forecast"]    = _linear_forecast(result["gcp"], FORECAST_DAYS)
 
     _set_cached_trend(cache_key, result)
     return result
@@ -1911,6 +1928,7 @@ async def trigger_anomaly_scan(
 async def list_anomalies(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
+    provider: Optional[str] = Query(None, description="aws|azure|gcp"),
     member: MemberContext = Depends(require_permission("finops.view")),
     db: Session = Depends(get_db),
 ):
@@ -1918,6 +1936,8 @@ async def list_anomalies(
     _require_plan(plan, "pro", "Detecção de anomalias")
 
     q = db.query(FinOpsAnomaly).filter(FinOpsAnomaly.workspace_id == member.workspace_id)
+    if provider:
+        q = q.filter(FinOpsAnomaly.provider == provider)
     total = q.count()
     anomalies = q.order_by(FinOpsAnomaly.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
     return {

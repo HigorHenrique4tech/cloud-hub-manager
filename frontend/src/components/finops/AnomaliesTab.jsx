@@ -1,9 +1,37 @@
-import { AlertTriangle, Bell, CheckCircle } from 'lucide-react';
+import { AlertTriangle, Bell, CheckCircle, TrendingUp } from 'lucide-react';
 import LoadingSpinner from '../common/loadingspinner';
 import EmptyState from '../common/emptystate';
 import PlanGate from '../common/PlanGate';
 import PermissionGate from '../common/PermissionGate';
 import { fmtUSD } from '../../utils/formatters';
+
+const CostComparisonBar = ({ baseline, actual }) => {
+  if (baseline == null || actual == null) return null;
+  const max = Math.max(baseline, actual, 0.01);
+  const baselinePct = Math.round((baseline / max) * 100);
+  const actualPct   = Math.round((actual   / max) * 100);
+  const ratio = actual / (baseline || 1);
+  const barColor = ratio >= 3 ? 'bg-red-500' : ratio >= 2 ? 'bg-orange-500' : 'bg-amber-400';
+
+  return (
+    <div className="mt-3 space-y-1.5">
+      <div className="flex items-center gap-2 text-xs">
+        <span className="w-16 text-gray-500 dark:text-slate-400 shrink-0">Baseline</span>
+        <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden">
+          <div className="h-3 rounded-full bg-blue-400 transition-all duration-500" style={{ width: `${baselinePct}%` }} />
+        </div>
+        <span className="w-20 text-right text-gray-600 dark:text-slate-300 font-mono text-[11px]">{fmtUSD(baseline)}/d</span>
+      </div>
+      <div className="flex items-center gap-2 text-xs">
+        <span className="w-16 text-gray-500 dark:text-slate-400 shrink-0">Observado</span>
+        <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden">
+          <div className={`h-3 rounded-full ${barColor} transition-all duration-500`} style={{ width: `${actualPct}%` }} />
+        </div>
+        <span className="w-20 text-right font-mono text-[11px] font-semibold text-amber-500 dark:text-amber-400">{fmtUSD(actual)}/d</span>
+      </div>
+    </div>
+  );
+};
 
 const AnomalyCard = ({ anomaly, onAcknowledge, acknowledging }) => {
   const devPct = anomaly.deviation_pct ?? 0;
@@ -41,17 +69,13 @@ const AnomalyCard = ({ anomaly, onAcknowledge, acknowledging }) => {
             <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
               Detectada em {anomaly.detected_date ? new Date(anomaly.detected_date).toLocaleDateString('pt-BR') : '—'}
             </p>
-            <div className="mt-2 flex flex-wrap gap-4 text-xs">
-              <span className="text-gray-500 dark:text-slate-400">
-                Baseline: <strong className="text-gray-700 dark:text-slate-300">{fmtUSD(anomaly.baseline_cost)}/dia</strong>
-              </span>
-              <span className="text-gray-500 dark:text-slate-400">
-                Observado: <strong className={devPct >= 100 ? 'text-red-400' : 'text-amber-400'}>{fmtUSD(anomaly.actual_cost)}/dia</strong>
-              </span>
-              <span className={`font-semibold ${devPct >= 200 ? 'text-red-400' : devPct >= 100 ? 'text-amber-400' : 'text-yellow-400'}`}>
+            <div className="mt-1.5 flex items-center gap-2">
+              <TrendingUp size={12} className={devPct >= 200 ? 'text-red-400' : devPct >= 100 ? 'text-orange-400' : 'text-amber-400'} />
+              <span className={`text-xs font-bold ${devPct >= 200 ? 'text-red-400' : devPct >= 100 ? 'text-orange-400' : 'text-amber-400'}`}>
                 +{devPct.toFixed(0)}% acima do normal
               </span>
             </div>
+            <CostComparisonBar baseline={anomaly.baseline_cost} actual={anomaly.actual_cost} />
           </div>
         </div>
 
@@ -71,13 +95,35 @@ const AnomalyCard = ({ anomaly, onAcknowledge, acknowledging }) => {
   );
 };
 
-const AnomaliesTab = ({ anomaliesQ, anomalyScanMut, acknowledgeAnomalyMut }) => (
+const PROVIDERS = ['aws', 'azure', 'gcp'];
+
+const AnomaliesTab = ({ anomaliesQ, anomalyScanMut, acknowledgeAnomalyMut, filterProvider, setFilterProvider }) => (
   <div className="space-y-4 animate-fade-in">
     <PlanGate minPlan="pro" feature="Detecção de Anomalias">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-gray-500 dark:text-slate-400">
-          Picos de custo detectados automaticamente por análise estatística (3σ acima da baseline).
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <p className="text-sm text-gray-500 dark:text-slate-400 hidden sm:block">
+            Picos detectados por análise estatística (3σ acima da baseline).
+          </p>
+          {/* Provider filter */}
+          <div className="flex rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
+            <button
+              onClick={() => setFilterProvider('')}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${!filterProvider ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+            >
+              Todos
+            </button>
+            {PROVIDERS.map((p, i) => (
+              <button
+                key={p}
+                onClick={() => setFilterProvider(p === filterProvider ? '' : p)}
+                className={`px-3 py-1.5 text-xs font-medium uppercase border-l border-gray-200 dark:border-slate-700 transition-colors ${filterProvider === p ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
         <button
           onClick={() => anomalyScanMut.mutate()}
           disabled={anomalyScanMut.isPending}

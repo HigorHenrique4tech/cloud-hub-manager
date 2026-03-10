@@ -20,10 +20,15 @@ export function useFinOpsBudgets({ enabled = true } = {}) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['finops-budgets'] }),
   });
 
+  const updateBudget = useMutation({
+    mutationFn: ({ id, payload }) => finopsService.updateBudget(id, payload),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['finops-budgets'] }),
+  });
+
   const evaluateBudgets = useMutation({
     mutationFn: finopsService.evaluateBudgets,
     onSuccess: (data) => qc.setQueryData(['finops-budgets'], data),
   });
 
-  return { budgetsQ, createBudget, deleteBudget, evaluateBudgets };
+  return { budgetsQ, createBudget, updateBudget, deleteBudget, evaluateBudgets };
 }

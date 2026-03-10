@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Trash2, Wallet } from 'lucide-react';
+import { Pencil, Plus, RefreshCw, Trash2, Wallet } from 'lucide-react';
 import LoadingSpinner from '../common/loadingspinner';
 import EmptyState from '../common/emptystate';
 import PlanGate from '../common/PlanGate';
@@ -7,7 +7,7 @@ import { fmtUSD } from '../../utils/formatters';
 
 const PERIOD_LABEL = { monthly: 'Mensal', quarterly: 'Trimestral', annual: 'Anual' };
 
-const BudgetCard = ({ budget, onDelete }) => {
+const BudgetCard = ({ budget, onDelete, onEdit }) => {
   const pct = Math.min((budget.pct ?? 0) * 100, 100);
   const barColor =
     pct >= budget.alert_threshold * 100
@@ -27,12 +27,22 @@ const BudgetCard = ({ budget, onDelete }) => {
           </p>
         </div>
         <PermissionGate permission="finops.budget">
-          <button
-            onClick={() => onDelete(budget.id)}
-            className="text-gray-300 dark:text-slate-600 hover:text-red-400 transition-colors"
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onEdit(budget)}
+              className="text-gray-300 dark:text-slate-600 hover:text-indigo-400 transition-colors"
+              title="Editar orçamento"
+            >
+              <Pencil size={13} />
+            </button>
+            <button
+              onClick={() => onDelete(budget.id)}
+              className="text-gray-300 dark:text-slate-600 hover:text-red-400 transition-colors"
+              title="Excluir orçamento"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </PermissionGate>
       </div>
 
@@ -79,7 +89,7 @@ const BudgetCard = ({ budget, onDelete }) => {
   );
 };
 
-const BudgetsTab = ({ budgetsQ, deleteBudget, evaluateBudgets, onOpenModal }) => (
+const BudgetsTab = ({ budgetsQ, deleteBudget, evaluateBudgets, onOpenModal, onEditBudget }) => (
   <div className="space-y-4 animate-fade-in">
     <PlanGate minPlan="pro" feature="Orçamentos">
       <div className="flex items-center justify-between gap-3">
@@ -134,6 +144,7 @@ const BudgetsTab = ({ budgetsQ, deleteBudget, evaluateBudgets, onOpenModal }) =>
               key={budget.id}
               budget={budget}
               onDelete={(id) => deleteBudget.mutate(id)}
+              onEdit={onEditBudget}
             />
           ))}
         </div>

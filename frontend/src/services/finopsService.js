@@ -109,8 +109,10 @@ const finopsService = {
 
   // ── Anomalies ─────────────────────────────────────────────────────────────
 
-  getAnomalies: async () => {
-    const { data } = await api.get(wsUrl('/finops/anomalies'));
+  getAnomalies: async ({ provider } = {}) => {
+    const params = {};
+    if (provider) params.provider = provider;
+    const { data } = await api.get(wsUrl('/finops/anomalies'), { params });
     return data;
   },
 

@@ -54,9 +54,11 @@ const FinOps = () => {
   const [scanJobId, setScanJobId]       = useState(null);
   const [scanJobStatus, setScanJobStatus] = useState(null);
   const [bulkApplyConfirmOpen, setBulkApplyConfirmOpen] = useState(false);
+  const [filterAnomalyProvider, setFilterAnomalyProvider] = useState('');
 
   /* ── Custom hooks ── */
-  const { budgetsQ, createBudget, deleteBudget, evaluateBudgets } = useFinOpsBudgets({
+  const [editBudget, setEditBudget] = useState(null);
+  const { budgetsQ, createBudget, updateBudget, deleteBudget, evaluateBudgets } = useFinOpsBudgets({
     enabled: activeTab === 'budgets' && isPro,
   });
   const { scanScheduleQ, upsertScanSchedule, deleteScanSchedule } = useFinOpsScans({ enabled: isPro });
@@ -110,8 +112,8 @@ const FinOps = () => {
   });
 
   const anomaliesQ = useQuery({
-    queryKey: ['finops-anomalies'],
-    queryFn: finopsService.getAnomalies,
+    queryKey: ['finops-anomalies', filterAnomalyProvider],
+    queryFn: () => finopsService.getAnomalies({ provider: filterAnomalyProvider || undefined }),
     enabled: isPro && activeTab === 'anomalies',
   });
 
@@ -403,6 +405,7 @@ const FinOps = () => {
             deleteBudget={deleteBudget}
             evaluateBudgets={evaluateBudgets}
             onOpenModal={() => setShowBudgetModal(true)}
+            onEditBudget={(budget) => setEditBudget(budget)}
           />
         )}
         {activeTab === 'reports' && (
@@ -416,6 +419,8 @@ const FinOps = () => {
             anomaliesQ={anomaliesQ}
             anomalyScanMut={anomalyScanMut}
             acknowledgeAnomalyMut={acknowledgeAnomalyMut}
+            filterProvider={filterAnomalyProvider}
+            setFilterProvider={setFilterAnomalyProvider}
           />
         )}
         {activeTab === 'actions' && (
@@ -435,6 +440,16 @@ const FinOps = () => {
               createBudget.mutate(payload, { onSuccess: () => setShowBudgetModal(false) });
             }}
             saving={createBudget.isPending}
+          />
+        )}
+        {editBudget && (
+          <BudgetModal
+            existing={editBudget}
+            onClose={() => setEditBudget(null)}
+            onSave={(payload) => {
+              updateBudget.mutate({ id: editBudget.id, payload }, { onSuccess: () => setEditBudget(null) });
+            }}
+            saving={updateBudget.isPending}
           />
         )}
         {showScanScheduleModal && (
