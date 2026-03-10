@@ -548,6 +548,32 @@ class EnterpriseLead(Base):
     org  = relationship("Organization", foreign_keys=[org_id])
 
 
+# ── Billing Records ───────────────────────────────────────────────────────────
+
+
+class BillingRecord(Base):
+    __tablename__ = "billing_records"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id              = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    client_name         = Column(String(255), nullable=False)           # e.g. "Advanced Informática LTDA"
+    amount              = Column(Float, nullable=False)                 # in BRL or configured currency
+    period_type         = Column(String(10), nullable=False, default="monthly")  # monthly | annual
+    period_ref          = Column(String(20), nullable=False)            # e.g. "2026-03" or "2026"
+    due_date            = Column(DateTime, nullable=True)
+    paid_at             = Column(DateTime, nullable=True)
+    status              = Column(String(20), nullable=False, default="pending")  # pending | paid | overdue | cancelled
+    notes               = Column(Text, nullable=True)
+    attachment_filename = Column(String(255), nullable=True)            # original uploaded filename
+    attachment_path     = Column(String(512), nullable=True)            # path on disk
+    created_by          = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    org        = relationship("Organization", foreign_keys=[org_id])
+    creator    = relationship("User", foreign_keys=[created_by])
+
+
 # ── Notification Channels ─────────────────────────────────────────────────────
 
 

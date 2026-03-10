@@ -274,8 +274,8 @@ const FinOps = () => {
         {/* Page header */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600/20">
-              <Zap size={22} className="text-indigo-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-100 dark:bg-indigo-600/20">
+              <Zap size={22} className="text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">FinOps</h1>
@@ -357,12 +357,12 @@ const FinOps = () => {
                 <Icon size={15} />
                 {label}
                 {id === 'anomalies' && openAnomalyCount > 0 && (
-                  <span className="ml-1 rounded-full bg-amber-600/30 px-1.5 py-0.5 text-xs font-semibold text-amber-300">
+                  <span className="ml-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-600/30 dark:text-amber-300 px-1.5 py-0.5 text-xs font-semibold">
                     {openAnomalyCount}
                   </span>
                 )}
                 {id === 'recommendations' && pendingRecsCount > 0 && (
-                  <span className="ml-1 rounded-full bg-indigo-600/30 px-1.5 py-0.5 text-xs font-semibold text-indigo-300">
+                  <span className="ml-1 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-600/30 dark:text-indigo-300 px-1.5 py-0.5 text-xs font-semibold">
                     {pendingRecsCount}
                   </span>
                 )}

@@ -14,9 +14,9 @@ const fmtUSD = (v) =>
   v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const SEVERITY_STYLES = {
-  high:   'bg-red-500/20 text-red-300 border border-red-500/30',
-  medium: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30',
-  low:    'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+  high:   'bg-red-100 text-red-700 border border-red-300 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30',
+  medium: 'bg-yellow-100 text-yellow-700 border border-yellow-300 dark:bg-yellow-500/20 dark:text-yellow-300 dark:border-yellow-500/30',
+  low:    'bg-blue-100 text-blue-700 border border-blue-300 dark:bg-blue-500/20 dark:text-blue-300 dark:border-blue-500/30',
 };
 
 const TYPE_ICON = {
@@ -38,14 +38,15 @@ const TYPE_LABEL = {
 };
 
 const PROVIDER_BADGE = {
-  aws:   'bg-orange-500/20 text-orange-300',
-  azure: 'bg-sky-500/20 text-sky-300',
+  aws:   'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300',
+  azure: 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300',
+  gcp:   'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300',
 };
 
 const STATUS_ICON = {
-  applied:   <CheckCircle2 size={14} className="text-green-400" />,
-  dismissed: <XCircle size={14} className="text-slate-400" />,
-  failed:    <AlertTriangle size={14} className="text-red-400" />,
+  applied:   <CheckCircle2 size={14} className="text-green-600 dark:text-green-400" />,
+  dismissed: <XCircle size={14} className="text-gray-400 dark:text-slate-400" />,
+  failed:    <AlertTriangle size={14} className="text-red-600 dark:text-red-400" />,
 };
 
 const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyLoading, dismissLoading, requestingApprovalId, planTier = 'free', selected = false, onToggle }) => {
@@ -59,12 +60,12 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
   const planOk        = ['pro', 'enterprise'].includes((planTier || 'free').toLowerCase());
 
   return (
-    <div className={`rounded-xl border transition-colors ${
+    <div className={`rounded-xl border transition-all ${
       selected
-        ? 'border-indigo-500 bg-indigo-50/40 dark:border-indigo-500/60 dark:bg-indigo-900/10'
+        ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500/60 dark:bg-indigo-900/10'
         : isLocked
-          ? 'border-gray-200 bg-gray-50/50 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/30'
-          : 'border-gray-300 bg-white hover:border-gray-400 dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
+          ? 'border-gray-200 bg-gray-50 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/30'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
     }`}>
       {/* Header row */}
       <div
@@ -89,7 +90,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
 
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${PROVIDER_BADGE[rec.provider] || 'bg-slate-700 text-slate-300'}`}>
+            <span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${PROVIDER_BADGE[rec.provider] || 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-300'}`}>
               {rec.provider?.toUpperCase()}
             </span>
             <span className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{rec.resource_name}</span>
@@ -100,23 +101,23 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
           </div>
 
           {/* Recommendation summary */}
-          <div className="mt-1 flex items-center gap-1.5 text-sm text-slate-300">
+          <div className="mt-1 flex items-center gap-1.5">
             <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
-              isScheduleType ? 'bg-purple-500/20 text-purple-600 dark:text-purple-300'
-              : isRightsizing ? 'bg-amber-500/20 text-amber-600 dark:text-amber-300'
+              isScheduleType ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300'
+              : isRightsizing ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
               : 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300'
             }`}>
               {TYPE_ICON[rec.recommendation_type]}
               {TYPE_LABEL[rec.recommendation_type] || rec.recommendation_type}
             </span>
             {rec.recommended_spec?.instance_type && (
-              <span className="text-xs text-slate-400">→ {rec.recommended_spec.instance_type}</span>
+              <span className="text-xs text-gray-500 dark:text-slate-400">→ {rec.recommended_spec.instance_type}</span>
             )}
             {rec.recommended_spec?.vm_size && (
-              <span className="text-xs text-slate-400">→ {rec.recommended_spec.vm_size}</span>
+              <span className="text-xs text-gray-500 dark:text-slate-400">→ {rec.recommended_spec.vm_size}</span>
             )}
             {isScheduleType && rec.recommended_spec?.suggested_start && (
-              <span className="text-xs text-purple-400">
+              <span className="text-xs text-purple-600 dark:text-purple-400">
                 {rec.recommended_spec.suggested_start}–{rec.recommended_spec.suggested_stop},{' '}
                 {rec.recommended_spec.schedule_type === 'weekdays' ? 'Seg–Sex' : 'Diário'}
               </span>
@@ -131,18 +132,18 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
         {/* Saving + controls */}
         <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
           {isLocked ? (
-            <div className="flex items-center gap-1 text-slate-500 text-sm">
+            <div className="flex items-center gap-1 text-gray-400 dark:text-slate-500 text-sm">
               <Lock size={13} />
               <span>Pro</span>
             </div>
           ) : (
-            <span className="text-base font-bold text-green-400">
-              {fmtUSD(rec.estimated_saving_monthly)}<span className="text-xs font-normal text-slate-400">/mês</span>
+            <span className="text-base font-bold text-green-600 dark:text-green-400">
+              {fmtUSD(rec.estimated_saving_monthly)}<span className="text-xs font-normal text-gray-400 dark:text-slate-400">/mês</span>
             </span>
           )}
 
           {rec.status !== 'pending' && STATUS_ICON[rec.status] && (
-            <div className="flex items-center gap-1 text-xs text-slate-400">
+            <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-slate-400">
               {STATUS_ICON[rec.status]}
               <span className="capitalize">{rec.status}</span>
             </div>
@@ -150,7 +151,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
 
           {!isLocked && (
             <button
-              className="text-slate-500 hover:text-slate-300 transition-colors"
+              className="text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors"
               onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
             >
               {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -166,8 +167,8 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
           {(rec.current_spec || rec.recommended_spec) && (
             <div className="grid grid-cols-2 gap-3 text-xs">
               {rec.current_spec && (
-                <div className="rounded bg-gray-100 dark:bg-slate-900/60 p-2">
-                  <p className="mb-1 font-semibold text-gray-500 dark:text-slate-400">Atual</p>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 dark:bg-slate-900/60 dark:border-slate-700 p-3">
+                  <p className="mb-1.5 font-semibold text-gray-500 dark:text-slate-400">Atual</p>
                   {Object.entries(rec.current_spec).map(([k, v]) => (
                     <p key={k} className="text-gray-700 dark:text-slate-300">
                       <span className="text-gray-400 dark:text-slate-500">{k}:</span> {String(v)}
@@ -176,11 +177,11 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
                 </div>
               )}
               {rec.recommended_spec && (
-                <div className="rounded bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800/30 p-2">
-                  <p className="mb-1 font-semibold text-green-600 dark:text-green-400">Recomendado</p>
+                <div className="rounded-lg bg-green-50 border border-green-200 dark:bg-green-900/20 dark:border-green-800/30 p-3">
+                  <p className="mb-1.5 font-semibold text-green-700 dark:text-green-400">Recomendado</p>
                   {Object.entries(rec.recommended_spec).map(([k, v]) => (
                     <p key={k} className="text-green-700 dark:text-green-300">
-                      <span className="text-green-500">{k}:</span> {String(v)}
+                      <span className="text-green-600 dark:text-green-500">{k}:</span> {String(v)}
                     </p>
                   ))}
                 </div>
@@ -210,7 +211,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
                     <button
                       onClick={() => onApply(rec.id)}
                       disabled={applyLoading}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-purple-500 disabled:opacity-50 transition-colors"
                     >
                       <Clock size={12} />
                       {applyLoading ? 'Agendando…' : 'Agendar'}
@@ -219,7 +220,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
                     <button
                       onClick={() => onRequestApproval?.(rec.id)}
                       disabled={requestingApprovalId === rec.id}
-                      className="inline-flex items-center gap-1.5 rounded-md bg-yellow-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-yellow-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-yellow-400 disabled:opacity-50 transition-colors"
                       title="Recomendação de alto impacto — requer aprovação de admin/owner"
                     >
                       <GitPullRequestArrow size={12} />
@@ -229,7 +230,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
                     <button
                       onClick={() => onApply(rec.id)}
                       disabled={applyLoading}
-                      className="rounded-md bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
+                      className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-500 disabled:opacity-50 transition-colors"
                     >
                       {applyLoading ? 'Aplicando…' : 'Aplicar'}
                     </button>
@@ -243,7 +244,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
                 <button
                   onClick={() => onDismiss(rec.id)}
                   disabled={dismissLoading}
-                  className="rounded-md border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300 hover:border-slate-400 hover:text-white disabled:opacity-50 transition-colors"
+                  className="rounded-lg border border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-800 px-3 py-1.5 text-xs font-medium disabled:opacity-50 transition-colors dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-400 dark:hover:text-white"
                 >
                   {dismissLoading ? 'Ignorando…' : 'Ignorar'}
                 </button>
@@ -258,7 +259,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
         <div className="px-4 pb-4">
           <a
             href="/billing"
-            className="block rounded-md border border-dashed border-indigo-700 bg-indigo-900/20 px-3 py-2 text-center text-xs font-medium text-indigo-300 hover:bg-indigo-900/40 transition-colors"
+            className="block rounded-lg border border-dashed border-indigo-300 bg-indigo-50 px-3 py-2 text-center text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
           >
             Fazer upgrade para Pro para ver todas as recomendações →
           </a>

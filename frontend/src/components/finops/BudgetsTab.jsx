@@ -30,14 +30,14 @@ const BudgetCard = ({ budget, onDelete, onEdit }) => {
           <div className="flex items-center gap-1">
             <button
               onClick={() => onEdit(budget)}
-              className="text-gray-300 dark:text-slate-600 hover:text-indigo-400 transition-colors"
+              className="text-gray-400 hover:text-indigo-600 dark:text-slate-600 dark:hover:text-indigo-400 transition-colors"
               title="Editar orçamento"
             >
               <Pencil size={13} />
             </button>
             <button
               onClick={() => onDelete(budget.id)}
-              className="text-gray-300 dark:text-slate-600 hover:text-red-400 transition-colors"
+              className="text-gray-400 hover:text-red-600 dark:text-slate-600 dark:hover:text-red-400 transition-colors"
               title="Excluir orçamento"
             >
               <Trash2 size={14} />

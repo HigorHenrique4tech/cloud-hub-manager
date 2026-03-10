@@ -13,9 +13,9 @@ const fmtDate = (iso) => {
 };
 
 const STATUS_ICON = {
-  executed:    <CheckCircle2 size={16} className="text-green-400 shrink-0 mt-0.5" />,
-  failed:      <XCircle size={16} className="text-red-400 shrink-0 mt-0.5" />,
-  rolled_back: <RotateCcw size={16} className="text-slate-400 shrink-0 mt-0.5" />,
+  executed:    <CheckCircle2 size={16} className="text-green-600 dark:text-green-400 shrink-0 mt-0.5" />,
+  failed:      <XCircle size={16} className="text-red-600 dark:text-red-400 shrink-0 mt-0.5" />,
+  rolled_back: <RotateCcw size={16} className="text-gray-400 dark:text-slate-400 shrink-0 mt-0.5" />,
 };
 
 const TYPE_LABEL = {
@@ -62,7 +62,9 @@ const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 
               <span className="text-sm font-medium text-gray-800 dark:text-slate-200 truncate">{action.resource_name}</span>
               <span className="text-xs text-gray-500 dark:text-slate-400">({action.resource_type})</span>
               <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${
-                action.provider === 'aws' ? 'bg-orange-500/20 text-orange-300' : 'bg-sky-500/20 text-sky-300'
+                action.provider === 'aws'   ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-300' :
+                action.provider === 'azure' ? 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300' :
+                'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-300'
               }`}>
                 {action.provider?.toUpperCase()}
               </span>

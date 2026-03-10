@@ -59,9 +59,9 @@ const WasteSummary = ({ summary, onScan, scanning }) => {
     <div className="space-y-4">
       {/* Anomaly banner */}
       {open_anomalies > 0 && (
-        <div className="flex items-center gap-3 rounded-lg border border-red-700/50 bg-red-900/20 px-4 py-3">
-          <AlertTriangle size={16} className="text-red-400 shrink-0" />
-          <p className="text-sm text-red-300">
+        <div className="flex items-center gap-3 rounded-lg border border-red-300 bg-red-50 px-4 py-3 dark:border-red-700/50 dark:bg-red-900/20">
+          <AlertTriangle size={16} className="text-red-600 dark:text-red-400 shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300">
             <strong>{open_anomalies}</strong> anomalia{open_anomalies > 1 ? 's' : ''} de custo detectada{open_anomalies > 1 ? 's' : ''} —{' '}
             <span className="font-semibold">pico acima de 3σ por 2 dias consecutivos.</span>
           </p>

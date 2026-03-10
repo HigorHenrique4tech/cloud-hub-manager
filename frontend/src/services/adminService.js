@@ -14,6 +14,25 @@ const adminService = {
   listOrgs: () => api.get('/admin/orgs').then((r) => r.data),
   setOrgPlan: (slug, plan_tier) =>
     api.put(`/admin/orgs/${slug}/plan`, { plan_tier }).then((r) => r.data),
+
+  // Admin only — billing
+  listBilling: (params = {}) =>
+    api.get('/admin/billing', { params }).then((r) => r.data),
+  createBilling: (data) =>
+    api.post('/admin/billing', data).then((r) => r.data),
+  updateBilling: (id, data) =>
+    api.put(`/admin/billing/${id}`, data).then((r) => r.data),
+  deleteBilling: (id) =>
+    api.delete(`/admin/billing/${id}`).then((r) => r.data),
+  uploadBillingAttachment: (id, file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post(`/admin/billing/${id}/attachment`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data);
+  },
+  downloadBillingAttachment: (id) =>
+    `${api.defaults.baseURL || '/api'}/admin/billing/${id}/attachment`,
 };
 
 export default adminService;
