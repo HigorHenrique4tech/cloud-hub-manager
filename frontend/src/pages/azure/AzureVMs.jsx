@@ -20,10 +20,12 @@ import azureService from '../../services/azureservices';
 import TemplateBar from '../../components/common/TemplateBar';
 import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 import VMBackupSection from '../../components/backup/VMBackupSection';
+import { useToast } from '../../contexts/ToastContext';
 
 const defaultForm = { name: '', resource_group: '', location: '', vm_size: 'Standard_B1s', image_publisher: '', image_offer: '', image_sku: '', image_version: 'latest', admin_username: '', admin_password: '', create_public_ip: false, os_disk_type: 'Standard_LRS', data_disks: [], tags: {}, tags_list: [] };
 
 const AzureVMs = () => {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -35,6 +37,8 @@ const AzureVMs = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [stopTarget, setStopTarget] = useState(null);
+  const [pendingOps, setPendingOps] = useState(new Map()); // vmId → 'starting'|'stopping'
   const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
@@ -68,32 +72,49 @@ const AzureVMs = () => {
 
   useEffect(() => { fetchVMs(); }, []);
 
+  // Poll while ops are pending
+  useEffect(() => {
+    if (pendingOps.size === 0) return;
+    const id = setInterval(() => fetchVMs(true), 5000);
+    return () => clearInterval(id);
+  }, [pendingOps.size]);
+
   const { mutate: createVM, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
     (data) => azureService.createVM(data),
     { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchVMs(true); }, 1500); } }
   );
 
-  const handleStart = async (rg, name) => {
+  const addPending = (id, op) => setPendingOps(m => new Map(m).set(id, op));
+  const removePending = (id) => setPendingOps(m => { const n = new Map(m); n.delete(id); return n; });
+
+  const handleStart = async (rg, name, vmId) => {
+    addPending(vmId, 'starting');
     try {
-      setRefreshing(true);
       await azureService.startVM(rg, name);
+      toast.success(`VM "${name}" iniciada com sucesso.`);
       await fetchVMs(true);
     } catch (err) {
-      setError(`Erro ao iniciar VM: ${err.message}`);
+      toast.error(`Erro ao iniciar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
-      setRefreshing(false);
+      removePending(vmId);
     }
   };
 
-  const handleStop = async (rg, name) => {
+  const handleStop = (vm) => setStopTarget(vm);
+
+  const confirmStop = async () => {
+    if (!stopTarget) return;
+    const { resource_group: rg, name, vm_id: vmId } = stopTarget;
+    addPending(vmId, 'stopping');
+    setStopTarget(null);
     try {
-      setRefreshing(true);
       await azureService.stopVM(rg, name);
+      toast.success(`VM "${name}" parada com sucesso.`);
       await fetchVMs(true);
     } catch (err) {
-      setError(`Erro ao parar VM: ${err.message}`);
+      toast.error(`Erro ao parar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
-      setRefreshing(false);
+      removePending(vmId);
     }
   };
 
@@ -102,6 +123,7 @@ const AzureVMs = () => {
     setDeleteError('');
     try {
       await azureService.deleteVM(deleteTarget.resource_group, deleteTarget.name);
+      toast.success(`VM "${deleteTarget.name}" excluída.`);
       setDeleteTarget(null);
       fetchVMs(true);
     } catch (err) {
@@ -234,13 +256,14 @@ const AzureVMs = () => {
           <AzureVMTable
             vms={filtered}
             onStart={handleStart}
-            onStop={handleStop}
+            onStop={(rg, name, vm) => handleStop(vm)}
             onDelete={(vm) => setDeleteTarget(vm)}
             onRowClick={setDetailTarget}
             loading={refreshing}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleAll={toggleAll}
+            pendingOps={pendingOps}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -263,6 +286,16 @@ const AzureVMs = () => {
       >
         <CreateAzureVMForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!stopTarget}
+        onClose={() => setStopTarget(null)}
+        onConfirm={confirmStop}
+        title="Parar Virtual Machine"
+        description={`Tem certeza que deseja parar a VM "${stopTarget?.name}"? Ela deixará de estar disponível até ser reiniciada.`}
+        confirmLabel="Parar VM"
+        variant="warning"
+      />
 
       <ConfirmDeleteModal
         isOpen={!!deleteTarget}

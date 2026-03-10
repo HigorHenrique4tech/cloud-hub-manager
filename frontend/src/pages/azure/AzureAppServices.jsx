@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Globe, Play, Square, Plus, Trash2 } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
@@ -20,6 +21,7 @@ import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 const defaultForm = { name: '', resource_group: '', location: '', runtime: 'PYTHON|3.11', plan_name: '', plan_sku: 'B1', always_on: false, tags: {}, tags_list: [] };
 
 const AzureAppServices = () => {
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
@@ -30,6 +32,7 @@ const AzureAppServices = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [stopTarget, setStopTarget] = useState(null);
   const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
@@ -62,21 +65,28 @@ const AzureAppServices = () => {
     try {
       setRefreshing(true);
       await azureService.startAppService(rg, name);
+      toast.success(`App Service "${name}" iniciado.`);
       await fetchData(true);
     } catch (err) {
-      setError(`Erro ao iniciar App Service: ${err.message}`);
+      toast.error(`Erro ao iniciar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
       setRefreshing(false);
     }
   };
 
-  const handleStop = async (rg, name) => {
+  const handleStop = (app) => setStopTarget(app);
+
+  const confirmStop = async () => {
+    if (!stopTarget) return;
+    const { resource_group: rg, name } = stopTarget;
+    setStopTarget(null);
     try {
       setRefreshing(true);
       await azureService.stopAppService(rg, name);
+      toast.success(`App Service "${name}" parado.`);
       await fetchData(true);
     } catch (err) {
-      setError(`Erro ao parar App Service: ${err.message}`);
+      toast.error(`Erro ao parar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
       setRefreshing(false);
     }
@@ -87,6 +97,7 @@ const AzureAppServices = () => {
     setDeleteError('');
     try {
       await azureService.deleteAppService(deleteTarget.resource_group, deleteTarget.name);
+      toast.success(`App Service "${deleteTarget.name}" excluído.`);
       setDeleteTarget(null);
       fetchData(true);
     } catch (err) {
@@ -276,7 +287,7 @@ const AzureAppServices = () => {
                             </button>
                           )}
                           {app.state === 'Running' && (
-                            <button onClick={() => handleStop(app.resource_group, app.name)} disabled={refreshing}
+                            <button onClick={() => handleStop(app)} disabled={refreshing}
                               className="text-danger hover:text-danger-dark disabled:opacity-50" title="Parar">
                               <Square className="w-5 h-5" />
                             </button>
@@ -315,6 +326,16 @@ const AzureAppServices = () => {
       >
         <CreateAzureAppServiceForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!stopTarget}
+        onClose={() => setStopTarget(null)}
+        onConfirm={confirmStop}
+        title="Parar App Service"
+        description={`Tem certeza que deseja parar "${stopTarget?.name}"? O app ficará offline.`}
+        confirmLabel="Parar"
+        variant="warning"
+      />
 
       <ConfirmDeleteModal
         isOpen={!!deleteTarget}

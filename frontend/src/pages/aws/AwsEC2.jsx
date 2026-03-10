@@ -1,5 +1,6 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useToast } from '../../contexts/ToastContext';
 import { useSearchParams } from 'react-router-dom';
 import { AlertCircle, Plus, Server } from 'lucide-react';
 import Layout from '../../components/layout/layout';
@@ -23,6 +24,7 @@ import VMBackupSection from '../../components/backup/VMBackupSection';
 const defaultForm = { instance_type: 't3.micro', associate_public_ip: false, volumes: [], security_group_ids: [], tags: {}, tags_list: [] };
 
 const AwsEC2 = () => {
+  const { toast } = useToast();
   const [searchParams] = useSearchParams();
   const q = (searchParams.get('q') || '').toLowerCase();
   const [modalOpen, setModalOpen] = useState(false);
@@ -30,6 +32,8 @@ const AwsEC2 = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [stopTarget, setStopTarget] = useState(null);
+  const [pendingOps, setPendingOps] = useState(new Map());
   const formRef = useRef();
 
   // Batch state
@@ -44,6 +48,7 @@ const AwsEC2 = () => {
     queryKey: ['aws-ec2'],
     queryFn: () => awsService.listEC2Instances(),
     retry: false,
+    refetchInterval: pendingOps.size > 0 ? 5000 : false,
   });
 
   const { mutate: createInstance, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
@@ -51,12 +56,38 @@ const AwsEC2 = () => {
     { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); refetch(); }, 1500); } }
   );
 
-  const handleStart = async (instanceId) => {
-    try { await awsService.startEC2Instance(instanceId); refetch(); } catch {}
+  const addPending = (id, op) => setPendingOps(m => new Map(m).set(id, op));
+  const removePending = (id) => setPendingOps(m => { const n = new Map(m); n.delete(id); return n; });
+
+  const handleStart = async (instanceId, name) => {
+    addPending(instanceId, 'starting');
+    try {
+      await awsService.startEC2Instance(instanceId);
+      toast.success(`Instância "${name || instanceId}" iniciada com sucesso.`);
+      refetch();
+    } catch (err) {
+      toast.error(`Erro ao iniciar "${name || instanceId}": ${err.response?.data?.detail || err.message}`);
+    } finally {
+      removePending(instanceId);
+    }
   };
 
-  const handleStop = async (instanceId) => {
-    try { await awsService.stopEC2Instance(instanceId); refetch(); } catch {}
+  const handleStop = (instance) => setStopTarget(instance);
+
+  const confirmStop = async () => {
+    if (!stopTarget) return;
+    const { instance_id: id, name } = stopTarget;
+    addPending(id, 'stopping');
+    setStopTarget(null);
+    try {
+      await awsService.stopEC2Instance(id);
+      toast.success(`Instância "${name || id}" parada com sucesso.`);
+      refetch();
+    } catch (err) {
+      toast.error(`Erro ao parar "${name || id}": ${err.response?.data?.detail || err.message}`);
+    } finally {
+      removePending(id);
+    }
   };
 
   const handleDelete = async () => {
@@ -64,6 +95,7 @@ const AwsEC2 = () => {
     setDeleteError('');
     try {
       await awsService.deleteEC2Instance(deleteTarget.instance_id);
+      toast.success(`Instância "${deleteTarget.name || deleteTarget.instance_id}" terminada.`);
       setDeleteTarget(null);
       refetch();
     } catch (err) {
@@ -185,13 +217,14 @@ const AwsEC2 = () => {
         ) : (
           <EC2Table
             instances={instances}
-            onStart={handleStart}
-            onStop={handleStop}
+            onStart={(id, name) => handleStart(id, name)}
+            onStop={(id, instance) => handleStop(instance)}
             onDelete={(instance) => setDeleteTarget(instance)}
             onRowClick={setDetailTarget}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleAll={toggleAll}
+            pendingOps={pendingOps}
           />
         )}
       </div>
@@ -212,10 +245,20 @@ const AwsEC2 = () => {
       </CreateResourceModal>
 
       <ConfirmDeleteModal
+        isOpen={!!stopTarget}
+        onClose={() => setStopTarget(null)}
+        onConfirm={confirmStop}
+        title="Parar Instância EC2"
+        description={`Tem certeza que deseja parar a instância "${stopTarget?.name || stopTarget?.instance_id}"?`}
+        confirmLabel="Parar"
+        variant="warning"
+      />
+
+      <ConfirmDeleteModal
         isOpen={!!deleteTarget}
         onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
         onConfirm={handleDelete}
-        title="Excluir Instância EC2"
+        title="Terminar Instância EC2"
         description="A instância será terminada permanentemente. Dados em volumes não persistidos serão perdidos."
         confirmText={deleteTarget?.name || deleteTarget?.instance_id}
         isLoading={isDeleting}

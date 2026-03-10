@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { MonitorPlay, Play, Square, Trash2, AlertCircle, RefreshCw } from 'lucide-react';
+import { MonitorPlay, Play, Square, Trash2, AlertCircle, RefreshCw, Loader2 } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
@@ -29,34 +30,60 @@ const StatusBadge = ({ status }) => (
 );
 
 const GcpComputeEngine = () => {
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [toDelete, setToDelete] = useState(null);
+  const [toStop, setToStop] = useState(null);
   const [actionLoading, setActionLoading] = useState({});
   const [detailTarget, setDetailTarget] = useState(null);
+
+  const hasPending = Object.keys(actionLoading).length > 0;
 
   const { data: instances = [], isLoading, error, refetch } = useQuery({
     queryKey: ['gcp-instances'],
     queryFn: () => gcpService.listInstances(),
     retry: false,
+    refetchInterval: hasPending ? 5000 : false,
   });
 
   const deleteMutation = useMutation({
     mutationFn: ({ zone, name }) => gcpService.deleteInstance(zone, name),
     onSuccess: () => {
+      toast.success(`Instância "${toDelete?.name}" deletada.`);
       qc.invalidateQueries({ queryKey: ['gcp-instances'] });
       setToDelete(null);
     },
+    onError: (err) => {
+      toast.error(`Erro ao deletar: ${err.response?.data?.detail || err.message}`);
+    },
   });
 
-  const handleAction = async (action, zone, name) => {
+  const handleStart = async (zone, name) => {
     const key = `${zone}/${name}`;
-    setActionLoading(prev => ({ ...prev, [key]: action }));
+    setActionLoading(prev => ({ ...prev, [key]: 'starting' }));
     try {
-      if (action === 'start') await gcpService.startInstance(zone, name);
-      else if (action === 'stop') await gcpService.stopInstance(zone, name);
+      await gcpService.startInstance(zone, name);
+      toast.success(`Instância "${name}" iniciada.`);
       qc.invalidateQueries({ queryKey: ['gcp-instances'] });
     } catch (err) {
-      console.error(err);
+      toast.error(`Erro ao iniciar "${name}": ${err.response?.data?.detail || err.message}`);
+    } finally {
+      setActionLoading(prev => { const n = { ...prev }; delete n[key]; return n; });
+    }
+  };
+
+  const confirmStop = async () => {
+    if (!toStop) return;
+    const { zone, name } = toStop;
+    const key = `${zone}/${name}`;
+    setToStop(null);
+    setActionLoading(prev => ({ ...prev, [key]: 'stopping' }));
+    try {
+      await gcpService.stopInstance(zone, name);
+      toast.success(`Instância "${name}" parada.`);
+      qc.invalidateQueries({ queryKey: ['gcp-instances'] });
+    } catch (err) {
+      toast.error(`Erro ao parar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
       setActionLoading(prev => { const n = { ...prev }; delete n[key]; return n; });
     }
@@ -126,30 +153,41 @@ const GcpComputeEngine = () => {
                       <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">{inst.machine_type}</td>
                       <td className="py-3 px-4 text-gray-500 dark:text-gray-400 font-mono text-xs">{externalIp}</td>
                       <td className="py-3 px-4">
-                        <StatusBadge status={inst.status} />
+                        {loading ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                            {loading === 'starting' ? 'Iniciando...' : 'Parando...'}
+                          </span>
+                        ) : (
+                          <StatusBadge status={inst.status} />
+                        )}
                       </td>
                       <td className="py-3 px-4" onClick={e => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-1">
                           <PermissionGate permission="resources.manage">
-                            {inst.status !== 'RUNNING' && inst.status !== 'STAGING' && (
-                              <button
-                                onClick={() => handleAction('start', inst.zone, inst.name)}
-                                disabled={!!loading}
-                                className="p-1.5 rounded text-gray-400 hover:text-green-600 transition-colors disabled:opacity-50"
-                                title="Iniciar"
-                              >
-                                <Play className="w-4 h-4" />
-                              </button>
-                            )}
-                            {inst.status === 'RUNNING' && (
-                              <button
-                                onClick={() => handleAction('stop', inst.zone, inst.name)}
-                                disabled={!!loading}
-                                className="p-1.5 rounded text-gray-400 hover:text-orange-500 transition-colors disabled:opacity-50"
-                                title="Parar"
-                              >
-                                <Square className="w-4 h-4" />
-                              </button>
+                            {loading ? (
+                              <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                            ) : (
+                              <>
+                                {inst.status !== 'RUNNING' && inst.status !== 'STAGING' && (
+                                  <button
+                                    onClick={() => handleStart(inst.zone, inst.name)}
+                                    className="p-1.5 rounded text-gray-400 hover:text-green-600 transition-colors"
+                                    title="Iniciar"
+                                  >
+                                    <Play className="w-4 h-4" />
+                                  </button>
+                                )}
+                                {inst.status === 'RUNNING' && (
+                                  <button
+                                    onClick={() => setToStop(inst)}
+                                    className="p-1.5 rounded text-gray-400 hover:text-orange-500 transition-colors"
+                                    title="Parar"
+                                  >
+                                    <Square className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </>
                             )}
                           </PermissionGate>
                           <PermissionGate permission="resources.delete">
@@ -171,6 +209,16 @@ const GcpComputeEngine = () => {
           </div>
         )}
       </div>
+
+      <ConfirmDeleteModal
+        isOpen={!!toStop}
+        onClose={() => setToStop(null)}
+        onConfirm={confirmStop}
+        title="Parar instância"
+        description={`Tem certeza que deseja parar "${toStop?.name}"?`}
+        confirmLabel="Parar"
+        variant="warning"
+      />
 
       <ConfirmDeleteModal
         isOpen={!!toDelete}

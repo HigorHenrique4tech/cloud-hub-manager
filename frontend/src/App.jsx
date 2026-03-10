@@ -3,6 +3,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { OrgWorkspaceProvider } from './contexts/OrgWorkspaceContext';
+import { ToastProvider } from './contexts/ToastContext';
+import Toaster from './components/common/Toaster';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import Dashboard from './pages/dashboard';
 import Costs from './pages/costs';
@@ -81,9 +83,10 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <AuthProvider>
-          <OrgWorkspaceProvider>
-            <BrowserRouter>
+        <ToastProvider>
+          <AuthProvider>
+            <OrgWorkspaceProvider>
+              <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
@@ -149,9 +152,11 @@ function App() {
                 <Route path="/workspace/settings" element={<PR><WorkspaceSettings /></PR>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
-            </BrowserRouter>
-          </OrgWorkspaceProvider>
-        </AuthProvider>
+              </BrowserRouter>
+            </OrgWorkspaceProvider>
+          </AuthProvider>
+          <Toaster />
+        </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>
   );

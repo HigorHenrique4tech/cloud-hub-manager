@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Mail, BarChart2, X, Check, RefreshCw, Save, Inbox, Users, ChevronDown, ChevronRight, Plus, Trash2, UserPlus, Shield, Globe } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
+import { useToast } from '../../contexts/ToastContext';
 
 // ─ Helpers ──────────────────────────────────────────────────────────────────
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
@@ -146,6 +147,7 @@ function DelegationSection({ mailbox }) {
 }
 
 function MailboxDrawer({ mailbox, onClose, allUsers }) {
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [drawerTab, setDrawerTab] = useState('settings');
 
@@ -179,9 +181,11 @@ function MailboxDrawer({ mailbox, onClose, allUsers }) {
     }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['m365-mailboxes'] });
+      toast.success('Configurações da caixa de correio salvas.');
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     },
+    onError: (err) => toast.error(`Erro ao salvar: ${err.response?.data?.detail || err.message}`),
   });
 
   if (!mailbox) return null;

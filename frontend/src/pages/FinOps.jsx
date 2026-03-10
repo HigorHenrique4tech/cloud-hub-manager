@@ -5,6 +5,7 @@ import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
 import PermissionGate from '../components/common/PermissionGate';
 import PlanGate from '../components/common/PlanGate';
+import ConfirmDeleteModal from '../components/common/ConfirmDeleteModal';
 import WasteSummary from '../components/finops/WasteSummary';
 import BudgetModal from '../components/finops/BudgetModal';
 import ScanScheduleModal from '../components/finops/ScanScheduleModal';
@@ -52,6 +53,7 @@ const FinOps = () => {
   const [selectedIds, setSelectedIds]   = useState(new Set());
   const [scanJobId, setScanJobId]       = useState(null);
   const [scanJobStatus, setScanJobStatus] = useState(null);
+  const [bulkApplyConfirmOpen, setBulkApplyConfirmOpen] = useState(false);
 
   /* ── Custom hooks ── */
   const { budgetsQ, createBudget, deleteBudget, evaluateBudgets } = useFinOpsBudgets({
@@ -491,11 +493,7 @@ const FinOps = () => {
           </button>
           <PermissionGate permission="finops.execute">
             <button
-              onClick={() => {
-                if (window.confirm(`Aplicar ${selectedIds.size} recomendação(ões)? Esta ação pode ser irreversível.`)) {
-                  bulkApplyMut.mutate(selectedIds);
-                }
-              }}
+              onClick={() => setBulkApplyConfirmOpen(true)}
               disabled={bulkApplyMut.isPending}
               className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white
                          hover:bg-indigo-500 disabled:opacity-50 transition-colors active:scale-[0.97]"
@@ -505,6 +503,16 @@ const FinOps = () => {
           </PermissionGate>
         </div>
       )}
+
+      <ConfirmDeleteModal
+        isOpen={bulkApplyConfirmOpen}
+        onClose={() => setBulkApplyConfirmOpen(false)}
+        onConfirm={() => { setBulkApplyConfirmOpen(false); bulkApplyMut.mutate(selectedIds); }}
+        title="Aplicar Recomendações"
+        description={`Aplicar ${selectedIds.size} recomendação(ões)? Esta ação pode ser irreversível.`}
+        confirmLabel="Aplicar"
+        variant="warning"
+      />
     </Layout>
   );
 };

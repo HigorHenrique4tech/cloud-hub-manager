@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
+import { useToast } from '../../contexts/ToastContext';
+import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 
 // ─ Helpers ──────────────────────────────────────────────────────────────────
 // Backend get_teams() returns camelCase: displayName, isArchived, membersCount, visibility
@@ -107,14 +109,24 @@ function TeamModal({ team, onClose }) {
 
 // ─ Teams Tab ─────────────────────────────────────────────────────────────────
 function TeamsTab() {
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [modal, setModal] = useState(null); // null | 'create' | team object for edit
+  const [archiveTarget, setArchiveTarget] = useState(null);
 
   const teamsQ = useQuery({ queryKey: ['m365-teams'], queryFn: m365Service.getTeams, staleTime: 120_000, retry: false });
 
   const archiveMut = useMutation({
     mutationFn: (teamId) => m365Service.archiveTeam(teamId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-teams'] }),
+    onSuccess: () => {
+      toast.success(`Time "${archiveTarget?.displayName}" arquivado.`);
+      setArchiveTarget(null);
+      qc.invalidateQueries({ queryKey: ['m365-teams'] });
+    },
+    onError: (err) => {
+      toast.error(`Erro ao arquivar: ${err.response?.data?.detail || err.message}`);
+      setArchiveTarget(null);
+    },
   });
 
   // get_teams() returns: {teams: [{id, displayName, visibility, description, isArchived, membersCount}]}
@@ -170,8 +182,7 @@ function TeamsTab() {
                         </button>
                         {!t.isArchived && (
                           <button
-                            onClick={() => archiveMut.mutate(t.id)}
-                            disabled={archiveMut.isPending}
+                            onClick={() => setArchiveTarget(t)}
                             title="Arquivar"
                             className="p-1.5 rounded hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-500"
                           >
@@ -191,6 +202,17 @@ function TeamsTab() {
       {modal && (
         <TeamModal team={modal === 'create' ? null : modal} onClose={() => setModal(null)} />
       )}
+
+      <ConfirmDeleteModal
+        isOpen={!!archiveTarget}
+        onClose={() => setArchiveTarget(null)}
+        onConfirm={() => archiveMut.mutate(archiveTarget.id)}
+        title="Arquivar Time"
+        description={`Deseja arquivar o time "${archiveTarget?.displayName}"? Ele ficará somente leitura.`}
+        confirmLabel="Arquivar"
+        variant="warning"
+        isLoading={archiveMut.isPending}
+      />
     </>
   );
 }
@@ -245,9 +267,11 @@ function ChannelModal({ teamId, onClose }) {
 
 // ─ Channels Tab ──────────────────────────────────────────────────────────────
 function ChannelsTab({ teams }) {
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [deleteChannelTarget, setDeleteChannelTarget] = useState(null);
 
   const channelsQ = useQuery({
     queryKey: ['m365-channels', selectedTeamId],
@@ -259,7 +283,15 @@ function ChannelsTab({ teams }) {
 
   const deleteMut = useMutation({
     mutationFn: (channelId) => m365Service.deleteChannel(selectedTeamId, channelId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-channels', selectedTeamId] }),
+    onSuccess: () => {
+      toast.success(`Canal "${deleteChannelTarget?.display_name}" excluído.`);
+      setDeleteChannelTarget(null);
+      qc.invalidateQueries({ queryKey: ['m365-channels', selectedTeamId] });
+    },
+    onError: (err) => {
+      toast.error(`Erro ao excluir canal: ${err.response?.data?.detail || err.message}`);
+      setDeleteChannelTarget(null);
+    },
   });
 
   // get_channels() returns snake_case: display_name, membership_type
@@ -325,8 +357,7 @@ function ChannelsTab({ teams }) {
                       <td className={tdCls}>
                         {ch.display_name !== 'General' && (
                           <button
-                            onClick={() => deleteMut.mutate(ch.id)}
-                            disabled={deleteMut.isPending}
+                            onClick={() => setDeleteChannelTarget(ch)}
                             title="Deletar canal"
                             className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"
                           >
@@ -351,6 +382,16 @@ function ChannelsTab({ teams }) {
       </div>
 
       {showCreateModal && <ChannelModal teamId={selectedTeamId} onClose={() => setShowCreateModal(false)} />}
+
+      <ConfirmDeleteModal
+        isOpen={!!deleteChannelTarget}
+        onClose={() => setDeleteChannelTarget(null)}
+        onConfirm={() => deleteMut.mutate(deleteChannelTarget.id)}
+        title="Excluir Canal"
+        description={`Excluir "${deleteChannelTarget?.display_name}" permanentemente?`}
+        confirmLabel="Excluir"
+        isLoading={deleteMut.isPending}
+      />
     </>
   );
 }
@@ -410,9 +451,11 @@ function AddMemberModal({ teamId, onClose }) {
 
 // ─ Members Tab ───────────────────────────────────────────────────────────────
 function MembersTab({ teams }) {
+  const { toast } = useToast();
   const qc = useQueryClient();
   const [selectedTeamId, setSelectedTeamId] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [removeMemberTarget, setRemoveMemberTarget] = useState(null);
 
   const membersQ = useQuery({
     queryKey: ['m365-team-members', selectedTeamId],
@@ -424,12 +467,24 @@ function MembersTab({ teams }) {
 
   const roleMut = useMutation({
     mutationFn: ({ memberId, roles }) => m365Service.updateMemberRole(selectedTeamId, memberId, roles),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-team-members', selectedTeamId] }),
+    onSuccess: () => {
+      toast.success('Função do membro atualizada.');
+      qc.invalidateQueries({ queryKey: ['m365-team-members', selectedTeamId] });
+    },
+    onError: (err) => toast.error(`Erro: ${err.response?.data?.detail || err.message}`),
   });
 
   const removeMut = useMutation({
     mutationFn: (memberId) => m365Service.removeTeamMember(selectedTeamId, memberId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-team-members', selectedTeamId] }),
+    onSuccess: () => {
+      toast.success(`"${removeMemberTarget?.displayName}" removido do time.`);
+      setRemoveMemberTarget(null);
+      qc.invalidateQueries({ queryKey: ['m365-team-members', selectedTeamId] });
+    },
+    onError: (err) => {
+      toast.error(`Erro ao remover: ${err.response?.data?.detail || err.message}`);
+      setRemoveMemberTarget(null);
+    },
   });
 
   // get_team_members() returns camelCase: displayName, email, roles
@@ -496,8 +551,7 @@ function MembersTab({ teams }) {
                         </td>
                         <td className={tdCls}>
                           <button
-                            onClick={() => removeMut.mutate(m.id)}
-                            disabled={removeMut.isPending}
+                            onClick={() => setRemoveMemberTarget(m)}
                             title="Remover membro"
                             className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-red-500"
                           >
@@ -522,6 +576,16 @@ function MembersTab({ teams }) {
       </div>
 
       {showAddModal && <AddMemberModal teamId={selectedTeamId} onClose={() => setShowAddModal(false)} />}
+
+      <ConfirmDeleteModal
+        isOpen={!!removeMemberTarget}
+        onClose={() => setRemoveMemberTarget(null)}
+        onConfirm={() => removeMut.mutate(removeMemberTarget.id)}
+        title="Remover Membro"
+        description={`Remover "${removeMemberTarget?.displayName}" do time?`}
+        confirmLabel="Remover"
+        isLoading={removeMut.isPending}
+      />
     </>
   );
 }

@@ -1,8 +1,8 @@
-import { Play, Square, Trash2 } from 'lucide-react';
+import { Play, Square, Trash2, Loader2 } from 'lucide-react';
 import StatusBadge from '../common/statusbadge';
 import PermissionGate from '../common/PermissionGate';
 
-const AzureVMTable = ({ vms = [], onStart, onStop, onDelete, onRowClick, loading = false, selectedIds, onToggleSelect, onToggleAll }) => {
+const AzureVMTable = ({ vms = [], onStart, onStop, onDelete, onRowClick, loading = false, selectedIds, onToggleSelect, onToggleAll, pendingOps }) => {
   if (!vms || vms.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -83,7 +83,14 @@ const AzureVMTable = ({ vms = [], onStart, onStop, onDelete, onRowClick, loading
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <StatusBadge state={vm.power_state} />
+                {pendingOps?.has(vm.vm_id) ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    {pendingOps.get(vm.vm_id) === 'starting' ? 'Iniciando...' : 'Parando...'}
+                  </span>
+                ) : (
+                  <StatusBadge state={vm.power_state} />
+                )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 {vm.location}
@@ -94,25 +101,31 @@ const AzureVMTable = ({ vms = [], onStart, onStop, onDelete, onRowClick, loading
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium" onClick={(e) => e.stopPropagation()}>
                 <div className="flex space-x-2">
                   <PermissionGate permission="resources.start_stop">
-                    {(vm.power_state === 'deallocated' || vm.power_state === 'stopped') && (
-                      <button
-                        onClick={() => onStart?.(vm.resource_group, vm.name)}
-                        disabled={loading}
-                        className="text-success hover:text-success-dark disabled:opacity-50"
-                        title="Iniciar"
-                      >
-                        <Play className="w-5 h-5" />
-                      </button>
-                    )}
-                    {vm.power_state === 'running' && (
-                      <button
-                        onClick={() => onStop?.(vm.resource_group, vm.name)}
-                        disabled={loading}
-                        className="text-danger hover:text-danger-dark disabled:opacity-50"
-                        title="Parar"
-                      >
-                        <Square className="w-5 h-5" />
-                      </button>
+                    {pendingOps?.has(vm.vm_id) ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                    ) : (
+                      <>
+                        {(vm.power_state === 'deallocated' || vm.power_state === 'stopped') && (
+                          <button
+                            onClick={() => onStart?.(vm.resource_group, vm.name, vm.vm_id)}
+                            disabled={loading}
+                            className="text-success hover:text-success-dark disabled:opacity-50"
+                            title="Iniciar"
+                          >
+                            <Play className="w-5 h-5" />
+                          </button>
+                        )}
+                        {vm.power_state === 'running' && (
+                          <button
+                            onClick={() => onStop?.(vm.resource_group, vm.name, vm)}
+                            disabled={loading}
+                            className="text-danger hover:text-danger-dark disabled:opacity-50"
+                            title="Parar"
+                          >
+                            <Square className="w-5 h-5" />
+                          </button>
+                        )}
+                      </>
                     )}
                   </PermissionGate>
                   <PermissionGate permission="resources.delete">

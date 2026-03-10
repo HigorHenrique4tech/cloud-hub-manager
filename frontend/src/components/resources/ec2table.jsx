@@ -1,9 +1,9 @@
-import { Play, Square, Trash2 } from 'lucide-react';
+import { Play, Square, Trash2, Loader2 } from 'lucide-react';
 import StatusBadge from '../common/statusbadge';
 import { formatDate } from '../../utils/formatters';
 import PermissionGate from '../common/PermissionGate';
 
-const EC2Table = ({ instances = [], onStart, onStop, onDelete, onRowClick, loading = false, selectedIds, onToggleSelect, onToggleAll }) => {
+const EC2Table = ({ instances = [], onStart, onStop, onDelete, onRowClick, loading = false, selectedIds, onToggleSelect, onToggleAll, pendingOps }) => {
   if (!instances || instances.length === 0) {
     return (
       <div className="text-center py-8 text-gray-500 dark:text-gray-400">
@@ -87,7 +87,14 @@ const EC2Table = ({ instances = [], onStart, onStop, onDelete, onRowClick, loadi
                 </div>
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
-                <StatusBadge state={instance.state} />
+                {pendingOps?.has(instance.instance_id) ? (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    {pendingOps.get(instance.instance_id) === 'starting' ? 'Iniciando...' : 'Parando...'}
+                  </span>
+                ) : (
+                  <StatusBadge state={instance.state} />
+                )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap">
                 <div className="text-sm text-gray-500 dark:text-gray-400 font-mono">
@@ -103,25 +110,31 @@ const EC2Table = ({ instances = [], onStart, onStop, onDelete, onRowClick, loadi
               <td className="px-6 py-4 whitespace-nowrap text-sm font-medium" onClick={(e) => e.stopPropagation()}>
                 <div className="flex space-x-2">
                   <PermissionGate permission="resources.start_stop">
-                    {instance.state === 'stopped' && (
-                      <button
-                        onClick={() => onStart?.(instance.instance_id)}
-                        disabled={loading}
-                        className="text-success hover:text-success-dark disabled:opacity-50"
-                        title="Iniciar"
-                      >
-                        <Play className="w-5 h-5" />
-                      </button>
-                    )}
-                    {instance.state === 'running' && (
-                      <button
-                        onClick={() => onStop?.(instance.instance_id)}
-                        disabled={loading}
-                        className="text-danger hover:text-danger-dark disabled:opacity-50"
-                        title="Parar"
-                      >
-                        <Square className="w-5 h-5" />
-                      </button>
+                    {pendingOps?.has(instance.instance_id) ? (
+                      <Loader2 className="w-5 h-5 animate-spin text-amber-500" />
+                    ) : (
+                      <>
+                        {instance.state === 'stopped' && (
+                          <button
+                            onClick={() => onStart?.(instance.instance_id, instance.name)}
+                            disabled={loading}
+                            className="text-success hover:text-success-dark disabled:opacity-50"
+                            title="Iniciar"
+                          >
+                            <Play className="w-5 h-5" />
+                          </button>
+                        )}
+                        {instance.state === 'running' && (
+                          <button
+                            onClick={() => onStop?.(instance.instance_id, instance)}
+                            disabled={loading}
+                            className="text-danger hover:text-danger-dark disabled:opacity-50"
+                            title="Parar"
+                          >
+                            <Square className="w-5 h-5" />
+                          </button>
+                        )}
+                      </>
                     )}
                   </PermissionGate>
                   <PermissionGate permission="resources.delete">
