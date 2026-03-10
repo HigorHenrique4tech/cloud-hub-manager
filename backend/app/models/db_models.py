@@ -19,9 +19,12 @@ class Organization(Base):
     plan_tier     = Column(String(50), nullable=False, default="free")  # free | pro | enterprise
     org_type      = Column(String(20), nullable=False, default="standalone")  # standalone | master | partner
     parent_org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
-    is_active     = Column(Boolean, default=True, nullable=False)
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    is_active        = Column(Boolean, default=True, nullable=False)
+    notes            = Column(Text, nullable=True)            # internal admin notes (partner SLA, contacts, etc.)
+    suspended_reason = Column(String(500), nullable=True)     # reason shown when org is suspended
+    suspended_at     = Column(DateTime, nullable=True)
+    created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     members    = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
     workspaces = relationship("Workspace", back_populates="organization", cascade="all, delete-orphan")
@@ -570,8 +573,29 @@ class BillingRecord(Base):
     created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
-    org        = relationship("Organization", foreign_keys=[org_id])
-    creator    = relationship("User", foreign_keys=[created_by])
+    is_recurring      = Column(Boolean, nullable=False, default=False)
+    recurrence_months = Column(Integer, nullable=True)  # 1 | 3 | 6 | 12
+
+    org            = relationship("Organization", foreign_keys=[org_id])
+    creator        = relationship("User", foreign_keys=[created_by])
+    status_history = relationship("BillingStatusHistory", back_populates="record",
+                                  cascade="all, delete-orphan",
+                                  order_by="BillingStatusHistory.changed_at")
+
+
+class BillingStatusHistory(Base):
+    __tablename__ = "billing_status_history"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    billing_id    = Column(UUID(as_uuid=True), ForeignKey("billing_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    old_status    = Column(String(20), nullable=True)
+    new_status    = Column(String(20), nullable=False)
+    changed_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    changed_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    notes         = Column(Text, nullable=True)
+
+    record     = relationship("BillingRecord", back_populates="status_history")
+    changed_by = relationship("User", foreign_keys=[changed_by_id])
 
 
 # ── Notification Channels ─────────────────────────────────────────────────────

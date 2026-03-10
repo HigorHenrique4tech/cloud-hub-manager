@@ -14,6 +14,12 @@ const adminService = {
   listOrgs: () => api.get('/admin/orgs').then((r) => r.data),
   setOrgPlan: (slug, plan_tier) =>
     api.put(`/admin/orgs/${slug}/plan`, { plan_tier }).then((r) => r.data),
+  getOrgMetrics: (slug) =>
+    api.get(`/admin/orgs/${slug}/metrics`).then((r) => r.data),
+  suspendOrg: (slug, suspend, reason) =>
+    api.patch(`/admin/orgs/${slug}/suspend`, { suspend, reason }).then((r) => r.data),
+  updateOrgNotes: (slug, notes) =>
+    api.patch(`/admin/orgs/${slug}/notes`, { notes }).then((r) => r.data),
 
   // Admin only — billing
   listBilling: (params = {}) =>
@@ -33,6 +39,32 @@ const adminService = {
   },
   downloadBillingAttachment: (id) =>
     `${api.defaults.baseURL || '/api'}/admin/billing/${id}/attachment`,
+
+  // Billing — financial summary
+  getBillingSummary: () =>
+    api.get('/admin/billing/summary').then((r) => r.data),
+
+  // Billing — status history
+  getBillingHistory: (id) =>
+    api.get(`/admin/billing/${id}/history`).then((r) => r.data),
+
+  // Billing — quick status patch
+  patchBillingStatus: (id, status, notes) =>
+    api.patch(`/admin/billing/${id}/status`, { status, notes }).then((r) => r.data),
+
+  // Billing — CSV export (downloads file via blob)
+  exportBillingCsv: async (params = {}) => {
+    const response = await api.get('/admin/billing/export', {
+      params,
+      responseType: 'blob',
+    });
+    const url = URL.createObjectURL(response.data);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `faturamento_${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 export default adminService;

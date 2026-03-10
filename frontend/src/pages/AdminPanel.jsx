@@ -5,6 +5,8 @@ import {
   Phone, MessageSquare, Mail, Calendar, Loader2, ArrowRight,
   DollarSign, Plus, Pencil, Trash2, Paperclip, Download, X,
   ChevronRight, AlertCircle, CheckCircle2, Clock, Ban, CreditCard,
+  History, FileDown, RefreshCw, Power, PowerOff, StickyNote, Save,
+  Server, Cloud, Activity, BarChart2, LayoutGrid,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import adminService from '../services/adminService';
@@ -165,14 +167,63 @@ const LeadsTab = () => {
 };
 
 
-/* ── Orgs Tab (hierarchical) ─────────────────────────────────────────────── */
+/* ── Orgs Tab (hierarchical + metrics + suspend + notes) ─────────────────── */
+
+const PROVIDER_COLOR = {
+  aws:   'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400',
+  azure: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
+  gcp:   'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400',
+  m365:  'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400',
+};
+
+const OrgMetricsPanel = ({ slug }) => {
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-org-metrics', slug],
+    queryFn: () => adminService.getOrgMetrics(slug),
+    staleTime: 120_000,
+  });
+
+  if (isLoading) return <div className="flex items-center gap-2 py-2 text-xs text-gray-400"><Loader2 size={12} className="animate-spin" /> Carregando métricas…</div>;
+  if (!data) return null;
+
+  const providers = Object.entries(data.cloud_accounts || {});
+
+  return (
+    <div className="flex flex-wrap gap-3 py-1">
+      <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+        <LayoutGrid size={12} className="text-gray-400" />
+        <span><strong>{data.active_workspace_count}</strong>/{data.workspace_count} workspaces</span>
+      </div>
+      <div className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400">
+        <Users size={12} className="text-gray-400" />
+        <span><strong>{data.member_count}</strong> membros</span>
+      </div>
+      {providers.map(([p, count]) => (
+        <span key={p} className={`inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded-full font-medium ${PROVIDER_COLOR[p] || 'bg-gray-100 text-gray-600'}`}>
+          <Cloud size={9} /> {p.toUpperCase()} {count > 1 ? `×${count}` : ''}
+        </span>
+      ))}
+      {data.last_activity_at && (
+        <div className="flex items-center gap-1.5 text-xs text-gray-400">
+          <Activity size={12} />
+          <span>Ativo: {new Date(data.last_activity_at).toLocaleDateString('pt-BR')}</span>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const OrgsTab = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [openMenu, setOpenMenu] = useState(null);
   const [confirmChange, setConfirmChange] = useState(null);
+  const [confirmSuspend, setConfirmSuspend] = useState(null);
+  const [suspendReason, setSuspendReason] = useState('');
   const [collapsed, setCollapsed] = useState(new Set());
+  const [expandedOrg, setExpandedOrg] = useState(null);
+  const [editingNotes, setEditingNotes] = useState(null); // org.slug
+  const [notesValue, setNotesValue] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-orgs'],
@@ -184,9 +235,17 @@ const OrgsTab = () => {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-orgs'] }); setOpenMenu(null); setConfirmChange(null); },
   });
 
-  const allOrgs = data?.orgs || [];
+  const suspendMut = useMutation({
+    mutationFn: ({ slug, suspend, reason }) => adminService.suspendOrg(slug, suspend, reason),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-orgs'] }); setConfirmSuspend(null); setSuspendReason(''); },
+  });
 
-  // Build hierarchy
+  const notesMut = useMutation({
+    mutationFn: ({ slug, notes }) => adminService.updateOrgNotes(slug, notes),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-orgs'] }); setEditingNotes(null); },
+  });
+
+  const allOrgs = data?.orgs || [];
   const masters = allOrgs.filter((o) => !o.parent_org_id);
   const childrenOf = (parentId) => allOrgs.filter((o) => o.parent_org_id === parentId);
 
@@ -200,17 +259,23 @@ const OrgsTab = () => {
     return next;
   });
 
+  const toggleExpand = (id) => setExpandedOrg((prev) => (prev === id ? null : id));
+
   const OrgRow = ({ org, depth = 0 }) => {
     const children = childrenOf(org.id);
     const hasChildren = children.length > 0;
     const isCollapsed = collapsed.has(org.id);
+    const isExpanded = expandedOrg === org.id;
     const visible = matchesSearch(org) || children.some(matchesSearch);
     if (!visible) return null;
 
+    const isSuspended = !org.is_active;
+
     return (
       <>
-        <tr className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors group">
-          <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100">
+        <tr className={`transition-colors group ${isSuspended ? 'bg-red-50/40 dark:bg-red-900/5' : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30'}`}>
+          {/* Name + expand */}
+          <td className="py-3 px-4">
             <div className="flex items-center gap-2" style={{ paddingLeft: depth * 20 }}>
               {hasChildren ? (
                 <button onClick={() => toggleCollapse(org.id)}
@@ -222,9 +287,17 @@ const OrgsTab = () => {
                   <span className="w-2 h-px bg-gray-300 dark:bg-gray-600" />
                 </span>
               ) : <span className="w-5" />}
-              <span className={depth > 0 ? 'text-gray-700 dark:text-gray-300' : ''}>{org.name}</span>
-              {depth > 0 && <span className="text-xs text-gray-400 dark:text-gray-500 font-normal">(parceira)</span>}
+              <button onClick={() => toggleExpand(org.id)} className="flex items-center gap-2 text-left group/name">
+                <span className={`font-medium text-sm ${isSuspended ? 'text-red-700 dark:text-red-400 line-through' : 'text-gray-900 dark:text-gray-100'}`}>{org.name}</span>
+                {depth > 0 && <span className="text-xs text-gray-400">(parceira)</span>}
+                {isSuspended && <span className="text-xs font-medium text-red-600 dark:text-red-400 bg-red-100 dark:bg-red-900/20 px-1.5 py-0.5 rounded-full">Suspenso</span>}
+              </button>
             </div>
+            {org.notes && !isSuspended && (
+              <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[220px]" style={{ paddingLeft: depth * 20 + 28 }} title={org.notes}>
+                📝 {org.notes}
+              </p>
+            )}
           </td>
           <td className="py-3 px-4 font-mono text-xs text-gray-500 dark:text-gray-400">{org.slug}</td>
           <td className="py-3 px-4">
@@ -233,26 +306,73 @@ const OrgsTab = () => {
             </span>
           </td>
           <td className="py-3 px-4 text-gray-600 dark:text-gray-400 text-xs capitalize">{org.org_type}</td>
-          <td className="py-3 px-4 text-gray-600 dark:text-gray-400">{org.members_count}</td>
+          <td className="py-3 px-4 text-gray-600 dark:text-gray-400 text-sm">{org.members_count}</td>
           <td className="py-3 px-4 text-gray-500 text-xs">{fmtDate(org.created_at)}</td>
-          <td className="py-3 px-4 relative">
-            <button onClick={() => setOpenMenu(openMenu === org.id ? null : org.id)}
-              className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 transition-colors">
-              Alterar plano <ChevronDown size={12} />
-            </button>
-            {openMenu === org.id && (
-              <div className="absolute right-4 top-8 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg min-w-[140px]">
-                {['free', 'pro', 'enterprise'].map((tier) => (
-                  <button key={tier} onClick={() => { setOpenMenu(null); setConfirmChange({ slug: org.slug, name: org.name, plan: tier, current: org.plan_tier }); }}
-                    disabled={org.plan_tier === tier}
-                    className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 capitalize first:rounded-t-lg last:rounded-b-lg flex items-center gap-2">
-                    {org.plan_tier === tier && <Check size={12} />}{tier}
-                  </button>
-                ))}
+          <td className="py-3 px-4">
+            <div className="flex items-center gap-1">
+              {/* Plan menu */}
+              <div className="relative">
+                <button onClick={() => setOpenMenu(openMenu === org.id ? null : org.id)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 transition-colors">
+                  Plano <ChevronDown size={11} />
+                </button>
+                {openMenu === org.id && (
+                  <div className="absolute right-0 top-8 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg min-w-[130px]">
+                    {['free', 'pro', 'enterprise'].map((tier) => (
+                      <button key={tier} onClick={() => { setOpenMenu(null); setConfirmChange({ slug: org.slug, name: org.name, plan: tier, current: org.plan_tier }); }}
+                        disabled={org.plan_tier === tier}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 capitalize first:rounded-t-lg last:rounded-b-lg flex items-center gap-2">
+                        {org.plan_tier === tier && <Check size={11} />}{tier}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
-            )}
+
+              {/* Suspend / reactivate */}
+              <button
+                onClick={() => { setConfirmSuspend(org); setSuspendReason(org.suspended_reason || ''); }}
+                title={isSuspended ? 'Reativar organização' : 'Suspender organização'}
+                className={`p-1.5 rounded-lg transition-colors ${isSuspended ? 'text-green-600 hover:bg-green-50 dark:text-green-400 dark:hover:bg-green-900/20' : 'text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20'}`}>
+                {isSuspended ? <Power size={13} /> : <PowerOff size={13} />}
+              </button>
+
+              {/* Notes */}
+              <button
+                onClick={() => { setEditingNotes(org.slug); setNotesValue(org.notes || ''); }}
+                title="Notas do parceiro"
+                className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
+                <StickyNote size={13} />
+              </button>
+            </div>
           </td>
         </tr>
+
+        {/* Expanded detail row */}
+        {isExpanded && (
+          <tr className="bg-gray-50/70 dark:bg-gray-700/20">
+            <td colSpan={7} className="px-6 py-3">
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide flex items-center gap-1.5">
+                  <BarChart2 size={11} /> Métricas
+                </p>
+                <OrgMetricsPanel slug={org.slug} />
+                {isSuspended && org.suspended_reason && (
+                  <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-1.5">
+                    <strong>Motivo da suspensão:</strong> {org.suspended_reason}
+                    {org.suspended_at && ` (${fmtDate(org.suspended_at)})`}
+                  </p>
+                )}
+                {org.notes && (
+                  <p className="text-xs text-gray-600 dark:text-gray-400 bg-yellow-50 dark:bg-yellow-900/10 border border-yellow-200 dark:border-yellow-800/30 rounded-lg px-3 py-2">
+                    <span className="font-medium text-gray-700 dark:text-gray-300">Notas internas: </span>{org.notes}
+                  </p>
+                )}
+              </div>
+            </td>
+          </tr>
+        )}
+
         {hasChildren && !isCollapsed && children.map((child) => (
           <OrgRow key={child.id} org={child} depth={depth + 1} />
         ))}
@@ -262,12 +382,14 @@ const OrgsTab = () => {
 
   return (
     <div className="space-y-4">
-      <div className="relative">
-        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou slug..."
-          className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary" />
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar por nome ou slug..."
+            className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary" />
+        </div>
+        <span className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{allOrgs.length} orgs</span>
       </div>
-      <span className="text-sm text-gray-500 dark:text-gray-400">{allOrgs.length} organizações</span>
 
       {isLoading ? (
         <div className="flex justify-center py-16"><span className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
@@ -282,7 +404,7 @@ const OrgsTab = () => {
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Tipo</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Membros</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Criada em</th>
-                <th className="py-3 px-4" />
+                <th className="py-3 px-4 w-36" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
@@ -292,20 +414,83 @@ const OrgsTab = () => {
         </div>
       )}
 
+      {/* Confirm plan change */}
       {confirmChange && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl p-6 space-y-4">
             <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Confirmar alteração de plano</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Alterar <strong>{confirmChange.name}</strong> de{' '}
-              <span className="capitalize font-medium">{confirmChange.current}</span> para{' '}
-              <span className="capitalize font-medium">{confirmChange.plan}</span>?
+              Alterar <strong>{confirmChange.name}</strong> de <span className="capitalize font-medium">{confirmChange.current}</span> para <span className="capitalize font-medium">{confirmChange.plan}</span>?
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmChange(null)} className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
               <button onClick={() => planMut.mutate({ slug: confirmChange.slug, plan_tier: confirmChange.plan })} disabled={planMut.isPending}
                 className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
                 {planMut.isPending ? 'Alterando…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm suspend/reactivate */}
+      {confirmSuspend && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">
+              {confirmSuspend.is_active ? '⚠️ Suspender organização' : '✅ Reativar organização'}
+            </h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              {confirmSuspend.is_active
+                ? <>Suspender <strong>{confirmSuspend.name}</strong> bloqueará o acesso de todos os membros imediatamente.</>
+                : <>Reativar <strong>{confirmSuspend.name}</strong> restaurará o acesso para todos os membros.</>}
+            </p>
+            {confirmSuspend.is_active && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Motivo da suspensão (opcional)</label>
+                <input value={suspendReason} onChange={(e) => setSuspendReason(e.target.value)}
+                  placeholder="Ex: Inadimplência, violação de termos..."
+                  className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-red-400/40" />
+              </div>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setConfirmSuspend(null); setSuspendReason(''); }}
+                className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">
+                Cancelar
+              </button>
+              <button
+                onClick={() => suspendMut.mutate({ slug: confirmSuspend.slug, suspend: confirmSuspend.is_active, reason: suspendReason || undefined })}
+                disabled={suspendMut.isPending}
+                className={`px-4 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-50 transition-colors ${confirmSuspend.is_active ? 'bg-red-600 hover:bg-red-500' : 'bg-green-600 hover:bg-green-500'}`}>
+                {suspendMut.isPending ? 'Aguarde…' : confirmSuspend.is_active ? 'Suspender' : 'Reativar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Notes editor */}
+      {editingNotes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <StickyNote size={16} className="text-indigo-500" />
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notas do Parceiro</h3>
+            </div>
+            <p className="text-xs text-gray-400">Notas internas visíveis apenas para administradores (SLA, contato comercial, condições especiais…)</p>
+            <textarea
+              value={notesValue}
+              onChange={(e) => setNotesValue(e.target.value)}
+              rows={5}
+              placeholder="Ex: Contato comercial: João Silva (11) 99999-9999. SLA 99.9%. Desconto de 15% negociado em jan/2026."
+              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEditingNotes(null)} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+              <button onClick={() => notesMut.mutate({ slug: editingNotes, notes: notesValue })} disabled={notesMut.isPending}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 disabled:opacity-50 transition-all active:scale-[0.97]">
+                {notesMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Salvar
               </button>
             </div>
           </div>
@@ -318,18 +503,22 @@ const OrgsTab = () => {
 
 /* ── Billing Modal ───────────────────────────────────────────────────────── */
 
+const inputCls = 'w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40';
+
 const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
   const isEdit = !!existing;
   const [form, setForm] = useState({
-    client_name:  existing?.client_name  || '',
-    org_id:       existing?.org_id       || '',
-    amount:       existing?.amount       || '',
-    period_type:  existing?.period_type  || 'monthly',
-    period_ref:   existing?.period_ref   || '',
-    due_date:     existing?.due_date     ? existing.due_date.slice(0, 10) : '',
-    paid_at:      existing?.paid_at      ? existing.paid_at.slice(0, 10) : '',
-    status:       existing?.status       || 'pending',
-    notes:        existing?.notes        || '',
+    client_name:       existing?.client_name       || '',
+    org_id:            existing?.org_id            || '',
+    amount:            existing?.amount            || '',
+    period_type:       existing?.period_type       || 'monthly',
+    period_ref:        existing?.period_ref        || '',
+    due_date:          existing?.due_date          ? existing.due_date.slice(0, 10) : '',
+    paid_at:           existing?.paid_at           ? existing.paid_at.slice(0, 10) : '',
+    status:            existing?.status            || 'pending',
+    notes:             existing?.notes             || '',
+    is_recurring:      existing?.is_recurring      ?? false,
+    recurrence_months: existing?.recurrence_months ?? 1,
   });
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
@@ -342,6 +531,7 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
       org_id: form.org_id || null,
       due_date: form.due_date || null,
       paid_at: form.paid_at || null,
+      recurrence_months: form.is_recurring ? parseInt(form.recurrence_months, 10) : null,
     });
   };
 
@@ -362,25 +552,21 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4">
+        <form onSubmit={handleSubmit} className="px-6 py-5 space-y-4 max-h-[80vh] overflow-y-auto">
           {/* Client name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
               Nome do Cliente <span className="text-red-500">*</span>
             </label>
             <input value={form.client_name} onChange={(e) => set('client_name', e.target.value)} required
-              placeholder="Ex: Advanced Informática LTDA"
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+              placeholder="Ex: Cliente X" className={inputCls} />
             <p className="mt-1 text-xs text-gray-400">Nome da empresa/pessoa que realiza o pagamento</p>
           </div>
 
           {/* Organization */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-              Organização Vinculada
-            </label>
-            <select value={form.org_id} onChange={(e) => set('org_id', e.target.value)}
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Organização Vinculada</label>
+            <select value={form.org_id} onChange={(e) => set('org_id', e.target.value)} className={inputCls}>
               <option value="">— Nenhuma —</option>
               {orgs.filter((o) => !o.parent_org_id).map((o) => (
                 <option key={o.id} value={o.id}>{o.name} ({o.plan_tier})</option>
@@ -389,19 +575,13 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Amount */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Valor (R$) <span className="text-red-500">*</span></label>
-              <input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => set('amount', e.target.value)} required
-                placeholder="0,00"
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+              <input type="number" step="0.01" min="0" value={form.amount} onChange={(e) => set('amount', e.target.value)} required placeholder="0,00" className={inputCls} />
             </div>
-
-            {/* Period type */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Período</label>
-              <select value={form.period_type} onChange={(e) => set('period_type', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Tipo de Período</label>
+              <select value={form.period_type} onChange={(e) => set('period_type', e.target.value)} className={inputCls}>
                 <option value="monthly">Mensal</option>
                 <option value="annual">Anual</option>
               </select>
@@ -409,22 +589,15 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Period ref */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
-                Referência <span className="text-red-500">*</span>
-              </label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Referência <span className="text-red-500">*</span></label>
               <input value={form.period_ref} onChange={(e) => set('period_ref', e.target.value)} required
-                placeholder={form.period_type === 'monthly' ? '2026-03' : '2026'}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+                placeholder={form.period_type === 'monthly' ? '2026-03' : '2026'} className={inputCls} />
               <p className="mt-1 text-xs text-gray-400">{form.period_type === 'monthly' ? 'Formato: YYYY-MM' : 'Formato: YYYY'}</p>
             </div>
-
-            {/* Status */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Status</label>
-              <select value={form.status} onChange={(e) => set('status', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40">
+              <select value={form.status} onChange={(e) => set('status', e.target.value)} className={inputCls}>
                 <option value="pending">Pendente</option>
                 <option value="paid">Pago</option>
                 <option value="overdue">Em atraso</option>
@@ -434,19 +607,41 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            {/* Due date */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Vencimento</label>
-              <input type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+              <input type="date" value={form.due_date} onChange={(e) => set('due_date', e.target.value)} className={inputCls} />
             </div>
-
-            {/* Paid at */}
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Data do Pagamento</label>
-              <input type="date" value={form.paid_at} onChange={(e) => set('paid_at', e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" />
+              <input type="date" value={form.paid_at} onChange={(e) => set('paid_at', e.target.value)} className={inputCls} />
             </div>
+          </div>
+
+          {/* Recurrence */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+            <label className="flex items-center gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={form.is_recurring}
+                onChange={(e) => set('is_recurring', e.target.checked)}
+                className="w-4 h-4 rounded accent-primary"
+              />
+              <div>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Cobrança Recorrente</span>
+                <p className="text-xs text-gray-400">Gera próxima cobrança automaticamente ao marcar como pago</p>
+              </div>
+            </label>
+            {form.is_recurring && (
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Frequência de Renovação</label>
+                <select value={form.recurrence_months} onChange={(e) => set('recurrence_months', e.target.value)} className={inputCls}>
+                  <option value={1}>Mensal (a cada 1 mês)</option>
+                  <option value={3}>Trimestral (a cada 3 meses)</option>
+                  <option value={6}>Semestral (a cada 6 meses)</option>
+                  <option value={12}>Anual (a cada 12 meses)</option>
+                </select>
+              </div>
+            )}
           </div>
 
           {/* Notes */}
@@ -454,7 +649,7 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Observações</label>
             <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2}
               placeholder="Notas internas sobre esta cobrança..."
-              className="w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40 resize-none" />
+              className={`${inputCls} resize-none`} />
           </div>
 
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-gray-200 dark:border-gray-700">
@@ -472,7 +667,89 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
 };
 
 
+/* ── Billing History Modal ────────────────────────────────────────────────── */
+
+const STATUS_LABELS = {
+  pending:   { label: 'Pendente',   cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  paid:      { label: 'Pago',       cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  overdue:   { label: 'Em atraso',  cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  cancelled: { label: 'Cancelado',  cls: 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400' },
+};
+
+const BillingHistoryModal = ({ recordId, clientName, onClose }) => {
+  const { data, isLoading } = useQuery({
+    queryKey: ['billing-history', recordId],
+    queryFn: () => adminService.getBillingHistory(recordId),
+    enabled: !!recordId,
+  });
+
+  const history = data?.history || [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-md border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <History className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            <div>
+              <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Histórico de Status</h2>
+              <p className="text-xs text-gray-400">{clientName}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="px-6 py-4 max-h-96 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-primary" /></div>
+          ) : history.length === 0 ? (
+            <p className="text-center text-sm text-gray-400 py-8">Sem histórico registrado</p>
+          ) : (
+            <div className="relative pl-4">
+              {/* vertical line */}
+              <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gray-200 dark:bg-gray-700" />
+              <div className="space-y-4">
+                {history.map((h, i) => {
+                  const oldSt = STATUS_LABELS[h.old_status];
+                  const newSt = STATUS_LABELS[h.new_status] || { label: h.new_status, cls: 'bg-gray-100 text-gray-500' };
+                  return (
+                    <div key={h.id} className="relative flex gap-3">
+                      <div className="mt-0.5 flex-shrink-0 w-3.5 h-3.5 rounded-full bg-white dark:bg-gray-800 border-2 border-primary z-10" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {oldSt ? (
+                            <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${oldSt.cls}`}>{oldSt.label}</span>
+                          ) : (
+                            <span className="text-xs text-gray-400 italic">criado</span>
+                          )}
+                          {oldSt && <span className="text-xs text-gray-400">→</span>}
+                          <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${newSt.cls}`}>{newSt.label}</span>
+                        </div>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                          {new Date(h.changed_at).toLocaleString('pt-BR')}
+                          {' — '}
+                          <span className="font-medium">{h.changed_by_name || 'Sistema'}</span>
+                        </p>
+                        {h.notes && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 italic">{h.notes}</p>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+
 /* ── Billing Tab ─────────────────────────────────────────────────────────── */
+
+const RECURRENCE_LABEL = { 1: 'Mensal', 3: 'Trimestral', 6: 'Semestral', 12: 'Anual' };
 
 const BillingTab = ({ orgs }) => {
   const qc = useQueryClient();
@@ -480,31 +757,50 @@ const BillingTab = ({ orgs }) => {
   const [search, setSearch] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editRecord, setEditRecord] = useState(null);
+  const [historyRecord, setHistoryRecord] = useState(null);
   const [uploading, setUploading] = useState(null);
+  const [exporting, setExporting] = useState(false);
   const fileInputRef = useRef(null);
   const [pendingUploadId, setPendingUploadId] = useState(null);
+
+  const { data: summaryData } = useQuery({
+    queryKey: ['admin-billing-summary'],
+    queryFn: () => adminService.getBillingSummary(),
+    staleTime: 60_000,
+  });
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-billing', statusFilter, search],
     queryFn: () => adminService.listBilling({ status: statusFilter || undefined, search: search || undefined }),
   });
 
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['admin-billing'] });
+    qc.invalidateQueries({ queryKey: ['admin-billing-summary'] });
+  };
+
   const createMut = useMutation({
     mutationFn: (d) => adminService.createBilling(d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-billing'] }); setShowModal(false); },
+    onSuccess: () => { invalidate(); setShowModal(false); },
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }) => adminService.updateBilling(id, data),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-billing'] }); setEditRecord(null); },
+    onSuccess: () => { invalidate(); setEditRecord(null); },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => adminService.deleteBilling(id),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-billing'] }),
+    onSuccess: () => invalidate(),
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status }) => adminService.patchBillingStatus(id, status),
+    onSuccess: () => invalidate(),
   });
 
   const records = data?.records || [];
+  const s = summaryData;
 
   const handleUploadClick = (id) => {
     setPendingUploadId(id);
@@ -517,7 +813,7 @@ const BillingTab = ({ orgs }) => {
     setUploading(pendingUploadId);
     try {
       await adminService.uploadBillingAttachment(pendingUploadId, file);
-      qc.invalidateQueries({ queryKey: ['admin-billing'] });
+      invalidate();
     } finally {
       setUploading(null);
       e.target.value = '';
@@ -525,33 +821,47 @@ const BillingTab = ({ orgs }) => {
     }
   };
 
-  // KPI summary
-  const totalPending = records.filter((r) => r.status === 'pending').reduce((s, r) => s + r.amount, 0);
-  const totalPaid    = records.filter((r) => r.status === 'paid').reduce((s, r) => s + r.amount, 0);
-  const totalOverdue = records.filter((r) => r.status === 'overdue').reduce((s, r) => s + r.amount, 0);
+  const handleExport = async () => {
+    setExporting(true);
+    try {
+      await adminService.exportBillingCsv({
+        status: statusFilter || undefined,
+        search: search || undefined,
+      });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="space-y-5">
       {/* Hidden file input */}
       <input ref={fileInputRef} type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" className="hidden" onChange={handleFileChange} />
 
-      {/* KPI strip */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Financial KPI strip */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
-          { label: 'A receber', value: fmtBRL(totalPending), color: 'yellow' },
-          { label: 'Recebido',  value: fmtBRL(totalPaid),    color: 'green' },
-          { label: 'Em atraso', value: fmtBRL(totalOverdue), color: 'red' },
-        ].map(({ label, value, color }) => (
-          <div key={label} className={`rounded-xl border p-4 ${
+          { label: 'MRR',         value: fmtBRL(s?.mrr),           color: 'blue',   tip: 'Receita mensal recorrente' },
+          { label: 'ARR',         value: fmtBRL(s?.arr),           color: 'blue',   tip: 'Receita anual projetada' },
+          { label: 'A Receber',   value: fmtBRL(s?.total_pending), color: 'yellow', tip: 'Total pendente' },
+          { label: 'Em Atraso',   value: fmtBRL(s?.total_overdue), color: 'red',    tip: `${s?.overdue_count ?? 0} cobranças` },
+          { label: 'Pago (30d)',  value: fmtBRL(s?.total_paid_30d),color: 'green',  tip: 'Recebido nos últimos 30 dias' },
+          { label: 'Clientes',    value: s?.active_clients ?? '—', color: 'gray',   tip: 'Clientes ativos' },
+        ].map(({ label, value, color, tip }) => (
+          <div key={label} title={tip} className={`rounded-xl border p-3 ${
+            color === 'blue'   ? 'bg-blue-50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800/30' :
             color === 'yellow' ? 'bg-yellow-50 border-yellow-200 dark:bg-yellow-900/10 dark:border-yellow-800/30' :
-            color === 'green'  ? 'bg-green-50  border-green-200  dark:bg-green-900/10  dark:border-green-800/30'  :
-            'bg-red-50    border-red-200    dark:bg-red-900/10    dark:border-red-800/30'
+            color === 'red'    ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-800/30' :
+            color === 'green'  ? 'bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800/30' :
+            'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'
           }`}>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">{label}</p>
-            <p className={`text-xl font-bold ${
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">{label}</p>
+            <p className={`text-base font-bold truncate ${
+              color === 'blue'   ? 'text-blue-700 dark:text-blue-400' :
               color === 'yellow' ? 'text-yellow-700 dark:text-yellow-400' :
-              color === 'green'  ? 'text-green-700  dark:text-green-400'  :
-              'text-red-700    dark:text-red-400'
+              color === 'red'    ? 'text-red-700 dark:text-red-400' :
+              color === 'green'  ? 'text-green-700 dark:text-green-400' :
+              'text-gray-800 dark:text-gray-200'
             }`}>{value}</p>
           </div>
         ))}
@@ -559,7 +869,7 @@ const BillingTab = ({ orgs }) => {
 
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-48">
+        <div className="relative flex-1 min-w-40">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar cliente..."
             className="w-full pl-9 pr-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary" />
@@ -569,11 +879,16 @@ const BillingTab = ({ orgs }) => {
           <option value="">Todos os status</option>
           <option value="pending">Pendente</option>
           <option value="paid">Pago</option>
-          <option value="overdue">Em atraso</option>
+          <option value="overdue">Em atraso{s?.overdue_count ? ` (${s.overdue_count})` : ''}</option>
           <option value="cancelled">Cancelado</option>
         </select>
+        <button onClick={handleExport} disabled={exporting}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 bg-white dark:bg-gray-800 transition-colors disabled:opacity-50">
+          {exporting ? <Loader2 size={14} className="animate-spin" /> : <FileDown size={14} />}
+          Exportar CSV
+        </button>
         <button onClick={() => setShowModal(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 transition-all active:scale-[0.97] ml-auto">
+          className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl text-sm font-medium hover:bg-primary/90 transition-all active:scale-[0.97]">
           <Plus className="w-4 h-4" /> Nova Cobrança
         </button>
       </div>
@@ -587,7 +902,7 @@ const BillingTab = ({ orgs }) => {
           <p className="text-sm">Nenhuma cobrança registrada</p>
         </div>
       ) : (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
@@ -598,18 +913,24 @@ const BillingTab = ({ orgs }) => {
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Vencimento</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Status</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Comprovante</th>
-                <th className="py-3 px-4 w-20" />
+                <th className="py-3 px-4 w-24" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
               {records.map((r) => {
                 const st = BILLING_STATUS[r.status] || BILLING_STATUS.pending;
-                const StIcon = st.icon;
                 return (
                   <tr key={r.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-900 dark:text-gray-100">{r.client_name}</p>
-                      {r.notes && <p className="text-xs text-gray-400 truncate max-w-[160px]" title={r.notes}>{r.notes}</p>}
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        {r.is_recurring && (
+                          <span className="inline-flex items-center gap-0.5 text-xs text-indigo-600 dark:text-indigo-400">
+                            <RefreshCw size={9} /> {RECURRENCE_LABEL[r.recurrence_months] || 'Recorrente'}
+                          </span>
+                        )}
+                        {r.notes && <p className="text-xs text-gray-400 truncate max-w-[140px]" title={r.notes}>{r.notes}</p>}
+                      </div>
                     </td>
                     <td className="py-3 px-4">
                       {r.org_name ? (
@@ -619,19 +940,28 @@ const BillingTab = ({ orgs }) => {
                         </div>
                       ) : <span className="text-gray-400 text-xs">—</span>}
                     </td>
-                    <td className="py-3 px-4 font-semibold text-gray-900 dark:text-gray-100">{fmtBRL(r.amount)}</td>
-                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400 text-xs">
-                      <span className="capitalize">{r.period_type === 'monthly' ? 'Mensal' : 'Anual'}</span>
+                    <td className="py-3 px-4 font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">{fmtBRL(r.amount)}</td>
+                    <td className="py-3 px-4 text-gray-600 dark:text-gray-400 text-xs whitespace-nowrap">
+                      <span>{r.period_type === 'monthly' ? 'Mensal' : 'Anual'}</span>
                       <span className="ml-1 font-mono text-gray-500">· {r.period_ref}</span>
                     </td>
-                    <td className="py-3 px-4 text-gray-500 text-xs">
+                    <td className="py-3 px-4 text-gray-500 text-xs whitespace-nowrap">
                       {fmtDate(r.due_date)}
                       {r.paid_at && <p className="text-green-600 dark:text-green-400">Pago: {fmtDate(r.paid_at)}</p>}
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>
-                        <StIcon size={11} /> {st.label}
-                      </span>
+                      {/* Inline status change */}
+                      <select
+                        value={r.status}
+                        onChange={(e) => statusMut.mutate({ id: r.id, status: e.target.value })}
+                        disabled={statusMut.isPending}
+                        className={`text-xs font-medium rounded-full px-2 py-0.5 border-0 cursor-pointer focus:outline-none focus:ring-1 focus:ring-primary/40 ${st.cls}`}
+                      >
+                        <option value="pending">Pendente</option>
+                        <option value="paid">Pago</option>
+                        <option value="overdue">Em atraso</option>
+                        <option value="cancelled">Cancelado</option>
+                      </select>
                     </td>
                     <td className="py-3 px-4">
                       {r.has_attachment ? (
@@ -643,7 +973,7 @@ const BillingTab = ({ orgs }) => {
                           </a>
                           <button onClick={() => handleUploadClick(r.id)}
                             className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                            title="Substituir comprovante">
+                            title="Substituir">
                             <Paperclip size={12} />
                           </button>
                         </div>
@@ -656,7 +986,11 @@ const BillingTab = ({ orgs }) => {
                       )}
                     </td>
                     <td className="py-3 px-4">
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-0.5">
+                        <button onClick={() => setHistoryRecord(r)} title="Histórico"
+                          className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                          <History size={13} />
+                        </button>
                         <button onClick={() => setEditRecord(r)} title="Editar"
                           className="p-1.5 text-gray-400 hover:text-primary hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                           <Pencil size={13} />
@@ -684,6 +1018,13 @@ const BillingTab = ({ orgs }) => {
       {editRecord && (
         <BillingModal existing={editRecord} orgs={orgs} onClose={() => setEditRecord(null)}
           onSave={(d) => updateMut.mutate({ id: editRecord.id, data: d })} isSaving={updateMut.isPending} />
+      )}
+      {historyRecord && (
+        <BillingHistoryModal
+          recordId={historyRecord.id}
+          clientName={historyRecord.client_name}
+          onClose={() => setHistoryRecord(null)}
+        />
       )}
     </div>
   );

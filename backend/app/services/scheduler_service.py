@@ -760,6 +760,43 @@ def unregister_report_schedule(schedule_id: str) -> None:
         pass
 
 
+def execute_billing_overdue_check() -> None:
+    """
+    Daily job (07:00 UTC) — marks pending billing records as overdue
+    where due_date < today. Records status change in billing_status_history.
+    """
+    from app.database import SessionLocal
+    from app.models.db_models import BillingRecord, BillingStatusHistory
+
+    db = SessionLocal()
+    try:
+        today = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+        records = (
+            db.query(BillingRecord)
+            .filter(BillingRecord.status == "pending", BillingRecord.due_date < today)
+            .all()
+        )
+        count = 0
+        for record in records:
+            history = BillingStatusHistory(
+                billing_id=record.id,
+                old_status="pending",
+                new_status="overdue",
+                changed_by_id=None,
+                notes="Auto: vencimento ultrapassado",
+            )
+            record.status = "overdue"
+            db.add(history)
+            count += 1
+        db.commit()
+        logger.info(f"Billing overdue check: {count} records marked overdue")
+    except Exception as exc:
+        logger.error(f"execute_billing_overdue_check failed: {exc}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def load_report_schedules(db) -> int:
     """Load all enabled ReportSchedule rows into APScheduler. Returns count."""
     from app.models.db_models import ReportSchedule
@@ -772,6 +809,18 @@ def load_report_schedules(db) -> int:
             count += 1
         except Exception as exc:
             logger.warning(f"Could not register report schedule {s.id}: {exc}")
+
+    # Register daily billing overdue check (07:00 UTC — before budget eval)
+    try:
+        scheduler.add_job(
+            execute_billing_overdue_check,
+            CronTrigger(hour=7, minute=0),
+            id="billing_overdue_daily",
+            replace_existing=True,
+        )
+        logger.info("Daily billing overdue check job registered")
+    except Exception as exc:
+        logger.error(f"Failed to register billing_overdue_daily job: {exc}")
 
     # Also register the daily budget eval job
     try:
