@@ -41,10 +41,15 @@ class PlanUpdate(BaseModel):
 class MemberInvite(BaseModel):
     email: str
     role: str = "viewer"
+    phone: Optional[str] = None
+    department: Optional[str] = None
 
 
 class MemberRoleUpdate(BaseModel):
-    role: str
+    role: Optional[str] = None
+    phone: Optional[str] = None
+    department: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class ManagedOrgCreate(BaseModel):
@@ -259,6 +264,10 @@ async def list_members(
             "name": m.user.name,
             "role": m.role,
             "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+            "phone": m.phone,
+            "department": m.department,
+            "notes": m.notes,
+            "avatar_url": m.user.avatar_url if hasattr(m.user, "avatar_url") else None,
         }
         for m in memberships
         if m.user
@@ -306,6 +315,8 @@ async def invite_member(
                 user_id=user.id,
                 role=payload.role,
                 invited_by=member.user.id,
+                phone=payload.phone,
+                department=payload.department,
             )
             db.add(new_member)
             db.commit()
@@ -389,9 +400,6 @@ async def update_member_role(
     db: Session = Depends(get_db),
 ):
     """Change a member's role."""
-    if payload.role not in VALID_ROLES:
-        raise HTTPException(status_code=400, detail=f"Role inválida. Opções: {', '.join(VALID_ROLES)}")
-
     target = db.query(OrganizationMember).filter(
         OrganizationMember.organization_id == member.organization_id,
         OrganizationMember.user_id == user_id,
@@ -400,24 +408,34 @@ async def update_member_role(
     if not target:
         raise HTTPException(status_code=404, detail="Membro não encontrado")
 
-    # Prevent demoting the last owner
-    if target.role == "owner" and payload.role != "owner":
-        owner_count = db.query(OrganizationMember).filter(
-            OrganizationMember.organization_id == member.organization_id,
-            OrganizationMember.role == "owner",
-            OrganizationMember.is_active == True,
-        ).count()
-        if owner_count <= 1:
-            raise HTTPException(status_code=400, detail="Não é possível remover o último owner")
+    if payload.role is not None:
+        if payload.role not in VALID_ROLES:
+            raise HTTPException(status_code=400, detail=f"Role inválida. Opções: {', '.join(VALID_ROLES)}")
+        # Prevent demoting the last owner
+        if target.role == "owner" and payload.role != "owner":
+            owner_count = db.query(OrganizationMember).filter(
+                OrganizationMember.organization_id == member.organization_id,
+                OrganizationMember.role == "owner",
+                OrganizationMember.is_active == True,
+            ).count()
+            if owner_count <= 1:
+                raise HTTPException(status_code=400, detail="Não é possível remover o último owner")
+        target.role = payload.role
 
-    target.role = payload.role
+    if payload.phone is not None:
+        target.phone = payload.phone or None
+    if payload.department is not None:
+        target.department = payload.department or None
+    if payload.notes is not None:
+        target.notes = payload.notes or None
+
     db.commit()
 
-    log_activity(db, member.user, "org.member.role_change", "OrganizationMember",
-                 resource_id=user_id, detail=f"new_role={payload.role}",
+    log_activity(db, member.user, "org.member.update", "OrganizationMember",
+                 resource_id=user_id, detail=f"role={target.role}",
                  provider="system")
 
-    return {"user_id": user_id, "role": payload.role}
+    return {"user_id": user_id, "role": target.role, "phone": target.phone, "department": target.department}
 
 
 @router.delete("/{org_slug}/members/{user_id}", status_code=204)

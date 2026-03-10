@@ -42,6 +42,9 @@ class OrganizationMember(Base):
     is_active       = Column(Boolean, default=True, nullable=False)
     invited_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     joined_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    phone           = Column(String(50), nullable=True)
+    department      = Column(String(100), nullable=True)
+    notes           = Column(String(500), nullable=True)
 
     organization = relationship("Organization", back_populates="members")
     user         = relationship("User", foreign_keys=[user_id])

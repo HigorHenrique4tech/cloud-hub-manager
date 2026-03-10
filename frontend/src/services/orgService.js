@@ -12,10 +12,12 @@ export const orgService = {
 
   // ── Members ──────────────────────────────────────────────────────────────
   listMembers: async (slug) => (await api.get(`/orgs/${slug}/members`)).data,
-  inviteMember: async (slug, email, role) =>
-    (await api.post(`/orgs/${slug}/members`, { email, role })).data,
+  inviteMember: async (slug, email, role, phone = null, department = null) =>
+    (await api.post(`/orgs/${slug}/members`, { email, role, phone, department })).data,
   updateMemberRole: async (slug, userId, role) =>
     (await api.put(`/orgs/${slug}/members/${userId}`, { role })).data,
+  updateMember: async (slug, userId, data) =>
+    (await api.put(`/orgs/${slug}/members/${userId}`, data)).data,
   removeMember: async (slug, userId) =>
     (await api.delete(`/orgs/${slug}/members/${userId}`)).data,
 
