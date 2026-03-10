@@ -1,0 +1,17 @@
+global:
+  scrape_interval: 15s      # Quão frequentemente raspar os targets
+  evaluation_interval: 15s  # Quão frequentemente avaliar regras
+
+scrape_configs:
+  # O próprio Prometheus
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Backend FastAPI da Plataforma CloudAtlas
+  - job_name: 'cloudatlas-backend'
+    metrics_path: '/metrics'
+    static_configs:
+      # ATENÇÃO: Substitua "host.docker.internal" pelo IP da rede (ou IP da VM01) 
+      # onde a API do CloudAtlas está rodando em Produção.
+      - targets: ['host.docker.internal:8000'] 

@@ -384,18 +384,18 @@ const Login = () => {
           }} />
 
           {/* Logo */}
-          <div className="anim-fadein-0 flex items-center gap-2.5 mb-auto">
+          <div className="anim-fadein-0 flex items-center gap-3 mb-auto">
             <div style={{
-              width: 36, height: 36, flexShrink: 0,
+              width: 52, height: 52, flexShrink: 0,
               background: 'linear-gradient(135deg, #1e3a5f, #0c1e33)',
               border: '1px solid rgba(56,189,248,0.3)',
-              borderRadius: 10,
+              borderRadius: 14,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 0 16px rgba(56,189,248,0.15)',
+              boxShadow: '0 0 24px rgba(56,189,248,0.2)',
             }}>
-              <img src="/logo.png" alt="CloudAtlas" style={{ width: 22, height: 22, objectFit: 'contain' }} />
+              <img src="/logo.png" alt="CloudAtlas" style={{ width: 34, height: 34, objectFit: 'contain' }} />
             </div>
-            <span className="logo-text" style={{ fontWeight: 800, fontSize: 24, letterSpacing: '-0.5px', color: '#f1f5f9' }}>
+            <span className="logo-text" style={{ fontWeight: 800, fontSize: 30, letterSpacing: '-0.5px', color: '#f1f5f9' }}>
               CloudAtlas
             </span>
           </div>
