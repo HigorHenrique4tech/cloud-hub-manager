@@ -110,13 +110,11 @@ class GCPService:
 
     def start_instance(self, zone: str, name: str) -> None:
         client = compute_v1.InstancesClient(credentials=self.credentials)
-        op = client.start(project=self.project_id, zone=zone, instance=name)
-        op.result()
+        client.start(project=self.project_id, zone=zone, instance=name)
 
     def stop_instance(self, zone: str, name: str) -> None:
         client = compute_v1.InstancesClient(credentials=self.credentials)
-        op = client.stop(project=self.project_id, zone=zone, instance=name)
-        op.result()
+        client.stop(project=self.project_id, zone=zone, instance=name)
 
     def delete_instance(self, zone: str, name: str) -> None:
         client = compute_v1.InstancesClient(credentials=self.credentials)

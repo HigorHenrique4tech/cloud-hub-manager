@@ -189,22 +189,20 @@ class AzureService:
 
     def start_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
         try:
-            poller = self.compute_client.virtual_machines.begin_start(
+            self.compute_client.virtual_machines.begin_start(
                 resource_group_name=resource_group, vm_name=vm_name
             )
-            poller.result()
-            return {'success': True, 'message': f'VM {vm_name} iniciada com sucesso'}
+            return {'success': True, 'message': f'VM {vm_name} iniciando'}
         except Exception as e:
             logger.error(f"Error starting VM {vm_name}: {e}")
             return {'success': False, 'error': str(e)}
 
     def stop_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
         try:
-            poller = self.compute_client.virtual_machines.begin_deallocate(
+            self.compute_client.virtual_machines.begin_deallocate(
                 resource_group_name=resource_group, vm_name=vm_name
             )
-            poller.result()
-            return {'success': True, 'message': f'VM {vm_name} parada com sucesso'}
+            return {'success': True, 'message': f'VM {vm_name} parando'}
         except Exception as e:
             logger.error(f"Error stopping VM {vm_name}: {e}")
             return {'success': False, 'error': str(e)}
