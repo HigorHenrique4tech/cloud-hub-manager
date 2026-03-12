@@ -18,7 +18,7 @@ from app.services.auth_service import (
     create_refresh_token, validate_refresh_token, revoke_refresh_token,
     generate_otp, hash_otp, verify_otp_hash, create_mfa_token, decode_mfa_token,
 )
-from app.services.oauth_service import google_get_user_info, github_get_user_info
+from app.services.oauth_service import google_get_user_info, github_get_user_info, microsoft_get_user_info
 from app.services.email_service import send_verification_email, send_otp_email
 from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
@@ -223,7 +223,8 @@ def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get
 
 
 @router.post("/logout")
-def logout(payload: LogoutRequest, db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def logout(payload: LogoutRequest, request: Request, db: Session = Depends(get_db)):
     """Revoke a refresh token."""
     revoke_refresh_token(db, payload.refresh_token)
     return {"detail": "Logout realizado com sucesso"}
@@ -278,7 +279,7 @@ def change_password(
 
 
 @router.post("/mfa/verify", response_model=TokenResponse)
-@limiter.limit("10/minute")
+@limiter.limit("5/minute")
 def verify_mfa(payload: MFAVerifyRequest, request: Request, db: Session = Depends(get_db)):
     """Verify OTP and complete MFA login. Returns full TokenResponse."""
     user_id = decode_mfa_token(payload.mfa_token)
@@ -405,7 +406,8 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 
 
 @router.post("/resend-verification")
-def resend_verification(payload: ResendVerificationRequest, db: Session = Depends(get_db)):
+@limiter.limit("3/minute")
+def resend_verification(payload: ResendVerificationRequest, request: Request, db: Session = Depends(get_db)):
     """Resend the verification email."""
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
     if not user:
@@ -645,6 +647,31 @@ async def github_callback(
         email=info["email"],
         name=info["name"],
         provider="github",
+        oauth_id=info["oauth_id"],
+        avatar_url=info.get("avatar_url"),
+    )
+
+
+@router.post("/microsoft/callback", response_model=TokenResponse)
+@limiter.limit("5/minute")
+async def microsoft_callback(
+    payload: OAuthCallback,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """Login or register via Microsoft OAuth2."""
+    try:
+        redirect_uri = payload.redirect_uri or f"{settings.FRONTEND_URL}/auth/microsoft/callback"
+        info = await microsoft_get_user_info(payload.code, redirect_uri)
+    except Exception as exc:
+        logger.error("Microsoft OAuth failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Falha na autenticação com Microsoft")
+
+    return _oauth_login_or_register(
+        db, request,
+        email=info["email"],
+        name=info["name"],
+        provider="microsoft",
         oauth_id=info["oauth_id"],
         avatar_url=info.get("avatar_url"),
     )

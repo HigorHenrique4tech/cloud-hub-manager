@@ -1,7 +1,8 @@
-import { GOOGLE_CLIENT_ID, GITHUB_CLIENT_ID } from '../../config';
+import { GOOGLE_CLIENT_ID, GITHUB_CLIENT_ID, MICROSOFT_CLIENT_ID } from '../../config';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GITHUB_AUTH_URL = 'https://github.com/login/oauth/authorize';
+const MICROSOFT_AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
 
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
@@ -18,13 +19,20 @@ const GitHubIcon = () => (
   </svg>
 );
 
-export default function OAuthButtons() {
-  const redirectUri = `${window.location.origin}/auth/google/callback`;
+const MicrosoftIcon = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
+    <path d="M11.4 24H0V12.6h11.4V24z" fill="#F1511B" />
+    <path d="M24 24H12.6V12.6H24V24z" fill="#80CC28" />
+    <path d="M11.4 11.4H0V0h11.4v11.4z" fill="#00ADEF" />
+    <path d="M24 11.4H12.6V0H24v11.4z" fill="#FBBC09" />
+  </svg>
+);
 
+export default function OAuthButtons() {
   const handleGoogle = () => {
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
-      redirect_uri: redirectUri,
+      redirect_uri: `${window.location.origin}/auth/google/callback`,
       response_type: 'code',
       scope: 'email profile',
       access_type: 'offline',
@@ -41,10 +49,22 @@ export default function OAuthButtons() {
     window.location.href = `${GITHUB_AUTH_URL}?${params}`;
   };
 
+  const handleMicrosoft = () => {
+    const params = new URLSearchParams({
+      client_id: MICROSOFT_CLIENT_ID,
+      redirect_uri: `${window.location.origin}/auth/microsoft/callback`,
+      response_type: 'code',
+      scope: 'openid profile email User.Read',
+      response_mode: 'query',
+    });
+    window.location.href = `${MICROSOFT_AUTH_URL}?${params}`;
+  };
+
   const showGoogle = !!GOOGLE_CLIENT_ID;
   const showGitHub = !!GITHUB_CLIENT_ID;
+  const showMicrosoft = !!MICROSOFT_CLIENT_ID;
 
-  if (!showGoogle && !showGitHub) return null;
+  if (!showGoogle && !showGitHub && !showMicrosoft) return null;
 
   return (
     <>
@@ -63,6 +83,16 @@ export default function OAuthButtons() {
           >
             <GoogleIcon />
             Continuar com Google
+          </button>
+        )}
+        {showMicrosoft && (
+          <button
+            type="button"
+            onClick={handleMicrosoft}
+            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+          >
+            <MicrosoftIcon />
+            Continuar com Microsoft
           </button>
         )}
         {showGitHub && (

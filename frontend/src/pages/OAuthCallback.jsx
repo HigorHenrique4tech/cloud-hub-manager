@@ -22,6 +22,9 @@ export default function OAuthCallback({ provider }) {
         if (provider === 'google') {
           const redirectUri = `${window.location.origin}/auth/google/callback`;
           data = await authService.googleCallback(code, redirectUri);
+        } else if (provider === 'microsoft') {
+          const redirectUri = `${window.location.origin}/auth/microsoft/callback`;
+          data = await authService.microsoftCallback(code, redirectUri);
         } else {
           data = await authService.githubCallback(code);
         }

@@ -92,6 +92,7 @@ function App() {
                 <Route path="/register" element={<Register />} />
                 <Route path="/auth/google/callback" element={<OAuthCallback provider="google" />} />
                 <Route path="/auth/github/callback" element={<OAuthCallback provider="github" />} />
+                <Route path="/auth/microsoft/callback" element={<OAuthCallback provider="microsoft" />} />
                 <Route path="/invite/:token" element={<InviteAccept />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/verify/:token" element={<VerifyCallback />} />

@@ -498,7 +498,6 @@ async def list_pending_invitations(
             "id": str(inv.id),
             "email": inv.email,
             "role": inv.role,
-            "token": inv.token,
             "invited_by_name": inviter.name if inviter else None,
             "created_at": inv.created_at.isoformat(),
             "expires_at": inv.expires_at.isoformat(),

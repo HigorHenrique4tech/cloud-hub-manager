@@ -809,6 +809,12 @@ async def upload_billing_attachment(
     if file.content_type not in allowed_types:
         raise HTTPException(status_code=400, detail="Tipo de arquivo não permitido. Use PDF, JPEG ou PNG.")
 
+    # Enforce file size limit (10 MB)
+    MAX_FILE_SIZE = 10 * 1024 * 1024
+    content = await file.read()
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(status_code=413, detail="Arquivo muito grande. Limite: 10 MB.")
+
     # Ensure upload directory exists
     record_dir = BILLING_UPLOADS_DIR / record_id
     record_dir.mkdir(parents=True, exist_ok=True)
@@ -817,10 +823,11 @@ async def upload_billing_attachment(
     if record.attachment_path and Path(record.attachment_path).exists():
         Path(record.attachment_path).unlink(missing_ok=True)
 
-    # Save new file
-    ext = Path(file.filename).suffix.lower() if file.filename else ".bin"
-    dest = record_dir / f"attachment{ext}"
-    content = await file.read()
+    # Save new file — strip path from filename to prevent path traversal
+    safe_ext = Path(file.filename).suffix.lower() if file.filename else ".bin"
+    if safe_ext not in {".pdf", ".jpg", ".jpeg", ".png", ".webp"}:
+        safe_ext = ".bin"
+    dest = record_dir / f"attachment{safe_ext}"
     dest.write_bytes(content)
 
     record.attachment_filename = file.filename

@@ -93,6 +93,11 @@ const authService = {
     const { data } = await api.post('/auth/github/callback', { code });
     return data;
   },
+
+  microsoftCallback: async (code, redirectUri) => {
+    const { data } = await api.post('/auth/microsoft/callback', { code, redirect_uri: redirectUri });
+    return data;
+  },
 };
 
 export default authService;
