@@ -530,7 +530,7 @@ async def cancel_invitation(
 
 def _managed_org_to_dict(org: Organization, db: Session) -> dict:
     """Return org dict enriched with usage counts for the managed-orgs panel."""
-    from app.models.db_models import Workspace, CloudAccount, OrganizationMember
+    from app.models.db_models import Workspace, CloudAccount, OrganizationMember, User
     ws_count = db.query(Workspace).filter(
         Workspace.organization_id == org.id,
         Workspace.is_active == True,
@@ -548,6 +548,17 @@ def _managed_org_to_dict(org: Organization, db: Session) -> dict:
         OrganizationMember.organization_id == org.id,
         OrganizationMember.is_active == True,
     ).count()
+    owner_member = (
+        db.query(OrganizationMember)
+        .join(User, OrganizationMember.user_id == User.id)
+        .filter(
+            OrganizationMember.organization_id == org.id,
+            OrganizationMember.role == "owner",
+            OrganizationMember.is_active == True,
+        )
+        .first()
+    )
+    owner = owner_member.user if owner_member else None
     return {
         "id": str(org.id),
         "name": org.name,
@@ -555,10 +566,14 @@ def _managed_org_to_dict(org: Organization, db: Session) -> dict:
         "plan_tier": org.plan_tier,
         "org_type": org.org_type,
         "is_active": org.is_active,
+        "notes": org.notes,
         "created_at": org.created_at.isoformat() if org.created_at else None,
         "workspaces_count": ws_count,
         "cloud_accounts_count": acc_count,
         "members_count": mem_count,
+        "owner_name": owner.name if owner else None,
+        "owner_email": owner.email if owner else None,
+        "owner_avatar_url": getattr(owner, "avatar_url", None) if owner else None,
     }
 
 

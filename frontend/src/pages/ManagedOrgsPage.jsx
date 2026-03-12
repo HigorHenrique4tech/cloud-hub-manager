@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud, AlertTriangle, Grid3x3, CheckCircle, XCircle, PlusCircle } from 'lucide-react';
+import { Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud, AlertTriangle, Grid3x3, CheckCircle, XCircle, PlusCircle, Pencil, StickyNote, Search, ArrowUpDown, Ban } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
@@ -93,17 +93,86 @@ const RemoveConfirmModal = ({ org, onClose, onConfirm, removing }) => (
   </div>
 );
 
+/* ── Edit Partner Modal ──────────────────────────────────────────────────── */
+
+const EditPartnerModal = ({ org, onClose, onSave, saving }) => {
+  const [name, setName] = useState(org.name);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Editar Organização</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white"><X size={18} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Nome da organização</label>
+            <input
+              autoFocus value={name} onChange={(e) => setName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && name.trim() && onSave(name.trim())}
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+            />
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500 font-mono">slug: {org.slug} (não muda)</p>
+          </div>
+          <div className="flex justify-end gap-2 pt-1">
+            <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+            <button onClick={() => name.trim() && onSave(name.trim())} disabled={saving || !name.trim() || name === org.name}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors">
+              {saving ? 'Salvando…' : 'Salvar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Notes Modal ─────────────────────────────────────────────────────────── */
+
+const NotesModal = ({ org, onClose, onSave, saving }) => {
+  const [notes, setNotes] = useState(org.notes || '');
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Notas internas — {org.name}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white"><X size={18} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <textarea
+            autoFocus value={notes} onChange={(e) => setNotes(e.target.value)} rows={5}
+            placeholder="Notas sobre o contrato, contato, SLA, observações internas…"
+            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none resize-none"
+          />
+          <div className="flex justify-end gap-2">
+            <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+            <button onClick={() => onSave(notes)} disabled={saving}
+              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors">
+              {saving ? 'Salvando…' : 'Salvar nota'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── Partner Org Card ────────────────────────────────────────────────────── */
 
-const PartnerCard = ({ org, onAccess, onRemove, isAddon, addonPricePerOrg }) => {
+const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, isAddon, addonPricePerOrg }) => {
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
   const fmtBRL = (v) => v?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) ?? '—';
+  const initials = (name) => name ? name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() : '?';
+
   return (
-    <div className={`rounded-xl border bg-white dark:bg-slate-800/60 p-5 flex flex-col gap-4 transition-colors ${
-      isAddon
+    <div className={`rounded-xl border bg-white dark:bg-slate-800/60 p-5 flex flex-col gap-3 transition-colors ${
+      !org.is_active
+        ? 'border-red-300/50 dark:border-red-800/40 opacity-70'
+        : isAddon
         ? 'border-amber-400/50 dark:border-amber-500/40 hover:border-amber-400 dark:hover:border-amber-500/60'
         : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
     }`}>
+      {/* Add-on badge */}
       {isAddon && (
         <div className="flex items-center gap-1.5 rounded-md bg-amber-50 dark:bg-amber-500/10 border border-amber-300/50 dark:border-amber-500/30 px-2.5 py-1.5 -mt-1">
           <PlusCircle size={13} className="text-amber-500 flex-shrink-0" />
@@ -112,24 +181,57 @@ const PartnerCard = ({ org, onAccess, onRemove, isAddon, addonPricePerOrg }) => 
           </span>
         </div>
       )}
+      {/* Suspended badge */}
+      {!org.is_active && (
+        <div className="flex items-center gap-1.5 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-300/50 dark:border-red-800/40 px-2.5 py-1.5 -mt-1">
+          <Ban size={13} className="text-red-500 flex-shrink-0" />
+          <span className="text-xs font-medium text-red-600 dark:text-red-400">Suspensa</span>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-3">
-          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${isAddon ? 'bg-amber-500/10' : 'bg-indigo-600/10'}`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className={`flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0 ${isAddon ? 'bg-amber-500/10' : 'bg-indigo-600/10'}`}>
             <Building2 size={18} className={isAddon ? 'text-amber-500' : 'text-indigo-400'} />
           </div>
-          <div>
-            <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">{org.name}</p>
-            <p className="text-xs text-gray-400 dark:text-slate-500 font-mono">{org.slug}</p>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{org.name}</p>
+            <p className="text-xs text-gray-400 dark:text-slate-500 font-mono truncate">{org.slug}</p>
           </div>
         </div>
-        <button
-          onClick={() => onRemove(org)}
-          className="text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors flex-shrink-0 mt-0.5"
-          title="Remover parceira"
-        >
-          <Trash2 size={15} />
-        </button>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button onClick={() => onEdit(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors rounded" title="Renomear">
+            <Pencil size={14} />
+          </button>
+          <button onClick={() => onNotes(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-yellow-500 dark:hover:text-yellow-400 transition-colors rounded" title="Notas internas">
+            <StickyNote size={14} />
+          </button>
+          <button onClick={() => onRemove(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors rounded" title="Remover parceira">
+            <Trash2 size={14} />
+          </button>
+        </div>
       </div>
+
+      {/* Owner info */}
+      {org.owner_name && (
+        <div className="flex items-center gap-2 px-1">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold flex-shrink-0">
+            {initials(org.owner_name)}
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-medium text-gray-700 dark:text-slate-300 truncate">{org.owner_name}</p>
+            {org.owner_email && <p className="text-[10px] text-gray-400 dark:text-slate-500 truncate">{org.owner_email}</p>}
+          </div>
+        </div>
+      )}
+
+      {/* Notes preview */}
+      {org.notes && (
+        <p className="text-xs text-gray-500 dark:text-slate-400 italic line-clamp-2 px-1 border-l-2 border-yellow-300 dark:border-yellow-600 pl-2">
+          {org.notes}
+        </p>
+      )}
 
       <div className="grid grid-cols-3 gap-2">
         <div className="rounded-lg bg-gray-50 dark:bg-slate-700/50 px-2 py-1.5 text-center">
@@ -270,6 +372,10 @@ const ManagedOrgsPage = () => {
   const [activeView, setActiveView] = useState('orgs');
   const [showAddModal, setShowAddModal] = useState(false);
   const [removeTarget, setRemoveTarget] = useState(null);
+  const [editTarget, setEditTarget]     = useState(null);
+  const [notesTarget, setNotesTarget]   = useState(null);
+  const [search, setSearch]             = useState('');
+  const [sortBy, setSortBy]             = useState('recent');
 
   const orgsQ = useQuery({
     queryKey: ['managed-orgs', currentOrg?.slug],
@@ -307,8 +413,35 @@ const ManagedOrgsPage = () => {
     },
   });
 
+  const renameMut = useMutation({
+    mutationFn: ({ partnerSlug, name }) => orgService.updateManagedOrg(partnerSlug, { name }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['managed-orgs'] });
+      setEditTarget(null);
+    },
+  });
+
+  const notesMut = useMutation({
+    mutationFn: ({ partnerSlug, notes }) => orgService.updatePartnerNotes(partnerSlug, notes),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['managed-orgs'] });
+      setNotesTarget(null);
+    },
+  });
+
   const summary = summaryQ.data;
   const managedOrgs = orgsQ.data?.managed_orgs || [];
+
+  const filteredOrgs = useMemo(() => {
+    let orgs = search
+      ? managedOrgs.filter(o => o.name.toLowerCase().includes(search.toLowerCase()) || o.slug.toLowerCase().includes(search.toLowerCase()))
+      : [...managedOrgs];
+    if (sortBy === 'name') orgs.sort((a, b) => a.name.localeCompare(b.name));
+    else if (sortBy === 'workspaces') orgs.sort((a, b) => b.workspaces_count - a.workspaces_count);
+    // 'recent' keeps default order (API already returns asc created_at, reverse for recent-first)
+    else orgs.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    return orgs;
+  }, [managedOrgs, search, sortBy]);
 
   if (orgsQ.isError) {
     return (
@@ -423,25 +556,58 @@ const ManagedOrgsPage = () => {
               </button>
             </div>
           ) : (
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {managedOrgs.map((org, idx) => {
-                const baseIncluded = summary?.base_included_orgs ?? 5;
-                const isAddon = idx >= baseIncluded;
-                const addonPricePerOrg = summary?.extra_orgs > 0
-                  ? summary.extra_cost_brl / summary.extra_orgs
-                  : null;
-                return (
-                  <PartnerCard
-                    key={org.id}
-                    org={org}
-                    onAccess={async (o) => handleAccessPartner(o.slug)}
-                    onRemove={setRemoveTarget}
-                    isAddon={isAddon}
-                    addonPricePerOrg={addonPricePerOrg}
+            <>
+              {/* Search + Sort */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="relative flex-1 min-w-48">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text" value={search} onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Buscar por nome ou slug…"
+                    className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
-                );
-              })}
-            </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ArrowUpDown size={13} className="text-gray-400" />
+                  <select
+                    value={sortBy} onChange={(e) => setSortBy(e.target.value)}
+                    className="text-sm rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="recent">Mais recente</option>
+                    <option value="name">Nome A-Z</option>
+                    <option value="workspaces">Mais workspaces</option>
+                  </select>
+                </div>
+                {search && (
+                  <p className="text-xs text-gray-400 dark:text-slate-500">
+                    {filteredOrgs.length} de {managedOrgs.length} organizações
+                  </p>
+                )}
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {filteredOrgs.map((org) => {
+                  const baseIncluded = summary?.base_included_orgs ?? 5;
+                  const originalIdx = managedOrgs.findIndex(o => o.id === org.id);
+                  const isAddon = originalIdx >= baseIncluded;
+                  const addonPricePerOrg = summary?.extra_orgs > 0
+                    ? summary.extra_cost_brl / summary.extra_orgs
+                    : null;
+                  return (
+                    <PartnerCard
+                      key={org.id}
+                      org={org}
+                      onAccess={async (o) => handleAccessPartner(o.slug)}
+                      onRemove={setRemoveTarget}
+                      onEdit={setEditTarget}
+                      onNotes={setNotesTarget}
+                      isAddon={isAddon}
+                      addonPricePerOrg={addonPricePerOrg}
+                    />
+                  );
+                })}
+              </div>
+            </>
           )
         )}
 
@@ -468,6 +634,22 @@ const ManagedOrgsPage = () => {
           onClose={() => setRemoveTarget(null)}
           onConfirm={() => removeMut.mutate(removeTarget.slug)}
           removing={removeMut.isPending}
+        />
+      )}
+      {editTarget && (
+        <EditPartnerModal
+          org={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSave={(name) => renameMut.mutate({ partnerSlug: editTarget.slug, name })}
+          saving={renameMut.isPending}
+        />
+      )}
+      {notesTarget && (
+        <NotesModal
+          org={notesTarget}
+          onClose={() => setNotesTarget(null)}
+          onSave={(notes) => notesMut.mutate({ partnerSlug: notesTarget.slug, notes })}
+          saving={notesMut.isPending}
         />
       )}
     </Layout>

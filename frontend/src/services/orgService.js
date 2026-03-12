@@ -60,6 +60,10 @@ export const orgService = {
     (await api.post(`/orgs/${slug}/managed-orgs`, { name })).data,
   removeManagedOrg: async (slug, partnerSlug) =>
     (await api.delete(`/orgs/${slug}/managed-orgs/${partnerSlug}`)).data,
+  updateManagedOrg: async (partnerSlug, data) =>
+    (await api.put(`/orgs/${partnerSlug}`, data)).data,
+  updatePartnerNotes: async (partnerSlug, notes) =>
+    (await api.patch(`/admin/orgs/${partnerSlug}/notes`, { notes })).data,
 
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {
