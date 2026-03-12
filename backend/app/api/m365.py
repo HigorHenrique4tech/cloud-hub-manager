@@ -1697,18 +1697,19 @@ async def ws_m365_sign_ins(
     limit: int = 50,
     upn: Optional[str] = None,
     status: Optional[str] = None,
+    days: Optional[int] = None,
     member: MemberContext = Depends(require_permission("m365.view")),
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan, "Audit Logs")
-    cache_key = f"m365:{member.workspace_id}:audit_logs"
+    cache_key = f"m365:{member.workspace_id}:audit_signins:{limit}:{upn}:{status}:{days}"
     cached = cache_get(cache_key)
     if cached is not None:
         return cached
     try:
         svc = _get_service_or_404(db, member.workspace_id)
-        result = await _run(svc.get_sign_ins, limit=min(limit, 200), upn=upn, status=status)
+        result = await _run(svc.get_sign_ins, limit=min(limit, 200), upn=upn, status=status, days=days)
         cache_set(cache_key, result, ttl=120)
         return result
     except M365AuthError as exc:
@@ -1722,6 +1723,7 @@ async def ws_m365_sign_ins(
 async def ws_m365_directory_audits(
     limit: int = 50,
     category: Optional[str] = None,
+    days: Optional[int] = None,
     member: MemberContext = Depends(require_permission("m365.view")),
     db: Session = Depends(get_db),
 ):
@@ -1729,7 +1731,7 @@ async def ws_m365_directory_audits(
     _require_enterprise(plan, "Audit Logs")
     try:
         svc = _get_service_or_404(db, member.workspace_id)
-        return await _run(svc.get_directory_audits, limit=min(limit, 200), category=category)
+        return await _run(svc.get_directory_audits, limit=min(limit, 200), category=category, days=days)
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:

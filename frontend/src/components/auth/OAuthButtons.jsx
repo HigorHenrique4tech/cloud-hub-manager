@@ -20,11 +20,9 @@ const GitHubIcon = () => (
 );
 
 const MicrosoftIcon = () => (
-  <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
-    <path d="M11.4 24H0V12.6h11.4V24z" fill="#F1511B" />
-    <path d="M24 24H12.6V12.6H24V24z" fill="#80CC28" />
-    <path d="M11.4 11.4H0V0h11.4v11.4z" fill="#00ADEF" />
-    <path d="M24 11.4H12.6V0H24v11.4z" fill="#FBBC09" />
+  <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <path fill="none" d="M0 0h24v24H0z"/>
+    <path fill="currentColor" d="M11.5 3v8.5H3V3h8.5zm0 18H3v-8.5h8.5V21zm1-18H21v8.5h-8.5V3zm8.5 9.5V21h-8.5v-8.5H21z"/>
   </svg>
 );
 

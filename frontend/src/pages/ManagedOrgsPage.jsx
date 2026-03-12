@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud, AlertTriangle, Grid3x3, CheckCircle, XCircle } from 'lucide-react';
+import { Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud, AlertTriangle, Grid3x3, CheckCircle, XCircle, PlusCircle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
@@ -95,14 +95,27 @@ const RemoveConfirmModal = ({ org, onClose, onConfirm, removing }) => (
 
 /* ── Partner Org Card ────────────────────────────────────────────────────── */
 
-const PartnerCard = ({ org, onAccess, onRemove }) => {
+const PartnerCard = ({ org, onAccess, onRemove, isAddon, addonPricePerOrg }) => {
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
+  const fmtBRL = (v) => v?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) ?? '—';
   return (
-    <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-5 flex flex-col gap-4 hover:border-gray-300 dark:hover:border-slate-600 transition-colors">
+    <div className={`rounded-xl border bg-white dark:bg-slate-800/60 p-5 flex flex-col gap-4 transition-colors ${
+      isAddon
+        ? 'border-amber-400/50 dark:border-amber-500/40 hover:border-amber-400 dark:hover:border-amber-500/60'
+        : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
+    }`}>
+      {isAddon && (
+        <div className="flex items-center gap-1.5 rounded-md bg-amber-50 dark:bg-amber-500/10 border border-amber-300/50 dark:border-amber-500/30 px-2.5 py-1.5 -mt-1">
+          <PlusCircle size={13} className="text-amber-500 flex-shrink-0" />
+          <span className="text-xs font-medium text-amber-700 dark:text-amber-400">
+            Add-on · R$ {fmtBRL(addonPricePerOrg)}/mês
+          </span>
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600/10">
-            <Building2 size={18} className="text-indigo-400" />
+          <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${isAddon ? 'bg-amber-500/10' : 'bg-indigo-600/10'}`}>
+            <Building2 size={18} className={isAddon ? 'text-amber-500' : 'text-indigo-400'} />
           </div>
           <div>
             <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">{org.name}</p>
@@ -411,14 +424,23 @@ const ManagedOrgsPage = () => {
             </div>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {managedOrgs.map((org) => (
-                <PartnerCard
-                  key={org.id}
-                  org={org}
-                  onAccess={async (o) => handleAccessPartner(o.slug)}
-                  onRemove={setRemoveTarget}
-                />
-              ))}
+              {managedOrgs.map((org, idx) => {
+                const baseIncluded = summary?.base_included_orgs ?? 5;
+                const isAddon = idx >= baseIncluded;
+                const addonPricePerOrg = summary?.extra_orgs > 0
+                  ? summary.extra_cost_brl / summary.extra_orgs
+                  : null;
+                return (
+                  <PartnerCard
+                    key={org.id}
+                    org={org}
+                    onAccess={async (o) => handleAccessPartner(o.slug)}
+                    onRemove={setRemoveTarget}
+                    isAddon={isAddon}
+                    addonPricePerOrg={addonPricePerOrg}
+                  />
+                );
+              })}
             </div>
           )
         )}

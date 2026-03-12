@@ -1370,8 +1370,9 @@ class M365Service:
     # Audit Logs
     # ─────────────────────────────────────────────────────────────────────
 
-    def get_sign_ins(self, limit: int = 50, upn: str = None, status: str = None) -> dict:
+    def get_sign_ins(self, limit: int = 50, upn: str = None, status: str = None, days: int = None) -> dict:
         """List sign-in logs. Requires AuditLog.Read.All."""
+        from datetime import datetime, timedelta, timezone
         try:
             filters = []
             if upn:
@@ -1380,6 +1381,9 @@ class M365Service:
                 filters.append("status/errorCode eq 0")
             elif status == "failure":
                 filters.append("status/errorCode ne 0")
+            if days:
+                since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                filters.append(f"createdDateTime ge {since}")
             url = f"{GRAPH_V1}/auditLogs/signIns?$top={limit}&$orderby=createdDateTime desc"
             if filters:
                 url += f"&$filter={' and '.join(filters)}"
@@ -1409,12 +1413,19 @@ class M365Service:
             logger.error(f"Error getting sign-ins: {e}")
             return {"sign_ins": [], "total": 0, "error": str(e)}
 
-    def get_directory_audits(self, limit: int = 50, category: str = None) -> dict:
+    def get_directory_audits(self, limit: int = 50, category: str = None, days: int = None) -> dict:
         """List directory audit logs. Requires AuditLog.Read.All."""
+        from datetime import datetime, timedelta, timezone
         try:
-            url = f"{GRAPH_V1}/auditLogs/directoryAudits?$top={limit}&$orderby=activityDateTime desc"
+            filters = []
             if category and category != "all":
-                url += f"&$filter=category eq '{category}'"
+                filters.append(f"category eq '{category}'")
+            if days:
+                since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+                filters.append(f"activityDateTime ge {since}")
+            url = f"{GRAPH_V1}/auditLogs/directoryAudits?$top={limit}&$orderby=activityDateTime desc"
+            if filters:
+                url += f"&$filter={' and '.join(filters)}"
             resp = self._get(url)
             audits = []
             for a in resp.get("value", []):
@@ -1425,6 +1436,14 @@ class M365Service:
                 initiator_name = initiated_user.get("displayName") or initiated_app.get("displayName", "")
                 targets = a.get("targetResources") or []
                 target_name = targets[0].get("displayName") if targets else ""
+                modified_props = []
+                for t in targets:
+                    for mp in (t.get("modifiedProperties") or []):
+                        modified_props.append({
+                            "name": mp.get("displayName"),
+                            "old": mp.get("oldValue"),
+                            "new": mp.get("newValue"),
+                        })
                 audits.append({
                     "id": a.get("id"),
                     "category": a.get("category"),
@@ -1436,6 +1455,7 @@ class M365Service:
                     "target_display_name": target_name,
                     "activity_at": a.get("activityDateTime"),
                     "log_id": a.get("correlationId"),
+                    "modified_properties": modified_props,
                 })
             return {"audits": audits, "total": len(audits)}
         except Exception as e:

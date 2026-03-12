@@ -41,7 +41,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["gunicorn", "app.main:app", \
      "-k", "uvicorn.workers.UvicornWorker", \
-     "-w", "4", \
+     "-w", "1", \
      "-b", "0.0.0.0:8000", \
      "--access-logfile", "-", \
      "--error-logfile", "-", \
