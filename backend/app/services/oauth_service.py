@@ -112,6 +112,8 @@ async def microsoft_get_user_info(code: str, redirect_uri: str) -> dict:
             "redirect_uri": redirect_uri,
             "grant_type": "authorization_code",
         })
+        if not token_resp.is_success:
+            logger.error("Microsoft token error %s: %s", token_resp.status_code, token_resp.text)
         token_resp.raise_for_status()
         access_token = token_resp.json()["access_token"]
 
