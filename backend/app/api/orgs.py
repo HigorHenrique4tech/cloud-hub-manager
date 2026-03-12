@@ -236,7 +236,7 @@ async def org_usage(
 ):
     """Return plan usage and limits for the organization."""
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    return get_org_usage(db, org.id, org.plan_tier)
+    return get_org_usage(db, org.id, org.plan_tier, org.org_type)
 
 
 # ── Members ──────────────────────────────────────────────────────────────────
@@ -628,9 +628,26 @@ async def managed_orgs_summary(
         OrganizationMember.is_active == True,
     ).count() if child_ids else 0
 
+    # ── Org add-on cost ───────────────────────────────────────────────────────
     base_orgs = PLAN_PRICES.get("enterprise_base_orgs", 5)
     extra_orgs = max(0, len(child_orgs) - base_orgs)
-    extra_cost_centavos = extra_orgs * PLAN_PRICES.get("enterprise_extra_org", 39700)
+    extra_org_centavos = extra_orgs * PLAN_PRICES.get("enterprise_extra_org", 39700)
+
+    # ── Workspace add-on cost (per-partner overage) ───────────────────────────
+    from sqlalchemy import func as sa_func
+    ws_per_org = dict(
+        db.query(Workspace.organization_id, sa_func.count(Workspace.id))
+        .filter(
+            Workspace.organization_id.in_(child_ids),
+            Workspace.is_active == True,
+        )
+        .group_by(Workspace.organization_id)
+        .all()
+    ) if child_ids else {}
+
+    partner_base_ws = PLAN_PRICES.get("partner_base_workspaces", 10)
+    total_extra_ws = sum(max(0, ws_per_org.get(cid, 0) - partner_base_ws) for cid in child_ids)
+    extra_ws_centavos = total_extra_ws * PLAN_PRICES.get("partner_extra_workspace", 29000)
 
     return {
         "total_partners": len(child_orgs),
@@ -639,7 +656,10 @@ async def managed_orgs_summary(
         "total_members": total_mem,
         "base_included_orgs": base_orgs,
         "extra_orgs": extra_orgs,
-        "extra_cost_brl": extra_cost_centavos / 100,
+        "extra_cost_brl": extra_org_centavos / 100,
+        "partner_base_workspaces": partner_base_ws,
+        "total_extra_workspaces": total_extra_ws,
+        "extra_workspace_cost_brl": extra_ws_centavos / 100,
     }
 
 

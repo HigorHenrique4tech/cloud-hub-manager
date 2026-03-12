@@ -13,10 +13,12 @@ PLAN_LIMITS = {
 }
 
 PLAN_PRICES = {
-    "pro":                  49700,   # R$ 497,00 em centavos
-    "enterprise":           249700,  # R$ 2.497,00 (base, sob consulta — apenas exibição)
-    "enterprise_extra_org": 39700,   # R$ 397,00 por org parceira adicional
-    "enterprise_base_orgs": 5,       # orgs parceiras incluídas no base Enterprise
+    "pro":                      49700,   # R$ 497,00 em centavos
+    "enterprise":               249700,  # R$ 2.497,00 (base, sob consulta — apenas exibição)
+    "enterprise_extra_org":     39700,   # R$ 397,00 por org parceira adicional
+    "enterprise_base_orgs":     5,       # orgs parceiras incluídas no base Enterprise
+    "partner_base_workspaces":  10,      # workspaces incluídos em cada org parceira
+    "partner_extra_workspace":  29000,   # R$ 290,00 por workspace extra/mês
 }
 
 
@@ -33,14 +35,19 @@ def get_plan_price(plan_tier: str) -> int:
 # ── Limit checks ─────────────────────────────────────────────────────────────
 
 
-def check_workspace_limit(db: Session, org_id, plan_tier: str) -> tuple:
-    """Returns (allowed, current_count, max_count)."""
-    limits = get_plan_limits(plan_tier)
-    max_ws = limits["workspaces"]
+def check_workspace_limit(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> tuple:
+    """Returns (allowed, current_count, max_count).
+    Partner orgs always allow creation (charge extra above base); base used for display only.
+    """
     current = db.query(Workspace).filter(
         Workspace.organization_id == org_id,
         Workspace.is_active == True,
     ).count()
+    if org_type == "partner":
+        base = PLAN_PRICES.get("partner_base_workspaces", 10)
+        return (True, current, base)
+    limits = get_plan_limits(plan_tier)
+    max_ws = limits["workspaces"]
     if max_ws is None:
         return (True, current, None)
     return (current < max_ws, current, max_ws)
@@ -89,9 +96,11 @@ def check_managed_org_limit(db: Session, org_id, plan_tier: str) -> tuple:
     return (current < max_orgs, current, max_orgs)
 
 
-def get_org_usage(db: Session, org_id, plan_tier: str) -> dict:
+def get_org_usage(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> dict:
     """Return usage and limits for an organization."""
-    limits = get_plan_limits(plan_tier)
+    limits = dict(get_plan_limits(plan_tier))
+    if org_type == "partner":
+        limits["workspaces"] = PLAN_PRICES.get("partner_base_workspaces", 10)
     ws_count = db.query(Workspace).filter(
         Workspace.organization_id == org_id,
         Workspace.is_active == True,

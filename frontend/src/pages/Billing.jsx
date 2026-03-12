@@ -70,7 +70,7 @@ const Billing = () => {
   const { data: managedSummary } = useQuery({
     queryKey: ['managed-orgs-summary', slug],
     queryFn: () => orgService.getManagedOrgsSummary(slug),
-    enabled: !!slug && isEnterprise,
+    enabled: !!slug && isEnterprise && isMasterOrg,
     retry: false,
   });
 
@@ -141,8 +141,8 @@ const Billing = () => {
           )}
         </div>
 
-        {/* Managed orgs add-on (Enterprise only) */}
-        {isEnterprise && managedSummary && (
+        {/* Managed orgs add-on (Enterprise master only) */}
+        {isEnterprise && isMasterOrg && managedSummary && (
           <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
             <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-2">
@@ -183,6 +183,20 @@ const Billing = () => {
               ) : (
                 <p className="text-xs text-gray-400 dark:text-slate-500">
                   Até {managedSummary.base_included_orgs} orgs incluídas no plano base · orgs adicionais R$ 397,00/org/mês
+                </p>
+              )}
+
+              {/* Workspace add-on */}
+              {managedSummary.total_extra_workspaces > 0 ? (
+                <div className="rounded-lg bg-sky-50 dark:bg-sky-900/10 border border-sky-200 dark:border-sky-800/30 px-4 py-3">
+                  <p className="text-sm text-sky-700 dark:text-sky-400">
+                    <strong>{managedSummary.total_extra_workspaces}</strong> workspace{managedSummary.total_extra_workspaces > 1 ? 's' : ''} adicional{managedSummary.total_extra_workspaces > 1 ? 'is' : ''} além do incluso a{' '}
+                    <strong>R$ 290,00/ws/mês</strong> = <strong>R$ {managedSummary.extra_workspace_cost_brl.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</strong>
+                  </p>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 dark:text-slate-500">
+                  Cada org parceira inclui {managedSummary.partner_base_workspaces} workspaces · extras a R$ 290,00/ws/mês
                 </p>
               )}
             </div>

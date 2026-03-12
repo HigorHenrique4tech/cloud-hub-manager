@@ -114,7 +114,7 @@ async def create_workspace(
     """Create a new workspace (admin+ required)."""
     # Plan limit check
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    allowed, current, limit = check_workspace_limit(db, member.organization_id, org.plan_tier)
+    allowed, current, limit = check_workspace_limit(db, member.organization_id, org.plan_tier, org.org_type)
     if not allowed:
         raise HTTPException(
             status_code=403,
