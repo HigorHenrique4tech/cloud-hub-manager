@@ -645,7 +645,9 @@ function ActivityTab() {
               ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={7} />)
               : rows.length === 0
               ? <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">
-                  Sem dados de atividade. Verifique a permissão <code>Reports.Read.All</code>.
+                  {actQ.data?.error === 'permission_denied'
+                    ? <>Sem permissão para relatórios. No Azure Portal, adicione <code>Reports.Read.All</code> como <strong>Application</strong> e clique em "Grant admin consent".</>
+                    : 'Sem dados de atividade nos últimos 30 dias.'}
                 </td></tr>
               : rows.map((r, idx) => (
                 <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">

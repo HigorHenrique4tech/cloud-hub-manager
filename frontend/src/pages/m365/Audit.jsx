@@ -234,7 +234,9 @@ function SignInsTab() {
               ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-10 text-center text-sm text-gray-400">
-                    Nenhum resultado. Ajuste os filtros e clique em Buscar.
+                    {q.data?.error === 'permission_denied'
+                      ? 'Sem permissão. Verifique AuditLog.Read.All (Application) + licença Entra ID P1/P2.'
+                      : 'Nenhum resultado. Ajuste os filtros e clique em Buscar.'}
                   </td>
                 </tr>
               ) : rows.map((r) => (

@@ -209,6 +209,52 @@ class M365Service:
         total_licenses = sum(s["prepaidUnits"]["enabled"] for s in skus)
         assigned_licenses = sum(s["consumedUnits"] for s in skus)
 
+        # ── Primary domain ────────────────────────────────────────────────────
+        primary_domain = None
+        try:
+            org_resp = self._get("/organization?$select=verifiedDomains")
+            org_domains = (org_resp.get("value") or [{}])[0].get("verifiedDomains", [])
+            primary_domain = next(
+                (d["name"] for d in org_domains if d.get("isDefault")),
+                next((d["name"] for d in org_domains), None),
+            )
+        except Exception as exc:
+            logger.warning("Could not fetch primary domain: %s", exc)
+
+        # ── Device count (Azure AD registered/joined) ─────────────────────────
+        device_count = None
+        try:
+            r = requests.get(
+                f"{GRAPH_V1}/devices",
+                headers={**self._headers(), "ConsistencyLevel": "eventual"},
+                params={"$count": "true", "$top": "1", "$select": "id"},
+                timeout=15,
+            )
+            r.raise_for_status()
+            device_count = r.json().get("@odata.count", len(r.json().get("value", [])))
+        except Exception as exc:
+            logger.warning("Could not count devices: %s", exc)
+
+        # ── Global admins ─────────────────────────────────────────────────────
+        global_admins = []
+        GLOBAL_ADMIN_TEMPLATE_ID = "62e90394-69f5-4237-9190-012177145e10"
+        try:
+            roles = self._get("/directoryRoles?$select=id,displayName,roleTemplateId").get("value", [])
+            ga_role = next(
+                (r for r in roles if r.get("roleTemplateId") == GLOBAL_ADMIN_TEMPLATE_ID),
+                None,
+            )
+            if ga_role:
+                members = self._get(
+                    f"/directoryRoles/{ga_role['id']}/members?$select=displayName,userPrincipalName"
+                ).get("value", [])
+                global_admins = [
+                    {"name": m.get("displayName"), "upn": m.get("userPrincipalName")}
+                    for m in members
+                ]
+        except Exception as exc:
+            logger.warning("Could not fetch global admins: %s", exc)
+
         return {
             "total_users": len(users),
             "active_users": sum(1 for u in users if u.get("accountEnabled")),
@@ -221,6 +267,9 @@ class M365Service:
             "available_licenses": total_licenses - assigned_licenses,
             "total_teams": total_teams,
             "sku_count": len(skus),
+            "primary_domain": primary_domain,
+            "device_count": device_count,
+            "global_admins": global_admins,
         }
 
     def get_users(self) -> list:
@@ -1277,7 +1326,14 @@ class M365Service:
                 headers={"Authorization": f"Bearer {token}"},
                 timeout=30,
             )
-            resp.raise_for_status()
+            if not resp.ok:
+                logger.error(
+                    "get_teams_activity HTTP %s — body: %s",
+                    resp.status_code, resp.text[:500],
+                )
+                if resp.status_code == 403:
+                    return {"activity": [], "total": 0, "error": "permission_denied"}
+                resp.raise_for_status()
             reader = csv.DictReader(io.StringIO(resp.text))
             activity = []
             for row in reader:
@@ -1371,7 +1427,7 @@ class M365Service:
     # ─────────────────────────────────────────────────────────────────────
 
     def get_sign_ins(self, limit: int = 50, upn: str = None, status: str = None, days: int = None) -> dict:
-        """List sign-in logs. Requires AuditLog.Read.All."""
+        """List sign-in logs. Requires AuditLog.Read.All + Entra ID P1/P2 license."""
         from datetime import datetime, timedelta, timezone
         try:
             filters = []
@@ -1387,7 +1443,14 @@ class M365Service:
             url = f"{GRAPH_V1}/auditLogs/signIns?$top={limit}&$orderby=createdDateTime desc"
             if filters:
                 url += f"&$filter={' and '.join(filters)}"
-            resp = self._get(url)
+            token = self._get_token()
+            r = requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=30)
+            if not r.ok:
+                logger.error("get_sign_ins HTTP %s — body: %s", r.status_code, r.text[:600])
+                if r.status_code == 403:
+                    return {"sign_ins": [], "total": 0, "error": "permission_denied"}
+                r.raise_for_status()
+            resp = r.json()
             sign_ins = []
             for s in resp.get("value", []):
                 loc = s.get("location") or {}

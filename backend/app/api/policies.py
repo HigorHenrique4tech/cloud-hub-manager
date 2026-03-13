@@ -151,7 +151,8 @@ def list_policy_resources(
                     client_secret=creds.get("client_secret", ""),
                     subscription_id=creds.get("subscription_id", ""),
                 )
-                for vm in svc.list_virtual_machines():
+                vm_data = svc.list_virtual_machines()
+                for vm in vm_data.get("virtual_machines", []):
                     resources.append({
                         "id": f"{vm['resource_group']}/{vm['name']}",
                         "name": vm["name"],

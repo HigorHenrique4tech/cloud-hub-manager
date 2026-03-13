@@ -1134,6 +1134,14 @@ const OverviewTab = ({ overview, isLoading, isError, error, onRefresh }) => {
         </div>
       )}
 
+      {/* Tenant info strip */}
+      {overview.primary_domain && (
+        <div className="card rounded-xl px-4 py-3 flex items-center gap-2">
+          <span className="text-xs text-gray-400 dark:text-slate-500">Domínio primário</span>
+          <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">{overview.primary_domain}</span>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <KpiCard label="Usuários ativos"       value={overview.active_users}     color="text-blue-400" />
         <KpiCard label="Licenças disponíveis"  value={overview.available_licenses} color="text-green-400"
@@ -1141,6 +1149,33 @@ const OverviewTab = ({ overview, isLoading, isError, error, onRefresh }) => {
         <KpiCard label="Grupos ativos"         value={overview.total_teams}      color="text-purple-400" />
         <KpiCard label="Usuários desativados"  value={overview.disabled_users}   color="text-slate-400" />
       </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
+        <KpiCard label="Admins Globais"  value={overview.global_admins?.length ?? '—'} color="text-red-400" />
+        <KpiCard label="Dispositivos registrados" value={overview.device_count ?? '—'} color="text-amber-400" />
+      </div>
+
+      {/* Global admins list */}
+      {overview.global_admins?.length > 0 && (
+        <div className="card rounded-2xl p-5">
+          <p className="text-sm font-medium text-gray-900 dark:text-slate-100 mb-3">Administradores Globais</p>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {overview.global_admins.map((admin, i) => (
+              <div key={i} className="flex items-center gap-3 py-2">
+                <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-semibold text-red-600 dark:text-red-400">
+                    {(admin.name || admin.upn || '?')[0].toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate">{admin.name || '—'}</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-500 truncate">{admin.upn || ''}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* License utilization bar */}
       <div className="card rounded-2xl p-5">
