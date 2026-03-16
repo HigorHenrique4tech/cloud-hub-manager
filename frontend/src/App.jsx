@@ -61,6 +61,7 @@ import M365SharePoint from './pages/m365/SharePoint';
 import M365Exchange from './pages/m365/Exchange';
 import M365TeamsAdmin from './pages/m365/TeamsAdmin';
 import M365Audit from './pages/m365/Audit';
+import GdapManager from './pages/m365/GdapManager';
 import Inventory from './pages/Inventory';
 import Onboarding from './pages/Onboarding';
 import ApprovalsPage from './pages/ApprovalsPage';
@@ -136,6 +137,7 @@ function App() {
                 <Route path="/m365/exchange" element={<PR><M365Exchange /></PR>} />
                 <Route path="/m365/teams" element={<PR><M365TeamsAdmin /></PR>} />
                 <Route path="/m365/audit" element={<PR><M365Audit /></PR>} />
+                <Route path="/m365/gdap" element={<PR><GdapManager /></PR>} />
                 <Route path="/inventory" element={<PR><Inventory /></PR>} />
                 <Route path="/approvals" element={<PR><ApprovalsPage /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />

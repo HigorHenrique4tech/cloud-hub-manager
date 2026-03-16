@@ -137,10 +137,16 @@ const AzureVMs = () => {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await azureService.deleteVM(deleteTarget.resource_group, deleteTarget.name);
-      toast.success(`VM "${deleteTarget.name}" excluída.`);
+      const result = await azureService.deleteVM(deleteTarget.resource_group, deleteTarget.name);
+      if (result?.task_id) {
+        addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_vm_delete' });
+        toast.info(`Exclusão de "${deleteTarget.name}" em andamento em background.`);
+        setVms(prev => prev.filter(v => v.name !== deleteTarget.name));
+      } else {
+        toast.success(`VM "${deleteTarget.name}" excluída.`);
+        fetchVMs(true);
+      }
       setDeleteTarget(null);
-      fetchVMs(true);
     } catch (err) {
       setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir VM');
     } finally {

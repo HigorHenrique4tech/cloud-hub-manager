@@ -72,9 +72,15 @@ const AzureStorage = () => {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await azureService.deleteStorageAccount(deleteTarget.resource_group, deleteTarget.name);
+      const result = await azureService.deleteStorageAccount(deleteTarget.resource_group, deleteTarget.name);
+      if (result?.task_id) {
+        addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_storage_delete' });
+        toast.info(`Exclusão de "${deleteTarget.name}" em andamento em background.`);
+        setAccounts(prev => prev.filter(a => a.name !== deleteTarget.name));
+      } else {
+        fetchData(true);
+      }
       setDeleteTarget(null);
-      fetchData(true);
     } catch (err) {
       setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir Storage Account');
     } finally {

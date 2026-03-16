@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Globe, Play, Square, Plus, Trash2 } from 'lucide-react';
 import { useToast } from '../../contexts/ToastContext';
+import { useBackgroundTasks } from '../../contexts/BackgroundTasksContext';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
@@ -22,6 +23,7 @@ const defaultForm = { name: '', resource_group: '', location: '', runtime: 'PYTH
 
 const AzureAppServices = () => {
   const { toast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
@@ -96,10 +98,16 @@ const AzureAppServices = () => {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await azureService.deleteAppService(deleteTarget.resource_group, deleteTarget.name);
-      toast.success(`App Service "${deleteTarget.name}" excluído.`);
+      const result = await azureService.deleteAppService(deleteTarget.resource_group, deleteTarget.name);
+      if (result?.task_id) {
+        addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_appservice_delete' });
+        toast.info(`Exclusão de "${deleteTarget.name}" em andamento em background.`);
+        setApps(prev => prev.filter(a => a.name !== deleteTarget.name));
+      } else {
+        toast.success(`App Service "${deleteTarget.name}" excluído.`);
+        fetchData(true);
+      }
       setDeleteTarget(null);
-      fetchData(true);
     } catch (err) {
       setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir App Service');
     } finally {

@@ -5,19 +5,23 @@ import api from '../services/api';
 
 const BackgroundTasksContext = createContext();
 
-const POLL_INTERVAL = 4000; // ms
+const POLL_INTERVAL = 4000;
+const STALE_AFTER_MS = 3 * 60 * 1000; // drop banner after 3min if polling keeps failing
+const MAX_FAIL_BEFORE_STALE = 5;       // consecutive failures before stale cleanup
 
 export function BackgroundTasksProvider({ children }) {
   const { user } = useAuth();
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
   const [tasks, setTasks] = useState([]);
-  const [notifications, setNotifications] = useState([]); // completed/failed toasts
+  const [notifications, setNotifications] = useState([]);
   const intervalRef = useRef(null);
-  const prevStatusRef = useRef({}); // task_id → status
+  const prevStatusRef = useRef({});
+  const failCountRef = useRef(0);
+  const taskCreatedAtRef = useRef({}); // task_id → Date.now() when addTask was called
 
   const wsUrl = useCallback(() => {
     if (!currentOrg?.slug || !currentWorkspace?.id) return null;
-    return `/api/v1/orgs/${currentOrg.slug}/workspaces/${currentWorkspace.id}/tasks`;
+    return `/api/v1/orgs/${currentOrg.slug}/workspaces/${currentWorkspace.id}/tasks/`;
   }, [currentOrg?.slug, currentWorkspace?.id]);
 
   const fetchTasks = useCallback(async () => {
@@ -25,6 +29,8 @@ export function BackgroundTasksProvider({ children }) {
     if (!url || !user) return;
     try {
       const { data } = await api.get(url);
+      failCountRef.current = 0; // reset on success
+
       setTasks(data);
 
       // Detect status transitions → show notification
@@ -48,12 +54,19 @@ export function BackgroundTasksProvider({ children }) {
           ]);
         }
       });
-      // Update prev map
       const next = {};
       data.forEach(t => { next[t.id] = t.status; });
       prevStatusRef.current = next;
     } catch {
-      // silent — no credentials or network
+      failCountRef.current += 1;
+      // After repeated failures, drop optimistic tasks older than STALE_AFTER_MS
+      if (failCountRef.current >= MAX_FAIL_BEFORE_STALE) {
+        const now = Date.now();
+        setTasks(prev => prev.filter(t => {
+          const added = taskCreatedAtRef.current[t.id] || 0;
+          return now - added < STALE_AFTER_MS;
+        }));
+      }
     }
   }, [wsUrl, user]);
 
@@ -76,6 +89,7 @@ export function BackgroundTasksProvider({ children }) {
   const addTask = useCallback((task) => {
     setTasks(prev => [task, ...prev]);
     prevStatusRef.current[task.id] = task.status;
+    taskCreatedAtRef.current[task.id] = Date.now();
   }, []);
 
   const activeTasks = tasks.filter(t => t.status === 'queued' || t.status === 'running');

@@ -30,7 +30,7 @@ def _task_to_dict(task) -> dict:
     }
 
 
-@ws_router.get("")
+@ws_router.get("/")
 async def list_workspace_tasks(
     member: MemberContext = Depends(require_permission("resources.read")),
     db: Session = Depends(get_db),

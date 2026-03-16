@@ -418,3 +418,50 @@ def send_report_email(
     </div>
     """
     return _send_email(to_email, f"CloudAtlas — Relatório {period_label} · {org_name}", html)
+
+
+# ── GDAP Invite ───────────────────────────────────────────────────────────────
+
+_GDAP_ROLE_NAMES = {
+    "729827e3-9c14-49f7-bb1b-9608f156bbb8": "Helpdesk Administrator",
+    "f023fd81-a637-4b56-95fd-791ac0226033": "Service Support Administrator",
+    "fe930be7-5e62-47db-91af-98c3a49a38b1": "User Administrator",
+    "29232cdf-9323-42fd-afe2-4b33bb6ef9bb": "Exchange Administrator",
+    "69091246-20e8-4a56-aa4d-066075b2a7a8": "Teams Administrator",
+    "f28a1f50-f6e7-4571-818b-6a12f2af6b6c": "SharePoint Administrator",
+    "194ae4cb-b126-40b2-bd5b-6091b380977d": "Security Administrator",
+    "4d6ac14f-3453-41d0-bef9-a3e0c569773a": "License Administrator",
+}
+
+
+def send_gdap_invite_email(
+    to_email: str,
+    relationship_name: str,
+    role_ids: list,
+    invite_url: str,
+    org_name: str,
+) -> bool:
+    """Send a GDAP delegation invite to a customer's Global Admin."""
+    role_labels = [_GDAP_ROLE_NAMES.get(rid, rid) for rid in role_ids]
+    roles_html = "".join(f"<li>{r}</li>" for r in role_labels) if role_labels else "<li>Roles configuradas</li>"
+    html_body = f"""
+    <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;padding:32px;">
+      <div style="background:#1e293b;border-radius:12px;padding:32px;">
+        <h1 style="color:#38bdf8;font-size:22px;margin:0 0 8px;">Convite de Administração Delegada</h1>
+        <p style="color:#94a3b8;margin:0 0 24px;">{org_name} está solicitando acesso delegado ao seu tenant Microsoft 365.</p>
+        <div style="background:#0f172a;border-radius:8px;padding:20px;margin-bottom:24px;">
+          <p style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 6px;">Relação</p>
+          <p style="color:#f1f5f9;font-size:16px;font-weight:600;margin:0;">{relationship_name}</p>
+        </div>
+        <div style="background:#0f172a;border-radius:8px;padding:20px;margin-bottom:24px;">
+          <p style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:1px;margin:0 0 10px;">Permissões solicitadas</p>
+          <ul style="color:#cbd5e1;margin:0;padding-left:20px;line-height:1.8;">{roles_html}</ul>
+        </div>
+        <a href="{invite_url}" style="display:inline-block;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;font-size:15px;">Revisar e Aprovar Acesso →</a>
+        <p style="color:#475569;font-size:12px;margin-top:24px;">⚠️ Este link expira em <strong>30 dias</strong>. Você deve ser o Administrador Global do seu tenant para aprovar.<br>Após aprovação, {org_name} terá acesso às permissões listadas acima.</p>
+        <hr style="border:none;border-top:1px solid #334155;margin:24px 0;">
+        <p style="color:#334155;font-size:11px;">Enviado via CloudAtlas por {org_name}</p>
+      </div>
+    </div>
+    """
+    return _send_email(to_email, f"[{org_name}] Convite de Administração Delegada M365 — {relationship_name}", html_body)

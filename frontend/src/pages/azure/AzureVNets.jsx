@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Network, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { useBackgroundTasks } from '../../contexts/BackgroundTasksContext';
+import { useToast } from '../../contexts/ToastContext';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
@@ -16,6 +18,8 @@ import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 const defaultForm = { name: '', resource_group: '', location: '', address_prefixes: ['10.0.0.0/16'], subnets: [], tags: {}, tags_list: [] };
 
 const AzureVNets = () => {
+  const { addTask } = useBackgroundTasks();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
@@ -55,9 +59,15 @@ const AzureVNets = () => {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await azureService.deleteVNet(deleteTarget.resource_group, deleteTarget.name);
+      const result = await azureService.deleteVNet(deleteTarget.resource_group, deleteTarget.name);
+      if (result?.task_id) {
+        addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_vnet_delete' });
+        toast.info(`Exclusão de "${deleteTarget.name}" em andamento em background.`);
+        setVnets(prev => prev.filter(v => v.name !== deleteTarget.name));
+      } else {
+        fetchData(true);
+      }
       setDeleteTarget(null);
-      fetchData(true);
     } catch (err) {
       setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir VNet');
     } finally {

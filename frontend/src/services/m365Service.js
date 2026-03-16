@@ -206,6 +206,13 @@ const m365Service = {
   addDistributionListMember: (groupId, userId) => api.post(wsUrl(`/m365/exchange/distribution-lists/${groupId}/members`), { user_id: userId }).then(r => r.data),
   removeDistributionListMember: (groupId, userId) => api.delete(wsUrl(`/m365/exchange/distribution-lists/${groupId}/members/${userId}`)).then(r => r.data),
   createDistributionList: (data) => api.post(wsUrl('/m365/exchange/distribution-lists'), data).then(r => r.data),
+
+  // ── GDAP Manager (Master Orgs + Enterprise only) ──────────────────────────
+  getGdapRelationships: () => api.get(wsUrl('/m365/gdap/relationships')).then(r => r.data),
+  getGdapCustomers: () => api.get(wsUrl('/m365/gdap/customers')).then(r => r.data),
+  createGdapRelationship: (data) => api.post(wsUrl('/m365/gdap/relationships'), data).then(r => r.data),
+  terminateGdapRelationship: (id) => api.post(wsUrl(`/m365/gdap/relationships/${id}/terminate`)).then(r => r.data),
+  sendGdapInvite: (id, emails) => api.post(wsUrl(`/m365/gdap/relationships/${id}/send-invite`), { emails }).then(r => r.data),
 };
 
 export default m365Service;

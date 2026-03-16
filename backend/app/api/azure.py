@@ -498,91 +498,114 @@ async def ws_get_vnet_detail(
     return result
 
 
-# ── Delete ──────────────────────────────────────────────────────────────────
+# ── Delete (all run in background) ──────────────────────────────────────────
 
-@ws_router.delete("/vms/{resource_group}/{vm_name}")
+def _make_delete_bg(db_factory, task_id, svc_fn, *args):
+    """Returns an async background coroutine that runs svc_fn and updates the task."""
+    async def _bg():
+        bg_db = db_factory()
+        try:
+            bts.set_running(bg_db, task_id)
+            result = await _run(svc_fn, *args)
+            if result.get('success'):
+                bts.set_completed(bg_db, task_id, result)
+            else:
+                bts.set_failed(bg_db, task_id, result.get('error', 'Erro desconhecido'))
+        except Exception as exc:
+            bts.set_failed(bg_db, task_id, str(exc))
+        finally:
+            bg_db.close()
+    return _bg
+
+
+@ws_router.delete("/vms/{resource_group}/{vm_name}", status_code=202)
 async def ws_delete_azure_vm(
     resource_group: str,
     vm_name: str,
+    background_tasks: BackgroundTasks,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await _run(svc.delete_virtual_machine, resource_group, vm_name)
-    if not result.get('success'):
-        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir VM'))
+    task = bts.create_task(db, member.workspace_id, member.user.id,
+                           "azure_vm_delete", f"Excluir VM: {vm_name}")
     log_activity(db, member.user, 'vm.delete', 'AzureVM',
                  resource_name=vm_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
-    return result
+    background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_virtual_machine, resource_group, vm_name))
+    return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
 
-@ws_router.delete("/storage-accounts/{resource_group}/{account_name}")
+@ws_router.delete("/storage-accounts/{resource_group}/{account_name}", status_code=202)
 async def ws_delete_azure_storage(
     resource_group: str,
     account_name: str,
+    background_tasks: BackgroundTasks,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await _run(svc.delete_storage_account, resource_group, account_name)
-    if not result.get('success'):
-        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir Storage Account'))
+    task = bts.create_task(db, member.workspace_id, member.user.id,
+                           "azure_storage_delete", f"Excluir Storage Account: {account_name}")
     log_activity(db, member.user, 'storage.delete', 'AzureStorage',
                  resource_name=account_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
-    return result
+    background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_storage_account, resource_group, account_name))
+    return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
 
-@ws_router.delete("/vnets/{resource_group}/{vnet_name}")
+@ws_router.delete("/vnets/{resource_group}/{vnet_name}", status_code=202)
 async def ws_delete_azure_vnet(
     resource_group: str,
     vnet_name: str,
+    background_tasks: BackgroundTasks,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await _run(svc.delete_virtual_network, resource_group, vnet_name)
-    if not result.get('success'):
-        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir VNet'))
+    task = bts.create_task(db, member.workspace_id, member.user.id,
+                           "azure_vnet_delete", f"Excluir VNet: {vnet_name}")
     log_activity(db, member.user, 'vnet.delete', 'AzureVNet',
                  resource_name=vnet_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
-    return result
+    background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_virtual_network, resource_group, vnet_name))
+    return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
 
-@ws_router.delete("/databases/{resource_group}/{server_name}")
+@ws_router.delete("/databases/{resource_group}/{server_name}", status_code=202)
 async def ws_delete_azure_sql_server(
     resource_group: str,
     server_name: str,
+    background_tasks: BackgroundTasks,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await _run(svc.delete_sql_server, resource_group, server_name)
-    if not result.get('success'):
-        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir servidor SQL'))
+    task = bts.create_task(db, member.workspace_id, member.user.id,
+                           "azure_sql_delete", f"Excluir SQL Server: {server_name}")
     log_activity(db, member.user, 'sql.delete', 'AzureSQL',
                  resource_name=server_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
-    return result
+    background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_sql_server, resource_group, server_name))
+    return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
 
-@ws_router.delete("/app-services/{resource_group}/{app_name}")
+@ws_router.delete("/app-services/{resource_group}/{app_name}", status_code=202)
 async def ws_delete_azure_app_service(
     resource_group: str,
     app_name: str,
+    background_tasks: BackgroundTasks,
     member: MemberContext = Depends(require_permission("resources.delete")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await _run(svc.delete_app_service, resource_group, app_name)
-    if not result.get('success'):
-        raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir App Service'))
+    task = bts.create_task(db, member.workspace_id, member.user.id,
+                           "azure_appservice_delete", f"Excluir App Service: {app_name}")
     log_activity(db, member.user, 'appservice.delete', 'AzureAppService',
                  resource_name=app_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
-    return result
+    background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_app_service, resource_group, app_name))
+    return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
 
 # ── Costs ───────────────────────────────────────────────────────────────────

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Grid3x3, Globe, Mail, MonitorPlay, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Grid3x3, Globe, Mail, MonitorPlay, BookOpen, Link2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 
-const m365NavItems = [
+const BASE_NAV_ITEMS = [
   { to: '/m365',            label: 'Visão Geral',  icon: Grid3x3,    end: true },
   { to: '/m365/sharepoint', label: 'SharePoint',   icon: Globe },
   { to: '/m365/exchange',   label: 'Exchange',     icon: Mail },
@@ -11,9 +12,15 @@ const m365NavItems = [
 ];
 
 const M365SecondarySidebar = () => {
+  const { isMasterOrg } = useOrgWorkspace();
   const [collapsed, setCollapsed] = useState(() => {
     try { return localStorage.getItem('sidebar-m365-collapsed') === 'true'; } catch { return false; }
   });
+
+  const m365NavItems = [
+    ...BASE_NAV_ITEMS,
+    ...(isMasterOrg ? [{ to: '/m365/gdap', label: 'GDAP', icon: Link2 }] : []),
+  ];
 
   const toggle = () => {
     const next = !collapsed;
