@@ -220,6 +220,9 @@ const Login = () => {
     if (step === 'otp') setTimeout(() => otpInputRef.current?.focus(), 50);
   }, [step]);
 
+  const redirectParam = searchParams.get('redirect');
+  const DESK_URL = 'https://desk.cloudatlas.app.br';
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -230,6 +233,8 @@ const Login = () => {
         setMfaToken(data.mfa_token);
         setStep('otp');
         startCooldown();
+      } else if (redirectParam === 'desk') {
+        window.location.href = `${DESK_URL}/auth/callback?token=${data.access_token}&refresh=${data.refresh_token || ''}`;
       } else {
         navigate(inviteToken ? `/invite/${inviteToken}` : '/');
       }
@@ -247,6 +252,10 @@ const Login = () => {
     try {
       const data = await authService.verifyMFA(mfaToken, otp);
       loginWithTokens(data);
+      if (redirectParam === 'desk') {
+        window.location.href = `${DESK_URL}/auth/callback?token=${data.access_token}&refresh=${data.refresh_token || ''}`;
+        return;
+      }
       navigate(inviteToken ? `/invite/${inviteToken}` : '/');
     } catch (err) {
       setOtpError(err.response?.data?.detail || 'Código inválido');
@@ -530,7 +539,7 @@ const Login = () => {
 
                 {/* OAuth buttons */}
                 <div className="anim-fadein-6">
-                  <OAuthButtons />
+                  <OAuthButtons redirectTarget={redirectParam} />
                 </div>
 
                 {/* Footer */}

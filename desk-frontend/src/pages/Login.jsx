@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { LifeBuoy, Loader2, AlertTriangle } from 'lucide-react';
+import { LifeBuoy, Loader2, AlertTriangle, ExternalLink } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+
+const HUB_URL = 'https://hub.cloudatlas.app.br';
 
 export default function Login() {
   const { login } = useAuth();
@@ -89,9 +91,26 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-6">
+        <div className="mt-4">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+            <span className="text-xs text-gray-400 dark:text-gray-500">ou</span>
+            <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+          </div>
+          <a
+            href={`${HUB_URL}/login?redirect=desk`}
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-lg border border-gray-300 dark:border-gray-600
+                       bg-white dark:bg-gray-800 text-sm font-medium text-gray-700 dark:text-gray-200
+                       hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            Entrar com SSO (Google / Microsoft / GitHub)
+          </a>
+        </div>
+
+        <p className="text-center text-xs text-gray-400 dark:text-gray-500 mt-5">
           Acesse o hub em{' '}
-          <a href="https://hub.cloudatlas.app.br" className="text-primary hover:underline">
+          <a href={HUB_URL} className="text-primary hover:underline">
             hub.cloudatlas.app.br
           </a>
         </p>

@@ -29,6 +29,12 @@ export default function OAuthCallback({ provider }) {
           data = await authService.githubCallback(code);
         }
         loginWithTokens(data);
+        const oauthRedirect = sessionStorage.getItem('oauth_redirect');
+        if (oauthRedirect === 'desk') {
+          sessionStorage.removeItem('oauth_redirect');
+          window.location.href = `https://desk.cloudatlas.app.br/auth/callback?token=${data.access_token}&refresh=${data.refresh_token || ''}`;
+          return;
+        }
         navigate('/', { replace: true });
       } catch (err) {
         setError(err.response?.data?.detail || `Falha na autenticação com ${provider}.`);

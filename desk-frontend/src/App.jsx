@@ -5,6 +5,7 @@ import Login from './pages/Login';
 import Support from './pages/Support';
 import TicketDetails from './pages/TicketDetails';
 import Suporte from './pages/Suporte';
+import AuthCallback from './pages/AuthCallback';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -42,6 +43,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/" element={<ProtectedRoute><Support /></ProtectedRoute>} />
       <Route path="/ticket/:ticketId" element={<ProtectedRoute><TicketDetails /></ProtectedRoute>} />
       <Route path="/painel" element={<AdminRoute><Suporte /></AdminRoute>} />

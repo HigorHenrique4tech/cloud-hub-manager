@@ -26,8 +26,13 @@ const MicrosoftIcon = () => (
   </svg>
 );
 
-export default function OAuthButtons() {
+export default function OAuthButtons({ redirectTarget }) {
+  const storeRedirect = () => {
+    if (redirectTarget) sessionStorage.setItem('oauth_redirect', redirectTarget);
+  };
+
   const handleGoogle = () => {
+    storeRedirect();
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri: `${window.location.origin}/auth/google/callback`,
@@ -40,6 +45,7 @@ export default function OAuthButtons() {
   };
 
   const handleGitHub = () => {
+    storeRedirect();
     const params = new URLSearchParams({
       client_id: GITHUB_CLIENT_ID,
       scope: 'user:email',
@@ -48,6 +54,7 @@ export default function OAuthButtons() {
   };
 
   const handleMicrosoft = () => {
+    storeRedirect();
     const params = new URLSearchParams({
       client_id: MICROSOFT_CLIENT_ID,
       redirect_uri: `${window.location.origin}/auth/microsoft/callback`,
