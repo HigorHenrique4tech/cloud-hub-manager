@@ -199,10 +199,25 @@ const Login = () => {
   const cooldownRef  = useRef(null);
   const otpInputRef  = useRef(null);
 
-  const { login, loginWithTokens } = useAuth();
+  const { login, loginWithTokens, user, loading: authLoading } = useAuth();
   const navigate       = useNavigate();
   const [searchParams] = useSearchParams();
   const inviteToken    = searchParams.get('invite');
+  const redirectParam  = searchParams.get('redirect');
+  const DESK_URL       = 'https://desk.cloudatlas.app.br';
+
+  // If already logged in, skip the form
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) return;
+    if (redirectParam === 'desk') {
+      const t  = localStorage.getItem('token') || '';
+      const rt = localStorage.getItem('refreshToken') || '';
+      window.location.replace(`${DESK_URL}/auth/callback?token=${t}&refresh=${rt}`);
+    } else {
+      navigate(inviteToken ? `/invite/${inviteToken}` : '/', { replace: true });
+    }
+  }, [authLoading, user]);
 
   const startCooldown = () => {
     setResendCooldown(60);
@@ -219,9 +234,6 @@ const Login = () => {
   useEffect(() => {
     if (step === 'otp') setTimeout(() => otpInputRef.current?.focus(), 50);
   }, [step]);
-
-  const redirectParam = searchParams.get('redirect');
-  const DESK_URL = 'https://desk.cloudatlas.app.br';
 
   const handleSubmit = async (e) => {
     e.preventDefault();
