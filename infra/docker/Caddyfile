@@ -1,4 +1,15 @@
+# ── Landing Page ──────────────────────────────────────────────────────────────
 cloudatlas.app.br {
+    root * /srv/landing
+    file_server
+}
+
+www.cloudatlas.app.br {
+    redir https://cloudatlas.app.br{uri} permanent
+}
+
+# ── Aplicação principal (hub) ──────────────────────────────────────────────────
+hub.cloudatlas.app.br {
     # Block internal/sensitive endpoints — never expose publicly
     @blocked path /docs /redoc /openapi.json /metrics
     respond @blocked 403
@@ -11,6 +22,11 @@ cloudatlas.app.br {
     reverse_proxy /* frontend:80
 }
 
-www.cloudatlas.app.br {
-    redir https://cloudatlas.app.br{uri} permanent
+# ── Portal de Helpdesk (desk) ──────────────────────────────────────────────────
+desk.cloudatlas.app.br {
+    @blocked path /docs /redoc /openapi.json /metrics
+    respond @blocked 403
+
+    reverse_proxy /api/* backend:8000
+    reverse_proxy /* desk-frontend:80
 }

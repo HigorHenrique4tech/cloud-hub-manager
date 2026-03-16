@@ -127,9 +127,6 @@ const Sidebar = () => {
 
         {/* ── Conta / Org ── */}
         <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-1">
-          {(user?.is_admin || user?.is_helpdesk) && (
-            <NavItem to="/suporte" label="Helpdesk" icon={ShieldCheck} />
-          )}
           <PermissionGate permission="costs.view">
             <NavItem to="/billing" label="Faturamento" icon={CreditCard} />
           </PermissionGate>

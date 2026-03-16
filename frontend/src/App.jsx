@@ -62,9 +62,6 @@ import M365Audit from './pages/m365/Audit';
 import Inventory from './pages/Inventory';
 import Onboarding from './pages/Onboarding';
 import ApprovalsPage from './pages/ApprovalsPage';
-import Support from './pages/Support';
-import TicketDetails from './pages/TicketDetails';
-import Suporte from './pages/Suporte';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -138,9 +135,6 @@ function App() {
                 <Route path="/m365/audit" element={<PR><M365Audit /></PR>} />
                 <Route path="/inventory" element={<PR><Inventory /></PR>} />
                 <Route path="/approvals" element={<PR><ApprovalsPage /></PR>} />
-                <Route path="/support" element={<PR><Support /></PR>} />
-                <Route path="/support/:ticketId" element={<PR><TicketDetails /></PR>} />
-                <Route path="/suporte" element={<PR><Suporte /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
                 <Route path="/settings" element={<PR><Settings /></PR>} />
                 {/* Billing */}

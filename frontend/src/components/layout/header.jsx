@@ -8,6 +8,7 @@ import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import SearchBar from '../common/SearchBar';
 import CommandPalette from '../common/CommandPalette';
 import OrgSwitcher from './OrgSwitcher';
+import NewTicketModal from '../support/NewTicketModal';
 import alertService from '../../services/alertService';
 import authService from '../../services/authService';
 
@@ -19,6 +20,7 @@ const Header = () => {
   const [bellOpen, setBellOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [ticketOpen, setTicketOpen] = useState(false);
   const bellRef = useRef(null);
   const inviteRef = useRef(null);
   const qc = useQueryClient();
@@ -161,8 +163,8 @@ const Header = () => {
 
             {/* Support shortcut */}
             <button
-              onClick={() => navigate('/support')}
-              title="Suporte"
+              onClick={() => setTicketOpen(true)}
+              title="Abrir chamado de suporte"
               className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100
                          dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700
                          transition-colors"
@@ -306,6 +308,7 @@ const Header = () => {
       </div>
 
       <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      {ticketOpen && <NewTicketModal onClose={() => setTicketOpen(false)} />}
     </header>
   );
 };

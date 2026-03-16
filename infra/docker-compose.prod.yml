@@ -10,12 +10,15 @@ services:
       - "443:443"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../landingpage/cloudatlas-landing.html:/srv/landing/index.html:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
       - cloudatlas-network
     depends_on:
       frontend:
+        condition: service_started
+      desk-frontend:
         condition: service_started
     restart: unless-stopped
 
@@ -62,7 +65,7 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudhub}:${POSTGRES_PASSWORD:-cloudhub_pass}@postgres:5432/${POSTGRES_DB:-cloudhub_db}
       - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
-      - 'ALLOWED_ORIGINS=["https://cloudatlas.app.br","https://www.cloudatlas.app.br","http://localhost","http://localhost:3000"]'
+      - 'ALLOWED_ORIGINS=["https://cloudatlas.app.br","https://www.cloudatlas.app.br","https://hub.cloudatlas.app.br","https://desk.cloudatlas.app.br","http://localhost","http://localhost:3000"]'
       - DEBUG=False
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       # Cloud credentials
@@ -119,6 +122,19 @@ services:
         VITE_GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
         VITE_MICROSOFT_CLIENT_ID: ${MICROSOFT_CLIENT_ID:-}
     container_name: cloudatlas-frontend
+    networks:
+      - cloudatlas-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Desk Frontend (Nginx + React build) ──────────────────────────────────────
+  desk-frontend:
+    build:
+      context: ..
+      dockerfile: infra/docker/desk-frontend.prod.Dockerfile
+    container_name: cloudatlas-desk-frontend
     networks:
       - cloudatlas-network
     depends_on:
