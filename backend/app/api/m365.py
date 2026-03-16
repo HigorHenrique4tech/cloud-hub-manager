@@ -156,6 +156,7 @@ class CreateGdapRelationshipRequest(BaseModel):
     duration_days: int = 365
     roles: list = []
     auto_extend: bool = False
+    customer_tenant_id: Optional[str] = None
 
 
 class SendGdapInviteRequest(BaseModel):
@@ -1910,7 +1911,7 @@ async def ws_create_gdap_relationship(
     _require_master_org(member, db)
     svc = _get_service_or_404(db, member.workspace_id)
     try:
-        result = await _run(svc.create_gdap_relationship, body.display_name, body.duration_days, body.roles, body.auto_extend)
+        result = await _run(svc.create_gdap_relationship, body.display_name, body.duration_days, body.roles, body.auto_extend, body.customer_tenant_id)
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as exc:

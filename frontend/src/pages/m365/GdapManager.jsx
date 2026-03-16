@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Link2, Plus, RefreshCw, Copy, Mail, AlertTriangle,
   CheckCircle, XCircle, Clock, Shield, Trash2, X, Check,
+  Users, Building2,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
@@ -47,7 +48,7 @@ const STATUS_CONFIG = {
   terminationRequested:{ label: 'Enc. Solicitado',    color: 'red',    Icon: XCircle },
 };
 
-const TABS = ['Todas', 'Ativas', 'Aguardando', 'Expirando'];
+const TABS = ['Relações', 'Ativas', 'Aguardando', 'Expirando', 'Clientes'];
 
 const fmtDate = (d) =>
   d ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -159,12 +160,13 @@ function RelationshipCard({ rel, onTerminate, onInvite, onRenew }) {
 
 // ── Create Modal ───────────────────────────────────────────────────────────────
 
-function CreateModal({ onClose, onCreated }) {
+function CreateModal({ onClose, onCreated, preCustomer = null }) {
   const [form, setForm] = useState({
-    display_name: '',
+    display_name: preCustomer ? `${preCustomer.displayName} - GDAP` : '',
     duration_days: 365,
     roles: [...ROLE_TEMPLATES.tier1],
     auto_extend: false,
+    customer_tenant_id: preCustomer?.id || '',
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -212,6 +214,18 @@ function CreateModal({ onClose, onCreated }) {
               Requer permissão <code className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">DelegatedAdminRelationship.ReadWrite.All</code> no App Registration com admin consent.
             </p>
           </div>
+
+          {/* Pre-selected customer */}
+          {preCustomer && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+              <Building2 className="w-4 h-4 text-blue-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs text-blue-600 dark:text-blue-400 font-medium">Cliente vinculado</p>
+                <p className="text-sm font-semibold text-blue-800 dark:text-blue-200 truncate">{preCustomer.displayName}</p>
+                <p className="text-xs text-blue-500 dark:text-blue-400 font-mono truncate">{preCustomer.id}</p>
+              </div>
+            </div>
+          )}
 
           {/* Name */}
           <div>
@@ -530,6 +544,117 @@ function TerminateModal({ rel, onClose, onConfirmed }) {
   );
 }
 
+// ── Customers Tab ─────────────────────────────────────────────────────────────
+
+function CustomerCard({ customer, relationships, onCreateGdap }) {
+  const tenantId = customer.id || customer.tenantId;
+  const activeRels = relationships.filter(r =>
+    r.customer?.tenantId === tenantId && ['active', 'expiring', 'approvalPending', 'created'].includes(resolveStatus(r))
+  );
+
+  return (
+    <div className="card p-4">
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0">
+            <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">
+              {customer.displayName || 'Sem nome'}
+            </p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{tenantId}</p>
+            {activeRels.length > 0 && (
+              <div className="flex flex-wrap gap-1 mt-1.5">
+                {activeRels.map(r => (
+                  <span key={r.id} className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+                    <Link2 className="w-2.5 h-2.5" />
+                    {r.displayName}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+        <button
+          onClick={() => onCreateGdap(customer)}
+          className="flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          Criar GDAP
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ClientesTab({ customers, relationships, isLoading, isError, error, onCreateGdap }) {
+  const [search, setSearch] = useState('');
+
+  const filtered = customers.filter(c => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      (c.displayName || '').toLowerCase().includes(q) ||
+      (c.id || '').toLowerCase().includes(q)
+    );
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
+      </div>
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className="card text-center py-12">
+        <XCircle className="w-10 h-10 text-red-400 mx-auto mb-3" />
+        <p className="text-gray-500 dark:text-gray-400">
+          {error?.response?.data?.detail || 'Erro ao carregar clientes'}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 max-w-sm">
+          <input
+            className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            placeholder="Buscar por nome ou tenant ID..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+          <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{filtered.length} cliente{filtered.length !== 1 ? 's' : ''}</p>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="card text-center py-12">
+          <Users className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-500 dark:text-gray-400">
+            {search ? 'Nenhum cliente encontrado.' : 'Nenhum cliente com relação de parceria encontrado no Partner Center.'}
+          </p>
+        </div>
+      ) : (
+        filtered.map(c => (
+          <CustomerCard
+            key={c.id || c.tenantId}
+            customer={c}
+            relationships={relationships}
+            onCreateGdap={onCreateGdap}
+          />
+        ))
+      )}
+    </div>
+  );
+}
+
 // ── Setup Banner ───────────────────────────────────────────────────────────────
 
 function SetupBanner() {
@@ -569,6 +694,7 @@ export default function GdapManager() {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
+  const [createCustomer, setCreateCustomer] = useState(null); // pre-selected customer for create modal
   const [inviteTarget, setInviteTarget] = useState(null);
   const [terminateTarget, setTerminateTarget] = useState(null);
 
@@ -578,7 +704,14 @@ export default function GdapManager() {
     refetchInterval: 30000,
   });
 
+  const cusQ = useQuery({
+    queryKey: ['m365', 'gdap', 'customers'],
+    queryFn: m365Service.getGdapCustomers,
+    refetchInterval: 60000,
+  });
+
   const relationships = relQ.data?.relationships || [];
+  const customers = cusQ.data?.customers || [];
 
   const filtered = relationships.filter(rel => {
     const status = resolveStatus(rel);
@@ -594,10 +727,17 @@ export default function GdapManager() {
     relationships.filter(r => resolveStatus(r) === 'active').length,
     relationships.filter(r => ['approvalPending', 'created'].includes(resolveStatus(r))).length,
     relationships.filter(r => resolveStatus(r) === 'expiring').length,
+    customers.length,
   ];
+
+  const openCreate = (customer = null) => {
+    setCreateCustomer(customer);
+    setShowCreate(true);
+  };
 
   const handleCreated = (rel) => {
     setShowCreate(false);
+    setCreateCustomer(null);
     qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'relationships'] });
     if (rel.inviteUrl) {
       setInviteTarget(rel);
@@ -609,8 +749,8 @@ export default function GdapManager() {
     qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'relationships'] });
   };
 
-  const handleRenew = (rel) => {
-    setShowCreate(true);
+  const handleRenew = () => {
+    openCreate();
   };
 
   return (
@@ -624,15 +764,18 @@ export default function GdapManager() {
         </div>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'relationships'] })}
-            disabled={relQ.isFetching}
+            onClick={() => {
+              qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'relationships'] });
+              qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'customers'] });
+            }}
+            disabled={relQ.isFetching || cusQ.isFetching}
             className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${relQ.isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 mr-2 ${relQ.isFetching || cusQ.isFetching ? 'animate-spin' : ''}`} />
             Atualizar
           </button>
           <button
-            onClick={() => setShowCreate(true)}
+            onClick={() => openCreate()}
             className="inline-flex items-center px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -670,7 +813,16 @@ export default function GdapManager() {
       </div>
 
       {/* Content */}
-      {relQ.isLoading ? (
+      {activeTab === 4 ? (
+        <ClientesTab
+          customers={customers}
+          relationships={relationships}
+          isLoading={cusQ.isLoading}
+          isError={cusQ.isError}
+          error={cusQ.error}
+          onCreateGdap={openCreate}
+        />
+      ) : relQ.isLoading ? (
         <div className="flex items-center justify-center py-16">
           <RefreshCw className="w-6 h-6 text-blue-500 animate-spin" />
         </div>
@@ -706,7 +858,11 @@ export default function GdapManager() {
 
       {/* Modals */}
       {showCreate && (
-        <CreateModal onClose={() => setShowCreate(false)} onCreated={handleCreated} />
+        <CreateModal
+          onClose={() => { setShowCreate(false); setCreateCustomer(null); }}
+          onCreated={handleCreated}
+          preCustomer={createCustomer}
+        />
       )}
       {inviteTarget && (
         <InviteModal rel={inviteTarget} onClose={() => setInviteTarget(null)} />

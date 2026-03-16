@@ -2043,6 +2043,7 @@ class M365Service:
         duration_days: int,
         roles: list,
         auto_extend: bool = False,
+        customer_tenant_id: str = None,
     ) -> dict:
         """
         Step 1: POST /tenantRelationships/delegatedAdminRelationships
@@ -2057,6 +2058,8 @@ class M365Service:
                 "unifiedRoles": [{"roleDefinitionId": rid} for rid in roles]
             },
         }
+        if customer_tenant_id:
+            body["customer"] = {"tenantId": customer_tenant_id}
         rel = self._post(f"{GRAPH_V1}/tenantRelationships/delegatedAdminRelationships", body)
         rel_id = rel["id"]
         self._post(
@@ -2071,4 +2074,3 @@ class M365Service:
             f"{GRAPH_V1}/tenantRelationships/delegatedAdminRelationships/{relationship_id}/requests",
             {"action": "terminate"},
         )
-        return {"removed": True, "permission_type": permission_type}
