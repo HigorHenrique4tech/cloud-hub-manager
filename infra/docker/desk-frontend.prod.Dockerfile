@@ -4,7 +4,7 @@ FROM node:20-alpine AS build
 WORKDIR /app
 
 COPY desk-frontend/package*.json ./
-RUN npm ci
+RUN npm install --legacy-peer-deps
 
 COPY desk-frontend/ .
 RUN npm run build
