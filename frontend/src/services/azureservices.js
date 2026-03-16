@@ -14,7 +14,7 @@ export const azureService = {
   listVMs: async () => (await api.get(wsUrl('/azure/vms'))).data,
   startVM: async (resourceGroup, vmName) => (await api.post(wsUrl(`/azure/vms/${resourceGroup}/${vmName}/start`))).data,
   stopVM: async (resourceGroup, vmName) => (await api.post(wsUrl(`/azure/vms/${resourceGroup}/${vmName}/stop`))).data,
-  createVM: async (data) => (await api.post(wsUrl('/azure/vms'), data, { timeout: 120000 })).data,
+  createVM: async (data) => (await api.post(wsUrl('/azure/vms'), data)).data,
 
   // Resource Groups
   listResourceGroups: async () => (await api.get(wsUrl('/azure/resource-groups'))).data,

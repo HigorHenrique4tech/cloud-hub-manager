@@ -4,7 +4,9 @@ import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { OrgWorkspaceProvider } from './contexts/OrgWorkspaceContext';
 import { ToastProvider } from './contexts/ToastContext';
+import { BackgroundTasksProvider } from './contexts/BackgroundTasksContext';
 import Toaster from './components/common/Toaster';
+import TaskNotifications from './components/common/TaskNotifications';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import Dashboard from './pages/dashboard';
 import Costs from './pages/costs';
@@ -83,6 +85,7 @@ function App() {
         <ToastProvider>
           <AuthProvider>
             <OrgWorkspaceProvider>
+              <BackgroundTasksProvider>
               <BrowserRouter>
               <Routes>
                 <Route path="/login" element={<Login />} />
@@ -148,6 +151,8 @@ function App() {
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
               </BrowserRouter>
+              <TaskNotifications />
+              </BackgroundTasksProvider>
             </OrgWorkspaceProvider>
           </AuthProvider>
           <Toaster />

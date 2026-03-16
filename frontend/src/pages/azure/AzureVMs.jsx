@@ -21,11 +21,13 @@ import TemplateBar from '../../components/common/TemplateBar';
 import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 import VMBackupSection from '../../components/backup/VMBackupSection';
 import { useToast } from '../../contexts/ToastContext';
+import { useBackgroundTasks } from '../../contexts/BackgroundTasksContext';
 
 const defaultForm = { name: '', resource_group: '', location: '', vm_size: 'Standard_B1s', image_publisher: '', image_offer: '', image_sku: '', image_version: 'latest', admin_username: '', admin_password: '', create_public_ip: false, os_disk_type: 'Standard_LRS', data_disks: [], tags: {}, tags_list: [] };
 
 const AzureVMs = () => {
   const { toast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -81,7 +83,20 @@ const AzureVMs = () => {
 
   const { mutate: createVM, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
     (data) => azureService.createVM(data),
-    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchVMs(true); }, 1500); } }
+    {
+      onSuccess: (result) => {
+        // Backend returns 202 with task_id — close modal immediately and track in background
+        if (result?.task_id) {
+          addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_vm_create' });
+          toast.info('VM em criação em background. Você será notificado quando terminar.');
+          setModalOpen(false);
+          reset();
+          setForm(defaultForm);
+        } else {
+          setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchVMs(true); }, 1500);
+        }
+      }
+    }
   );
 
   const addPending = (id, op) => setPendingOps(m => new Map(m).set(id, op));

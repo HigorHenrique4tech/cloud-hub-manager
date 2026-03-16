@@ -699,3 +699,21 @@ class TicketMessage(Base):
 
     ticket = relationship("Ticket", back_populates="messages")
     sender = relationship("User", foreign_keys=[sender_id])
+
+
+class BackgroundTask(Base):
+    __tablename__ = "background_tasks"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    type         = Column(String(80), nullable=False)          # e.g. azure_vm_create, azure_storage_create
+    label        = Column(String(255), nullable=False)         # human-readable: "Criar VM prod-web-01"
+    status       = Column(String(20), nullable=False, default="queued", index=True)  # queued | running | completed | failed
+    result       = Column(JSONB, nullable=True)
+    error        = Column(Text, nullable=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    user      = relationship("User", foreign_keys=[user_id])

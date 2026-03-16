@@ -13,10 +13,14 @@ import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
 import TemplateBar from '../../components/common/TemplateBar';
 import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
+import { useBackgroundTasks } from '../../contexts/BackgroundTasksContext';
+import { useToast } from '../../contexts/ToastContext';
 
 const defaultForm = { name: '', resource_group: '', location: '', sku: 'Standard_LRS', kind: 'StorageV2', access_tier: 'Hot', enable_https_only: true, allow_blob_public_access: false, min_tls_version: 'TLS1_2', tags: {}, tags_list: [] };
 
 const AzureStorage = () => {
+  const { addTask } = useBackgroundTasks();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
@@ -49,7 +53,19 @@ const AzureStorage = () => {
 
   const { mutate: createStorage, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
     (data) => azureService.createStorageAccount(data),
-    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchData(true); }, 1500); } }
+    {
+      onSuccess: (result) => {
+        if (result?.task_id) {
+          addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_storage_create' });
+          toast.info('Storage Account em criação em background. Você será notificado quando terminar.');
+          setModalOpen(false);
+          reset();
+          setForm(defaultForm);
+        } else {
+          setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchData(true); }, 1500);
+        }
+      }
+    }
   );
 
   const handleDelete = async () => {

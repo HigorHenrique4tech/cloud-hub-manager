@@ -1,6 +1,6 @@
 import asyncio
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -12,10 +12,11 @@ from app.models.create_schemas import (
 )
 from app.core.dependencies import require_permission
 from app.core.auth_context import MemberContext
-from app.database import get_db
+from app.database import get_db, SessionLocal
 from app.services.auth_service import decrypt_credential
 from app.services.log_service import log_activity
 from app.services.security_service import AzureSecurityScanner
+from app.services import background_task_service as bts
 import logging
 from datetime import datetime
 
@@ -150,21 +151,39 @@ async def ws_list_virtual_machines(
     return await _run(svc.list_virtual_machines)
 
 
-@ws_router.post("/vms")
+@ws_router.post("/vms", status_code=202)
 async def ws_create_virtual_machine(
     body: CreateAzureVMRequest,
+    background_tasks: BackgroundTasks,
     member: MemberContext = Depends(require_permission("resources.create")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await _run(svc.create_virtual_machine, body.model_dump())
-    if not result.get('success'):
-        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar VM'))
+    task = bts.create_task(
+        db, member.workspace_id, member.user.id,
+        "azure_vm_create", f"Criar VM: {body.name}"
+    )
     log_activity(db, member.user, 'azurevm.create', 'AzureVM',
                  resource_name=body.name, provider='azure',
                  detail=f"Resource group: {body.resource_group}",
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
-    return result
+
+    async def _bg():
+        bg_db = SessionLocal()
+        try:
+            bts.set_running(bg_db, task.id)
+            result = await _run(svc.create_virtual_machine, body.model_dump())
+            if result.get('success'):
+                bts.set_completed(bg_db, task.id, result)
+            else:
+                bts.set_failed(bg_db, task.id, result.get('error', 'Erro desconhecido'))
+        except Exception as exc:
+            bts.set_failed(bg_db, task.id, str(exc))
+        finally:
+            bg_db.close()
+
+    background_tasks.add_task(_bg)
+    return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
 
 @ws_router.post("/vms/{resource_group}/{vm_name}/start")
@@ -244,21 +263,39 @@ async def ws_list_storage_accounts(
     return await _run(svc.list_storage_accounts)
 
 
-@ws_router.post("/storage-accounts")
+@ws_router.post("/storage-accounts", status_code=202)
 async def ws_create_storage_account(
     body: CreateAzureStorageRequest,
+    background_tasks: BackgroundTasks,
     member: MemberContext = Depends(require_permission("resources.create")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_azure_service(member, db)
-    result = await _run(svc.create_storage_account, body.model_dump())
-    if not result.get('success'):
-        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar Storage Account'))
+    task = bts.create_task(
+        db, member.workspace_id, member.user.id,
+        "azure_storage_create", f"Criar Storage Account: {body.name}"
+    )
     log_activity(db, member.user, 'storage.create', 'StorageAccount',
                  resource_name=body.name, provider='azure',
                  detail=f"Resource group: {body.resource_group}",
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
-    return result
+
+    async def _bg():
+        bg_db = SessionLocal()
+        try:
+            bts.set_running(bg_db, task.id)
+            result = await _run(svc.create_storage_account, body.model_dump())
+            if result.get('success'):
+                bts.set_completed(bg_db, task.id, result)
+            else:
+                bts.set_failed(bg_db, task.id, result.get('error', 'Erro desconhecido'))
+        except Exception as exc:
+            bts.set_failed(bg_db, task.id, str(exc))
+        finally:
+            bg_db.close()
+
+    background_tasks.add_task(_bg)
+    return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
 
 # ── VNets ────────────────────────────────────────────────────────────────
