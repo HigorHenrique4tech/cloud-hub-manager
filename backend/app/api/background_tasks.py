@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.core.dependencies import require_permission
 from app.core.auth_context import MemberContext
-from app.services.background_task_service import get_task, list_tasks
+from app.services.background_task_service import get_task, list_tasks, cleanup_old_tasks
 
 ws_router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces/{workspace_id}/tasks",
@@ -35,6 +35,7 @@ async def list_workspace_tasks(
     member: MemberContext = Depends(require_permission("resources.read")),
     db: Session = Depends(get_db),
 ):
+    cleanup_old_tasks(db)
     tasks = list_tasks(db, member.workspace_id, limit=30)
     return [_task_to_dict(t) for t in tasks]
 

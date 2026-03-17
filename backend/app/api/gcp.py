@@ -14,6 +14,7 @@ from app.services.auth_service import decrypt_credential
 from app.services.gcp_service import GCPService
 from app.services.log_service import log_activity
 from app.services.security_service import GCPSecurityScanner
+from app.core.cache import cache_get, cache_set, cache_delete
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
@@ -105,6 +106,9 @@ async def gcp_overview(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"gcp:{member.workspace_id}:overview"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_gcp_service(member, db)
     try:
         instances = await _run(svc.list_instances)
@@ -129,7 +133,7 @@ async def gcp_overview(
     except Exception:
         functions = []
 
-    return {
+    result = {
         "project_id": svc.project_id,
         "compute_instances": len(instances),
         "compute_running": running,
@@ -138,6 +142,8 @@ async def gcp_overview(
         "networks": len(networks),
         "functions": len(functions),
     }
+    cache_set(cache_key, result, ttl=120)
+    return result
 
 
 # ── Compute Engine ─────────────────────────────────────────────────────────────
@@ -147,8 +153,13 @@ async def gcp_list_instances(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"gcp:{member.workspace_id}:compute"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_gcp_service(member, db)
-    return await _run(svc.list_instances)
+    result = await _run(svc.list_instances)
+    cache_set(cache_key, result, ttl=180)
+    return result
 
 
 @ws_router.post("/compute/instances/{zone}/{name}/start")
@@ -160,6 +171,8 @@ async def gcp_start_instance(
 ):
     svc = _get_gcp_service(member, db)
     await _run(svc.start_instance, zone, name)
+    cache_delete(f"gcp:{member.workspace_id}:compute")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.compute.start", "Instance", name, {"zone": zone})
     from app.services.notification_channel_service import fire_event as _fire
     _fire(db, member.workspace_id, "resource.started", {
@@ -178,6 +191,8 @@ async def gcp_stop_instance(
 ):
     svc = _get_gcp_service(member, db)
     await _run(svc.stop_instance, zone, name)
+    cache_delete(f"gcp:{member.workspace_id}:compute")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.compute.stop", "Instance", name, {"zone": zone})
     from app.services.notification_channel_service import fire_event as _fire
     _fire(db, member.workspace_id, "resource.stopped", {
@@ -196,6 +211,8 @@ async def gcp_delete_instance(
 ):
     svc = _get_gcp_service(member, db)
     await _run(svc.delete_instance, zone, name)
+    cache_delete(f"gcp:{member.workspace_id}:compute")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.compute.delete", "Instance", name, {"zone": zone})
     return {"success": True, "instance": name, "zone": zone}
 
@@ -226,8 +243,13 @@ async def gcp_list_buckets(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"gcp:{member.workspace_id}:storage"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_gcp_service(member, db)
-    return await _run(svc.list_buckets)
+    result = await _run(svc.list_buckets)
+    cache_set(cache_key, result, ttl=300)
+    return result
 
 
 @ws_router.post("/storage/buckets")
@@ -238,6 +260,8 @@ async def gcp_create_bucket(
 ):
     svc = _get_gcp_service(member, db)
     result = await _run(svc.create_bucket, payload.name, payload.location, payload.storage_class)
+    cache_delete(f"gcp:{member.workspace_id}:storage")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.storage.create_bucket", "Bucket", payload.name, {})
     return result
 
@@ -250,6 +274,8 @@ async def gcp_delete_bucket(
 ):
     svc = _get_gcp_service(member, db)
     await _run(svc.delete_bucket, name)
+    cache_delete(f"gcp:{member.workspace_id}:storage")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.storage.delete_bucket", "Bucket", name, {})
     return {"success": True, "bucket": name}
 
@@ -261,8 +287,13 @@ async def gcp_list_sql_instances(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"gcp:{member.workspace_id}:sql"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_gcp_service(member, db)
-    return await _run(svc.list_sql_instances)
+    result = await _run(svc.list_sql_instances)
+    cache_set(cache_key, result, ttl=180)
+    return result
 
 
 @ws_router.delete("/sql/instances/{name}")
@@ -273,6 +304,8 @@ async def gcp_delete_sql_instance(
 ):
     svc = _get_gcp_service(member, db)
     await _run(svc.delete_sql_instance, name)
+    cache_delete(f"gcp:{member.workspace_id}:sql")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.sql.delete", "CloudSQLInstance", name, {})
     return {"success": True, "instance": name}
 
@@ -285,8 +318,13 @@ async def gcp_list_functions(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"gcp:{member.workspace_id}:functions:{region}"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_gcp_service(member, db)
-    return await _run(svc.list_functions, region)
+    result = await _run(svc.list_functions, region)
+    cache_set(cache_key, result, ttl=300)
+    return result
 
 
 @ws_router.delete("/functions/{region}/{name}")
@@ -299,6 +337,8 @@ async def gcp_delete_function(
     svc = _get_gcp_service(member, db)
     full_name = f"projects/{svc.project_id}/locations/{region}/functions/{name}"
     await _run(svc.delete_function, full_name)
+    cache_delete(f"gcp:{member.workspace_id}:functions:{region}")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.functions.delete", "CloudFunction", name, {"region": region})
     return {"success": True, "function": name, "region": region}
 
@@ -310,8 +350,13 @@ async def gcp_list_networks(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"gcp:{member.workspace_id}:networks"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_gcp_service(member, db)
-    return await _run(svc.list_networks)
+    result = await _run(svc.list_networks)
+    cache_set(cache_key, result, ttl=300)
+    return result
 
 
 @ws_router.post("/networks")
@@ -322,6 +367,8 @@ async def gcp_create_network(
 ):
     svc = _get_gcp_service(member, db)
     result = await _run(svc.create_network, payload.name, payload.auto_create_subnetworks)
+    cache_delete(f"gcp:{member.workspace_id}:networks")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.network.create", "Network", payload.name, {})
     return result
 
@@ -334,6 +381,8 @@ async def gcp_delete_network(
 ):
     svc = _get_gcp_service(member, db)
     await _run(svc.delete_network, name)
+    cache_delete(f"gcp:{member.workspace_id}:networks")
+    cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.network.delete", "Network", name, {})
     return {"success": True, "network": name}
 

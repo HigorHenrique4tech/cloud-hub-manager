@@ -3,7 +3,7 @@ background_task_service.py
 Helpers to create and update BackgroundTask records.
 """
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.models.db_models import BackgroundTask
 
@@ -62,3 +62,13 @@ def list_tasks(db: Session, workspace_id, limit: int = 30) -> list[BackgroundTas
         .limit(limit)
         .all()
     )
+
+
+def cleanup_old_tasks(db: Session, max_age_hours: int = 24) -> None:
+    """Delete completed/failed tasks older than max_age_hours to prevent DB bloat."""
+    cutoff = datetime.utcnow() - timedelta(hours=max_age_hours)
+    db.query(BackgroundTask).filter(
+        BackgroundTask.status.in_(["completed", "failed"]),
+        BackgroundTask.updated_at < cutoff,
+    ).delete(synchronize_session=False)
+    db.commit()

@@ -67,7 +67,7 @@ const Sidebar = () => {
   const pendingCountQ = useQuery({
     queryKey: ['approvals-count'],
     queryFn: approvalService.getCount,
-    refetchInterval: 30000,
+    refetchInterval: 60_000,
     select: (d) => d?.pending ?? 0,
   });
 

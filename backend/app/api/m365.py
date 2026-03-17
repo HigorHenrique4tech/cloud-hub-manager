@@ -1005,16 +1005,34 @@ async def list_m365_tenants(
         .all()
     )
 
+    # Batch-load all workspaces and M365 accounts in 2 queries (avoids N+1)
+    partner_ids = [p.id for p in partners]
+    all_workspaces = (
+        db.query(Workspace)
+        .filter(Workspace.organization_id.in_(partner_ids), Workspace.is_active == True)
+        .all()
+    )
+    ws_by_org = {}
+    for ws in all_workspaces:
+        ws_by_org.setdefault(ws.organization_id, []).append(ws)
+
+    all_ws_ids = [ws.id for ws in all_workspaces]
+    all_accts = (
+        db.query(CloudAccount)
+        .filter(
+            CloudAccount.workspace_id.in_(all_ws_ids),
+            CloudAccount.provider == "m365",
+            CloudAccount.is_active == True,
+        )
+        .all()
+    ) if all_ws_ids else []
+    acct_by_ws = {a.workspace_id: a for a in all_accts}
+
     results = []
     for partner in partners:
-        # Collect all workspaces in this partner org
-        workspaces = (
-            db.query(Workspace)
-            .filter(Workspace.organization_id == partner.id, Workspace.is_active == True)
-            .all()
-        )
+        workspaces = ws_by_org.get(partner.id, [])
         for ws in workspaces:
-            acct = _get_m365_account(db, ws.id)
+            acct = acct_by_ws.get(ws.id)
             entry = {
                 "org_name": partner.name,
                 "org_slug": partner.slug,

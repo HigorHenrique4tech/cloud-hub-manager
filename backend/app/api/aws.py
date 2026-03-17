@@ -17,6 +17,7 @@ from app.database import get_db
 from app.services.auth_service import decrypt_credential
 from app.services.log_service import log_activity
 from app.services.security_service import AWSSecurityScanner
+from app.core.cache import cache_get, cache_set, cache_delete
 import logging
 from datetime import datetime
 
@@ -81,10 +82,14 @@ async def ws_get_aws_overview(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"aws:{member.workspace_id}:overview"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_aws_service(member, db)
     result = await _run(svc.get_overview)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter overview'))
+    cache_set(cache_key, result, ttl=300)
     return result
 
 
@@ -107,8 +112,13 @@ async def ws_list_ec2_instances(
             raise HTTPException(status_code=404, detail="Conta AWS não encontrada")
         _svc = _build_aws_service_from_account(account)
         return await _run(_svc.list_ec2_instances)
+    cache_key = f"aws:{member.workspace_id}:ec2"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_aws_service(member, db)
-    return await _run(svc.list_ec2_instances)
+    result = await _run(svc.list_ec2_instances)
+    cache_set(cache_key, result, ttl=180)
+    return result
 
 
 @ws_router.post("/ec2/instances")
@@ -262,10 +272,14 @@ async def ws_list_s3_buckets(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"aws:{member.workspace_id}:s3"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_aws_service(member, db)
     result = await _run(svc.list_s3_buckets)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao listar buckets S3'))
+    cache_set(cache_key, result, ttl=300)
     return result
 
 
@@ -301,10 +315,14 @@ async def ws_list_rds_instances(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"aws:{member.workspace_id}:rds"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_aws_service(member, db)
     result = await _run(svc.list_rds_instances)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao listar instâncias RDS'))
+    cache_set(cache_key, result, ttl=180)
     return result
 
 

@@ -72,7 +72,8 @@ const queryClient = new QueryClient({
     queries: {
       refetchOnWindowFocus: false,
       retry: 1,
-      staleTime: 30000,
+      staleTime: 120_000,  // 2 min — evita refetch a cada navegação
+      gcTime: 600_000,     // 10 min em memória antes de descartar
     },
   },
 });

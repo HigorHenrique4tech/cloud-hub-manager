@@ -14,10 +14,18 @@ export function BackgroundTasksProvider({ children }) {
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
   const [tasks, setTasks] = useState([]);
   const [notifications, setNotifications] = useState([]);
+  const [isVisible, setIsVisible] = useState(!document.hidden);
   const intervalRef = useRef(null);
   const prevStatusRef = useRef({});
   const failCountRef = useRef(0);
   const taskCreatedAtRef = useRef({}); // task_id → Date.now() when addTask was called
+
+  // Pause polling when tab is hidden to save bandwidth
+  useEffect(() => {
+    const handler = () => setIsVisible(!document.hidden);
+    document.addEventListener('visibilitychange', handler);
+    return () => document.removeEventListener('visibilitychange', handler);
+  }, []);
 
   const wsUrl = useCallback(() => {
     if (!currentOrg?.slug || !currentWorkspace?.id) return null;
@@ -26,7 +34,7 @@ export function BackgroundTasksProvider({ children }) {
 
   const fetchTasks = useCallback(async () => {
     const url = wsUrl();
-    if (!url || !user) return;
+    if (!url || !user || !isVisible) return;
     try {
       const { data } = await api.get(url);
       failCountRef.current = 0; // reset on success
@@ -68,7 +76,7 @@ export function BackgroundTasksProvider({ children }) {
         }));
       }
     }
-  }, [wsUrl, user]);
+  }, [wsUrl, user, isVisible]);
 
   // Start/stop polling based on active tasks
   useEffect(() => {

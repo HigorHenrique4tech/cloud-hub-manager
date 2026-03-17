@@ -17,6 +17,7 @@ from app.services.auth_service import decrypt_credential
 from app.services.log_service import log_activity
 from app.services.security_service import AzureSecurityScanner
 from app.services import background_task_service as bts
+from app.core.cache import cache_get, cache_set, cache_delete
 import logging
 from datetime import datetime
 
@@ -147,8 +148,13 @@ async def ws_list_virtual_machines(
             raise HTTPException(status_code=404, detail="Conta Azure não encontrada")
         _svc = _build_azure_service_from_account(account)
         return await _run(_svc.list_virtual_machines)
+    cache_key = f"azure:{member.workspace_id}:vms"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_azure_service(member, db)
-    return await _run(svc.list_virtual_machines)
+    result = await _run(svc.list_virtual_machines)
+    cache_set(cache_key, result, ttl=120)
+    return result
 
 
 @ws_router.post("/vms", status_code=202)
@@ -182,6 +188,7 @@ async def ws_create_virtual_machine(
         finally:
             bg_db.close()
 
+    cache_delete(f"azure:{member.workspace_id}:vms")
     background_tasks.add_task(_bg)
     return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
@@ -259,8 +266,13 @@ async def ws_list_storage_accounts(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"azure:{member.workspace_id}:storage"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_azure_service(member, db)
-    return await _run(svc.list_storage_accounts)
+    result = await _run(svc.list_storage_accounts)
+    cache_set(cache_key, result, ttl=180)
+    return result
 
 
 @ws_router.post("/storage-accounts", status_code=202)
@@ -294,6 +306,7 @@ async def ws_create_storage_account(
         finally:
             bg_db.close()
 
+    cache_delete(f"azure:{member.workspace_id}:storage")
     background_tasks.add_task(_bg)
     return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
@@ -305,8 +318,13 @@ async def ws_list_vnets(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"azure:{member.workspace_id}:vnets"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_azure_service(member, db)
-    return await _run(svc.list_vnets)
+    result = await _run(svc.list_vnets)
+    cache_set(cache_key, result, ttl=300)
+    return result
 
 
 @ws_router.post("/vnets")
@@ -319,6 +337,7 @@ async def ws_create_vnet(
     result = await _run(svc.create_vnet, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar VNet'))
+    cache_delete(f"azure:{member.workspace_id}:vnets")
     log_activity(db, member.user, 'vnet.create', 'VNet',
                  resource_name=body.name, provider='azure',
                  detail=f"Resource group: {body.resource_group}",
@@ -333,8 +352,13 @@ async def ws_list_databases(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"azure:{member.workspace_id}:databases"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_azure_service(member, db)
-    return await _run(svc.list_databases)
+    result = await _run(svc.list_databases)
+    cache_set(cache_key, result, ttl=180)
+    return result
 
 
 @ws_router.post("/databases")
@@ -348,6 +372,7 @@ async def ws_create_sql_database(
     if not result.get('success'):
         status_code = 400 if result.get('code') == 'REGION_NOT_ALLOWED' else 500
         raise HTTPException(status_code=status_code, detail=result.get('error', 'Erro ao criar banco de dados SQL'))
+    cache_delete(f"azure:{member.workspace_id}:databases")
     log_activity(db, member.user, 'sql.create', 'SQLDatabase',
                  resource_name=f"{body.server_name}/{body.database_name}", provider='azure',
                  detail=f"Resource group: {body.resource_group}",
@@ -362,8 +387,13 @@ async def ws_list_app_services(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"azure:{member.workspace_id}:appservices"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_azure_service(member, db)
-    return await _run(svc.list_app_services)
+    result = await _run(svc.list_app_services)
+    cache_set(cache_key, result, ttl=180)
+    return result
 
 
 @ws_router.post("/app-services")
@@ -376,6 +406,7 @@ async def ws_create_app_service(
     result = await _run(svc.create_app_service, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar App Service'))
+    cache_delete(f"azure:{member.workspace_id}:appservices")
     log_activity(db, member.user, 'appservice.create', 'AppService',
                  resource_name=body.name, provider='azure',
                  detail=f"Resource group: {body.resource_group}",
@@ -532,6 +563,7 @@ async def ws_delete_azure_vm(
     log_activity(db, member.user, 'vm.delete', 'AzureVM',
                  resource_name=vm_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    cache_delete(f"azure:{member.workspace_id}:vms")
     background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_virtual_machine, resource_group, vm_name))
     return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
@@ -550,6 +582,7 @@ async def ws_delete_azure_storage(
     log_activity(db, member.user, 'storage.delete', 'AzureStorage',
                  resource_name=account_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    cache_delete(f"azure:{member.workspace_id}:storage")
     background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_storage_account, resource_group, account_name))
     return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
@@ -568,6 +601,7 @@ async def ws_delete_azure_vnet(
     log_activity(db, member.user, 'vnet.delete', 'AzureVNet',
                  resource_name=vnet_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    cache_delete(f"azure:{member.workspace_id}:vnets")
     background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_virtual_network, resource_group, vnet_name))
     return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
@@ -586,6 +620,7 @@ async def ws_delete_azure_sql_server(
     log_activity(db, member.user, 'sql.delete', 'AzureSQL',
                  resource_name=server_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    cache_delete(f"azure:{member.workspace_id}:databases")
     background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_sql_server, resource_group, server_name))
     return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
@@ -604,6 +639,7 @@ async def ws_delete_azure_app_service(
     log_activity(db, member.user, 'appservice.delete', 'AzureAppService',
                  resource_name=app_name, provider='azure',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    cache_delete(f"azure:{member.workspace_id}:appservices")
     background_tasks.add_task(_make_delete_bg(SessionLocal, task.id, svc.delete_app_service, resource_group, app_name))
     return {"task_id": str(task.id), "status": "queued", "label": task.label}
 
