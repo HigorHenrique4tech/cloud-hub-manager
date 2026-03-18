@@ -18,7 +18,7 @@ function getIntensityClass(value, max) {
   return 'bg-blue-700 dark:bg-blue-400';
 }
 
-const CostHeatmap = ({ combined = [], providerFilter = 'all' }) => {
+const CostHeatmap = ({ combined = [], providerFilter = 'all', anomalies = new Set() }) => {
   const { weeks, maxVal, monthLabels } = useMemo(() => {
     if (!combined.length) return { weeks: [], maxVal: 0, monthLabels: [] };
 
@@ -86,6 +86,13 @@ const CostHeatmap = ({ combined = [], providerFilter = 'all' }) => {
             <div key={i} className={`w-3 h-3 rounded-sm ${c}`} />
           ))}
           <span>Maior</span>
+          {anomalies.size > 0 && (
+            <>
+              <span className="mx-1 text-gray-300 dark:text-gray-600">|</span>
+              <div className="w-3 h-3 rounded-sm bg-amber-400 dark:bg-amber-500 ring-1 ring-amber-600 dark:ring-amber-400" />
+              <span className="text-amber-600 dark:text-amber-400">Anomalia</span>
+            </>
+          )}
         </div>
       </div>
 
@@ -122,11 +129,13 @@ const CostHeatmap = ({ combined = [], providerFilter = 'all' }) => {
                   {week.map((cell) => (
                     <div
                       key={cell.date}
-                      title={cell.inRange && cell.value != null ? `${cell.date}: ${fmtUSD(cell.value)}` : cell.date}
+                      title={cell.inRange && cell.value != null ? `${cell.date}: ${fmtUSD(cell.value)}${anomalies.has(cell.date) ? ' ⚠ Anomalia' : ''}` : cell.date}
                       className={`w-3 h-3 rounded-sm transition-colors cursor-default ${
                         !cell.inRange
                           ? 'bg-transparent'
-                          : getIntensityClass(cell.value, maxVal)
+                          : anomalies.has(cell.date)
+                            ? 'bg-amber-400 dark:bg-amber-500 ring-1 ring-amber-600 dark:ring-amber-400'
+                            : getIntensityClass(cell.value, maxVal)
                       }`}
                     />
                   ))}
