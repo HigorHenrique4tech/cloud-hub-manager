@@ -41,6 +41,36 @@ class OrgPlanUpdate(BaseModel):
     plan_tier: str  # free | pro | enterprise
 
 
+# ── Router: public contact form (no auth — landing page) ──────────────────────
+
+public_contact_router = APIRouter(prefix="/contact", tags=["Public"])
+
+
+@public_contact_router.post("", status_code=201)
+def public_contact(payload: LeadCreate, db: Session = Depends(get_db)):
+    """Public endpoint for landing page contact form. No auth required."""
+    lead = EnterpriseLead(
+        user_id=None,
+        org_id=None,
+        name=payload.name,
+        email=payload.email,
+        company=payload.company,
+        phone=payload.phone,
+        message=payload.message,
+        status="new",
+    )
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+
+    logger.info("Landing page lead: %s <%s>", payload.name, payload.email)
+
+    return {
+        "id": str(lead.id),
+        "message": "Recebemos sua mensagem! Entraremos em contato em breve.",
+    }
+
+
 # ── Router: leads submit (any authenticated user) ─────────────────────────────
 
 leads_router = APIRouter(prefix="/admin/leads", tags=["Admin"])

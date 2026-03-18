@@ -13,7 +13,7 @@ from .cloud_accounts import router as cloud_accounts_router
 from .billing import router as billing_router, webhook_router as billing_webhook_router
 from .schedules import ws_router as schedules_ws_router
 from .dashboard_config import ws_router as dashboard_config_ws_router
-from .admin import admin_router, leads_router
+from .admin import admin_router, leads_router, public_contact_router
 from .notification_channels import ws_router as notification_channels_ws_router
 from .m365 import ws_router as m365_ws_router, org_router as m365_org_router
 from .pricing import ws_router as pricing_ws_router
@@ -25,6 +25,9 @@ from .support import org_router as support_org_router, admin_support_router
 from .background_tasks import ws_router as background_tasks_ws_router
 
 api_router = APIRouter()
+
+# Public (no auth)
+api_router.include_router(public_contact_router)
 
 # Auth (no org scope)
 api_router.include_router(auth_router)
