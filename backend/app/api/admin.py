@@ -17,7 +17,7 @@ from app.models.db_models import User, Organization, OrganizationMember, Enterpr
 from app.core.dependencies import get_current_user, get_current_admin
 from app.services.log_service import log_activity
 from app.services.email_service import send_billing_invoice_email, send_billing_reminder_email, send_billing_status_email
-from app.services.payment_service import create_billing as create_abacatepay_billing
+from app.services.payment_service import create_pix_payment
 from app.core.config import settings
 
 BILLING_UPLOADS_DIR = Path(os.getenv("BILLING_UPLOADS_DIR", "/app/uploads/billing"))
@@ -459,7 +459,8 @@ def _billing_to_dict(r: BillingRecord) -> dict:
         "attachment_filename": r.attachment_filename,
         "has_attachment": bool(r.attachment_path),
         "payment_id": r.payment_id,
-        "payment_url": r.payment_url,
+        "pix_br_code": r.pix_br_code,
+        "pix_qr_base64": r.pix_qr_base64,
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
     }
@@ -1014,29 +1015,28 @@ async def send_invoice_email(
     if not to_email:
         raise HTTPException(status_code=400, detail="Nenhum email disponível. Adicione um email ao cliente ou vincule a uma organização.")
 
-    # Generate AbacatePay payment link (or reuse existing)
-    payment_url = record.payment_url
-    if not payment_url:
+    # Generate AbacatePay PIX QR Code (or reuse existing)
+    pix_br_code = record.pix_br_code
+    pix_qr_base64 = record.pix_qr_base64
+    if not pix_br_code:
         try:
             amount_cents = int(round(record.amount * 100))
             period_label = "Mensal" if record.period_type == "monthly" else "Anual"
-            abacate_data = await create_abacatepay_billing(
-                customer_email=to_email,
-                customer_name=record.client_name,
-                plan_tier="billing",
+            description = f"Cobrança {period_label} — {record.period_ref} — {record.client_name}"
+            pix_data = await create_pix_payment(
                 amount_cents=amount_cents,
-                return_url=f"{settings.FRONTEND_URL}/billing/success",
-                completion_url=f"{settings.FRONTEND_URL}/billing/success",
+                description=description,
+                customer_name=record.client_name,
+                customer_email=to_email,
             )
-            payment_url = abacate_data.get("url")
-            payment_id = abacate_data.get("id")
-            if payment_url:
-                record.payment_url = payment_url
-            if payment_id:
-                record.payment_id = payment_id
+            record.payment_id = pix_data.get("id")
+            record.pix_br_code = pix_data.get("brCode")
+            record.pix_qr_base64 = pix_data.get("brCodeBase64")
+            pix_br_code = record.pix_br_code
+            pix_qr_base64 = record.pix_qr_base64
         except Exception as e:
-            logger.warning("AbacatePay billing creation failed for record %s: %s", record_id, e)
-            # Continue sending email without payment link
+            logger.warning("AbacatePay PIX creation failed for record %s: %s", record_id, e)
+            # Continue sending email without PIX
 
     due_str = record.due_date.strftime("%d/%m/%Y") if record.due_date else None
     success = send_billing_invoice_email(
@@ -1047,7 +1047,8 @@ async def send_invoice_email(
         period_ref=record.period_ref,
         due_date=due_str,
         notes=record.notes,
-        payment_url=payment_url,
+        pix_br_code=pix_br_code,
+        pix_qr_base64=pix_qr_base64,
     )
 
     if not success:
@@ -1056,7 +1057,7 @@ async def send_invoice_email(
     _record_status_change(db, record, record.status, admin.id, f"Cobrança enviada por email para {to_email}", old_status=record.status)
     db.commit()
 
-    return {"sent_to": to_email, "payment_url": payment_url, "success": True}
+    return {"sent_to": to_email, "has_pix": bool(pix_br_code), "success": True}
 
 
 @admin_router.post("/billing/send-reminder")

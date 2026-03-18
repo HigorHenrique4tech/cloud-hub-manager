@@ -1,4 +1,4 @@
-"""Add payment_url and payment_id to billing_records
+"""Add payment fields to billing_records (AbacatePay PIX)
 
 Revision ID: b2c3d4e5f7g8
 Revises: a1b2c3d4e5f7
@@ -16,9 +16,11 @@ depends_on = None
 
 def upgrade():
     op.add_column("billing_records", sa.Column("payment_id", sa.String(255), nullable=True))
-    op.add_column("billing_records", sa.Column("payment_url", sa.String(512), nullable=True))
+    op.add_column("billing_records", sa.Column("pix_br_code", sa.Text(), nullable=True))
+    op.add_column("billing_records", sa.Column("pix_qr_base64", sa.Text(), nullable=True))
 
 
 def downgrade():
-    op.drop_column("billing_records", "payment_url")
+    op.drop_column("billing_records", "pix_qr_base64")
+    op.drop_column("billing_records", "pix_br_code")
     op.drop_column("billing_records", "payment_id")

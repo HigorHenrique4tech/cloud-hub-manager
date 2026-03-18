@@ -495,6 +495,35 @@ def _fmt_brl(v: float) -> str:
     return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _pix_section(br_code: str, qr_base64: str | None) -> str:
+    """Render PIX QR code + copia-e-cola section for billing emails."""
+    qr_img = ""
+    if qr_base64:
+        # brCodeBase64 from AbacatePay is already a data URI or raw base64
+        src = qr_base64 if qr_base64.startswith("data:") else f"data:image/png;base64,{qr_base64}"
+        qr_img = f'''
+        <div style="margin-bottom:16px;">
+          <img src="{src}" alt="QR Code PIX" style="width:200px;height:200px;border-radius:8px;" />
+        </div>
+        '''
+
+    return f'''
+        <div style="background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border:2px solid #22c55e;border-radius:16px;padding:28px;margin-top:28px;text-align:center;">
+          <p style="color:#16a34a;font-size:16px;font-weight:700;margin:0 0 4px;">Pague via PIX</p>
+          <p style="color:#64748b;font-size:12px;margin:0 0 20px;">Escaneie o QR Code ou copie o código abaixo</p>
+
+          {qr_img}
+
+          <div style="background:#ffffff;border:1px solid #d1d5db;border-radius:8px;padding:12px;margin:0 auto;max-width:400px;">
+            <p style="color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;">PIX Copia e Cola</p>
+            <p style="color:#334155;font-size:11px;word-break:break-all;margin:0;font-family:monospace;line-height:1.5;">{br_code}</p>
+          </div>
+
+          <p style="color:#94a3b8;font-size:11px;margin:16px 0 0;">Copie o código acima e cole no app do seu banco para efetuar o pagamento.</p>
+        </div>
+    '''
+
+
 def send_billing_invoice_email(
     to_email: str,
     client_name: str,
@@ -503,7 +532,8 @@ def send_billing_invoice_email(
     period_ref: str,
     due_date: str | None,
     notes: str | None = None,
-    payment_url: str | None = None,
+    pix_br_code: str | None = None,
+    pix_qr_base64: str | None = None,
 ) -> bool:
     """Send an invoice/billing notification email."""
     period_label = "Mensal" if period_type == "monthly" else "Anual"
@@ -551,10 +581,14 @@ def send_billing_invoice_email(
 
         {notes_html}
 
+        {_pix_section(pix_br_code, pix_qr_base64) if pix_br_code else f'''
         <div style="text-align:center;margin-top:28px;">
-          {'<a href="' + payment_url + '" style="display:inline-block;background:linear-gradient(135deg,#22c55e,#16a34a);color:#ffffff;text-decoration:none;padding:16px 40px;border-radius:8px;font-weight:700;font-size:16px;letter-spacing:0.5px;">💳 Pagar via PIX</a>' if payment_url else '<a href="' + settings.FRONTEND_URL + '" style="display:inline-block;background:#3b82f6;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:600;font-size:14px;">Acessar Plataforma</a>'}
+          <a href="{settings.FRONTEND_URL}"
+             style="display:inline-block;background:#3b82f6;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:600;font-size:14px;">
+            Acessar Plataforma
+          </a>
         </div>
-        {'<p style="text-align:center;color:#94a3b8;font-size:11px;margin-top:12px;">Clique no botão acima para realizar o pagamento de forma rápida e segura.</p>' if payment_url else ''}
+        '''}
     """
 
     html = _billing_base("💰", "Nova Cobrança", "#3b82f6", body)

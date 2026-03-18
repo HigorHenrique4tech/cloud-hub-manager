@@ -831,7 +831,7 @@ const BillingTab = ({ orgs }) => {
 
   const sendInvoiceMut = useMutation({
     mutationFn: (id) => adminService.sendInvoiceEmail(id),
-    onSuccess: (res) => { invalidateAll(); alert(`Cobrança enviada para ${res.sent_to}${res.payment_url ? '\nLink de pagamento gerado!' : ''}`); },
+    onSuccess: (res) => { invalidateAll(); alert(`Cobrança enviada para ${res.sent_to}${res.has_pix ? '\nPIX gerado com sucesso!' : ''}`); },
     onError: (err) => alert(err.response?.data?.detail || 'Erro ao enviar email'),
   });
 
@@ -1105,11 +1105,10 @@ const BillingTab = ({ orgs }) => {
                           <Mail size={9} /> {r.client_email}
                         </p>
                       )}
-                      {r.payment_url && (
-                        <a href={r.payment_url} target="_blank" rel="noopener noreferrer"
-                           className="text-[11px] text-green-500 hover:text-green-600 flex items-center gap-1 mt-0.5">
-                          <CreditCard size={9} /> Link de pagamento
-                        </a>
+                      {r.pix_br_code && (
+                        <p className="text-[11px] text-green-500 flex items-center gap-1 mt-0.5" title="PIX gerado">
+                          <CreditCard size={9} /> PIX gerado
+                        </p>
                       )}
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {r.is_recurring && (
