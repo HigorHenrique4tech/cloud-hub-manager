@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel, EmailStr
 
 from app.database import get_db
-from app.models.db_models import User, Organization, OrganizationMember, EnterpriseLead, BillingRecord, BillingStatusHistory, ActivityLog, Workspace, CloudAccount
+from app.models.db_models import User, Organization, OrganizationMember, EnterpriseLead, BillingRecord, BillingStatusHistory, BillingConfig, ActivityLog, Workspace, CloudAccount
 from app.core.dependencies import get_current_user, get_current_admin
 from app.services.log_service import log_activity
 
@@ -415,6 +415,24 @@ class BillingStatusPatch(BaseModel):
     notes: Optional[str] = None
 
 
+class BillingBatchStatus(BaseModel):
+    ids: list[str]
+    status: str
+    notes: Optional[str] = None
+
+
+class BillingConfigUpdate(BaseModel):
+    auto_generate_enabled: Optional[bool] = None
+    default_amount: Optional[float] = None
+    default_due_day: Optional[int] = None
+    default_period_type: Optional[str] = None
+    reminder_days_before: Optional[int] = None
+    reminder_days_after: Optional[int] = None
+    auto_overdue_enabled: Optional[bool] = None
+    auto_overdue_days: Optional[int] = None
+    notes_template: Optional[str] = None
+
+
 def _billing_to_dict(r: BillingRecord) -> dict:
     return {
         "id": str(r.id),
@@ -748,6 +766,208 @@ def export_billing_csv(
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@admin_router.get("/billing/analytics")
+def get_billing_analytics(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Monthly revenue chart data + revenue by client + overdue report + forecast."""
+    now = datetime.utcnow()
+
+    twelve_months_ago = now.replace(day=1) - timedelta(days=365)
+    monthly_rows = (
+        db.query(
+            func.to_char(BillingRecord.paid_at, 'YYYY-MM').label("month"),
+            func.sum(BillingRecord.amount),
+        )
+        .filter(BillingRecord.status == "paid", BillingRecord.paid_at >= twelve_months_ago)
+        .group_by("month")
+        .order_by("month")
+        .all()
+    )
+    monthly_revenue = [{"month": m, "revenue": round(v, 2)} for m, v in monthly_rows if m]
+
+    client_rows = (
+        db.query(BillingRecord.client_name, func.sum(BillingRecord.amount))
+        .filter(BillingRecord.status == "paid")
+        .group_by(BillingRecord.client_name)
+        .order_by(func.sum(BillingRecord.amount).desc())
+        .limit(10)
+        .all()
+    )
+    revenue_by_client = [{"client": c, "total": round(v, 2)} for c, v in client_rows]
+
+    overdue_records = (
+        db.query(BillingRecord)
+        .options(joinedload(BillingRecord.org))
+        .filter(BillingRecord.status == "overdue")
+        .order_by(BillingRecord.due_date.asc())
+        .all()
+    )
+    overdue_report = []
+    for r in overdue_records:
+        days_late = (now - r.due_date).days if r.due_date else 0
+        overdue_report.append({
+            "id": str(r.id),
+            "client_name": r.client_name,
+            "org_name": r.org.name if r.org else None,
+            "amount": r.amount,
+            "due_date": r.due_date.isoformat() if r.due_date else None,
+            "days_late": max(0, days_late),
+            "period_ref": r.period_ref,
+        })
+
+    active_recurring = (
+        db.query(BillingRecord)
+        .filter(
+            BillingRecord.is_recurring == True,
+            BillingRecord.status.in_(["pending", "paid"]),
+        )
+        .all()
+    )
+    forecast = []
+    for i in range(1, 4):
+        future = now.replace(day=1) + timedelta(days=32 * i)
+        future_month = f"{future.year}-{future.month:02d}"
+        total = sum(r.amount for r in active_recurring if r.period_type == "monthly" or (r.period_type == "annual" and i % 12 == 0))
+        forecast.append({"month": future_month, "projected": round(total, 2)})
+
+    status_rows = (
+        db.query(BillingRecord.status, func.count(BillingRecord.id), func.sum(BillingRecord.amount))
+        .group_by(BillingRecord.status)
+        .all()
+    )
+    status_distribution = [
+        {"status": s, "count": c, "total": round(v or 0, 2)}
+        for s, c, v in status_rows
+    ]
+
+    avg_ticket = db.query(func.avg(BillingRecord.amount)).filter(BillingRecord.status == "paid").scalar()
+
+    return {
+        "monthly_revenue": monthly_revenue,
+        "revenue_by_client": revenue_by_client,
+        "overdue_report": overdue_report,
+        "forecast": forecast,
+        "status_distribution": status_distribution,
+        "avg_ticket": round(avg_ticket, 2) if avg_ticket else 0,
+    }
+
+
+@admin_router.patch("/billing/batch/status")
+def batch_update_status(
+    payload: BillingBatchStatus,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Update status for multiple billing records at once."""
+    valid_statuses = {"pending", "paid", "overdue", "cancelled"}
+    if payload.status not in valid_statuses:
+        raise HTTPException(status_code=400, detail="Status inválido")
+
+    records = db.query(BillingRecord).filter(BillingRecord.id.in_(payload.ids)).all()
+    updated = 0
+    for record in records:
+        if record.status == payload.status:
+            continue
+        old_status = record.status
+        became_paid = payload.status == "paid" and old_status != "paid"
+        if became_paid and not record.paid_at:
+            record.paid_at = datetime.utcnow()
+        _record_status_change(db, record, payload.status, admin.id, payload.notes, old_status=old_status)
+        record.status = payload.status
+        if became_paid and record.is_recurring:
+            _spawn_next_period(db, record, admin.id)
+        updated += 1
+
+    db.commit()
+    return {"updated": updated}
+
+
+@admin_router.post("/billing/batch/generate")
+def batch_generate_recurring(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Generate next-period billing for all recurring records that are paid and don't have a pending successor."""
+    recurring_paid = (
+        db.query(BillingRecord)
+        .filter(
+            BillingRecord.is_recurring == True,
+            BillingRecord.status == "paid",
+        )
+        .all()
+    )
+
+    generated = 0
+    for record in recurring_paid:
+        months = record.recurrence_months or 1
+        next_ref = _next_period_ref(record.period_type, record.period_ref, months)
+
+        existing = db.query(BillingRecord).filter(
+            BillingRecord.client_name == record.client_name,
+            BillingRecord.period_ref == next_ref,
+            BillingRecord.status.in_(["pending", "paid"]),
+        ).first()
+
+        if not existing:
+            _spawn_next_period(db, record, admin.id)
+            generated += 1
+
+    db.commit()
+    return {"generated": generated}
+
+
+def _get_or_create_config(db: Session) -> BillingConfig:
+    config = db.query(BillingConfig).first()
+    if not config:
+        config = BillingConfig()
+        db.add(config)
+        db.commit()
+        db.refresh(config)
+    return config
+
+
+def _config_to_dict(c: BillingConfig) -> dict:
+    return {
+        "auto_generate_enabled": c.auto_generate_enabled,
+        "default_amount": c.default_amount,
+        "default_due_day": c.default_due_day,
+        "default_period_type": c.default_period_type,
+        "reminder_days_before": c.reminder_days_before,
+        "reminder_days_after": c.reminder_days_after,
+        "auto_overdue_enabled": c.auto_overdue_enabled,
+        "auto_overdue_days": c.auto_overdue_days,
+        "notes_template": c.notes_template,
+        "updated_at": c.updated_at.isoformat() if c.updated_at else None,
+    }
+
+
+@admin_router.get("/billing/config")
+def get_billing_config(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    config = _get_or_create_config(db)
+    return _config_to_dict(config)
+
+
+@admin_router.put("/billing/config")
+def update_billing_config(
+    payload: BillingConfigUpdate,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    config = _get_or_create_config(db)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(config, field, value)
+    config.updated_by = admin.id
+    config.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(config)
+    return _config_to_dict(config)
 
 
 @admin_router.get("/billing/{record_id}/history")

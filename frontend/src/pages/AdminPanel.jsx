@@ -6,10 +6,13 @@ import {
   DollarSign, Plus, Pencil, Trash2, Paperclip, Download, X,
   ChevronRight, AlertCircle, CheckCircle2, Clock, Ban, CreditCard,
   History, FileDown, RefreshCw, Power, PowerOff, StickyNote, Save,
-  Server, Cloud, Activity, BarChart2, LayoutGrid,
+  Server, Cloud, Activity, BarChart2, LayoutGrid, Settings, Zap,
+  TrendingUp, ChevronLeft, CheckSquare, Square,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import adminService from '../services/adminService';
+import BillingAnalytics from '../components/admin/BillingAnalytics';
+import BillingConfigModal from '../components/admin/BillingConfigModal';
 
 /* ── Shared constants ────────────────────────────────────────────────────── */
 
@@ -760,6 +763,10 @@ const BillingTab = ({ orgs }) => {
   const [historyRecord, setHistoryRecord] = useState(null);
   const [uploading, setUploading] = useState(null);
   const [exporting, setExporting] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [batchAction, setBatchAction] = useState('');
   const fileInputRef = useRef(null);
   const [pendingUploadId, setPendingUploadId] = useState(null);
 
@@ -774,29 +781,40 @@ const BillingTab = ({ orgs }) => {
     queryFn: () => adminService.listBilling({ status: statusFilter || undefined, search: search || undefined }),
   });
 
-  const invalidate = () => {
+  const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ['admin-billing'] });
     qc.invalidateQueries({ queryKey: ['admin-billing-summary'] });
+    qc.invalidateQueries({ queryKey: ['billing-analytics'] });
   };
 
   const createMut = useMutation({
     mutationFn: (d) => adminService.createBilling(d),
-    onSuccess: () => { invalidate(); setShowModal(false); },
+    onSuccess: () => { invalidateAll(); setShowModal(false); },
   });
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }) => adminService.updateBilling(id, data),
-    onSuccess: () => { invalidate(); setEditRecord(null); },
+    onSuccess: () => { invalidateAll(); setEditRecord(null); },
   });
 
   const deleteMut = useMutation({
     mutationFn: (id) => adminService.deleteBilling(id),
-    onSuccess: () => invalidate(),
+    onSuccess: () => invalidateAll(),
   });
 
   const statusMut = useMutation({
     mutationFn: ({ id, status }) => adminService.patchBillingStatus(id, status),
-    onSuccess: () => invalidate(),
+    onSuccess: () => invalidateAll(),
+  });
+
+  const batchStatusMut = useMutation({
+    mutationFn: ({ ids, status }) => adminService.batchUpdateStatus(ids, status),
+    onSuccess: () => { invalidateAll(); setSelectedIds(new Set()); setBatchAction(''); },
+  });
+
+  const batchGenerateMut = useMutation({
+    mutationFn: () => adminService.batchGenerateRecurring(),
+    onSuccess: (res) => { invalidateAll(); alert(`${res.generated} cobranças geradas com sucesso.`); },
   });
 
   const records = data?.records || [];
@@ -813,7 +831,7 @@ const BillingTab = ({ orgs }) => {
     setUploading(pendingUploadId);
     try {
       await adminService.uploadBillingAttachment(pendingUploadId, file);
-      invalidate();
+      invalidateAll();
     } finally {
       setUploading(null);
       e.target.value = '';
@@ -831,6 +849,35 @@ const BillingTab = ({ orgs }) => {
     } finally {
       setExporting(false);
     }
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === records.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(records.map((r) => r.id)));
+    }
+  };
+
+  const handleBatchAction = () => {
+    if (!batchAction || selectedIds.size === 0) return;
+    if (confirm(`Alterar ${selectedIds.size} cobranças para "${batchAction}"?`)) {
+      batchStatusMut.mutate({ ids: [...selectedIds], status: batchAction });
+    }
+  };
+
+  const daysUntilDue = (dueDate) => {
+    if (!dueDate) return null;
+    const diff = Math.ceil((new Date(dueDate) - new Date()) / 86400000);
+    return diff;
   };
 
   return (
@@ -867,6 +914,41 @@ const BillingTab = ({ orgs }) => {
         ))}
       </div>
 
+      {/* Analytics toggle */}
+      <div className="flex items-center justify-between">
+        <button
+          onClick={() => setShowAnalytics((v) => !v)}
+          className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
+            showAnalytics
+              ? 'border-indigo-400 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+              : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+          }`}
+        >
+          <TrendingUp size={13} />
+          {showAnalytics ? 'Ocultar Dashboard' : 'Dashboard Financeiro'}
+        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => batchGenerateMut.mutate()}
+            disabled={batchGenerateMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors disabled:opacity-50"
+            title="Gerar cobranças recorrentes pendentes"
+          >
+            {batchGenerateMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
+            Gerar Recorrências
+          </button>
+          <button
+            onClick={() => setShowConfig(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+          >
+            <Settings size={12} /> Configuração
+          </button>
+        </div>
+      </div>
+
+      {/* Analytics panel */}
+      {showAnalytics && <BillingAnalytics />}
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-40">
@@ -893,6 +975,40 @@ const BillingTab = ({ orgs }) => {
         </button>
       </div>
 
+      {/* Batch action bar */}
+      {selectedIds.size > 0 && (
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800/30 rounded-xl animate-fade-in">
+          <span className="text-sm font-medium text-indigo-700 dark:text-indigo-400">
+            {selectedIds.size} selecionada{selectedIds.size > 1 ? 's' : ''}
+          </span>
+          <select
+            value={batchAction}
+            onChange={(e) => setBatchAction(e.target.value)}
+            className="rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-800 px-2 py-1 text-xs text-gray-700 dark:text-gray-300 focus:outline-none"
+          >
+            <option value="">Ação em lote...</option>
+            <option value="paid">Marcar como Pago</option>
+            <option value="overdue">Marcar como Em Atraso</option>
+            <option value="pending">Marcar como Pendente</option>
+            <option value="cancelled">Cancelar</option>
+          </select>
+          <button
+            onClick={handleBatchAction}
+            disabled={!batchAction || batchStatusMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+          >
+            {batchStatusMut.isPending ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
+            Aplicar
+          </button>
+          <button
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors ml-auto"
+          >
+            Limpar seleção
+          </button>
+        </div>
+      )}
+
       {/* Records table */}
       {isLoading ? (
         <div className="flex justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>
@@ -906,6 +1022,13 @@ const BillingTab = ({ orgs }) => {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+                <th className="py-3 px-3 w-8">
+                  <button onClick={toggleSelectAll} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                    {selectedIds.size === records.length && records.length > 0
+                      ? <CheckSquare size={15} className="text-primary" />
+                      : <Square size={15} />}
+                  </button>
+                </th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Cliente</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Organização</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Valor</th>
@@ -919,17 +1042,30 @@ const BillingTab = ({ orgs }) => {
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
               {records.map((r) => {
                 const st = BILLING_STATUS[r.status] || BILLING_STATUS.pending;
+                const daysLeft = daysUntilDue(r.due_date);
+                const isSelected = selectedIds.has(r.id);
                 return (
-                  <tr key={r.id} className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                  <tr key={r.id} className={`transition-colors ${
+                    isSelected
+                      ? 'bg-indigo-50/50 dark:bg-indigo-900/10'
+                      : 'bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30'
+                  }`}>
+                    <td className="py-3 px-3">
+                      <button onClick={() => toggleSelect(r.id)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                        {isSelected
+                          ? <CheckSquare size={15} className="text-primary" />
+                          : <Square size={15} />}
+                      </button>
+                    </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-900 dark:text-gray-100">{r.client_name}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {r.is_recurring && (
-                          <span className="inline-flex items-center gap-0.5 text-xs text-indigo-600 dark:text-primary-light">
-                            <RefreshCw size={9} /> {RECURRENCE_LABEL[r.recurrence_months] || 'Recorrente'}
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                            <RefreshCw size={8} /> {RECURRENCE_LABEL[r.recurrence_months] || 'Recorrente'}
                           </span>
                         )}
-                        {r.notes && <p className="text-xs text-gray-400 truncate max-w-[140px]" title={r.notes}>{r.notes}</p>}
+                        {r.notes && <p className="text-xs text-gray-400 truncate max-w-[120px]" title={r.notes}>{r.notes}</p>}
                       </div>
                     </td>
                     <td className="py-3 px-4">
@@ -945,12 +1081,17 @@ const BillingTab = ({ orgs }) => {
                       <span>{r.period_type === 'monthly' ? 'Mensal' : 'Anual'}</span>
                       <span className="ml-1 font-mono text-gray-500">· {r.period_ref}</span>
                     </td>
-                    <td className="py-3 px-4 text-gray-500 text-xs whitespace-nowrap">
-                      {fmtDate(r.due_date)}
-                      {r.paid_at && <p className="text-green-600 dark:text-green-400">Pago: {fmtDate(r.paid_at)}</p>}
+                    <td className="py-3 px-4 text-xs whitespace-nowrap">
+                      <p className="text-gray-500">{fmtDate(r.due_date)}</p>
+                      {r.paid_at ? (
+                        <p className="text-green-600 dark:text-green-400">Pago: {fmtDate(r.paid_at)}</p>
+                      ) : r.status === 'overdue' && daysLeft !== null ? (
+                        <p className="text-red-500 font-semibold">{Math.abs(daysLeft)}d atrasado</p>
+                      ) : r.status === 'pending' && daysLeft !== null && daysLeft <= 3 && daysLeft >= 0 ? (
+                        <p className="text-amber-500">Vence em {daysLeft}d</p>
+                      ) : null}
                     </td>
                     <td className="py-3 px-4">
-                      {/* Inline status change */}
                       <select
                         value={r.status}
                         onChange={(e) => statusMut.mutate({ id: r.id, status: e.target.value })}
@@ -1026,6 +1167,7 @@ const BillingTab = ({ orgs }) => {
           onClose={() => setHistoryRecord(null)}
         />
       )}
+      {showConfig && <BillingConfigModal onClose={() => setShowConfig(false)} />}
     </div>
   );
 };

@@ -52,6 +52,22 @@ const adminService = {
   patchBillingStatus: (id, status, notes) =>
     api.patch(`/admin/billing/${id}/status`, { status, notes }).then((r) => r.data),
 
+  // Billing — analytics
+  getBillingAnalytics: () =>
+    api.get('/admin/billing/analytics').then((r) => r.data),
+
+  // Billing — batch operations
+  batchUpdateStatus: (ids, status, notes) =>
+    api.patch('/admin/billing/batch/status', { ids, status, notes }).then((r) => r.data),
+  batchGenerateRecurring: () =>
+    api.post('/admin/billing/batch/generate').then((r) => r.data),
+
+  // Billing — config
+  getBillingConfig: () =>
+    api.get('/admin/billing/config').then((r) => r.data),
+  updateBillingConfig: (data) =>
+    api.put('/admin/billing/config', data).then((r) => r.data),
+
   // Billing — CSV export (downloads file via blob)
   exportBillingCsv: async (params = {}) => {
     const response = await api.get('/admin/billing/export', {

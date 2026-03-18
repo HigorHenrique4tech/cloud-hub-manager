@@ -598,6 +598,26 @@ class BillingStatusHistory(Base):
     changed_by = relationship("User", foreign_keys=[changed_by_id])
 
 
+# ── Billing Config (singleton) ────────────────────────────────────────────────
+
+
+class BillingConfig(Base):
+    __tablename__ = "billing_config"
+
+    id                    = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    auto_generate_enabled = Column(Boolean, nullable=False, default=False)
+    default_amount        = Column(Float, nullable=True)
+    default_due_day       = Column(Integer, nullable=False, default=10)
+    default_period_type   = Column(String(10), nullable=False, default="monthly")
+    reminder_days_before  = Column(Integer, nullable=False, default=3)
+    reminder_days_after   = Column(Integer, nullable=False, default=1)
+    auto_overdue_enabled  = Column(Boolean, nullable=False, default=True)
+    auto_overdue_days     = Column(Integer, nullable=False, default=1)
+    notes_template        = Column(Text, nullable=True)
+    updated_at            = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_by            = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
 # ── Notification Channels ─────────────────────────────────────────────────────
 
 
