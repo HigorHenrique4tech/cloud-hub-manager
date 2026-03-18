@@ -577,9 +577,8 @@ class BillingRecord(Base):
     is_recurring      = Column(Boolean, nullable=False, default=False)
     recurrence_months = Column(Integer, nullable=True)  # 1 | 3 | 6 | 12
 
-    payment_id        = Column(String(255), nullable=True)   # AbacatePay PIX QR Code ID
-    pix_br_code       = Column(Text, nullable=True)          # PIX copia-e-cola code
-    pix_qr_base64     = Column(Text, nullable=True)          # QR Code image as base64
+    payment_id        = Column(String(255), nullable=True)   # AbacatePay billing ID
+    payment_url       = Column(String(512), nullable=True)   # AbacatePay checkout URL
 
     org            = relationship("Organization", foreign_keys=[org_id])
     creator        = relationship("User", foreign_keys=[created_by])
