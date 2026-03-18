@@ -52,6 +52,14 @@ const adminService = {
   patchBillingStatus: (id, status, notes) =>
     api.patch(`/admin/billing/${id}/status`, { status, notes }).then((r) => r.data),
 
+  // Billing — email
+  sendInvoiceEmail: (id) =>
+    api.post(`/admin/billing/send-invoice/${id}`).then((r) => r.data),
+  sendReminders: () =>
+    api.post('/admin/billing/send-reminder').then((r) => r.data),
+  sendStatusEmail: (id) =>
+    api.post(`/admin/billing/send-status-email/${id}`).then((r) => r.data),
+
   // Billing — analytics
   getBillingAnalytics: () =>
     api.get('/admin/billing/analytics').then((r) => r.data),

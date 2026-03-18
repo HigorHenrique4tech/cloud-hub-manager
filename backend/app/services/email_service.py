@@ -465,3 +465,212 @@ def send_gdap_invite_email(
     </div>
     """
     return _send_email(to_email, f"[{org_name}] Convite de Administração Delegada M365 — {relationship_name}", html_body)
+
+
+# ── Billing email templates ─────────────────────────────────────────────────
+
+
+def _billing_base(title_icon: str, title: str, accent: str, body_content: str) -> str:
+    """Shared billing email wrapper with professional dark header."""
+    return f"""
+    <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;border-radius:12px;overflow:hidden;">
+      <div style="background:linear-gradient(135deg,{accent},#1e293b);padding:28px 32px;">
+        <h1 style="color:#ffffff;font-size:20px;margin:0;">{title_icon} {title}</h1>
+        <p style="color:rgba(255,255,255,0.7);font-size:13px;margin:6px 0 0;">CloudAtlas — Gestão Multi-Cloud</p>
+      </div>
+      <div style="padding:32px;">
+        {body_content}
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:28px 0 16px;" />
+        <p style="color:#94a3b8;font-size:11px;text-align:center;margin:0;">
+          Este email foi enviado automaticamente pelo CloudAtlas.<br>
+          Em caso de dúvidas, entre em contato com nosso suporte.
+        </p>
+      </div>
+    </div>
+    """
+
+
+def _fmt_brl(v: float) -> str:
+    """Format as BRL currency string."""
+    return f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def send_billing_invoice_email(
+    to_email: str,
+    client_name: str,
+    amount: float,
+    period_type: str,
+    period_ref: str,
+    due_date: str | None,
+    notes: str | None = None,
+) -> bool:
+    """Send an invoice/billing notification email."""
+    period_label = "Mensal" if period_type == "monthly" else "Anual"
+    due_str = due_date if due_date else "Não definido"
+
+    notes_html = ""
+    if notes:
+        notes_html = f"""
+        <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin-top:20px;">
+          <p style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;">Observações</p>
+          <p style="color:#334155;font-size:14px;margin:0;white-space:pre-wrap;">{notes}</p>
+        </div>
+        """
+
+    body = f"""
+        <p style="color:#334155;font-size:15px;margin:0 0 24px;">
+          Olá <strong>{client_name}</strong>,
+        </p>
+        <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+          Segue abaixo os detalhes da sua cobrança:
+        </p>
+
+        <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:14px 20px;color:#64748b;font-size:13px;">Valor</td>
+              <td style="padding:14px 20px;text-align:right;color:#0f172a;font-size:18px;font-weight:700;">{_fmt_brl(amount)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:14px 20px;color:#64748b;font-size:13px;">Período</td>
+              <td style="padding:14px 20px;text-align:right;color:#334155;font-size:14px;font-weight:500;">{period_label} — {period_ref}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:14px 20px;color:#64748b;font-size:13px;">Vencimento</td>
+              <td style="padding:14px 20px;text-align:right;color:#334155;font-size:14px;font-weight:500;">{due_str}</td>
+            </tr>
+            <tr>
+              <td style="padding:14px 20px;color:#64748b;font-size:13px;">Status</td>
+              <td style="padding:14px 20px;text-align:right;">
+                <span style="display:inline-block;background:#fef3c7;color:#92400e;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px;">Pendente</span>
+              </td>
+            </tr>
+          </table>
+        </div>
+
+        {notes_html}
+
+        <div style="text-align:center;margin-top:28px;">
+          <a href="{settings.FRONTEND_URL}"
+             style="display:inline-block;background:#3b82f6;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:600;font-size:14px;">
+            Acessar Plataforma
+          </a>
+        </div>
+    """
+
+    html = _billing_base("💰", "Nova Cobrança", "#3b82f6", body)
+    return _send_email(to_email, f"[CloudAtlas] Cobrança {period_label} — {period_ref} — {_fmt_brl(amount)}", html)
+
+
+def send_billing_reminder_email(
+    to_email: str,
+    client_name: str,
+    amount: float,
+    period_ref: str,
+    due_date: str | None,
+    days_info: str = "",
+    is_overdue: bool = False,
+) -> bool:
+    """Send a payment reminder (before due date or after overdue)."""
+    accent = "#ef4444" if is_overdue else "#f59e0b"
+    title = "Cobrança em Atraso" if is_overdue else "Lembrete de Vencimento"
+    icon = "⚠️" if is_overdue else "🔔"
+    due_str = due_date if due_date else "—"
+
+    if is_overdue:
+        message = f"Identificamos que a cobrança abaixo está <strong style='color:#ef4444;'>em atraso</strong>. Por favor, regularize o pagamento o mais breve possível."
+    else:
+        message = f"Este é um lembrete de que a cobrança abaixo <strong style='color:#f59e0b;'>vence em breve</strong>."
+
+    body = f"""
+        <p style="color:#334155;font-size:15px;margin:0 0 20px;">
+          Olá <strong>{client_name}</strong>,
+        </p>
+        <p style="color:#475569;font-size:14px;line-height:1.6;margin:0 0 24px;">
+          {message}
+        </p>
+
+        <div style="background:#ffffff;border:2px solid {accent};border-radius:12px;padding:24px;text-align:center;">
+          <p style="color:#64748b;font-size:13px;margin:0 0 8px;">Valor</p>
+          <p style="color:#0f172a;font-size:28px;font-weight:800;margin:0 0 16px;">{_fmt_brl(amount)}</p>
+          <div style="display:inline-block;background:{'#fef2f2' if is_overdue else '#fffbeb'};padding:8px 16px;border-radius:8px;">
+            <span style="color:{accent};font-size:13px;font-weight:600;">
+              Vencimento: {due_str} {f'— {days_info}' if days_info else ''}
+            </span>
+          </div>
+          <p style="color:#94a3b8;font-size:12px;margin:12px 0 0;">Referência: {period_ref}</p>
+        </div>
+
+        <div style="text-align:center;margin-top:28px;">
+          <a href="{settings.FRONTEND_URL}"
+             style="display:inline-block;background:{accent};color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:600;font-size:14px;">
+            {'Regularizar Pagamento' if is_overdue else 'Acessar Plataforma'}
+          </a>
+        </div>
+    """
+
+    html = _billing_base(icon, title, accent, body)
+    subject_prefix = "ATRASO" if is_overdue else "LEMBRETE"
+    return _send_email(to_email, f"[CloudAtlas] {subject_prefix} — Cobrança {period_ref} — {_fmt_brl(amount)}", html)
+
+
+def send_billing_status_email(
+    to_email: str,
+    client_name: str,
+    amount: float,
+    period_ref: str,
+    new_status: str,
+    paid_at: str | None = None,
+) -> bool:
+    """Send a status change notification (payment confirmed, cancelled, etc)."""
+    status_config = {
+        "paid":      {"label": "Pagamento Confirmado", "icon": "✅", "accent": "#22c55e", "bg": "#f0fdf4", "text_color": "#166534"},
+        "cancelled": {"label": "Cobrança Cancelada",   "icon": "❌", "accent": "#6b7280", "bg": "#f9fafb", "text_color": "#374151"},
+        "overdue":   {"label": "Cobrança em Atraso",   "icon": "⚠️", "accent": "#ef4444", "bg": "#fef2f2", "text_color": "#991b1b"},
+        "pending":   {"label": "Cobrança Reaberta",    "icon": "🔄", "accent": "#3b82f6", "bg": "#eff6ff", "text_color": "#1e40af"},
+    }
+    cfg = status_config.get(new_status, status_config["pending"])
+
+    extra_info = ""
+    if new_status == "paid" and paid_at:
+        extra_info = f"""
+        <tr>
+          <td style="padding:12px 20px;color:#64748b;font-size:13px;">Pago em</td>
+          <td style="padding:12px 20px;text-align:right;color:#334155;font-size:14px;">{paid_at}</td>
+        </tr>
+        """
+
+    body = f"""
+        <p style="color:#334155;font-size:15px;margin:0 0 24px;">
+          Olá <strong>{client_name}</strong>,
+        </p>
+
+        <div style="background:{cfg['bg']};border-radius:12px;padding:24px;text-align:center;margin-bottom:24px;">
+          <p style="font-size:40px;margin:0 0 8px;">{cfg['icon']}</p>
+          <p style="color:{cfg['text_color']};font-size:18px;font-weight:700;margin:0;">{cfg['label']}</p>
+        </div>
+
+        <div style="background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:12px 20px;color:#64748b;font-size:13px;">Valor</td>
+              <td style="padding:12px 20px;text-align:right;color:#0f172a;font-size:16px;font-weight:700;">{_fmt_brl(amount)}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #f1f5f9;">
+              <td style="padding:12px 20px;color:#64748b;font-size:13px;">Referência</td>
+              <td style="padding:12px 20px;text-align:right;color:#334155;font-size:14px;">{period_ref}</td>
+            </tr>
+            {extra_info}
+          </table>
+        </div>
+
+        <div style="text-align:center;margin-top:28px;">
+          <a href="{settings.FRONTEND_URL}"
+             style="display:inline-block;background:{cfg['accent']};color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:8px;font-weight:600;font-size:14px;">
+            Acessar Plataforma
+          </a>
+        </div>
+    """
+
+    html = _billing_base(cfg["icon"], cfg["label"], cfg["accent"], body)
+    return _send_email(to_email, f"[CloudAtlas] {cfg['label']} — {period_ref} — {_fmt_brl(amount)}", html)

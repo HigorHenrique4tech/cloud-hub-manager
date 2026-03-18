@@ -7,7 +7,7 @@ import {
   ChevronRight, AlertCircle, CheckCircle2, Clock, Ban, CreditCard,
   History, FileDown, RefreshCw, Power, PowerOff, StickyNote, Save,
   Server, Cloud, Activity, BarChart2, LayoutGrid, Settings, Zap,
-  TrendingUp, ChevronLeft, CheckSquare, Square,
+  TrendingUp, ChevronLeft, CheckSquare, Square, Bell,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import adminService from '../services/adminService';
@@ -512,6 +512,7 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
   const isEdit = !!existing;
   const [form, setForm] = useState({
     client_name:       existing?.client_name       || '',
+    client_email:      existing?.client_email      || '',
     org_id:            existing?.org_id            || '',
     amount:            existing?.amount            || '',
     period_type:       existing?.period_type       || 'monthly',
@@ -531,6 +532,7 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
     onSave({
       ...form,
       amount: parseFloat(form.amount),
+      client_email: form.client_email || null,
       org_id: form.org_id || null,
       due_date: form.due_date || null,
       paid_at: form.paid_at || null,
@@ -564,6 +566,16 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
             <input value={form.client_name} onChange={(e) => set('client_name', e.target.value)} required
               placeholder="Ex: Cliente X" className={inputCls} />
             <p className="mt-1 text-xs text-gray-400">Nome da empresa/pessoa que realiza o pagamento</p>
+          </div>
+
+          {/* Client email */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Email do Cliente <Mail className="inline w-3.5 h-3.5 text-gray-400 ml-1" />
+            </label>
+            <input type="email" value={form.client_email} onChange={(e) => set('client_email', e.target.value)}
+              placeholder="cliente@empresa.com" className={inputCls} />
+            <p className="mt-1 text-xs text-gray-400">Para envio de cobranças. Se vazio, usa o email do owner da organização vinculada.</p>
           </div>
 
           {/* Organization */}
@@ -817,6 +829,26 @@ const BillingTab = ({ orgs }) => {
     onSuccess: (res) => { invalidateAll(); alert(`${res.generated} cobranças geradas com sucesso.`); },
   });
 
+  const sendInvoiceMut = useMutation({
+    mutationFn: (id) => adminService.sendInvoiceEmail(id),
+    onSuccess: (res) => { invalidateAll(); alert(`Cobrança enviada para ${res.sent_to}`); },
+    onError: (err) => alert(err.response?.data?.detail || 'Erro ao enviar email'),
+  });
+
+  const sendRemindersMut = useMutation({
+    mutationFn: () => adminService.sendReminders(),
+    onSuccess: (res) => {
+      invalidateAll();
+      alert(`${res.sent} lembretes enviados. ${res.auto_overdue_marked} marcados como atrasado.`);
+    },
+  });
+
+  const sendStatusMut = useMutation({
+    mutationFn: (id) => adminService.sendStatusEmail(id),
+    onSuccess: (res) => alert(`Notificação enviada para ${res.sent_to}`),
+    onError: (err) => alert(err.response?.data?.detail || 'Erro ao enviar email'),
+  });
+
   const records = data?.records || [];
   const s = summaryData;
 
@@ -928,6 +960,15 @@ const BillingTab = ({ orgs }) => {
           {showAnalytics ? 'Ocultar Dashboard' : 'Dashboard Financeiro'}
         </button>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => sendRemindersMut.mutate()}
+            disabled={sendRemindersMut.isPending}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-300 dark:hover:border-amber-700 transition-colors disabled:opacity-50"
+            title="Envia lembretes para cobranças próximas do vencimento e em atraso"
+          >
+            {sendRemindersMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Bell size={12} />}
+            Enviar Lembretes
+          </button>
           <button
             onClick={() => batchGenerateMut.mutate()}
             disabled={batchGenerateMut.isPending}
@@ -1059,6 +1100,11 @@ const BillingTab = ({ orgs }) => {
                     </td>
                     <td className="py-3 px-4">
                       <p className="font-medium text-gray-900 dark:text-gray-100">{r.client_name}</p>
+                      {r.client_email && (
+                        <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5" title={r.client_email}>
+                          <Mail size={9} /> {r.client_email}
+                        </p>
+                      )}
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {r.is_recurring && (
                           <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
@@ -1128,6 +1174,22 @@ const BillingTab = ({ orgs }) => {
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-0.5">
+                        <button
+                          onClick={() => sendInvoiceMut.mutate(r.id)}
+                          disabled={sendInvoiceMut.isPending}
+                          title={r.client_email ? `Enviar cobrança para ${r.client_email}` : 'Enviar cobrança por email'}
+                          className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-colors disabled:opacity-50">
+                          {sendInvoiceMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Mail size={13} />}
+                        </button>
+                        {r.status !== 'pending' && (
+                          <button
+                            onClick={() => sendStatusMut.mutate(r.id)}
+                            disabled={sendStatusMut.isPending}
+                            title="Notificar status por email"
+                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors disabled:opacity-50">
+                            {sendStatusMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <Bell size={13} />}
+                          </button>
+                        )}
                         <button onClick={() => setHistoryRecord(r)} title="Histórico"
                           className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                           <History size={13} />

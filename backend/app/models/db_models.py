@@ -560,6 +560,7 @@ class BillingRecord(Base):
     id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id              = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     client_name         = Column(String(255), nullable=False)           # e.g. "Advanced Informática LTDA"
+    client_email        = Column(String(255), nullable=True)            # for invoice emails; fallback to org owner
     amount              = Column(Float, nullable=False)                 # in BRL or configured currency
     period_type         = Column(String(10), nullable=False, default="monthly")  # monthly | annual
     period_ref          = Column(String(20), nullable=False)            # e.g. "2026-03" or "2026"

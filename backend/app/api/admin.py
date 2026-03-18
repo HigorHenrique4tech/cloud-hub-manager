@@ -16,6 +16,7 @@ from app.database import get_db
 from app.models.db_models import User, Organization, OrganizationMember, EnterpriseLead, BillingRecord, BillingStatusHistory, BillingConfig, ActivityLog, Workspace, CloudAccount
 from app.core.dependencies import get_current_user, get_current_admin
 from app.services.log_service import log_activity
+from app.services.email_service import send_billing_invoice_email, send_billing_reminder_email, send_billing_status_email
 
 BILLING_UPLOADS_DIR = Path(os.getenv("BILLING_UPLOADS_DIR", "/app/uploads/billing"))
 
@@ -385,6 +386,7 @@ def update_org_notes(
 
 class BillingCreate(BaseModel):
     client_name: str
+    client_email: Optional[str] = None
     org_id: Optional[str] = None
     amount: float
     period_type: str = "monthly"        # monthly | annual
@@ -398,6 +400,7 @@ class BillingCreate(BaseModel):
 
 class BillingUpdate(BaseModel):
     client_name: Optional[str] = None
+    client_email: Optional[str] = None
     org_id: Optional[str] = None
     amount: Optional[float] = None
     period_type: Optional[str] = None
@@ -437,6 +440,7 @@ def _billing_to_dict(r: BillingRecord) -> dict:
     return {
         "id": str(r.id),
         "client_name": r.client_name,
+        "client_email": r.client_email,
         "org_id": str(r.org_id) if r.org_id else None,
         "org_name": r.org.name if r.org else None,
         "org_slug": r.org.slug if r.org else None,
@@ -509,6 +513,7 @@ def _spawn_next_period(db: Session, record: BillingRecord, actor_id=None) -> Non
     new_record = BillingRecord(
         org_id=record.org_id,
         client_name=record.client_name,
+        client_email=record.client_email,
         amount=record.amount,
         period_type=record.period_type,
         period_ref=next_ref,
@@ -572,6 +577,7 @@ def create_billing(
 
     record = BillingRecord(
         client_name=payload.client_name,
+        client_email=payload.client_email,
         org_id=org_uuid,
         amount=payload.amount,
         period_type=payload.period_type,
@@ -609,6 +615,8 @@ def update_billing(
 
     if payload.client_name is not None:
         record.client_name = payload.client_name
+    if payload.client_email is not None:
+        record.client_email = payload.client_email if payload.client_email else None
     if payload.org_id is not None:
         if payload.org_id == "":
             record.org_id = None
@@ -968,6 +976,183 @@ def update_billing_config(
     db.commit()
     db.refresh(config)
     return _config_to_dict(config)
+
+
+def _resolve_billing_email(record: BillingRecord, db: Session) -> str | None:
+    """Resolve email: client_email first, then org owner email as fallback."""
+    if record.client_email:
+        return record.client_email
+    if record.org_id:
+        owner_member = (
+            db.query(OrganizationMember)
+            .filter(OrganizationMember.organization_id == record.org_id, OrganizationMember.role == "owner")
+            .first()
+        )
+        if owner_member:
+            user = db.query(User).filter(User.id == owner_member.user_id).first()
+            if user:
+                return user.email
+    return None
+
+
+@admin_router.post("/billing/send-invoice/{record_id}")
+def send_invoice_email(
+    record_id: str,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Send invoice email for a billing record."""
+    record = db.query(BillingRecord).options(joinedload(BillingRecord.org)).filter(BillingRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro não encontrado")
+
+    to_email = _resolve_billing_email(record, db)
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Nenhum email disponível. Adicione um email ao cliente ou vincule a uma organização.")
+
+    due_str = record.due_date.strftime("%d/%m/%Y") if record.due_date else None
+    success = send_billing_invoice_email(
+        to_email=to_email,
+        client_name=record.client_name,
+        amount=record.amount,
+        period_type=record.period_type,
+        period_ref=record.period_ref,
+        due_date=due_str,
+        notes=record.notes,
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Falha ao enviar email")
+
+    _record_status_change(db, record, record.status, admin.id, f"Cobrança enviada por email para {to_email}", old_status=record.status)
+    db.commit()
+
+    return {"sent_to": to_email, "success": True}
+
+
+@admin_router.post("/billing/send-reminder")
+def send_reminders(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Send reminder emails based on billing config (before due / after overdue)."""
+    config = _get_or_create_config(db)
+    now = datetime.utcnow()
+    sent = 0
+    errors = 0
+
+    # Records approaching due date
+    if config.reminder_days_before > 0:
+        reminder_cutoff = now + timedelta(days=config.reminder_days_before)
+        upcoming = (
+            db.query(BillingRecord)
+            .filter(
+                BillingRecord.status == "pending",
+                BillingRecord.due_date != None,
+                BillingRecord.due_date <= reminder_cutoff,
+                BillingRecord.due_date >= now,
+            )
+            .all()
+        )
+        for record in upcoming:
+            to_email = _resolve_billing_email(record, db)
+            if not to_email:
+                continue
+            days_left = (record.due_date - now).days
+            due_str = record.due_date.strftime("%d/%m/%Y")
+            ok = send_billing_reminder_email(
+                to_email=to_email,
+                client_name=record.client_name,
+                amount=record.amount,
+                period_ref=record.period_ref,
+                due_date=due_str,
+                days_info=f"vence em {days_left} dia{'s' if days_left != 1 else ''}",
+                is_overdue=False,
+            )
+            if ok:
+                sent += 1
+            else:
+                errors += 1
+
+    # Overdue records
+    if config.reminder_days_after > 0:
+        overdue_records = (
+            db.query(BillingRecord)
+            .filter(BillingRecord.status == "overdue")
+            .all()
+        )
+        for record in overdue_records:
+            to_email = _resolve_billing_email(record, db)
+            if not to_email:
+                continue
+            days_late = (now - record.due_date).days if record.due_date else 0
+            due_str = record.due_date.strftime("%d/%m/%Y") if record.due_date else "—"
+            ok = send_billing_reminder_email(
+                to_email=to_email,
+                client_name=record.client_name,
+                amount=record.amount,
+                period_ref=record.period_ref,
+                due_date=due_str,
+                days_info=f"{days_late} dia{'s' if days_late != 1 else ''} em atraso",
+                is_overdue=True,
+            )
+            if ok:
+                sent += 1
+            else:
+                errors += 1
+
+    # Auto-mark overdue if enabled
+    auto_overdue_count = 0
+    if config.auto_overdue_enabled:
+        overdue_cutoff = now - timedelta(days=config.auto_overdue_days)
+        to_overdue = (
+            db.query(BillingRecord)
+            .filter(
+                BillingRecord.status == "pending",
+                BillingRecord.due_date != None,
+                BillingRecord.due_date <= overdue_cutoff,
+            )
+            .all()
+        )
+        auto_overdue_count = len(to_overdue)
+        for record in to_overdue:
+            _record_status_change(db, record, "overdue", admin.id, "Marcado como atrasado automaticamente", old_status="pending")
+            record.status = "overdue"
+        if to_overdue:
+            db.commit()
+
+    return {"sent": sent, "errors": errors, "auto_overdue_marked": auto_overdue_count}
+
+
+@admin_router.post("/billing/send-status-email/{record_id}")
+def send_status_email(
+    record_id: str,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Send a status notification email for a billing record."""
+    record = db.query(BillingRecord).options(joinedload(BillingRecord.org)).filter(BillingRecord.id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="Registro não encontrado")
+
+    to_email = _resolve_billing_email(record, db)
+    if not to_email:
+        raise HTTPException(status_code=400, detail="Nenhum email disponível.")
+
+    paid_str = record.paid_at.strftime("%d/%m/%Y") if record.paid_at else None
+    success = send_billing_status_email(
+        to_email=to_email,
+        client_name=record.client_name,
+        amount=record.amount,
+        period_ref=record.period_ref,
+        new_status=record.status,
+        paid_at=paid_str,
+    )
+
+    if not success:
+        raise HTTPException(status_code=500, detail="Falha ao enviar email")
+
+    return {"sent_to": to_email, "success": True}
 
 
 @admin_router.get("/billing/{record_id}/history")
