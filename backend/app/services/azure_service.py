@@ -7,7 +7,7 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.web import WebSiteManagementClient
 from azure.mgmt.sql import SqlManagementClient
 from azure.mgmt.costmanagement import CostManagementClient
-from azure.mgmt.costmanagement.models import QueryDefinition, QueryTimePeriod, QueryDataset, QueryAggregation, QueryGrouping
+from azure.mgmt.costmanagement.models import QueryDefinition, QueryTimePeriod, QueryDataset, QueryAggregation, QueryGrouping, QueryFilter, QueryComparisonExpression
 from azure.mgmt.monitor import MonitorManagementClient
 from typing import Dict, List
 from datetime import datetime, timedelta, timezone
@@ -702,6 +702,68 @@ class AzureService:
             }
         except Exception as e:
             logger.error(f"Azure cost error: {e}", exc_info=True)
+            return {'success': False, 'error': str(e)}
+
+    def get_cost_by_resource(self, service_name: str, start_date: str, end_date: str) -> Dict:
+        """Get cost breakdown by resource for a specific Azure service."""
+        try:
+            cost_client = CostManagementClient(self.credential)
+            scope = f"/subscriptions/{self.subscription_id}"
+            dt_start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            dt_end = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            query = QueryDefinition(
+                type="Usage",
+                timeframe="Custom",
+                time_period=QueryTimePeriod(from_property=dt_start, to=dt_end),
+                dataset=QueryDataset(
+                    granularity="Daily",
+                    aggregation={"totalCost": QueryAggregation(name="PreTaxCost", function="Sum")},
+                    grouping=[QueryGrouping(type="Dimension", name="ResourceId")],
+                    filter=QueryFilter(
+                        dimensions=QueryComparisonExpression(name="ServiceName", operator="In", values=[service_name]),
+                    ),
+                ),
+            )
+            result = cost_client.query.usage(scope=scope, parameters=query)
+            rows = result.rows or []
+            columns = [col.name for col in (result.columns or [])]
+            cost_candidates = ['PreTaxCost', 'Cost', 'CostUSD', 'BillingCurrencyTotalCost']
+            cost_idx = next((columns.index(c) for c in cost_candidates if c in columns), 0)
+            date_idx = next((columns.index(c) for c in ['UsageDate', 'BillingMonth', 'Date'] if c in columns), None)
+            res_idx = columns.index('ResourceId') if 'ResourceId' in columns else None
+
+            total = 0.0
+            resource_map: Dict[str, float] = {}
+            daily_map: Dict[str, float] = {}
+            for row in rows:
+                amount = float(row[cost_idx]) if cost_idx < len(row) else 0.0
+                total += amount
+                res_id = str(row[res_idx]) if res_idx is not None and res_idx < len(row) else 'Other'
+                resource_map[res_id] = resource_map.get(res_id, 0.0) + amount
+                if date_idx is not None and date_idx < len(row):
+                    raw_date = str(int(row[date_idx])) if isinstance(row[date_idx], float) else str(row[date_idx])
+                    if len(raw_date) == 8:
+                        date_str = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+                    elif len(raw_date) == 6:
+                        date_str = f"{raw_date[:4]}-{raw_date[4:6]}-01"
+                    else:
+                        date_str = raw_date[:10]
+                    daily_map[date_str] = daily_map.get(date_str, 0.0) + amount
+
+            resources = sorted(
+                [{'id': k, 'name': k.split('/')[-1] if '/' in k else k, 'amount': round(v, 4)} for k, v in resource_map.items()],
+                key=lambda x: x['amount'], reverse=True,
+            )
+            daily = [{'date': k, 'total': round(v, 4)} for k, v in sorted(daily_map.items())]
+            return {
+                'success': True,
+                'service': service_name,
+                'total': round(total, 4),
+                'resources': resources,
+                'daily': daily,
+            }
+        except Exception as e:
+            logger.error(f"Azure cost by resource error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
     # ── Detail operations ─────────────────────────────────────────────────────

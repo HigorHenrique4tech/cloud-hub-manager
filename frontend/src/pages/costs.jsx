@@ -9,6 +9,7 @@ import CostCharts from '../components/costs/CostCharts';
 import CostTable from '../components/costs/CostTable';
 import CostExport from '../components/costs/CostExport';
 import CostHeatmap from '../components/costs/CostHeatmap';
+import ServiceDrilldownDrawer from '../components/costs/ServiceDrilldownDrawer';
 import { useCosts } from '../hooks/useCosts';
 
 const today = new Date();
@@ -39,6 +40,7 @@ const Costs = () => {
   const [showModal, setShowModal]           = useState(false);
   const [showReport, setShowReport]         = useState(false);
   const [showComparison, setShowComparison] = useState(false);
+  const [drilldownService, setDrilldownService] = useState(null);
 
   // ── Date range ─────────────────────────────────────────────────────────────
   const { days } = PERIODS[periodIdx];
@@ -259,6 +261,7 @@ const Costs = () => {
           hasAws={hasAws} hasAzure={hasAzure} hasGcp={hasGcp}
           providerFilter={providerFilter}
           anomalies={anomalies}
+          onServiceClick={setDrilldownService}
         />
       ) : !isLoading && hasAny && (
         <div className="card mb-6 flex flex-col items-center justify-center py-16 text-center animate-fade-in">
@@ -282,6 +285,17 @@ const Costs = () => {
           onAddAlert={() => setShowModal(true)}
           onDeleteAlert={(id) => deleteAlert.mutate(id)}
           onMarkEventRead={(id) => markEventRead.mutate(id)}
+        />
+      )}
+
+      {/* Service Drill-down Drawer */}
+      {drilldownService && (
+        <ServiceDrilldownDrawer
+          service={drilldownService}
+          startDate={startDate}
+          endDate={endDate}
+          totalCost={data?.total || 0}
+          onClose={() => setDrilldownService(null)}
         />
       )}
     </Layout>

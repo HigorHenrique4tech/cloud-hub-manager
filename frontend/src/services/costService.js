@@ -107,6 +107,22 @@ export const costService = {
   },
 
   /**
+   * Drill-down: get cost breakdown by resource for a specific service.
+   * @param {'aws'|'azure'|'gcp'} provider  The cloud provider
+   * @param {string} service  The service name (without provider prefix, e.g. "Amazon EC2")
+   * @param {string} startDate  YYYY-MM-DD
+   * @param {string} endDate    YYYY-MM-DD
+   * @returns {{ success, service, total, resources: [{id,name,amount,type?,region?}], daily: [{date,total}] }}
+   */
+  getServiceResources: async (provider, service, startDate, endDate) => {
+    const endpoints = { aws: '/aws/costs/resources', azure: '/azure/costs/resources', gcp: '/gcp/costs/resources' };
+    const endpoint = wsUrl(endpoints[provider]);
+    const params = { service, start_date: startDate, end_date: endDate };
+    const response = await api.get(endpoint, { params });
+    return response.data;
+  },
+
+  /**
    * Fetch combined costs for a specific workspace (explicit org + workspace IDs).
    * Used for cross-workspace cost comparison in the org settings page.
    */

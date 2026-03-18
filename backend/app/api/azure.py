@@ -673,6 +673,23 @@ async def ws_get_azure_costs(
     return result
 
 
+# ── Cost Drill-down ──────────────────────────────────────────────────────────
+
+@ws_router.get("/costs/resources")
+async def ws_get_azure_cost_resources(
+    service: str = Query(..., description="Azure service name (e.g. 'Virtual Machines')"),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    member: MemberContext = Depends(require_permission("costs.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.get_cost_by_resource, service, start_date, end_date)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter custos por recurso Azure'))
+    return result
+
+
 # ── Security Scan ─────────────────────────────────────────────────────────────
 
 @ws_router.get("/security/scan")

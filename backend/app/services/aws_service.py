@@ -760,6 +760,54 @@ class AWSService:
             logger.error(f"get_cost_and_usage error: {e}")
             return {'success': False, 'error': str(e)}
 
+    def get_cost_by_resource(self, service_name: str, start_date: str, end_date: str) -> Dict:
+        """Get cost breakdown by resource for a specific AWS service."""
+        try:
+            response = self.ce_client.get_cost_and_usage(
+                TimePeriod={'Start': start_date, 'End': end_date},
+                Granularity='DAILY',
+                Metrics=['UnblendedCost'],
+                GroupBy=[{'Type': 'DIMENSION', 'Key': 'RESOURCE_ID'}],
+                Filter={
+                    'Dimensions': {
+                        'Key': 'SERVICE',
+                        'Values': [service_name],
+                    }
+                },
+            )
+            results = response.get('ResultsByTime', [])
+            resource_map: Dict[str, float] = {}
+            daily_map: Dict[str, float] = {}
+            total = 0.0
+            for period in results:
+                date_str = period['TimePeriod']['Start']
+                day_total = 0.0
+                for group in period.get('Groups', []):
+                    res_id = group['Keys'][0]
+                    amount = float(group['Metrics']['UnblendedCost']['Amount'])
+                    resource_map[res_id] = resource_map.get(res_id, 0.0) + amount
+                    day_total += amount
+                    total += amount
+                daily_map[date_str] = daily_map.get(date_str, 0.0) + day_total
+            resources = sorted(
+                [{'id': k, 'name': k.split('/')[-1] if '/' in k else k, 'amount': round(v, 4)} for k, v in resource_map.items()],
+                key=lambda x: x['amount'], reverse=True,
+            )
+            daily = [{'date': k, 'total': round(v, 4)} for k, v in sorted(daily_map.items())]
+            return {
+                'success': True,
+                'service': service_name,
+                'total': round(total, 4),
+                'resources': resources,
+                'daily': daily,
+            }
+        except ClientError as e:
+            logger.error(f"get_cost_by_resource error: {e}")
+            return {'success': False, 'error': str(e)}
+        except Exception as e:
+            logger.error(f"get_cost_by_resource error: {e}")
+            return {'success': False, 'error': str(e)}
+
     # ── Delete operations ─────────────────────────────────────────────────────
 
     def terminate_ec2_instance(self, instance_id: str) -> Dict:

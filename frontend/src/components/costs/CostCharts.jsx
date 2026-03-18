@@ -60,7 +60,7 @@ const EnhancedTooltip = ({ active, payload, label, anomalies, showComparison }) 
   );
 };
 
-const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter = 'all', anomalies = new Set() }) => {
+const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter = 'all', anomalies = new Set(), onServiceClick }) => {
   const [chartType, setChartType] = useState('line'); // 'line' | 'stacked'
   const showComparison = !!prevData;
 
@@ -214,7 +214,12 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         {data.by_service?.length > 0 && (
           <div className="card lg:col-span-2 animate-fade-in" style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4">Top Serviços por Custo</h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Top Serviços por Custo</h2>
+              {onServiceClick && (
+                <span className="text-[11px] text-gray-400 dark:text-gray-500">Clique para detalhar</span>
+              )}
+            </div>
             <ResponsiveContainer width="100%" height={260}>
               <BarChart
                 data={data.by_service
@@ -222,6 +227,12 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
                   .slice(0, 8)}
                 layout="vertical"
                 margin={{ left: 8, right: 16, top: 4, bottom: 0 }}
+                onClick={(state) => {
+                  if (onServiceClick && state?.activePayload?.[0]?.payload?.name) {
+                    onServiceClick(state.activePayload[0].payload.name);
+                  }
+                }}
+                style={{ cursor: onServiceClick ? 'pointer' : 'default' }}
               >
                 <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} horizontal={false} />
                 <XAxis type="number" tick={{ fontSize: 11 }} tickFormatter={(v) => `$${v}`} />
@@ -236,10 +247,11 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
                       <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">{svc?.name}</p>
                       <p className="text-indigo-600 dark:text-indigo-400 font-mono">{fmtUSD(svc?.amount)}</p>
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{pct}% do total</p>
+                      {onServiceClick && <p className="text-[10px] text-primary mt-1">Clique para ver recursos</p>}
                     </div>
                   );
                 }} />
-                <Bar dataKey="amount" name="Custo" fill="#6366f1" radius={[0, 4, 4, 0]} />
+                <Bar dataKey="amount" name="Custo" fill="#6366f1" radius={[0, 4, 4, 0]} className="cursor-pointer" />
               </BarChart>
             </ResponsiveContainer>
           </div>

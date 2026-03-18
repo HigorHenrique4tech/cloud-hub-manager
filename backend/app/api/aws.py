@@ -589,6 +589,23 @@ async def ws_get_aws_costs(
     return result
 
 
+# ── Cost Drill-down ──────────────────────────────────────────────────────────
+
+@ws_router.get("/costs/resources")
+async def ws_get_aws_cost_resources(
+    service: str = Query(..., description="AWS service name (e.g. 'Amazon EC2')"),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    member: MemberContext = Depends(require_permission("costs.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.get_cost_by_resource, service, start_date, end_date)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter custos por recurso AWS'))
+    return result
+
+
 # ── Security Scan ─────────────────────────────────────────────────────────────
 
 @ws_router.get("/security/scan")

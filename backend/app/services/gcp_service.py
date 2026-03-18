@@ -363,6 +363,98 @@ class GCPService:
             logger.error(f"GCP cost estimation error: {e}")
             return {"success": False, "error": str(e), "estimated": True}
 
+    def get_cost_by_resource(self, service_name: str, start_date: str, end_date: str) -> dict:
+        """
+        Estimated cost breakdown by resource for a GCP service.
+        Enumerates running resources and estimates their costs.
+        """
+        try:
+            start = datetime.strptime(start_date, "%Y-%m-%d")
+            end = datetime.strptime(end_date, "%Y-%m-%d")
+            n_days = max(1, (end - start).days)
+            monthly_factor = n_days / 30.0
+            resources = []
+            total = 0.0
+
+            if service_name == "Compute Engine":
+                client = compute_v1.InstancesClient(credentials=self.credentials)
+                for zone_name, zone_data in client.aggregated_list(project=self.project_id):
+                    if not zone_data.instances:
+                        continue
+                    for inst in zone_data.instances:
+                        if inst.status != "RUNNING":
+                            continue
+                        mt = inst.machine_type.split("/")[-1] if inst.machine_type else "unknown"
+                        zone = zone_name.replace("zones/", "")
+                        monthly_cost = _estimate_gce_cost(mt)
+                        amount = round(monthly_cost * monthly_factor, 4)
+                        total += amount
+                        resources.append({
+                            "id": inst.self_link or inst.name,
+                            "name": inst.name,
+                            "type": mt,
+                            "region": zone,
+                            "amount": amount,
+                        })
+
+            elif service_name == "Cloud SQL":
+                svc = discovery.build("sqladmin", "v1beta4", credentials=self.credentials, cache_discovery=False)
+                resp = svc.instances().list(project=self.project_id).execute()
+                for inst in resp.get("items", []):
+                    tier = inst.get("settings", {}).get("tier", "db-n1-standard-1")
+                    region = inst.get("region", "")
+                    monthly_cost = _SQL_COST_MAP.get(tier, 46.26)
+                    amount = round(monthly_cost * monthly_factor, 4)
+                    total += amount
+                    resources.append({
+                        "id": inst.get("selfLink", inst.get("name", "")),
+                        "name": inst.get("name", ""),
+                        "type": tier,
+                        "region": region,
+                        "amount": amount,
+                    })
+
+            elif service_name == "Cloud Functions":
+                fn_svc = discovery.build("cloudfunctions", "v1", credentials=self.credentials, cache_discovery=False)
+                for region in ["us-central1", "us-east1", "europe-west1", "us-east4"]:
+                    parent = f"projects/{self.project_id}/locations/{region}"
+                    try:
+                        fn_resp = fn_svc.projects().locations().functions().list(parent=parent).execute()
+                        for fn in fn_resp.get("functions", []):
+                            amount = round(2.0 * monthly_factor, 4)
+                            total += amount
+                            fn_name = fn.get("name", "").split("/")[-1]
+                            resources.append({
+                                "id": fn.get("name", ""),
+                                "name": fn_name,
+                                "type": "function",
+                                "region": region,
+                                "amount": amount,
+                            })
+                    except Exception:
+                        pass
+
+            resources.sort(key=lambda x: x["amount"], reverse=True)
+
+            # Distribute total evenly across days for the daily chart
+            daily_cost = total / n_days if n_days > 0 else 0.0
+            daily = [
+                {"date": (start + timedelta(days=i)).strftime("%Y-%m-%d"), "total": round(daily_cost, 4)}
+                for i in range(n_days)
+            ]
+
+            return {
+                "success": True,
+                "service": service_name,
+                "total": round(total, 4),
+                "resources": resources,
+                "daily": daily,
+                "estimated": True,
+            }
+        except Exception as e:
+            logger.error(f"GCP cost by resource error: {e}")
+            return {"success": False, "error": str(e), "estimated": True}
+
     # ── Metrics (Cloud Monitoring) ────────────────────────────────────────────
 
     def get_metrics(self, limit: int = 15) -> dict:

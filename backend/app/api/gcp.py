@@ -449,6 +449,28 @@ async def ws_get_gcp_costs(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@ws_router.get("/costs/resources")
+async def ws_get_gcp_cost_resources(
+    service: str = Query(..., description="GCP service name (e.g. 'Compute Engine')"),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    member: MemberContext = Depends(require_permission("costs.view")),
+    db: Session = Depends(get_db),
+):
+    """Returns estimated cost breakdown by resource for a GCP service."""
+    try:
+        account = _get_gcp_account(member, db)
+        svc = _build_gcp_service(account)
+        result = await _run(svc.get_cost_by_resource, service, start_date, end_date)
+        if not result.get("success"):
+            raise HTTPException(status_code=500, detail=result.get("error", "Erro ao obter custos por recurso GCP"))
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @ws_router.get("/metrics")
 async def ws_get_gcp_metrics(
     member: MemberContext = Depends(require_permission("resources.view")),
