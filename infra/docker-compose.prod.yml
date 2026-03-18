@@ -10,7 +10,7 @@ services:
       - "443:443"
     volumes:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
-      - ../landingpage/cloudatlas-landing.html:/srv/landing/index.html:ro
+      - ../landingpage:/srv/landing:ro
       - caddy_data:/data
       - caddy_config:/config
     networks:
