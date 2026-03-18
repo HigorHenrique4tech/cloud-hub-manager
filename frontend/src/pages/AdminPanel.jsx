@@ -831,7 +831,7 @@ const BillingTab = ({ orgs }) => {
 
   const sendInvoiceMut = useMutation({
     mutationFn: (id) => adminService.sendInvoiceEmail(id),
-    onSuccess: (res) => { invalidateAll(); alert(`Cobrança enviada para ${res.sent_to}`); },
+    onSuccess: (res) => { invalidateAll(); alert(`Cobrança enviada para ${res.sent_to}${res.payment_url ? '\nLink de pagamento gerado!' : ''}`); },
     onError: (err) => alert(err.response?.data?.detail || 'Erro ao enviar email'),
   });
 
@@ -1104,6 +1104,12 @@ const BillingTab = ({ orgs }) => {
                         <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5" title={r.client_email}>
                           <Mail size={9} /> {r.client_email}
                         </p>
+                      )}
+                      {r.payment_url && (
+                        <a href={r.payment_url} target="_blank" rel="noopener noreferrer"
+                           className="text-[11px] text-green-500 hover:text-green-600 flex items-center gap-1 mt-0.5">
+                          <CreditCard size={9} /> Link de pagamento
+                        </a>
                       )}
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {r.is_recurring && (

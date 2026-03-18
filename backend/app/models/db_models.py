@@ -577,6 +577,9 @@ class BillingRecord(Base):
     is_recurring      = Column(Boolean, nullable=False, default=False)
     recurrence_months = Column(Integer, nullable=True)  # 1 | 3 | 6 | 12
 
+    payment_id        = Column(String(255), nullable=True)   # AbacatePay billing ID
+    payment_url       = Column(String(512), nullable=True)   # AbacatePay checkout URL
+
     org            = relationship("Organization", foreign_keys=[org_id])
     creator        = relationship("User", foreign_keys=[created_by])
     status_history = relationship("BillingStatusHistory", back_populates="record",

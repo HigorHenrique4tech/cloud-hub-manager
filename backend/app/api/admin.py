@@ -17,6 +17,8 @@ from app.models.db_models import User, Organization, OrganizationMember, Enterpr
 from app.core.dependencies import get_current_user, get_current_admin
 from app.services.log_service import log_activity
 from app.services.email_service import send_billing_invoice_email, send_billing_reminder_email, send_billing_status_email
+from app.services.payment_service import create_billing as create_abacatepay_billing
+from app.core.config import settings
 
 BILLING_UPLOADS_DIR = Path(os.getenv("BILLING_UPLOADS_DIR", "/app/uploads/billing"))
 
@@ -456,6 +458,8 @@ def _billing_to_dict(r: BillingRecord) -> dict:
         "recurrence_months": r.recurrence_months,
         "attachment_filename": r.attachment_filename,
         "has_attachment": bool(r.attachment_path),
+        "payment_id": r.payment_id,
+        "payment_url": r.payment_url,
         "created_at": r.created_at.isoformat() if r.created_at else None,
         "updated_at": r.updated_at.isoformat() if r.updated_at else None,
     }
@@ -996,12 +1000,12 @@ def _resolve_billing_email(record: BillingRecord, db: Session) -> str | None:
 
 
 @admin_router.post("/billing/send-invoice/{record_id}")
-def send_invoice_email(
+async def send_invoice_email(
     record_id: str,
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """Send invoice email for a billing record."""
+    """Send invoice email for a billing record. Generates AbacatePay payment link."""
     record = db.query(BillingRecord).options(joinedload(BillingRecord.org)).filter(BillingRecord.id == record_id).first()
     if not record:
         raise HTTPException(status_code=404, detail="Registro não encontrado")
@@ -1009,6 +1013,30 @@ def send_invoice_email(
     to_email = _resolve_billing_email(record, db)
     if not to_email:
         raise HTTPException(status_code=400, detail="Nenhum email disponível. Adicione um email ao cliente ou vincule a uma organização.")
+
+    # Generate AbacatePay payment link (or reuse existing)
+    payment_url = record.payment_url
+    if not payment_url:
+        try:
+            amount_cents = int(round(record.amount * 100))
+            period_label = "Mensal" if record.period_type == "monthly" else "Anual"
+            abacate_data = await create_abacatepay_billing(
+                customer_email=to_email,
+                customer_name=record.client_name,
+                plan_tier="billing",
+                amount_cents=amount_cents,
+                return_url=f"{settings.FRONTEND_URL}/billing/success",
+                completion_url=f"{settings.FRONTEND_URL}/billing/success",
+            )
+            payment_url = abacate_data.get("url")
+            payment_id = abacate_data.get("id")
+            if payment_url:
+                record.payment_url = payment_url
+            if payment_id:
+                record.payment_id = payment_id
+        except Exception as e:
+            logger.warning("AbacatePay billing creation failed for record %s: %s", record_id, e)
+            # Continue sending email without payment link
 
     due_str = record.due_date.strftime("%d/%m/%Y") if record.due_date else None
     success = send_billing_invoice_email(
@@ -1019,6 +1047,7 @@ def send_invoice_email(
         period_ref=record.period_ref,
         due_date=due_str,
         notes=record.notes,
+        payment_url=payment_url,
     )
 
     if not success:
@@ -1027,7 +1056,7 @@ def send_invoice_email(
     _record_status_change(db, record, record.status, admin.id, f"Cobrança enviada por email para {to_email}", old_status=record.status)
     db.commit()
 
-    return {"sent_to": to_email, "success": True}
+    return {"sent_to": to_email, "payment_url": payment_url, "success": True}
 
 
 @admin_router.post("/billing/send-reminder")

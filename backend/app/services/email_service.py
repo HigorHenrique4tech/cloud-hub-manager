@@ -503,6 +503,7 @@ def send_billing_invoice_email(
     period_ref: str,
     due_date: str | None,
     notes: str | None = None,
+    payment_url: str | None = None,
 ) -> bool:
     """Send an invoice/billing notification email."""
     period_label = "Mensal" if period_type == "monthly" else "Anual"
@@ -551,11 +552,9 @@ def send_billing_invoice_email(
         {notes_html}
 
         <div style="text-align:center;margin-top:28px;">
-          <a href="{settings.FRONTEND_URL}"
-             style="display:inline-block;background:#3b82f6;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:600;font-size:14px;">
-            Acessar Plataforma
-          </a>
+          {'<a href="' + payment_url + '" style="display:inline-block;background:linear-gradient(135deg,#22c55e,#16a34a);color:#ffffff;text-decoration:none;padding:16px 40px;border-radius:8px;font-weight:700;font-size:16px;letter-spacing:0.5px;">💳 Pagar via PIX</a>' if payment_url else '<a href="' + settings.FRONTEND_URL + '" style="display:inline-block;background:#3b82f6;color:#ffffff;text-decoration:none;padding:14px 36px;border-radius:8px;font-weight:600;font-size:14px;">Acessar Plataforma</a>'}
         </div>
+        {'<p style="text-align:center;color:#94a3b8;font-size:11px;margin-top:12px;">Clique no botão acima para realizar o pagamento de forma rápida e segura.</p>' if payment_url else ''}
     """
 
     html = _billing_base("💰", "Nova Cobrança", "#3b82f6", body)
