@@ -1161,13 +1161,16 @@ class M365Service:
             )
             lookup = {}
             for u in items:
-                upn = (u.get("userPrincipalName") or "").lower()
+                uid  = (u.get("id") or "").lower()
+                upn  = (u.get("userPrincipalName") or "").lower()
                 mail = (u.get("mail") or "").lower()
-                name = u.get("displayName") or ""
+                entry = {"name": u.get("displayName") or "", "upn": upn or mail}
+                if uid:
+                    lookup[uid] = entry
                 if upn:
-                    lookup[upn] = name
+                    lookup[upn] = entry
                 if mail and mail != upn:
-                    lookup[mail] = name
+                    lookup[mail] = entry
             return lookup
         except Exception as e:
             logger.warning(f"Could not build user name map: {e}")
@@ -1199,15 +1202,17 @@ class M365Service:
                     })
                 except Exception:
                     continue
-            # Enrich display names — M365 privacy settings may obfuscate names in CSV reports.
-            # The /users endpoint always returns real names regardless of privacy settings.
+            # Enrich display names — M365 privacy settings obfuscate UPN/name in CSV reports.
+            # When obfuscated, "User Principal Name" contains the user's Azure AD Object ID (GUID).
+            # The /users endpoint always returns real names+UPNs regardless of privacy settings.
             name_map = self._build_user_name_map()
             if name_map:
                 for row in activity:
-                    upn_key = (row.get("upn") or "").lower()
-                    real_name = name_map.get(upn_key)
-                    if real_name:
-                        row["display_name"] = real_name
+                    key = (row.get("upn") or "").lower()
+                    entry = name_map.get(key)
+                    if entry:
+                        row["display_name"] = entry["name"]
+                        row["upn"] = entry["upn"]
             return {"activity": activity, "total": len(activity)}
         except Exception as e:
             logger.error(f"Error getting email activity: {e}")
