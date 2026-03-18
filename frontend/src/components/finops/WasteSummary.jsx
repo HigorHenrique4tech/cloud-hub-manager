@@ -105,7 +105,7 @@ const WasteSummary = ({ summary, onScan, scanning }) => {
         <button
           onClick={onScan}
           disabled={scanning}
-          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors"
+          className="inline-flex items-center gap-2 rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors"
         >
           <Zap size={16} />
           {scanning ? 'Escaneando…' : 'Escanear Agora'}

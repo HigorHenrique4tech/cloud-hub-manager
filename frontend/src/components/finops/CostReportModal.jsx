@@ -97,7 +97,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           <div className="flex items-center gap-2">
             <button
               onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 transition-colors"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors"
             >
               <Printer className="w-4 h-4" /> Imprimir / PDF
             </button>
@@ -134,7 +134,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           {/* ── Summary cards ── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Total do Período', value: fmtUSD(metrics.total),      sub: periodLabel,                   color: 'text-indigo-600 dark:text-indigo-400' },
+              { label: 'Total do Período', value: fmtUSD(metrics.total),      sub: periodLabel,                   color: 'text-indigo-600 dark:text-primary-light' },
               { label: 'Média Diária',     value: fmtUSD(metrics.avgDaily),    sub: `${days} dias`,                color: 'text-green-600 dark:text-green-400'   },
               { label: 'Projeção Mensal',  value: fmtUSD(metrics.projection),  sub: 'baseado na média',            color: 'text-purple-600 dark:text-purple-400' },
               {
@@ -255,7 +255,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                             <div className="flex items-center justify-end gap-1.5">
                               <div className="w-12 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
                                 <div
-                                  className="bg-indigo-500 h-1.5 rounded-full"
+                                  className="bg-primary h-1.5 rounded-full"
                                   style={{ width: `${Math.min(100, s.pct)}%` }}
                                 />
                               </div>

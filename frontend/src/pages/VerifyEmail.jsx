@@ -3,6 +3,7 @@ import { useSearchParams, Link } from 'react-router-dom';
 import { Mail, RefreshCw, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
+import Logo from '../components/common/Logo';
 
 const VerifyEmail = () => {
   const { user } = useAuth();
@@ -33,9 +34,8 @@ const VerifyEmail = () => {
     >
       <div className="w-full max-w-md text-center">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-10">
-          <img src="/logoblack.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
-          <span className="text-2xl font-bold text-white">CloudAtlas</span>
+        <div className="flex items-center justify-center mb-10">
+          <Logo size="lg" variant="light" />
         </div>
 
         {/* Icon */}

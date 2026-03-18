@@ -34,7 +34,7 @@ const CAT_COLORS = {
   Authentication:        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
   Policy:                'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
   RoleManagement:        'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400',
-  ApplicationManagement: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+  ApplicationManagement: 'bg-primary-50 text-primary-dark dark:bg-indigo-900/30 dark:text-primary-light',
 };
 
 const DIR_CATEGORIES = [

@@ -18,7 +18,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
       <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-in">
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
           <div className="flex items-center gap-2">
-            <Clock size={16} className="text-indigo-400" />
+            <Clock size={16} className="text-primary-light" />
             <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Análise Automática</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white transition-colors">
@@ -32,7 +32,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
             <span className="text-sm font-medium text-gray-800 dark:text-slate-200">Ativar análise automática</span>
             <button
               onClick={() => set('is_enabled', !form.is_enabled)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_enabled ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-slate-600'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_enabled ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.is_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -48,7 +48,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
                   onClick={() => set('schedule_type', value)}
                   className={`flex-1 rounded-lg border py-1.5 text-xs font-medium transition-colors ${
                     form.schedule_type === value
-                      ? 'border-indigo-500 bg-indigo-600/20 text-indigo-700 dark:text-indigo-300'
+                      ? 'border-primary bg-primary/20 text-primary-dark dark:text-primary-light'
                       : 'border-gray-300 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:border-gray-400 dark:hover:border-slate-500'
                   }`}
                 >
@@ -66,7 +66,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
                 type="time"
                 value={form.schedule_time}
                 onChange={(e) => set('schedule_time', e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
               />
             </div>
             <div>
@@ -137,7 +137,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
               <button
                 onClick={() => onSave(form)}
                 disabled={saving}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-all active:scale-[0.97]"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-all active:scale-[0.97]"
               >
                 {saving ? 'Salvando…' : 'Salvar'}
               </button>

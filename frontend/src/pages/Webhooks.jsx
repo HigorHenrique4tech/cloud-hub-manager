@@ -56,8 +56,8 @@ const Webhooks = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-600/20 p-2">
-              <Webhook size={20} className="text-indigo-400" />
+            <div className="rounded-lg bg-primary/20 p-2">
+              <Webhook size={20} className="text-primary-light" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">Webhooks</h1>
@@ -70,7 +70,7 @@ const Webhooks = () => {
             <button
               onClick={openCreate}
               disabled={!isPro}
-              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               <Plus size={16} /> Novo
             </button>
@@ -102,7 +102,7 @@ const Webhooks = () => {
               <PermissionGate permission="webhooks.manage">
                 <button
                   onClick={openCreate}
-                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark transition-colors"
                 >
                   <Plus size={15} /> Criar primeiro webhook
                 </button>

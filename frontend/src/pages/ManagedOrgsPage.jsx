@@ -30,7 +30,7 @@ const AddPartnerModal = ({ onClose, onSave, saving }) => {
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && name.trim() && onSave(name.trim())}
               placeholder="Ex: TechCorp Solutions"
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
             />
             <p className="mt-1.5 text-xs text-gray-400 dark:text-slate-500">
               Um workspace padrão será criado automaticamente. Você será adicionado como owner.
@@ -46,7 +46,7 @@ const AddPartnerModal = ({ onClose, onSave, saving }) => {
             <button
               onClick={() => name.trim() && onSave(name.trim())}
               disabled={saving || !name.trim()}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors"
             >
               {saving ? 'Criando…' : 'Criar Parceira'}
             </button>
@@ -110,14 +110,14 @@ const EditPartnerModal = ({ org, onClose, onSave, saving }) => {
             <input
               autoFocus value={name} onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && name.trim() && onSave(name.trim())}
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
             />
             <p className="mt-1 text-xs text-gray-400 dark:text-slate-500 font-mono">slug: {org.slug} (não muda)</p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
             <button onClick={() => name.trim() && onSave(name.trim())} disabled={saving || !name.trim() || name === org.name}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors">
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors">
               {saving ? 'Salvando…' : 'Salvar'}
             </button>
           </div>
@@ -142,12 +142,12 @@ const NotesModal = ({ org, onClose, onSave, saving }) => {
           <textarea
             autoFocus value={notes} onChange={(e) => setNotes(e.target.value)} rows={5}
             placeholder="Notas sobre o contrato, contato, SLA, observações internas…"
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none resize-none"
+            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none resize-none"
           />
           <div className="flex justify-end gap-2">
             <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
             <button onClick={() => onSave(notes)} disabled={saving}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors">
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors">
               {saving ? 'Salvando…' : 'Salvar nota'}
             </button>
           </div>
@@ -192,8 +192,8 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, isAddon, addonP
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0 ${isAddon ? 'bg-amber-500/10' : 'bg-indigo-600/10'}`}>
-            <Building2 size={18} className={isAddon ? 'text-amber-500' : 'text-indigo-400'} />
+          <div className={`flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0 ${isAddon ? 'bg-amber-500/10' : 'bg-primary/10'}`}>
+            <Building2 size={18} className={isAddon ? 'text-amber-500' : 'text-primary-light'} />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{org.name}</p>
@@ -201,7 +201,7 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, isAddon, addonP
           </div>
         </div>
         <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={() => onEdit(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors rounded" title="Renomear">
+          <button onClick={() => onEdit(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-primary-light transition-colors rounded" title="Renomear">
             <Pencil size={14} />
           </button>
           <button onClick={() => onNotes(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-yellow-500 dark:hover:text-yellow-400 transition-colors rounded" title="Notas internas">
@@ -216,7 +216,7 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, isAddon, addonP
       {/* Owner info */}
       {org.owner_name && (
         <div className="flex items-center gap-2 px-1">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-[10px] font-bold flex-shrink-0">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-primary-light text-[10px] font-bold flex-shrink-0">
             {initials(org.owner_name)}
           </div>
           <div className="min-w-0">
@@ -258,7 +258,7 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, isAddon, addonP
         <p className="text-xs text-gray-400 dark:text-slate-500">Criada em {fmtDate(org.created_at)}</p>
         <button
           onClick={() => onAccess(org)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
         >
           Acessar
           <ExternalLink size={11} />
@@ -320,7 +320,7 @@ const M365TenantsTab = ({ orgSlug, onAccess }) => {
                 <td className="px-4 py-3">
                   <button
                     onClick={() => onAccess(t.org_slug)}
-                    className="text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline"
+                    className="text-sm font-medium text-indigo-600 dark:text-primary-light hover:underline"
                   >
                     {t.org_name}
                   </button>
@@ -471,8 +471,8 @@ const ManagedOrgsPage = () => {
         {/* Header */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-600/20">
-              <Building2 size={22} className="text-indigo-400" />
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/20">
+              <Building2 size={22} className="text-primary-light" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">Organizações Gerenciadas</h1>
@@ -484,7 +484,7 @@ const ManagedOrgsPage = () => {
           {activeView === 'orgs' && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark transition-colors"
             >
               <Plus size={16} />
               Adicionar Parceira
@@ -503,7 +503,7 @@ const ManagedOrgsPage = () => {
               onClick={() => setActiveView(id)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 activeView === id
-                  ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                  ? 'border-primary text-indigo-600 dark:text-primary-light'
                   : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
               }`}
             >
@@ -549,7 +549,7 @@ const ManagedOrgsPage = () => {
               <p className="text-sm mt-1 mb-4">Adicione parceiros para gerenciar suas infraestruturas centralizadamente</p>
               <button
                 onClick={() => setShowAddModal(true)}
-                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors"
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark transition-colors"
               >
                 <Plus size={15} />
                 Adicionar primeira parceira

@@ -95,7 +95,7 @@ const CostExport = ({ data, startDate, endDate, hasAny, onShowReport }) => {
       <button
         onClick={() => onShowReport(true)}
         disabled={!hasAny}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-40 transition-colors"
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-40 transition-colors"
       >
         <FileText className="w-4 h-4" /> Relatório Detalhado
       </button>

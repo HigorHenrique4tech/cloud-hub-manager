@@ -32,11 +32,11 @@ const FinOpsWidget = () => {
           <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Resumo FinOps</h2>
         </div>
         <div className="rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 px-4 py-5 text-center">
-          <p className="text-sm text-indigo-700 dark:text-indigo-300 font-medium mb-1">Recurso Pro</p>
+          <p className="text-sm text-primary-dark dark:text-primary-light font-medium mb-1">Recurso Pro</p>
           <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">Faça upgrade para ver análise de custos e recomendações FinOps.</p>
           <button
             onClick={() => navigate('/billing')}
-            className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
           >
             Ver planos <ChevronRight className="w-3 h-3" />
           </button>

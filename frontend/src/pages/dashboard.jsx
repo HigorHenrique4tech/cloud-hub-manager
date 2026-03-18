@@ -26,6 +26,7 @@ import awsService from '../services/awsservices';
 import azureService from '../services/azureservices';
 import orgService from '../services/orgService';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
+import { useAuth } from '../contexts/AuthContext';
 
 /* ── Widget registry ───────────────────────────────────────── */
 const WIDGET_COMPONENTS = {
@@ -69,6 +70,7 @@ const DashboardInner = () => {
   const [customizerOpen, setCustomizerOpen] = useState(false);
   const { visibleWidgets, reorderWidgets } = useDashboardConfig();
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
+  const { user } = useAuth();
   const wsReady = !!currentOrg && !!currentWorkspace;
 
   const sensors = useSensors(
@@ -121,16 +123,36 @@ const DashboardInner = () => {
 
   return (
     <Layout>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-gray-800 dark:text-gray-100">Dashboard</h1>
-        <button
-          onClick={() => setCustomizerOpen(true)}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 transition-colors"
-        >
-          <Settings className="w-4 h-4" />
-          Personalizar
-        </button>
+      {/* Hero banner */}
+      <div className="hero-gradient mb-6 text-white">
+        <div className="relative z-10 flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold mb-1">
+              {(() => {
+                const h = new Date().getHours();
+                const greeting = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite';
+                return `${greeting}, ${user?.name?.split(' ')[0] || 'Bem-vindo'}`;
+              })()}
+            </h2>
+            <p className="text-white/70 text-sm">
+              Aqui está o resumo do seu ambiente multi-cloud
+            </p>
+          </div>
+          <button
+            onClick={() => setCustomizerOpen(true)}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:text-white hover:bg-white/10 border border-white/20 transition-colors"
+          >
+            <Settings className="w-4 h-4" />
+            Personalizar
+          </button>
+        </div>
+        {/* Decorative hexagon */}
+        <div className="absolute top-4 right-8 opacity-[0.07] pointer-events-none">
+          <svg width="120" height="120" viewBox="0 0 48 48" fill="none">
+            <path d="M24 4L43 14V34L24 44L5 34V14L24 4Z" stroke="white" strokeWidth="1.5" />
+            <circle cx="24" cy="24" r="8" stroke="white" strokeWidth="1.5" />
+          </svg>
+        </div>
       </div>
 
       {/* Draggable widgets */}

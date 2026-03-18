@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, ArrowRight, Sparkles, ChevronRight, X, Phone, Building2, MessageSquare } from 'lucide-react';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
+import Logo from '../components/common/Logo';
 import { useAuth } from '../contexts/AuthContext';
 import orgService from '../services/orgService';
 import billingService from '../services/billingService';
@@ -279,9 +280,8 @@ const PlanSelection = () => {
     >
       {/* Header */}
       <div className="pt-8 pb-2 text-center">
-        <div className="flex items-center justify-center gap-3 mb-6">
-          <img src="/logoblack.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
-          <span className="text-2xl font-bold text-white">CloudAtlas</span>
+        <div className="flex items-center justify-center mb-6">
+          <Logo size="lg" variant="light" />
         </div>
 
         <div className="flex items-center justify-center gap-2 text-sm mb-8">

@@ -173,7 +173,7 @@ const PROVIDER_COLOR = {
   aws:   'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400',
   azure: 'bg-blue-100 text-blue-700 dark:bg-blue-900/20 dark:text-blue-400',
   gcp:   'bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400',
-  m365:  'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-400',
+  m365:  'bg-primary-50 text-primary-dark dark:bg-indigo-900/20 dark:text-primary-light',
 };
 
 const OrgMetricsPanel = ({ slug }) => {
@@ -925,7 +925,7 @@ const BillingTab = ({ orgs }) => {
                       <p className="font-medium text-gray-900 dark:text-gray-100">{r.client_name}</p>
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {r.is_recurring && (
-                          <span className="inline-flex items-center gap-0.5 text-xs text-indigo-600 dark:text-indigo-400">
+                          <span className="inline-flex items-center gap-0.5 text-xs text-indigo-600 dark:text-primary-light">
                             <RefreshCw size={9} /> {RECURRENCE_LABEL[r.recurrence_months] || 'Recorrente'}
                           </span>
                         )}

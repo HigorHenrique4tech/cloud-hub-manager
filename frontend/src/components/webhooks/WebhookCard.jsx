@@ -62,7 +62,7 @@ const WebhookCard = ({ hook, supportedEvents, onEdit, onDelete }) => {
           </div>
           <div className="flex items-center gap-1 mt-0.5 max-w-full">
             <a href={hook.url} target="_blank" rel="noreferrer"
-               className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline truncate max-w-xs"
+               className="text-xs text-indigo-600 dark:text-primary-light hover:underline truncate max-w-xs"
                onClick={(e) => e.stopPropagation()}>
               {hook.url}
             </a>
@@ -95,7 +95,7 @@ const WebhookCard = ({ hook, supportedEvents, onEdit, onDelete }) => {
       {/* Events */}
       <div className="flex flex-wrap gap-1.5">
         {(hook.events || []).map((ev) => (
-          <span key={ev} className="rounded-full bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 text-xs font-mono text-indigo-700 dark:text-indigo-400">
+          <span key={ev} className="rounded-full bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 text-xs font-mono text-primary-dark dark:text-primary-light">
             {ev}
           </span>
         ))}

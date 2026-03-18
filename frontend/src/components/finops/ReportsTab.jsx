@@ -15,8 +15,8 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
             <div className="rounded-xl border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800/60 p-5 space-y-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600/20">
-                    <Mail size={18} className="text-indigo-400" />
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20">
+                    <Mail size={18} className="text-primary-light" />
                   </div>
                   <div>
                     <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">
@@ -42,7 +42,7 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
                   <PermissionGate permission="finops.budget">
                     <button
                       onClick={onOpenModal}
-                      className="text-gray-400 hover:text-indigo-400 transition-colors"
+                      className="text-gray-400 hover:text-primary-light transition-colors"
                       title="Editar"
                     >
                       <Pencil size={14} />
@@ -102,7 +102,7 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
               <PermissionGate permission="finops.budget">
                 <button
                   onClick={onOpenModal}
-                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors active:scale-[0.97]"
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark transition-colors active:scale-[0.97]"
                 >
                   <Plus size={16} />
                   Configurar Relatório

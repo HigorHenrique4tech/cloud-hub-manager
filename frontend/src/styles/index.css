@@ -10,8 +10,8 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-primary hover:bg-primary-dark text-white font-medium py-2 px-4 rounded-lg
-           transition-all duration-150 active:scale-[0.97];
+    @apply bg-gradient-to-r from-primary to-accent text-white font-medium py-2 px-4 rounded-lg
+           transition-all duration-150 active:scale-[0.97] hover:shadow-card-primary;
   }
 
   .btn-secondary {
@@ -30,6 +30,18 @@
            transition-all duration-150 active:scale-[0.97];
   }
 
+  /* ── Botão CTA com gradiente explícito ────────────── */
+  .btn-primary-gradient {
+    @apply text-white font-semibold py-2.5 px-5 rounded-lg
+           transition-all duration-200 active:scale-[0.97];
+    background: linear-gradient(135deg, #1E6FD9, #0EA5E9);
+    box-shadow: 0 4px 16px rgba(14,165,233,0.2);
+  }
+  .btn-primary-gradient:hover {
+    box-shadow: 0 6px 24px rgba(14,165,233,0.3);
+    transform: translateY(-1px);
+  }
+
   .card {
     @apply bg-white rounded-lg shadow-sm border border-gray-300 p-6 dark:bg-gray-800 dark:border-gray-700;
   }
@@ -37,11 +49,15 @@
   /* ── Card com hover premium ─────────────────────── */
   .card-interactive {
     @apply card transition-all duration-200 ease-out
-           hover:-translate-y-0.5 hover:shadow-card-hover cursor-pointer;
+           hover:-translate-y-0.5 hover:shadow-card-hover hover:border-primary/20 cursor-pointer;
   }
 
   .badge {
     @apply px-3 py-1 rounded-full text-sm font-medium;
+  }
+
+  .badge-primary {
+    @apply badge bg-primary-50 text-primary-dark dark:bg-primary-900/40 dark:text-primary-light;
   }
 
   .badge-success {
@@ -89,10 +105,52 @@
            w-full max-h-[90vh] overflow-y-auto animate-scale-in;
   }
 
+  /* ── Header com accent line ─────────────────────── */
+  .header-bar {
+    @apply bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm;
+    position: relative;
+  }
+  .header-bar::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, #1E6FD9, #0EA5E9, #1E6FD9);
+    opacity: 0.5;
+  }
+
+  /* ── Hero Gradient (Dashboard) ──────────────────── */
+  .hero-gradient {
+    @apply rounded-2xl p-8 relative overflow-hidden;
+    background: linear-gradient(135deg, #1E6FD9 0%, #0EA5E9 50%, #1558B0 100%);
+  }
+  .hero-gradient::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 30% 50%, rgba(255,255,255,0.1), transparent 60%);
+    pointer-events: none;
+  }
+
+  /* ── Stats Card com accent border ───────────────── */
+  .stats-card-accent {
+    @apply card-interactive border-l-4;
+  }
+  .stats-card-accent.accent-primary { @apply border-l-primary; }
+  .stats-card-accent.accent-success { @apply border-l-success; }
+  .stats-card-accent.accent-warning { @apply border-l-warning; }
+  .stats-card-accent.accent-danger  { @apply border-l-danger; }
+
   /* ── Tabela Premium ─────────────────────────────── */
   .table-row-hover {
     @apply transition-colors duration-150
            hover:bg-gray-50 dark:hover:bg-gray-800/50;
+  }
+
+  .table-row-striped:nth-child(even) {
+    @apply bg-gray-50/50 dark:bg-gray-800/30;
   }
 
   /* ── Skeleton Loading ───────────────────────────── */

@@ -41,7 +41,7 @@ const PROVIDERS = [
     label: 'Microsoft 365',
     short: 'M365',
     color: 'border-indigo-400 bg-indigo-50 dark:bg-indigo-900/20',
-    badge: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300',
+    badge: 'bg-primary-50 text-primary-dark dark:bg-indigo-900/40 dark:text-primary-light',
     icon: '🟣',
     fields: ['tenant_id', 'client_id', 'client_secret'],
   },

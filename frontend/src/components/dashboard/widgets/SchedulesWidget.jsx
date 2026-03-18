@@ -52,15 +52,15 @@ const SchedulesWidget = () => {
     return (
       <div className="card">
         <div className="flex items-center gap-2 mb-3">
-          <Clock className="w-4 h-4 text-indigo-400" />
+          <Clock className="w-4 h-4 text-primary-light" />
           <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200">Próximos Agendamentos</h2>
         </div>
         <div className="rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 px-4 py-5 text-center">
-          <p className="text-sm text-indigo-700 dark:text-indigo-300 font-medium mb-1">Recurso Pro</p>
+          <p className="text-sm text-primary-dark dark:text-primary-light font-medium mb-1">Recurso Pro</p>
           <p className="text-xs text-gray-500 dark:text-slate-400 mb-3">Faça upgrade para agendar ligar/desligar recursos automaticamente.</p>
           <button
             onClick={() => navigate('/billing')}
-            className="inline-flex items-center gap-1.5 rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors"
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
           >
             Ver planos <ChevronRight className="w-3 h-3" />
           </button>
@@ -73,7 +73,7 @@ const SchedulesWidget = () => {
     <div className="card">
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
-          <Clock className="w-4 h-4 text-indigo-400" />
+          <Clock className="w-4 h-4 text-primary-light" />
           Próximos Agendamentos
         </h2>
         <button
@@ -126,7 +126,7 @@ const SchedulesWidget = () => {
                   <span className="text-xs text-gray-400">{s.schedule_time}</span>
                 </div>
               </div>
-              <span className="text-xs text-indigo-400 font-medium whitespace-nowrap flex-shrink-0">
+              <span className="text-xs text-primary-light font-medium whitespace-nowrap flex-shrink-0">
                 {fmtNextRun(s.next_run_at)}
               </span>
             </li>

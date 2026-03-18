@@ -48,8 +48,7 @@ const EmptyState = ({
     {action && typeof action === 'function' && actionLabel ? (
       <button
         onClick={action}
-        className="mt-5 px-5 py-2 text-sm font-semibold rounded-lg bg-indigo-600 text-white
-                   hover:bg-indigo-500 transition-all duration-150 active:scale-[0.97] focus-ring"
+        className="mt-5 px-5 py-2 text-sm font-semibold rounded-lg btn-primary focus-ring"
       >
         {actionLabel}
       </button>

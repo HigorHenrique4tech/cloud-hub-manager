@@ -556,8 +556,8 @@ function CustomerCard({ customer, relationships, onCreateGdap }) {
     <div className="card p-4">
       <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="w-9 h-9 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0">
-            <Building2 className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+          <div className="w-9 h-9 rounded-lg bg-primary-50 dark:bg-indigo-900/30 flex items-center justify-center flex-shrink-0">
+            <Building2 className="w-4 h-4 text-indigo-600 dark:text-primary-light" />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">

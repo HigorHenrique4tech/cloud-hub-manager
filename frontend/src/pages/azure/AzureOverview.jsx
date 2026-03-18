@@ -32,7 +32,7 @@ function getTypeInfo(type) {
 const LOCATION_COLORS = {
   brazilsouth: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
   eastus:      'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  westus2:     'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+  westus2:     'bg-primary-50 text-primary-dark dark:bg-indigo-900/30 dark:text-primary-light',
   eastus2:     'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
   westeurope:  'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
   northeurope: 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400',

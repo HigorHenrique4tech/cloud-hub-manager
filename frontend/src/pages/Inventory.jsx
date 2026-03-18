@@ -96,8 +96,8 @@ const Inventory = () => {
         {/* Header */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30">
-              <PackageSearch size={20} className="text-indigo-600 dark:text-indigo-400" />
+            <div className="p-2 rounded-lg bg-primary-50 dark:bg-indigo-900/30">
+              <PackageSearch size={20} className="text-indigo-600 dark:text-primary-light" />
             </div>
             <div>
               <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Inventário de Recursos</h1>
@@ -118,7 +118,7 @@ const Inventory = () => {
             <button
               onClick={handleExport}
               disabled={isLoading || total === 0}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-50 transition-colors"
             >
               <Download size={13} />
               Exportar CSV
@@ -131,14 +131,14 @@ const Inventory = () => {
           <select
             value={provider}
             onChange={(e) => handleFilterChange(setProvider)(e.target.value)}
-            className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
           >
             {PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <select
             value={resourceType}
             onChange={(e) => handleFilterChange(setResourceType)(e.target.value)}
-            className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+            className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
           >
             {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>

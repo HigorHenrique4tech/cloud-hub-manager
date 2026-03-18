@@ -37,7 +37,7 @@ const PlanGate = ({ minPlan = 'pro', feature = '', children, inline = false }) =
       </p>
       <a
         href="/billing"
-        className="mt-1 inline-block rounded-md bg-indigo-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors"
+        className="mt-1 inline-block rounded-md bg-primary px-4 py-1.5 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
       >
         Fazer upgrade
       </a>

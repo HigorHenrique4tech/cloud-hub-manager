@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
+import Logo from '../components/common/Logo';
 
 const VerifyCallback = () => {
   const { token } = useParams();
@@ -46,9 +47,8 @@ const VerifyCallback = () => {
     >
       <div className="w-full max-w-md text-center">
         {/* Logo */}
-        <div className="flex items-center justify-center gap-3 mb-10">
-          <img src="/logoblack.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
-          <span className="text-2xl font-bold text-white">CloudAtlas</span>
+        <div className="flex items-center justify-center mb-10">
+          <Logo size="lg" variant="light" />
         </div>
 
         {status === 'loading' && (

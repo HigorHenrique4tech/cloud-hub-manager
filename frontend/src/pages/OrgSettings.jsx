@@ -163,8 +163,8 @@ const OrgSettings = () => {
             <div className="flex items-center gap-3 rounded-xl border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-4 py-3">
               <Building2 size={18} className="text-indigo-500 flex-shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-indigo-700 dark:text-indigo-300">Organização gerenciada</p>
-                <p className="text-xs text-indigo-500 dark:text-indigo-400 mt-0.5">
+                <p className="text-sm font-semibold text-primary-dark dark:text-primary-light">Organização gerenciada</p>
+                <p className="text-xs text-indigo-500 dark:text-primary-light mt-0.5">
                   Esta organização faz parte de um contrato Enterprise. O plano é herdado e gerenciado pelo parceiro master.
                 </p>
               </div>

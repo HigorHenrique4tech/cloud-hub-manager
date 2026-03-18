@@ -52,7 +52,7 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
           <div className="flex items-center gap-2">
-            <BookmarkPlus size={18} className="text-indigo-400" />
+            <BookmarkPlus size={18} className="text-primary-light" />
             <h2 className="text-sm font-semibold text-slate-100">Salvar como Template</h2>
           </div>
           <button onClick={onClose} className="text-slate-500 hover:text-slate-200 transition-colors">
@@ -78,7 +78,7 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex: VM de dev padrão"
               maxLength={255}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-primary focus:outline-none"
             />
           </div>
 
@@ -89,7 +89,7 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Ex: Ubuntu 22.04 com 8GB RAM, SG padrão"
               maxLength={500}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-primary focus:outline-none"
             />
           </div>
 
@@ -110,7 +110,7 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
             <button
               type="submit"
               disabled={!name.trim() || saveMut.isPending || saved}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-colors"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors"
             >
               {saved ? (
                 <><Check size={14} /> Salvo!</>

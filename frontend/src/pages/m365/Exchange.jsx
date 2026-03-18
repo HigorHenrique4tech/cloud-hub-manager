@@ -515,7 +515,7 @@ function CreateSharedMailboxModal({ onClose }) {
                 return <p className="text-xs text-red-500">{detail || 'Erro ao criar caixa.'}</p>;
               })()}
               <button onClick={() => createMut.mutate()} disabled={!form.display_name || !form.alias || !form.domain || createMut.isPending}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white text-sm font-medium rounded-lg disabled:opacity-50">
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-primary hover:bg-primary text-white text-sm font-medium rounded-lg disabled:opacity-50">
                 {createMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                 Criar Caixa
               </button>
@@ -548,7 +548,7 @@ function SharedMailboxesTab({ onSelectMailbox, allUsers }) {
             <RefreshCw className={`w-3.5 h-3.5 ${mbxQ.isFetching ? 'animate-spin' : ''}`} /> Atualizar
           </button>
           <button onClick={() => setShowCreate(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-medium rounded-lg">
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-primary hover:bg-primary text-white text-xs font-medium rounded-lg">
             <Plus className="w-3.5 h-3.5" /> Criar Caixa
           </button>
         </div>
@@ -574,7 +574,7 @@ function SharedMailboxesTab({ onSelectMailbox, allUsers }) {
                 <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer" onClick={() => onSelectMailbox(m)}>
                   <td className={tdCls}>
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-bold text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-primary-50 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-bold text-indigo-600 dark:text-primary-light flex-shrink-0">
                         {(m.display_name || '?')[0].toUpperCase()}
                       </div>
                       <span className="font-medium text-gray-900 dark:text-gray-100">{m.display_name}</span>
@@ -582,7 +582,7 @@ function SharedMailboxesTab({ onSelectMailbox, allUsers }) {
                   </td>
                   <td className={tdCls}>{m.mail || '—'}</td>
                   <td className={tdCls}>
-                    <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium">Compartilhada</span>
+                    <span className="text-xs text-indigo-600 dark:text-primary-light font-medium">Compartilhada</span>
                   </td>
                   <td className={tdCls}><span className="text-xs text-blue-500 hover:underline">Configurar</span></td>
                 </tr>

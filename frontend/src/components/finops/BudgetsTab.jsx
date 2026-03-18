@@ -30,7 +30,7 @@ const BudgetCard = ({ budget, onDelete, onEdit }) => {
           <div className="flex items-center gap-1">
             <button
               onClick={() => onEdit(budget)}
-              className="text-gray-400 hover:text-indigo-600 dark:text-slate-600 dark:hover:text-indigo-400 transition-colors"
+              className="text-gray-400 hover:text-indigo-600 dark:text-slate-600 dark:hover:text-primary-light transition-colors"
               title="Editar orçamento"
             >
               <Pencil size={13} />
@@ -114,7 +114,7 @@ const BudgetsTab = ({ budgetsQ, deleteBudget, evaluateBudgets, onOpenModal, onEd
             </button>
             <button
               onClick={onOpenModal}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors active:scale-[0.97]"
+              className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark transition-colors active:scale-[0.97]"
             >
               <Plus size={16} />
               Novo Orçamento

@@ -1985,7 +1985,7 @@ const AssignLicenseModal = ({ sku, onClose }) => {
                   onClick={() => setSelectedUserId(u.id)}
                   className={`flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors ${
                     selectedUserId === u.id
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-primary text-white'
                       : 'bg-slate-800 hover:bg-slate-700 text-slate-100'
                   }`}
                 >
@@ -2013,7 +2013,7 @@ const AssignLicenseModal = ({ sku, onClose }) => {
           <button
             onClick={() => assignMut.mutate()}
             disabled={!selectedUserId || assignMut.isPending || sku.available <= 0}
-            className="px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white disabled:opacity-50"
+            className="px-4 py-2 text-sm rounded-lg bg-primary hover:bg-primary-dark text-white disabled:opacity-50"
           >
             {assignMut.isPending ? 'Atribuindo…' : 'Atribuir licença'}
           </button>
@@ -2066,7 +2066,7 @@ const LicensesTab = ({ data, isLoading }) => {
                 </div>
                 <button
                   onClick={() => setManagingSku(sku)}
-                  className="text-xs text-indigo-500 hover:text-indigo-400 flex items-center gap-1"
+                  className="text-xs text-indigo-500 hover:text-primary-light flex items-center gap-1"
                 >
                   <UserPlus className="w-3.5 h-3.5" />
                   Atribuir
@@ -2640,7 +2640,7 @@ const TeamCard = ({ team }) => {
 // ── Tab: Grupos ───────────────────────────────────────────────────────────────
 
 const GROUP_TYPE_META = {
-  'M365 Group':            { bg: 'bg-indigo-100 dark:bg-indigo-900/30', text: 'text-indigo-700 dark:text-indigo-400' },
+  'M365 Group':            { bg: 'bg-primary-50 dark:bg-indigo-900/30', text: 'text-primary-dark dark:text-primary-light' },
   'Security':              { bg: 'bg-red-100 dark:bg-red-900/30',       text: 'text-red-700 dark:text-red-400'       },
   'Distribution':          { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400' },
   'Mail-enabled Security': { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' },

@@ -151,7 +151,7 @@ const Billing = () => {
               </div>
               <button
                 onClick={() => navigate('/org/managed')}
-                className="text-sm text-indigo-500 hover:text-indigo-400 font-medium transition-colors"
+                className="text-sm text-indigo-500 hover:text-primary-light font-medium transition-colors"
               >
                 Gerenciar →
               </button>

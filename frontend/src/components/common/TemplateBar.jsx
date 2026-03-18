@@ -68,7 +68,7 @@ const TemplateBar = ({ provider, resourceType, currentForm, onLoad }) => {
         >
           <LayoutTemplate size={13} />
           {loadedName ? (
-            <span className="max-w-[160px] truncate text-indigo-300">{loadedName}</span>
+            <span className="max-w-[160px] truncate text-primary-light">{loadedName}</span>
           ) : (
             'Carregar template'
           )}
@@ -117,7 +117,7 @@ const TemplateBar = ({ provider, resourceType, currentForm, onLoad }) => {
         <button
           type="button"
           onClick={() => setSaveModalOpen(true)}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-indigo-500 hover:text-indigo-300 transition-colors"
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-400 hover:border-primary hover:text-primary-light transition-colors"
         >
           <BookmarkPlus size={13} />
           Salvar como template

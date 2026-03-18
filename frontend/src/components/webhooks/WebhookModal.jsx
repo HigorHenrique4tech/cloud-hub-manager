@@ -105,7 +105,7 @@ const WebhookModal = ({ initial, supportedEvents, onClose, onSaved }) => {
               <button
                 type="button"
                 onClick={() => setActive((v) => !v)}
-                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${active ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${active ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'}`}
               >
                 <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${active ? 'translate-x-4' : 'translate-x-0.5'}`} />
               </button>
@@ -118,7 +118,7 @@ const WebhookModal = ({ initial, supportedEvents, onClose, onSaved }) => {
             </button>
             <button
               type="submit" disabled={saving}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-50 transition-colors"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-50 transition-colors"
             >
               {saving ? 'Salvando…' : editing ? 'Salvar' : 'Criar'}
             </button>

@@ -9,6 +9,7 @@ import SearchBar from '../common/SearchBar';
 import CommandPalette from '../common/CommandPalette';
 import OrgSwitcher from './OrgSwitcher';
 import NewTicketModal from '../support/NewTicketModal';
+import Logo from '../common/Logo';
 import alertService from '../../services/alertService';
 import authService from '../../services/authService';
 
@@ -88,16 +89,11 @@ const Header = () => {
   };
 
   return (
-    <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10">
-      <div className="px-4 sm:px-6 py-3">
+    <header className="header-bar z-10">
+      <div className="px-5 sm:px-8 py-3.5">
         <div className="flex items-center gap-4">
           {/* Logo */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <img src={isDark ? '/logoblack.png' : '/logo.png'} alt="CloudAtlas" className="w-8 h-8 object-contain" />
-            <span className="text-lg font-bold text-gray-900 dark:text-gray-100 hidden sm:block">
-              CloudAtlas
-            </span>
-          </div>
+          <Logo size="md" />
 
           {/* Org switcher */}
           <OrgSwitcher />

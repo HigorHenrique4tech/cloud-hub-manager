@@ -45,7 +45,7 @@ const BudgetModal = ({ onClose, onSave, saving, existing = null }) => {
               value={form.name}
               onChange={(e) => set('name', e.target.value)}
               placeholder="Ex: AWS Production Q1"
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none transition-colors"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-primary focus:outline-none transition-colors"
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -89,7 +89,7 @@ const BudgetModal = ({ onClose, onSave, saving, existing = null }) => {
               value={form.amount}
               onChange={(e) => set('amount', e.target.value)}
               placeholder="1000.00"
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none transition-colors"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-primary focus:outline-none transition-colors"
             />
           </div>
           <div>
@@ -117,7 +117,7 @@ const BudgetModal = ({ onClose, onSave, saving, existing = null }) => {
             <button
               type="submit"
               disabled={saving}
-              className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-all active:scale-[0.97]"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-all active:scale-[0.97]"
             >
               {saving ? 'Salvando…' : isEdit ? 'Salvar Alterações' : 'Criar Orçamento'}
             </button>

@@ -164,7 +164,7 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
               {/* Resource picker — only for resource metrics */}
               {isResourceMetric && (
                 <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 space-y-2">
-                  <p className="text-xs font-medium text-indigo-700 dark:text-indigo-300">Recurso alvo</p>
+                  <p className="text-xs font-medium text-primary-dark dark:text-primary-light">Recurso alvo</p>
 
                   {form.provider === 'all' && (
                     <p className="text-xs text-amber-600 dark:text-amber-400">
@@ -201,7 +201,7 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
                   )}
 
                   {form.conditions.resource_id && (
-                    <p className="text-xs text-indigo-600 dark:text-indigo-400 font-mono truncate">
+                    <p className="text-xs text-indigo-600 dark:text-primary-light font-mono truncate">
                       ID: {form.conditions.resource_id}
                     </p>
                   )}
@@ -254,7 +254,7 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
             Cancelar
           </button>
           <button onClick={() => onSave(form)} disabled={isSaving || !canSave}
-            className="px-4 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50">
+            className="px-4 py-2 text-sm font-medium bg-primary hover:bg-primary-dark text-white rounded-lg transition-colors disabled:opacity-50">
             {isSaving ? 'Salvando...' : initial ? 'Salvar' : 'Criar'}
           </button>
         </div>
@@ -333,7 +333,7 @@ function PolicyCard({ policy, onEdit, onDelete, onToggle }) {
 
           <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
             {cond.resource_name && (
-              <p className="text-indigo-600 dark:text-indigo-400 font-medium">{cond.resource_name}</p>
+              <p className="text-indigo-600 dark:text-primary-light font-medium">{cond.resource_name}</p>
             )}
             <p>
               <span className="text-gray-400">Se</span>{' '}
@@ -436,7 +436,7 @@ function PoliciesTab({ isPro }) {
         </p>
         <PermissionGate permission="resources.manage">
           <button onClick={() => { setEditTarget(null); setShowModal(true); }}
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-indigo-500 transition-colors">
+            className="flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-dark transition-colors">
             <Plus className="w-4 h-4" /> Nova Política
           </button>
         </PermissionGate>
@@ -515,8 +515,8 @@ const Schedules = () => {
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-lg bg-indigo-600/20 p-2">
-              <Clock size={20} className="text-indigo-400" />
+            <div className="rounded-lg bg-primary/20 p-2">
+              <Clock size={20} className="text-primary-light" />
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">Agendamentos & Políticas</h1>
@@ -531,7 +531,7 @@ const Schedules = () => {
               <button
                 onClick={openCreate}
                 disabled={!isPro}
-                className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Plus size={16} />
                 Novo
@@ -571,7 +571,7 @@ const Schedules = () => {
               <>
                 {isLoading && (
                   <div className="flex justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-500" />
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
                   </div>
                 )}
 
@@ -592,7 +592,7 @@ const Schedules = () => {
                     <PermissionGate permission="resources.start_stop">
                       <button
                         onClick={openCreate}
-                        className="mt-1 rounded-lg bg-indigo-600 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-500 transition-colors"
+                        className="mt-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
                       >
                         Criar agendamento
                       </button>

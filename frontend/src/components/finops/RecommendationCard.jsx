@@ -62,7 +62,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
   return (
     <div className={`rounded-xl border transition-all ${
       selected
-        ? 'border-indigo-400 bg-indigo-50 dark:border-indigo-500/60 dark:bg-indigo-900/10'
+        ? 'border-indigo-400 bg-indigo-50 dark:border-primary/60 dark:bg-indigo-900/10'
         : isLocked
           ? 'border-gray-200 bg-gray-50 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/30'
           : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
@@ -259,7 +259,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
         <div className="px-4 pb-4">
           <a
             href="/billing"
-            className="block rounded-lg border border-dashed border-indigo-300 bg-indigo-50 px-3 py-2 text-center text-xs font-medium text-indigo-600 hover:bg-indigo-100 transition-colors dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 dark:hover:bg-indigo-900/40"
+            className="block rounded-lg border border-dashed border-indigo-300 bg-indigo-50 px-3 py-2 text-center text-xs font-medium text-indigo-600 hover:bg-primary-50 transition-colors dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-primary-light dark:hover:bg-indigo-900/40"
           >
             Fazer upgrade para Pro para ver todas as recomendações →
           </a>

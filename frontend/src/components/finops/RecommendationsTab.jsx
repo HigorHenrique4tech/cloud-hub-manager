@@ -35,7 +35,7 @@ const RecommendationsTab = ({
       <div className="flex rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
         <button
           onClick={() => setFilterStatus('')}
-          className={`px-3 py-1.5 text-xs font-medium transition-colors ${!filterStatus ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+          className={`px-3 py-1.5 text-xs font-medium transition-colors ${!filterStatus ? 'bg-primary text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800'}`}
         >
           Todas
         </button>
@@ -43,7 +43,7 @@ const RecommendationsTab = ({
           <button
             key={s}
             onClick={() => setFilterStatus(s === filterStatus ? '' : s)}
-            className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors border-l border-gray-200 dark:border-slate-700 ${filterStatus === s ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+            className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors border-l border-gray-200 dark:border-slate-700 ${filterStatus === s ? 'bg-primary text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800'}`}
           >
             {s === 'pending' ? 'Pendente' : s === 'applied' ? 'Aplicada' : 'Ignorada'}
           </button>
@@ -55,7 +55,7 @@ const RecommendationsTab = ({
           <button
             key={p}
             onClick={() => setFilterProvider(p === filterProvider ? '' : p)}
-            className={`px-3 py-1.5 text-xs font-medium uppercase transition-colors ${i > 0 ? 'border-l border-gray-200 dark:border-slate-700' : ''} ${filterProvider === p ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+            className={`px-3 py-1.5 text-xs font-medium uppercase transition-colors ${i > 0 ? 'border-l border-gray-200 dark:border-slate-700' : ''} ${filterProvider === p ? 'bg-primary text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800'}`}
           >
             {p}
           </button>
@@ -67,7 +67,7 @@ const RecommendationsTab = ({
           <button
             key={sev}
             onClick={() => setFilterSeverity(sev === filterSeverity ? '' : sev)}
-            className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors ${i > 0 ? 'border-l border-gray-200 dark:border-slate-700' : ''} ${filterSeverity === sev ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+            className={`px-3 py-1.5 text-xs font-medium capitalize transition-colors ${i > 0 ? 'border-l border-gray-200 dark:border-slate-700' : ''} ${filterSeverity === sev ? 'bg-primary text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-800 dark:hover:text-white hover:bg-gray-50 dark:hover:bg-slate-800'}`}
           >
             {sev === 'high' ? 'Alta' : sev === 'medium' ? 'Média' : 'Baixa'}
           </button>

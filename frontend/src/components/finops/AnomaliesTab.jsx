@@ -109,7 +109,7 @@ const AnomaliesTab = ({ anomaliesQ, anomalyScanMut, acknowledgeAnomalyMut, filte
           <div className="flex rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
             <button
               onClick={() => setFilterProvider('')}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${!filterProvider ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${!filterProvider ? 'bg-primary text-white' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
             >
               Todos
             </button>
@@ -117,7 +117,7 @@ const AnomaliesTab = ({ anomaliesQ, anomalyScanMut, acknowledgeAnomalyMut, filte
               <button
                 key={p}
                 onClick={() => setFilterProvider(p === filterProvider ? '' : p)}
-                className={`px-3 py-1.5 text-xs font-medium uppercase border-l border-gray-200 dark:border-slate-700 transition-colors ${filterProvider === p ? 'bg-indigo-600 text-white' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+                className={`px-3 py-1.5 text-xs font-medium uppercase border-l border-gray-200 dark:border-slate-700 transition-colors ${filterProvider === p ? 'bg-primary text-white' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
               >
                 {p}
               </button>

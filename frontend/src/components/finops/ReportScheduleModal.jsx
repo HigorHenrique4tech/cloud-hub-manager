@@ -33,7 +33,7 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
       <div className="w-full max-w-lg rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl max-h-[90vh] overflow-y-auto animate-scale-in">
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
           <div className="flex items-center gap-2">
-            <Mail size={16} className="text-indigo-400" />
+            <Mail size={16} className="text-primary-light" />
             <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Relatório Automático</h2>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white transition-colors">
@@ -47,7 +47,7 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
             <span className="text-sm font-medium text-gray-800 dark:text-slate-200">Ativar relatório automático</span>
             <button
               onClick={() => set('is_enabled', !form.is_enabled)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_enabled ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-slate-600'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_enabled ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.is_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -59,7 +59,7 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
             <input
               value={form.name}
               onChange={(e) => set('name', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
             />
           </div>
 
@@ -73,7 +73,7 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
                   onClick={() => { set('schedule_type', value); set('send_day', 1); }}
                   className={`flex-1 rounded-lg border py-1.5 text-xs font-medium transition-colors ${
                     form.schedule_type === value
-                      ? 'border-indigo-500 bg-indigo-600/20 text-indigo-700 dark:text-indigo-300'
+                      ? 'border-primary bg-primary/20 text-primary-dark dark:text-primary-light'
                       : 'border-gray-300 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:border-gray-400 dark:hover:border-slate-500'
                   }`}
                 >
@@ -102,7 +102,7 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
                   type="number" min="1" max="28"
                   value={form.send_day}
                   onChange={(e) => set('send_day', parseInt(e.target.value) || 1)}
-                  className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
                 />
               )}
             </div>
@@ -112,7 +112,7 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
                 type="time"
                 value={form.send_time}
                 onChange={(e) => set('send_time', e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-indigo-500 focus:outline-none"
+                className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
               />
             </div>
           </div>
@@ -139,7 +139,7 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
                 onChange={(e) => setEmailInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), addEmail())}
                 placeholder="email@exemplo.com"
-                className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-indigo-500 focus:outline-none"
+                className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-primary focus:outline-none"
               />
               <button
                 onClick={addEmail}
@@ -151,9 +151,9 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
             {form.recipients.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {form.recipients.map((e) => (
-                  <span key={e} className="inline-flex items-center gap-1 rounded-full bg-indigo-600/20 border border-indigo-500/30 px-2 py-0.5 text-xs text-indigo-700 dark:text-indigo-300">
+                  <span key={e} className="inline-flex items-center gap-1 rounded-full bg-primary/20 border border-primary/30 px-2 py-0.5 text-xs text-primary-dark dark:text-primary-light">
                     {e}
-                    <button onClick={() => removeEmail(e)} className="text-indigo-500 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-white"><X size={10} /></button>
+                    <button onClick={() => removeEmail(e)} className="text-indigo-500 dark:text-primary-light hover:text-indigo-800 dark:hover:text-white"><X size={10} /></button>
                   </span>
                 ))}
               </div>
@@ -223,7 +223,7 @@ const ReportScheduleModal = ({ onClose, existing, onSave, onDelete, saving, dele
               <button
                 onClick={() => onSave(form)}
                 disabled={saving || !form.recipients.length}
-                className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-500 disabled:opacity-60 transition-all active:scale-[0.97]"
+                className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-all active:scale-[0.97]"
               >
                 {saving ? 'Salvando…' : 'Salvar'}
               </button>
