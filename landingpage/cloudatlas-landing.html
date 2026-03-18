@@ -39,8 +39,8 @@
     },
     {
       "@type": "Offer",
-      "price": "29",
-      "priceCurrency": "USD",
+      "price": "497",
+      "priceCurrency": "BRL",
       "name": "Pro"
     }
   ]
@@ -734,75 +734,6 @@
   }
 
   /* ── TESTIMONIALS ── */
-  .testimonials {
-    padding: 100px 24px;
-    background: var(--bg2);
-    text-align: center;
-  }
-  .testimonials-inner { max-width: 1100px; margin: 0 auto; }
-
-  .testimonials-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 24px;
-    margin-top: 64px;
-  }
-
-  .testimonial-card {
-    background: var(--card-bg);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 36px 32px;
-    text-align: left;
-    transition: all 0.35s;
-    position: relative;
-  }
-  .testimonial-card:hover {
-    border-color: rgba(26,111,219,0.45);
-    transform: translateY(-4px);
-    box-shadow: 0 20px 60px rgba(26,111,219,0.12);
-  }
-
-  .testimonial-quote-mark {
-    font-family: 'Space Grotesk', sans-serif;
-    font-size: 3.5rem;
-    font-weight: 800;
-    color: var(--blue);
-    line-height: 1;
-    margin-bottom: 8px;
-    opacity: 0.6;
-  }
-
-  .testimonial-text {
-    font-size: 0.95rem;
-    color: var(--muted);
-    line-height: 1.7;
-    margin-bottom: 24px;
-    font-style: italic;
-  }
-
-  .testimonial-stars {
-    color: #f59e0b;
-    font-size: 0.9rem;
-    letter-spacing: 2px;
-    margin-bottom: 16px;
-  }
-
-  .testimonial-author {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .testimonial-name {
-    font-weight: 700;
-    font-size: 0.95rem;
-    color: var(--white);
-  }
-  .testimonial-role {
-    font-size: 0.82rem;
-    color: var(--muted);
-  }
-
   /* ── FAQ ── */
   .faq {
     padding: 100px 24px;
@@ -1527,13 +1458,14 @@
       <!-- Gratuito -->
       <div class="pricing-card reveal">
         <h3>Gratuito</h3>
-        <div class="pricing-price">$0</div>
+        <div class="pricing-price">R$ 0</div>
         <div class="pricing-period">Grátis para sempre</div>
         <ul class="pricing-features">
-          <li>Até 1 cloud conectada</li>
-          <li>Dashboard básico</li>
-          <li>Até 5 recursos monitorados</li>
-          <li>Alertas por email</li>
+          <li>2 workspaces</li>
+          <li>3 contas cloud (AWS, Azure, GCP)</li>
+          <li>3 membros por organização</li>
+          <li>Histórico de custos</li>
+          <li>Dashboard completo</li>
         </ul>
         <a href="https://hub.cloudatlas.app.br" class="pricing-cta pricing-cta-secondary">Começar grátis</a>
       </div>
@@ -1542,15 +1474,17 @@
       <div class="pricing-card featured reveal reveal-delay-1">
         <div class="pricing-badge">Recomendado</div>
         <h3>Pro</h3>
-        <div class="pricing-price">$29 <span>/mes</span></div>
+        <div class="pricing-price">R$ 497 <span>/mês</span></div>
         <div class="pricing-period">Cobrado mensalmente</div>
         <ul class="pricing-features">
-          <li>Até 3 clouds conectadas</li>
+          <li>10 workspaces</li>
+          <li>20 contas cloud</li>
+          <li>20 membros por organização</li>
           <li>FinOps completo</li>
           <li>Agendamentos automáticos</li>
-          <li>Relatórios avançados</li>
           <li>Webhooks e integrações</li>
-          <li>Suporte prioritário</li>
+          <li>Relatórios agendados</li>
+          <li>Detecção de anomalias</li>
         </ul>
         <a href="https://hub.cloudatlas.app.br" class="pricing-cta pricing-cta-primary">Assinar Pro</a>
       </div>
@@ -1558,15 +1492,15 @@
       <!-- Enterprise -->
       <div class="pricing-card reveal reveal-delay-2">
         <h3>Enterprise</h3>
-        <div class="pricing-price">Sob consulta</div>
-        <div class="pricing-period">Personalizado para sua empresa</div>
+        <div class="pricing-price">R$ 2.497 <span>/mês</span></div>
+        <div class="pricing-period">+ add-ons por organização</div>
         <ul class="pricing-features">
-          <li>Clouds ilimitadas</li>
+          <li>Workspaces ilimitados</li>
+          <li>Contas cloud ilimitadas</li>
+          <li>Membros ilimitados</li>
+          <li>Gestão de clientes (MSP)</li>
           <li>Multi-organização</li>
-          <li>Gestao de clientes (MSP)</li>
-          <li>API dedicada</li>
-          <li>SLA garantido</li>
-          <li>Suporte 24/7</li>
+          <li>Suporte dedicado</li>
         </ul>
         <a href="#contato" class="pricing-cta pricing-cta-secondary">Falar com vendas</a>
       </div>
@@ -1574,45 +1508,6 @@
   </div>
 </section>
 
-<!-- TESTIMONIALS -->
-<section class="testimonials">
-  <div class="testimonials-inner">
-    <span class="section-label reveal">O que dizem nossos usuarios</span>
-    <h2 class="section-title reveal reveal-delay-1">Resultados reais de quem já usa</h2>
-
-    <div class="testimonials-grid">
-      <div class="testimonial-card reveal">
-        <div class="testimonial-quote-mark">&ldquo;</div>
-        <p class="testimonial-text">Consolidamos 3 clouds num único painel. Em 2 meses, reduzimos 23% dos custos com insights que antes eram invisiveis.</p>
-        <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <div class="testimonial-author">
-          <span class="testimonial-name">Ricardo M.</span>
-          <span class="testimonial-role">CTO, TechScale</span>
-        </div>
-      </div>
-
-      <div class="testimonial-card reveal reveal-delay-1">
-        <div class="testimonial-quote-mark">&ldquo;</div>
-        <p class="testimonial-text">Como MSP, gerenciar 15 clientes em consoles separados era insustentavel. O CloudAtlas nos devolveu horas por semana.</p>
-        <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <div class="testimonial-author">
-          <span class="testimonial-name">Fernanda S.</span>
-          <span class="testimonial-role">Head de Infraestrutura, DataFlex</span>
-        </div>
-      </div>
-
-      <div class="testimonial-card reveal reveal-delay-2">
-        <div class="testimonial-quote-mark">&ldquo;</div>
-        <p class="testimonial-text">O agendamento automático de start/stop sozinho já pagou a assinatura. A visibilidade de segurança é um bônus enorme.</p>
-        <div class="testimonial-stars">&#9733;&#9733;&#9733;&#9733;&#9733;</div>
-        <div class="testimonial-author">
-          <span class="testimonial-name">Lucas T.</span>
-          <span class="testimonial-role">DevOps Lead, NexaCloud</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
 <!-- FAQ -->
 <section class="faq" id="faq">
@@ -1657,7 +1552,7 @@
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>Sim. O plano Gratuito permite conectar 1 cloud e monitorar ate 5 recursos sem limite de tempo. Faca upgrade quando quiser.</p>
+          <p>Sim. O plano Gratuito inclui 2 workspaces, 3 contas cloud e 3 membros sem limite de tempo. Faça upgrade quando quiser.</p>
         </div>
       </div>
 
