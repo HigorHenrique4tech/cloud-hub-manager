@@ -89,7 +89,7 @@ const Header = () => {
   };
 
   return (
-    <header className="header-bar z-10">
+    <header className="header-bar z-40 relative">
       <div className="px-5 sm:px-8 py-3.5">
         <div className="flex items-center gap-4">
           {/* Logo */}
