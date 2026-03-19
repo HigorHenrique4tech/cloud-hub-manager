@@ -1046,34 +1046,154 @@ class AWSService:
                 enable_dns_hostnames = None
             # Subnets
             subnets_resp = self.ec2_client.describe_subnets(Filters=[{'Name': 'vpc-id', 'Values': [vpc_id]}])
-            subnets = [
-                {
+            subnets = []
+            for s in subnets_resp.get('Subnets', []):
+                subnet_name = next((t['Value'] for t in (s.get('Tags') or []) if t['Key'] == 'Name'), '')
+                # Count ENIs (connected devices) in this subnet
+                try:
+                    eni_resp = self.ec2_client.describe_network_interfaces(
+                        Filters=[{'Name': 'subnet-id', 'Values': [s['SubnetId']]}]
+                    )
+                    connected_devices = len(eni_resp.get('NetworkInterfaces', []))
+                except Exception:
+                    connected_devices = 0
+                subnets.append({
                     'id': s['SubnetId'],
                     'cidr': s['CidrBlock'],
                     'az': s['AvailabilityZone'],
                     'public': s.get('MapPublicIpOnLaunch', False),
                     'available_ips': s.get('AvailableIpAddressCount', 0),
-                    'name': next((t['Value'] for t in (s.get('Tags') or []) if t['Key'] == 'Name'), ''),
-                }
-                for s in subnets_resp.get('Subnets', [])
-            ]
+                    'name': subnet_name,
+                    'state': s.get('State', '—'),
+                    'connected_devices_count': connected_devices,
+                })
             # Internet Gateway
             igw_resp = self.ec2_client.describe_internet_gateways(
                 Filters=[{'Name': 'attachment.vpc-id', 'Values': [vpc_id]}]
             )
             igws = igw_resp.get('InternetGateways', [])
             igw_id = igws[0].get('InternetGatewayId', '—') if igws else '—'
+            # VPC Peerings
+            peerings = []
+            try:
+                peering_resp = self.ec2_client.describe_vpc_peering_connections(
+                    Filters=[{'Name': 'requester-vpc-info.vpc-id', 'Values': [vpc_id]}]
+                )
+                accepter_resp = self.ec2_client.describe_vpc_peering_connections(
+                    Filters=[{'Name': 'accepter-vpc-info.vpc-id', 'Values': [vpc_id]}]
+                )
+                seen_ids = set()
+                for p in peering_resp.get('VpcPeeringConnections', []) + accepter_resp.get('VpcPeeringConnections', []):
+                    pcx_id = p.get('VpcPeeringConnectionId', '')
+                    if pcx_id in seen_ids:
+                        continue
+                    seen_ids.add(pcx_id)
+                    requester = p.get('RequesterVpcInfo', {})
+                    accepter = p.get('AccepterVpcInfo', {})
+                    remote = accepter if requester.get('VpcId') == vpc_id else requester
+                    peering_name = next((t['Value'] for t in (p.get('Tags') or []) if t['Key'] == 'Name'), pcx_id)
+                    peerings.append({
+                        'id': pcx_id,
+                        'name': peering_name,
+                        'status': p.get('Status', {}).get('Code', '—'),
+                        'status_message': p.get('Status', {}).get('Message', ''),
+                        'remote_vpc_id': remote.get('VpcId', ''),
+                        'remote_region': remote.get('Region', ''),
+                        'remote_cidr': remote.get('CidrBlock', ''),
+                    })
+            except Exception:
+                pass
             return {
                 'success': True,
                 'enable_dns_support': enable_dns_support,
                 'enable_dns_hostnames': enable_dns_hostnames,
                 'tenancy': vpc.get('InstanceTenancy', '—'),
                 'subnets': subnets,
+                'peerings': peerings,
+                'peerings_count': len(peerings),
                 'igw_id': igw_id,
                 'tags': tags,
             }
         except (NoCredentialsError, ClientError, Exception) as e:
             logger.error(f"get_vpc_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── Subnet management ─────────────────────────────────────────────────────
+
+    def create_subnet(self, vpc_id: str, cidr_block: str,
+                      availability_zone: str = None, name: str = None) -> Dict:
+        try:
+            args = {'VpcId': vpc_id, 'CidrBlock': cidr_block}
+            if availability_zone:
+                args['AvailabilityZone'] = availability_zone
+            if name:
+                args['TagSpecifications'] = [
+                    {'ResourceType': 'subnet', 'Tags': [{'Key': 'Name', 'Value': name}]}
+                ]
+            resp = self.ec2_client.create_subnet(**args)
+            subnet = resp['Subnet']
+            return {'success': True, 'subnet_id': subnet['SubnetId'], 'name': name or ''}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"create_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_subnet(self, subnet_id: str) -> Dict:
+        try:
+            self.ec2_client.delete_subnet(SubnetId=subnet_id)
+            return {'success': True}
+        except ClientError as e:
+            code = e.response['Error']['Code']
+            if code == 'DependencyViolation':
+                return {'success': False, 'error': 'Subnet possui recursos associados (ENIs, instâncias). Remova-os antes.'}
+            logger.error(f"delete_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+        except Exception as e:
+            logger.error(f"delete_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── VPC Peering ───────────────────────────────────────────────────────────
+
+    def create_vpc_peering(self, vpc_id: str, peer_vpc_id: str,
+                           peer_region: str = None, name: str = None) -> Dict:
+        try:
+            args = {'VpcId': vpc_id, 'PeerVpcId': peer_vpc_id}
+            if peer_region:
+                args['PeerRegion'] = peer_region
+            if name:
+                args['TagSpecifications'] = [
+                    {'ResourceType': 'vpc-peering-connection',
+                     'Tags': [{'Key': 'Name', 'Value': name}]}
+                ]
+            resp = self.ec2_client.create_vpc_peering_connection(**args)
+            pcx = resp['VpcPeeringConnection']
+            return {
+                'success': True,
+                'peering_id': pcx['VpcPeeringConnectionId'],
+                'status': pcx.get('Status', {}).get('Code', 'initiating-request'),
+            }
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"create_vpc_peering error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def accept_vpc_peering(self, peering_id: str) -> Dict:
+        try:
+            resp = self.ec2_client.accept_vpc_peering_connection(
+                VpcPeeringConnectionId=peering_id
+            )
+            status = resp.get('VpcPeeringConnection', {}).get('Status', {}).get('Code', '—')
+            return {'success': True, 'status': status}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"accept_vpc_peering error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_vpc_peering(self, peering_id: str) -> Dict:
+        try:
+            self.ec2_client.delete_vpc_peering_connection(
+                VpcPeeringConnectionId=peering_id
+            )
+            return {'success': True}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"delete_vpc_peering error: {e}")
             return {'success': False, 'error': str(e)}
 
     # ── Connection test ───────────────────────────────────────────────────────

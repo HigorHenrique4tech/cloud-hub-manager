@@ -24,6 +24,15 @@ export const awsService = {
   listVPCs: async () => (await api.get(wsUrl('/aws/ec2/vpcs'))).data,
   createVPC: async (data) => (await api.post(wsUrl('/aws/ec2/vpcs'), data)).data,
 
+  // VPC Subnets
+  createVPCSubnet: async (vpcId, data) => (await api.post(wsUrl(`/aws/ec2/vpcs/${vpcId}/subnets`), data)).data,
+  deleteVPCSubnet: async (vpcId, subnetId) => (await api.delete(wsUrl(`/aws/ec2/vpcs/${vpcId}/subnets/${subnetId}`))).data,
+
+  // VPC Peering
+  createVPCPeering: async (vpcId, data) => (await api.post(wsUrl(`/aws/ec2/vpcs/${vpcId}/peerings`), data)).data,
+  acceptVPCPeering: async (peeringId) => (await api.post(wsUrl(`/aws/ec2/vpcs/peerings/${peeringId}/accept`))).data,
+  deleteVPCPeering: async (peeringId) => (await api.delete(wsUrl(`/aws/ec2/vpcs/peerings/${peeringId}`))).data,
+
   // S3
   listS3Buckets: async () => (await api.get(wsUrl('/aws/s3/buckets'))).data,
   createS3Bucket: async (data) => (await api.post(wsUrl('/aws/s3/buckets'), data)).data,

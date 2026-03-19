@@ -14,6 +14,7 @@ from app.services.auth_service import decrypt_credential
 from app.services.gcp_service import GCPService
 from app.services.log_service import log_activity
 from app.services.security_service import GCPSecurityScanner
+from app.models.create_schemas import CreateGCPSubnetRequest, CreateGCPPeeringRequest
 from app.core.cache import cache_get, cache_set, cache_delete
 from datetime import datetime
 
@@ -385,6 +386,86 @@ async def gcp_delete_network(
     cache_delete(f"gcp:{member.workspace_id}:overview")
     log_activity(db, member.user, "gcp.network.delete", "Network", name, {})
     return {"success": True, "network": name}
+
+
+@ws_router.get("/networks/{name}/detail")
+async def gcp_get_network_detail(
+    name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_gcp_service(member, db)
+    return await _run(svc.get_network_detail, name)
+
+
+# ── Network Subnets ──────────────────────────────────────────────────────
+
+@ws_router.post("/networks/{name}/subnets")
+async def gcp_create_subnet(
+    name: str,
+    payload: CreateGCPSubnetRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_gcp_service(member, db)
+    result = await _run(svc.create_subnetwork, name, payload.name, payload.region, payload.ip_cidr_range)
+    cache_delete(f"gcp:{member.workspace_id}:networks")
+    log_activity(db, member.user, "gcp.subnet.create", "Subnet", payload.name, {"network": name, "region": payload.region})
+    return {"success": True, **result}
+
+
+@ws_router.delete("/networks/{network_name}/subnets/{region}/{subnet_name}")
+async def gcp_delete_subnet(
+    network_name: str,
+    region: str,
+    subnet_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_gcp_service(member, db)
+    await _run(svc.delete_subnetwork, region, subnet_name)
+    cache_delete(f"gcp:{member.workspace_id}:networks")
+    log_activity(db, member.user, "gcp.subnet.delete", "Subnet", subnet_name, {"network": network_name, "region": region})
+    return {"success": True, "subnet": subnet_name}
+
+
+# ── Network Peerings ─────────────────────────────────────────────────────
+
+@ws_router.post("/networks/{name}/peerings")
+async def gcp_create_peering(
+    name: str,
+    payload: CreateGCPPeeringRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_gcp_service(member, db)
+    result = await _run(svc.create_network_peering, name, payload.peering_name, payload.peer_network)
+    cache_delete(f"gcp:{member.workspace_id}:networks")
+    log_activity(db, member.user, "gcp.peering.create", "Peering", payload.peering_name, {"network": name, "peer": payload.peer_network})
+    return {"success": True, **result}
+
+
+@ws_router.delete("/networks/{network_name}/peerings/{peering_name}")
+async def gcp_delete_peering(
+    network_name: str,
+    peering_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_gcp_service(member, db)
+    await _run(svc.delete_network_peering, network_name, peering_name)
+    cache_delete(f"gcp:{member.workspace_id}:networks")
+    log_activity(db, member.user, "gcp.peering.delete", "Peering", peering_name, {"network": network_name})
+    return {"success": True, "peering": peering_name}
+
+
+@ws_router.get("/compute/regions")
+async def gcp_list_regions(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_gcp_service(member, db)
+    return await _run(svc.list_regions)
 
 
 # ── Security Scan ─────────────────────────────────────────────────────────────

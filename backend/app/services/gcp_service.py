@@ -268,6 +268,131 @@ class GCPService:
         net = client.get(project=self.project_id, network=name)
         return {"id": str(net.id), "name": net.name, "auto_create_subnetworks": net.auto_create_subnetworks}
 
+    def get_network_detail(self, name: str) -> dict:
+        """Get detailed info about a VPC network including subnets and peerings."""
+        net_client = compute_v1.NetworksClient(credentials=self.credentials)
+        net = net_client.get(project=self.project_id, network=name)
+
+        # Fetch subnets detail
+        subnets = []
+        if net.subnetworks:
+            sub_client = compute_v1.SubnetworksClient(credentials=self.credentials)
+            for sub_url in net.subnetworks:
+                # URL format: projects/{project}/regions/{region}/subnetworks/{name}
+                parts = sub_url.split("/")
+                sub_region = parts[parts.index("regions") + 1] if "regions" in parts else ""
+                sub_name = parts[-1]
+                try:
+                    sub = sub_client.get(
+                        project=self.project_id, region=sub_region, subnetwork=sub_name
+                    )
+                    subnets.append({
+                        "name": sub.name,
+                        "region": sub_region,
+                        "ip_cidr_range": sub.ip_cidr_range,
+                        "gateway_address": sub.gateway_address,
+                        "private_ip_google_access": sub.private_ip_google_access,
+                        "purpose": sub.purpose or "PRIVATE",
+                        "state": sub.state or "READY",
+                        "creation_timestamp": sub.creation_timestamp,
+                        "self_link": sub.self_link,
+                    })
+                except Exception as e:
+                    logger.debug(f"Could not fetch subnet {sub_name}: {e}")
+                    subnets.append({"name": sub_name, "region": sub_region, "ip_cidr_range": "?", "state": "UNKNOWN"})
+
+        # Peerings are embedded in the network object
+        peerings = []
+        if net.peerings:
+            for p in net.peerings:
+                peerings.append({
+                    "name": p.name,
+                    "network": p.network.split("/")[-1] if p.network else "",
+                    "network_url": p.network or "",
+                    "state": p.state or "UNKNOWN",
+                    "auto_create_routes": p.auto_create_routes,
+                    "export_custom_routes": p.export_custom_routes,
+                    "import_custom_routes": p.import_custom_routes,
+                    "exchange_subnet_routes": p.exchange_subnet_routes,
+                })
+
+        return {
+            "name": net.name,
+            "id": str(net.id),
+            "auto_create_subnetworks": net.auto_create_subnetworks,
+            "routing_mode": net.routing_config.routing_mode if net.routing_config else "REGIONAL",
+            "creation_timestamp": net.creation_timestamp,
+            "description": net.description or "",
+            "mtu": net.mtu,
+            "subnets": subnets,
+            "peerings": peerings,
+            "subnets_count": len(subnets),
+            "peerings_count": len(peerings),
+        }
+
+    def create_subnetwork(self, network_name: str, name: str, region: str, ip_cidr_range: str) -> dict:
+        """Create a subnet in a VPC network."""
+        sub_client = compute_v1.SubnetworksClient(credentials=self.credentials)
+        subnet_resource = compute_v1.Subnetwork(
+            name=name,
+            network=f"projects/{self.project_id}/global/networks/{network_name}",
+            ip_cidr_range=ip_cidr_range,
+        )
+        op = sub_client.insert(project=self.project_id, region=region, subnetwork_resource=subnet_resource)
+        op.result()
+        sub = sub_client.get(project=self.project_id, region=region, subnetwork=name)
+        return {
+            "name": sub.name,
+            "region": region,
+            "ip_cidr_range": sub.ip_cidr_range,
+            "gateway_address": sub.gateway_address,
+            "state": sub.state or "READY",
+        }
+
+    def delete_subnetwork(self, region: str, name: str) -> None:
+        """Delete a subnet from a VPC network."""
+        sub_client = compute_v1.SubnetworksClient(credentials=self.credentials)
+        op = sub_client.delete(project=self.project_id, region=region, subnetwork=name)
+        op.result()
+
+    def create_network_peering(self, network_name: str, peering_name: str, peer_network: str) -> dict:
+        """Create a VPC network peering."""
+        client = compute_v1.NetworksClient(credentials=self.credentials)
+        peering = compute_v1.NetworkPeering(
+            name=peering_name,
+            network=f"projects/{self.project_id}/global/networks/{peer_network}",
+            exchange_subnet_routes=True,
+            auto_create_routes=True,
+        )
+        request = compute_v1.AddPeeringNetworkRequest(
+            project=self.project_id,
+            network=network_name,
+            networks_add_peering_request_resource=compute_v1.NetworksAddPeeringRequest(
+                network_peering=peering
+            ),
+        )
+        op = client.add_peering(request=request)
+        op.result()
+        return {"name": peering_name, "peer_network": peer_network, "state": "ACTIVE"}
+
+    def delete_network_peering(self, network_name: str, peering_name: str) -> None:
+        """Remove a VPC network peering."""
+        client = compute_v1.NetworksClient(credentials=self.credentials)
+        request = compute_v1.RemovePeeringNetworkRequest(
+            project=self.project_id,
+            network=network_name,
+            networks_remove_peering_request_resource=compute_v1.NetworksRemovePeeringRequest(
+                name=peering_name,
+            ),
+        )
+        op = client.remove_peering(request=request)
+        op.result()
+
+    def list_regions(self) -> list[str]:
+        """List all available GCP regions."""
+        client = compute_v1.RegionsClient(credentials=self.credentials)
+        return sorted(r.name for r in client.list(project=self.project_id))
+
     def delete_network(self, name: str) -> None:
         client = compute_v1.NetworksClient(credentials=self.credentials)
         op = client.delete(project=self.project_id, network=name)

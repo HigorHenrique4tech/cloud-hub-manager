@@ -9,6 +9,7 @@ from app.models.db_models import CloudAccount
 from app.models.create_schemas import (
     CreateEC2Request, CreateS3BucketRequest, CreateRDSRequest,
     CreateLambdaRequest, CreateVPCRequest,
+    CreateVPCSubnetRequest, CreateVPCPeeringRequest,
 )
 from app.core import settings
 from app.core.dependencies import require_permission
@@ -262,6 +263,98 @@ async def ws_create_vpc(
     log_activity(db, member.user, 'vpc.create', 'VPC',
                  resource_id=result.get('vpc_id'), resource_name=body.name,
                  provider='aws', organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+# ── VPC Subnets ──────────────────────────────────────────────────────────
+
+@ws_router.post("/ec2/vpcs/{vpc_id}/subnets")
+async def ws_create_vpc_subnet(
+    vpc_id: str,
+    body: CreateVPCSubnetRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.create_subnet, vpc_id, body.cidr_block,
+                        body.availability_zone, body.name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar subnet'))
+    log_activity(db, member.user, 'subnet.create', 'Subnet',
+                 resource_id=result.get('subnet_id'), resource_name=body.name or '',
+                 provider='aws', detail=f"VPC: {vpc_id}, CIDR: {body.cidr_block}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/ec2/vpcs/{vpc_id}/subnets/{subnet_id}")
+async def ws_delete_vpc_subnet(
+    vpc_id: str,
+    subnet_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.delete_subnet, subnet_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao excluir subnet'))
+    log_activity(db, member.user, 'subnet.delete', 'Subnet',
+                 resource_id=subnet_id, provider='aws',
+                 detail=f"VPC: {vpc_id}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+# ── VPC Peering ──────────────────────────────────────────────────────────
+
+@ws_router.post("/ec2/vpcs/{vpc_id}/peerings")
+async def ws_create_vpc_peering(
+    vpc_id: str,
+    body: CreateVPCPeeringRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.create_vpc_peering, vpc_id, body.peer_vpc_id,
+                        body.peer_region, body.name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar VPC peering'))
+    log_activity(db, member.user, 'peering.create', 'VPCPeering',
+                 resource_id=result.get('peering_id'), resource_name=body.name or '',
+                 provider='aws', detail=f"VPC: {vpc_id} → {body.peer_vpc_id}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.post("/ec2/vpcs/peerings/{peering_id}/accept")
+async def ws_accept_vpc_peering(
+    peering_id: str,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.accept_vpc_peering, peering_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao aceitar peering'))
+    log_activity(db, member.user, 'peering.accept', 'VPCPeering',
+                 resource_id=peering_id, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/ec2/vpcs/peerings/{peering_id}")
+async def ws_delete_vpc_peering(
+    peering_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.delete_vpc_peering, peering_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao excluir peering'))
+    log_activity(db, member.user, 'peering.delete', 'VPCPeering',
+                 resource_id=peering_id, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
     return result
 
 

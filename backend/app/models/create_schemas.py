@@ -113,6 +113,18 @@ class CreateVPCRequest(BaseModel):
     tags: Dict[str, str] = {}
 
 
+class CreateVPCSubnetRequest(BaseModel):
+    name: Optional[str] = None
+    cidr_block: str
+    availability_zone: Optional[str] = None
+
+
+class CreateVPCPeeringRequest(BaseModel):
+    name: Optional[str] = None
+    peer_vpc_id: str
+    peer_region: Optional[str] = None
+
+
 # ── Azure VM ────────────────────────────────────────────────────────────────
 
 class AzureDataDisk(BaseModel):
@@ -219,3 +231,16 @@ class CreateAzureAppServiceRequest(BaseModel):
     plan_sku: str = "F1"
     always_on: bool = False
     tags: Dict[str, str] = {}
+
+
+# ── GCP Network ───────────────────────────────────────────────────────────
+
+class CreateGCPSubnetRequest(BaseModel):
+    name: str
+    region: str
+    ip_cidr_range: str
+
+
+class CreateGCPPeeringRequest(BaseModel):
+    peering_name: str
+    peer_network: str

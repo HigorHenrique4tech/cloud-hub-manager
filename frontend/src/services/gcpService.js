@@ -31,6 +31,18 @@ const gcpService = {
   listNetworks: () => api.get(wsUrl('/gcp/networks')).then(r => r.data),
   createNetwork: (payload) => api.post(wsUrl('/gcp/networks'), payload).then(r => r.data),
   deleteNetwork: (name) => api.delete(wsUrl(`/gcp/networks/${name}`)),
+  getNetworkDetail: (name) => api.get(wsUrl(`/gcp/networks/${name}/detail`)).then(r => r.data),
+
+  // Network Subnets
+  createSubnet: (networkName, data) => api.post(wsUrl(`/gcp/networks/${networkName}/subnets`), data).then(r => r.data),
+  deleteSubnet: (networkName, region, subnetName) => api.delete(wsUrl(`/gcp/networks/${networkName}/subnets/${region}/${subnetName}`)).then(r => r.data),
+
+  // Network Peerings
+  createPeering: (networkName, data) => api.post(wsUrl(`/gcp/networks/${networkName}/peerings`), data).then(r => r.data),
+  deletePeering: (networkName, peeringName) => api.delete(wsUrl(`/gcp/networks/${networkName}/peerings/${peeringName}`)).then(r => r.data),
+
+  // Regions
+  listRegions: () => api.get(wsUrl('/gcp/compute/regions')).then(r => r.data),
 
   // Metrics
   getMetrics: () => api.get(wsUrl('/gcp/metrics')).then(r => r.data),
