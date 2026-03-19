@@ -11,6 +11,7 @@ import pytest
 os.environ.setdefault("DEBUG", "True")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-for-pytest-only")
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+os.environ.setdefault("REDIS_URL", "memory://")  # in-memory limiter for tests
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -53,6 +54,12 @@ def db():
 @pytest.fixture()
 def client():
     app.dependency_overrides[get_db] = override_get_db
+    # Reset rate limiter counters between tests
+    from app.core.limiter import limiter
+    try:
+        limiter.reset()
+    except Exception:
+        pass
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
     app.dependency_overrides.clear()

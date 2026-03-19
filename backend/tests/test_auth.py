@@ -102,9 +102,27 @@ def test_rate_limit_login(client):
     _register(client, email="rate_limit@example.com")
 
     statuses = []
+    last_resp = None
     for _ in range(6):
         resp = _login(client, email="rate_limit@example.com", password="WrongPass!")
         statuses.append(resp.status_code)
+        last_resp = resp
 
     # At least one 429 among the 6 attempts
     assert 429 in statuses, f"Expected a 429, got: {statuses}"
+
+    # When rate limited, response should include Retry-After header
+    limited_resp = last_resp if last_resp.status_code == 429 else None
+    if limited_resp:
+        assert "Retry-After" in limited_resp.headers
+        body = limited_resp.json()
+        assert "detail" in body
+        assert "retry_after" in body
+
+
+def test_rate_limit_headers_present(client):
+    """All API responses should include X-RateLimit-Limit header."""
+    resp = client.get(ME_URL)
+    # Even 401 responses should have rate limit headers
+    assert "X-RateLimit-Limit" in resp.headers
+    assert "X-RateLimit-Policy" in resp.headers

@@ -174,6 +174,25 @@ class CreateAzureVNetRequest(BaseModel):
     tags: Dict[str, str] = {}
 
 
+class CreateSubnetRequest(BaseModel):
+    subnet_name: str
+    address_prefix: str
+    nsg_id: Optional[str] = None
+
+
+class UpdateSubnetRequest(BaseModel):
+    address_prefix: str
+    nsg_id: Optional[str] = None
+
+
+class CreateVNetPeeringRequest(BaseModel):
+    peering_name: str
+    remote_vnet_id: str
+    allow_forwarded_traffic: bool = True
+    allow_gateway_transit: bool = False
+    use_remote_gateways: bool = False
+
+
 # ── Azure SQL Database ─────────────────────────────────────────────────────
 
 class CreateAzureSQLRequest(BaseModel):

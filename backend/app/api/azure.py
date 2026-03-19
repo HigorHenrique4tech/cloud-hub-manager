@@ -9,6 +9,7 @@ from app.models.db_models import CloudAccount
 from app.models.create_schemas import (
     CreateAzureVMRequest, CreateAzureStorageRequest, CreateAzureVNetRequest,
     CreateAzureSQLRequest, CreateAzureAppServiceRequest,
+    CreateSubnetRequest, UpdateSubnetRequest, CreateVNetPeeringRequest,
 )
 from app.core.dependencies import require_permission
 from app.core.auth_context import MemberContext
@@ -341,6 +342,128 @@ async def ws_create_vnet(
     log_activity(db, member.user, 'vnet.create', 'VNet',
                  resource_name=body.name, provider='azure',
                  detail=f"Resource group: {body.resource_group}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+# ── Subnets ──────────────────────────────────────────────────────────────
+
+@ws_router.post("/vnets/{resource_group}/{vnet_name}/subnets")
+async def ws_create_subnet(
+    resource_group: str,
+    vnet_name: str,
+    body: CreateSubnetRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.create_subnet, resource_group, vnet_name,
+                        body.subnet_name, body.address_prefix, body.nsg_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar subnet'))
+    cache_delete(f"azure:{member.workspace_id}:vnets")
+    log_activity(db, member.user, 'subnet.create', 'Subnet',
+                 resource_name=body.subnet_name, provider='azure',
+                 detail=f"VNet: {vnet_name}, CIDR: {body.address_prefix}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.put("/vnets/{resource_group}/{vnet_name}/subnets/{subnet_name}")
+async def ws_update_subnet(
+    resource_group: str,
+    vnet_name: str,
+    subnet_name: str,
+    body: UpdateSubnetRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.update_subnet, resource_group, vnet_name,
+                        subnet_name, body.address_prefix, body.nsg_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao atualizar subnet'))
+    cache_delete(f"azure:{member.workspace_id}:vnets")
+    log_activity(db, member.user, 'subnet.update', 'Subnet',
+                 resource_name=subnet_name, provider='azure',
+                 detail=f"VNet: {vnet_name}, CIDR: {body.address_prefix}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/vnets/{resource_group}/{vnet_name}/subnets/{subnet_name}")
+async def ws_delete_subnet(
+    resource_group: str,
+    vnet_name: str,
+    subnet_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.delete_subnet, resource_group, vnet_name, subnet_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao excluir subnet'))
+    cache_delete(f"azure:{member.workspace_id}:vnets")
+    log_activity(db, member.user, 'subnet.delete', 'Subnet',
+                 resource_name=subnet_name, provider='azure',
+                 detail=f"VNet: {vnet_name}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+# ── VNet Peering ─────────────────────────────────────────────────────────
+
+@ws_router.get("/vnets/{resource_group}/{vnet_name}/peerings")
+async def ws_list_vnet_peerings(
+    resource_group: str,
+    vnet_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.list_vnet_peerings, resource_group, vnet_name)
+    return result
+
+
+@ws_router.post("/vnets/{resource_group}/{vnet_name}/peerings")
+async def ws_create_vnet_peering(
+    resource_group: str,
+    vnet_name: str,
+    body: CreateVNetPeeringRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.create_vnet_peering, resource_group, vnet_name,
+                        body.peering_name, body.remote_vnet_id,
+                        body.allow_forwarded_traffic, body.allow_gateway_transit,
+                        body.use_remote_gateways)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar peering'))
+    cache_delete(f"azure:{member.workspace_id}:vnets")
+    log_activity(db, member.user, 'peering.create', 'VNetPeering',
+                 resource_name=body.peering_name, provider='azure',
+                 detail=f"VNet: {vnet_name} → {body.remote_vnet_id.split('/')[-1]}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/vnets/{resource_group}/{vnet_name}/peerings/{peering_name}")
+async def ws_delete_vnet_peering(
+    resource_group: str,
+    vnet_name: str,
+    peering_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.delete_vnet_peering, resource_group, vnet_name, peering_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao excluir peering'))
+    cache_delete(f"azure:{member.workspace_id}:vnets")
+    log_activity(db, member.user, 'peering.delete', 'VNetPeering',
+                 resource_name=peering_name, provider='azure',
+                 detail=f"VNet: {vnet_name}",
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
     return result
 

@@ -4,12 +4,11 @@ from fastapi.responses import JSONResponse
 from datetime import datetime
 import logging
 
-from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.core import settings
-from app.core.limiter import limiter
+from app.core.limiter import limiter, resolve_rate_limit
 from app.api import api_router
 from app.models import HealthResponse
 from app.database import run_migrations, engine  # noqa: F401 - run_migrations used in dev/entrypoint
@@ -46,8 +45,55 @@ app = FastAPI(
 )
 
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+def _custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """Return a friendly JSON 429 with Retry-After header."""
+    retry_after = getattr(exc, "retry_after", 60)
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "Limite de requisições excedido. Tente novamente em breve.",
+            "retry_after": retry_after,
+        },
+        headers={"Retry-After": str(retry_after)},
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _custom_rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
+
+
+# ── Inject user into request.state for per-user rate limiting ────────────────
+@app.middleware("http")
+async def inject_user_for_limiter(request: Request, call_next):
+    """Parse JWT from Authorization header and attach user to request.state
+    so that the rate limiter key_func can use user ID instead of IP."""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        try:
+            from jose import jwt as jose_jwt
+            token = auth_header[7:]
+            payload = jose_jwt.decode(
+                token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+            )
+
+            class _MinimalUser:
+                def __init__(self, uid): self.id = uid
+            user_id = payload.get("sub") or payload.get("user_id")
+            if user_id:
+                request.state.user = _MinimalUser(int(user_id))
+        except Exception:
+            pass  # invalid/expired token — limiter falls back to IP
+    response = await call_next(request)
+
+    # Inject X-RateLimit headers so frontend knows the current limit
+    tier = resolve_rate_limit(request)
+    if tier:
+        limit_value = tier.split("/")[0]
+        response.headers["X-RateLimit-Limit"] = limit_value
+        response.headers["X-RateLimit-Policy"] = tier
+    return response
 
 # ── Security headers ──────────────────────────────────────────────────────────
 @app.middleware("http")
@@ -68,6 +114,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    expose_headers=["X-RateLimit-Limit", "X-RateLimit-Policy", "Retry-After"],
 )
 
 # ── Prometheus metrics ───────────────────────────────────────────────────────

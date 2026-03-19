@@ -28,6 +28,16 @@ export const azureService = {
   listVNets: async () => (await api.get(wsUrl('/azure/vnets'))).data,
   createVNet: async (data) => (await api.post(wsUrl('/azure/vnets'), data)).data,
 
+  // Subnets
+  createSubnet: async (rg, vnetName, data) => (await api.post(wsUrl(`/azure/vnets/${rg}/${vnetName}/subnets`), data)).data,
+  updateSubnet: async (rg, vnetName, subnetName, data) => (await api.put(wsUrl(`/azure/vnets/${rg}/${vnetName}/subnets/${subnetName}`), data)).data,
+  deleteSubnet: async (rg, vnetName, subnetName) => (await api.delete(wsUrl(`/azure/vnets/${rg}/${vnetName}/subnets/${subnetName}`))).data,
+
+  // VNet Peering
+  listVNetPeerings: async (rg, vnetName) => (await api.get(wsUrl(`/azure/vnets/${rg}/${vnetName}/peerings`))).data,
+  createVNetPeering: async (rg, vnetName, data) => (await api.post(wsUrl(`/azure/vnets/${rg}/${vnetName}/peerings`), data)).data,
+  deleteVNetPeering: async (rg, vnetName, peeringName) => (await api.delete(wsUrl(`/azure/vnets/${rg}/${vnetName}/peerings/${peeringName}`))).data,
+
   // Databases
   listDatabases: async () => (await api.get(wsUrl('/azure/databases'))).data,
   createSQLDatabase: async (data) => (await api.post(wsUrl('/azure/databases'), data, { timeout: 120000 })).data,

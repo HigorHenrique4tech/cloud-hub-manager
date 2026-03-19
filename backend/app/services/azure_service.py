@@ -919,26 +919,166 @@ class AzureService:
             vnet = self.network_client.virtual_networks.get(resource_group, vnet_name)
             subnets = []
             for s in (vnet.subnets or []):
+                nsg_name = ''
+                if s.network_security_group and s.network_security_group.id:
+                    nsg_name = s.network_security_group.id.split('/')[-1]
+                route_table_name = ''
+                if s.route_table and s.route_table.id:
+                    route_table_name = s.route_table.id.split('/')[-1]
+                delegation = ''
+                if s.delegations:
+                    delegation = s.delegations[0].service_name or ''
+                connected_devices = len(s.ip_configurations or [])
                 subnets.append({
                     'name': s.name,
                     'address_prefix': s.address_prefix or '—',
                     'provisioning_state': s.provisioning_state or '—',
+                    'nsg_name': nsg_name,
+                    'route_table_name': route_table_name,
+                    'delegation': delegation,
+                    'connected_devices_count': connected_devices,
                 })
             dns_servers = []
             if vnet.dhcp_options and vnet.dhcp_options.dns_servers:
                 dns_servers = list(vnet.dhcp_options.dns_servers)
-            peerings_count = len(list(vnet.virtual_network_peerings or []))
+            peerings = []
+            for p in (vnet.virtual_network_peerings or []):
+                remote_vnet_id = p.remote_virtual_network.id if p.remote_virtual_network else ''
+                remote_vnet_name = remote_vnet_id.split('/')[-1] if remote_vnet_id else ''
+                peerings.append({
+                    'name': p.name,
+                    'peering_state': p.peering_state or '—',
+                    'remote_vnet_id': remote_vnet_id,
+                    'remote_vnet_name': remote_vnet_name,
+                    'allow_forwarded_traffic': p.allow_forwarded_traffic or False,
+                    'allow_gateway_transit': p.allow_gateway_transit or False,
+                    'use_remote_gateways': p.use_remote_gateways or False,
+                    'allow_virtual_network_access': p.allow_virtual_network_access or False,
+                })
             return {
                 'success': True,
                 'address_space': list(vnet.address_space.address_prefixes) if vnet.address_space else [],
                 'subnets': subnets,
                 'dns_servers': dns_servers,
-                'peerings_count': peerings_count,
+                'peerings': peerings,
+                'peerings_count': len(peerings),
                 'provisioning_state': vnet.provisioning_state or '—',
                 'tags': vnet.tags or {},
             }
         except Exception as e:
             logger.error(f"get_vnet_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── Subnet management ─────────────────────────────────────────────────────
+
+    def create_subnet(self, resource_group: str, vnet_name: str,
+                      subnet_name: str, address_prefix: str,
+                      nsg_id: str = None) -> Dict:
+        try:
+            from azure.mgmt.network.models import Subnet, NetworkSecurityGroup
+            subnet_params = Subnet(address_prefix=address_prefix)
+            if nsg_id:
+                subnet_params.network_security_group = NetworkSecurityGroup(id=nsg_id)
+            poller = self.network_client.subnets.begin_create_or_update(
+                resource_group, vnet_name, subnet_name, subnet_params
+            )
+            result = poller.result()
+            return {'success': True, 'name': result.name, 'id': result.id}
+        except Exception as e:
+            logger.error(f"create_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def update_subnet(self, resource_group: str, vnet_name: str,
+                      subnet_name: str, address_prefix: str,
+                      nsg_id: str = None) -> Dict:
+        try:
+            from azure.mgmt.network.models import Subnet, NetworkSecurityGroup
+            subnet_params = Subnet(address_prefix=address_prefix)
+            if nsg_id:
+                subnet_params.network_security_group = NetworkSecurityGroup(id=nsg_id)
+            poller = self.network_client.subnets.begin_create_or_update(
+                resource_group, vnet_name, subnet_name, subnet_params
+            )
+            result = poller.result()
+            return {'success': True, 'name': result.name, 'id': result.id}
+        except Exception as e:
+            logger.error(f"update_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_subnet(self, resource_group: str, vnet_name: str,
+                      subnet_name: str) -> Dict:
+        try:
+            poller = self.network_client.subnets.begin_delete(
+                resource_group, vnet_name, subnet_name
+            )
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── VNet Peering ──────────────────────────────────────────────────────────
+
+    def list_vnet_peerings(self, resource_group: str, vnet_name: str) -> Dict:
+        try:
+            peerings = []
+            for p in self.network_client.virtual_network_peerings.list(resource_group, vnet_name):
+                remote_vnet_id = p.remote_virtual_network.id if p.remote_virtual_network else ''
+                remote_vnet_name = remote_vnet_id.split('/')[-1] if remote_vnet_id else ''
+                peerings.append({
+                    'name': p.name,
+                    'peering_state': p.peering_state or '—',
+                    'remote_vnet_id': remote_vnet_id,
+                    'remote_vnet_name': remote_vnet_name,
+                    'allow_forwarded_traffic': p.allow_forwarded_traffic or False,
+                    'allow_gateway_transit': p.allow_gateway_transit or False,
+                    'use_remote_gateways': p.use_remote_gateways or False,
+                    'allow_virtual_network_access': p.allow_virtual_network_access or False,
+                })
+            return {'success': True, 'total': len(peerings), 'peerings': peerings}
+        except Exception as e:
+            logger.error(f"list_vnet_peerings error: {e}")
+            return {'success': False, 'error': str(e), 'peerings': []}
+
+    def create_vnet_peering(self, resource_group: str, vnet_name: str,
+                            peering_name: str, remote_vnet_id: str,
+                            allow_forwarded_traffic: bool = True,
+                            allow_gateway_transit: bool = False,
+                            use_remote_gateways: bool = False) -> Dict:
+        try:
+            from azure.mgmt.network.models import (
+                VirtualNetworkPeering, SubResource,
+            )
+            peering_params = VirtualNetworkPeering(
+                remote_virtual_network=SubResource(id=remote_vnet_id),
+                allow_virtual_network_access=True,
+                allow_forwarded_traffic=allow_forwarded_traffic,
+                allow_gateway_transit=allow_gateway_transit,
+                use_remote_gateways=use_remote_gateways,
+            )
+            poller = self.network_client.virtual_network_peerings.begin_create_or_update(
+                resource_group, vnet_name, peering_name, peering_params
+            )
+            result = poller.result()
+            return {
+                'success': True,
+                'name': result.name,
+                'peering_state': result.peering_state,
+            }
+        except Exception as e:
+            logger.error(f"create_vnet_peering error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_vnet_peering(self, resource_group: str, vnet_name: str,
+                            peering_name: str) -> Dict:
+        try:
+            poller = self.network_client.virtual_network_peerings.begin_delete(
+                resource_group, vnet_name, peering_name
+            )
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_vnet_peering error: {e}")
             return {'success': False, 'error': str(e)}
 
     # ── Delete operations ─────────────────────────────────────────────────────
