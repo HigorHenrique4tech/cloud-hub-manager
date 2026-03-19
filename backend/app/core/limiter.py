@@ -69,10 +69,11 @@ def _get_storage_uri() -> str:
 
 # ── Limiter instance ─────────────────────────────────────────────────────────
 limiter = Limiter(
-    key_func=get_user_or_ip,
+    key_func=get_real_ip,
     default_limits=[GLOBAL],
     storage_uri=_get_storage_uri(),
-    strategy="fixed-window-elastic-expiry",
+    in_memory_fallback_enabled=True,
+    swallow_errors=True,
 )
 
 
