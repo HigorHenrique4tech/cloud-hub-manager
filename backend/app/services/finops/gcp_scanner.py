@@ -24,7 +24,7 @@ class GCPFinOpsScanner:
 
     def __init__(self, project_id: str, client_email: str, private_key: str, private_key_id: str):
         self.project_id = project_id
-        info = {
+        self._info = {
             "type": "service_account",
             "project_id": project_id,
             "client_email": client_email,
@@ -34,7 +34,7 @@ class GCPFinOpsScanner:
         }
         from google.oauth2 import service_account
         self.credentials = service_account.Credentials.from_service_account_info(
-            info, scopes=["https://www.googleapis.com/auth/cloud-platform"]
+            self._info, scopes=["https://www.googleapis.com/auth/cloud-platform"]
         )
 
     def _instances_client(self):
@@ -407,6 +407,21 @@ class GCPFinOpsScanner:
             logger.warning(f"GCP GCE rightsizing scan error: {e}")
         return findings
 
+    def scan_recommender_cost(self) -> List[dict]:
+        """Fetch Cost recommendations from GCP Recommender API."""
+        try:
+            from app.services.gcp_recommender_service import GCPRecommenderService
+            recommender = GCPRecommenderService(
+                project_id=self.project_id,
+                client_email=self._info.get("client_email", ""),
+                private_key=self._info.get("private_key", ""),
+                private_key_id=self._info.get("private_key_id", ""),
+            )
+            return recommender.list_cost_as_finops_findings()
+        except Exception as e:
+            logger.warning(f"GCP Recommender cost scan error: {e}")
+            return []
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_compute_idle())
@@ -415,4 +430,5 @@ class GCPFinOpsScanner:
         findings.extend(self.scan_static_ips())
         findings.extend(self.scan_always_on())
         findings.extend(self.scan_billing_recommender())
+        findings.extend(self.scan_recommender_cost())
         return findings

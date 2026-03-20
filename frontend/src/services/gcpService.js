@@ -51,6 +51,11 @@ const gcpService = {
   listSnapshots: () => api.get(wsUrl('/gcp/backups/snapshots')).then(r => r.data),
   createSnapshot: (data) => api.post(wsUrl('/gcp/backups/snapshots'), data).then(r => r.data),
   deleteSnapshot: (name) => api.delete(wsUrl(`/gcp/backups/snapshots/${name}`)).then(r => r.data),
+
+  // Advisor (GCP Recommender)
+  getAdvisorSummary: () => api.get(wsUrl('/gcp/advisor/summary')).then(r => r.data),
+  getAdvisorRecommendations: (category) =>
+    api.get(wsUrl('/gcp/advisor/recommendations'), { params: category ? { category } : {} }).then(r => r.data),
 };
 
 export default gcpService;

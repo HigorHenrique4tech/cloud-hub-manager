@@ -1361,3 +1361,80 @@ async def ws_list_backup_jobs(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Azure Advisor ────────────────────────────────────────────────────────────
+
+def _build_advisor_service(member: MemberContext, db: Session):
+    """Build an AzureAdvisorService from workspace credentials."""
+    from app.services.azure_advisor_service import AzureAdvisorService
+    account = (
+        db.query(CloudAccount)
+        .filter(
+            CloudAccount.workspace_id == member.workspace_id,
+            CloudAccount.provider == "azure",
+            CloudAccount.is_active == True,
+        )
+        .order_by(CloudAccount.created_at.desc())
+        .first()
+    )
+    if not account:
+        raise HTTPException(status_code=400, detail="Nenhuma conta Azure configurada neste workspace.")
+    creds = decrypt_for_account(db, account)
+    return AzureAdvisorService(
+        subscription_id=creds.get("subscription_id", ""),
+        tenant_id=creds.get("tenant_id", ""),
+        client_id=creds.get("client_id", ""),
+        client_secret=creds.get("client_secret", ""),
+    )
+
+
+@ws_router.get("/advisor/summary")
+async def ws_advisor_summary(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Get Azure Advisor summary (counts by category and impact)."""
+    try:
+        advisor = _build_advisor_service(member, db)
+        return await asyncio.to_thread(advisor.get_summary)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/advisor/recommendations")
+async def ws_advisor_recommendations(
+    category: Optional[str] = Query(None, description="Cost, Security, HighAvailability, OperationalExcellence, Performance"),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List Azure Advisor recommendations, optionally filtered by category."""
+    try:
+        advisor = _build_advisor_service(member, db)
+        recs = await asyncio.to_thread(advisor.list_recommendations, category)
+        # Sort by impact: high > medium > low
+        order = {"high": 0, "medium": 1, "low": 2}
+        recs.sort(key=lambda r: order.get(r.get("impact", "low"), 2))
+        return {"recommendations": recs, "total": len(recs)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/advisor/refresh")
+async def ws_advisor_refresh(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Trigger Azure Advisor to refresh recommendations."""
+    try:
+        advisor = _build_advisor_service(member, db)
+        await asyncio.to_thread(advisor.generate_recommendations)
+        return {"success": True, "message": "Recomendações do Advisor sendo atualizadas. Aguarde alguns minutos."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

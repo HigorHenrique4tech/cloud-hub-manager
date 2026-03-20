@@ -18,6 +18,7 @@ google-cloud-functions==1.13.3
 google-cloud-monitoring>=2.18.0
 google-api-python-client==2.111.0
 google-auth==2.26.1
+google-cloud-recommender>=2.0.0
 
 # Microsoft 365 / Graph API
 msal>=1.28.0
@@ -35,6 +36,7 @@ azure-mgmt-costmanagement==3.0.0
 azure-mgmt-monitor>=6.0.0
 azure-mgmt-recoveryservices>=3.0.0
 azure-mgmt-recoveryservicesbackup>=9.0.0
+azure-mgmt-advisor>=9.0.0
 
 # Database
 sqlalchemy==2.0.25

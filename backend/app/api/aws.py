@@ -911,3 +911,54 @@ async def ws_create_aws_ami(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Advisor (Trusted Advisor + Compute Optimizer + Cost Explorer) ─────────
+
+def _build_aws_advisor_service(member: MemberContext, db: Session):
+    """Build an AWSAdvisorService from workspace credentials."""
+    from app.services.aws_advisor_service import AWSAdvisorService
+    accounts = _get_ws_aws_accounts(member, db)
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
+    account = accounts[0]
+    creds = decrypt_for_account(db, account)
+    return AWSAdvisorService(
+        access_key=creds.get("access_key_id", ""),
+        secret_key=creds.get("secret_access_key", ""),
+        region=creds.get("region", settings.AWS_DEFAULT_REGION),
+    )
+
+
+@ws_router.get("/advisor/summary")
+async def ws_aws_advisor_summary(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Get AWS Advisor summary (counts by category and impact)."""
+    try:
+        advisor = _build_aws_advisor_service(member, db)
+        return await _run(advisor.get_summary)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/advisor/recommendations")
+async def ws_aws_advisor_recommendations(
+    category: Optional[str] = Query(None, description="cost, security, reliability, performance, service_limits"),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List AWS Advisor recommendations, optionally filtered by category."""
+    try:
+        advisor = _build_aws_advisor_service(member, db)
+        recs = await _run(advisor.list_recommendations, category)
+        order = {"high": 0, "medium": 1, "low": 2}
+        recs.sort(key=lambda r: order.get(r.get("impact", "low"), 2))
+        return {"recommendations": recs, "total": len(recs)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

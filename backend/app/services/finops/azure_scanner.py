@@ -444,6 +444,21 @@ class AzureFinOpsScanner:
             logger.warning(f"Azure VM rightsizing scan error: {e}")
         return findings
 
+    def scan_advisor_cost(self) -> List[dict]:
+        """Fetch Cost recommendations from Azure Advisor and merge into FinOps findings."""
+        try:
+            from app.services.azure_advisor_service import AzureAdvisorService
+            advisor = AzureAdvisorService(
+                subscription_id=self.subscription_id,
+                tenant_id=self.tenant_id,
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+            )
+            return advisor.list_cost_as_finops_findings()
+        except Exception as e:
+            logger.warning(f"Azure Advisor cost scan error: {e}")
+            return []
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_vm_idle())
@@ -452,4 +467,5 @@ class AzureFinOpsScanner:
         findings.extend(self.scan_public_ips())
         findings.extend(self.scan_always_on())
         findings.extend(self.scan_cost_management())
+        findings.extend(self.scan_advisor_cost())
         return findings

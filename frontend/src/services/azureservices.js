@@ -83,6 +83,11 @@ export const azureService = {
   enableVMBackup: (vaultRg, vaultName, data) => api.post(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/protect`), data, { timeout: 60000 }).then(r => r.data),
   triggerBackupNow: (vaultRg, vaultName, data) => api.post(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/backup-now`), data).then(r => r.data),
   listBackupJobs: (vaultRg, vaultName) => api.get(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/jobs`)).then(r => r.data),
+
+  // Azure Advisor
+  getAdvisorSummary: () => api.get(wsUrl('/azure/advisor/summary')).then(r => r.data),
+  getAdvisorRecommendations: (category) => api.get(wsUrl('/azure/advisor/recommendations'), { params: category ? { category } : {} }).then(r => r.data),
+  refreshAdvisor: () => api.post(wsUrl('/azure/advisor/refresh')).then(r => r.data),
 };
 
 export default azureService;

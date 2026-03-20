@@ -80,6 +80,11 @@ export const awsService = {
   // Backup — AMIs
   listOwnedAMIs: () => api.get(wsUrl('/aws/backups/amis')).then(r => r.data),
   createOwnedAMI: (data) => api.post(wsUrl('/aws/backups/amis'), data).then(r => r.data),
+
+  // Advisor (Trusted Advisor + Compute Optimizer + Cost Explorer)
+  getAdvisorSummary: () => api.get(wsUrl('/aws/advisor/summary')).then(r => r.data),
+  getAdvisorRecommendations: (category) =>
+    api.get(wsUrl('/aws/advisor/recommendations'), { params: category ? { category } : {} }).then(r => r.data),
 };
 
 export default awsService;

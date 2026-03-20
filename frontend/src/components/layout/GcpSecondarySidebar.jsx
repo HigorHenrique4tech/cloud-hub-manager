@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, MonitorPlay, HardDrive, Database, Zap, Network, ShieldAlert, HardDriveDownload, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, MonitorPlay, HardDrive, Database, Zap, Network, ShieldAlert, HardDriveDownload, Lightbulb, ChevronLeft, ChevronRight } from 'lucide-react';
 
 const gcpNavItems = [
   { to: '/gcp', label: 'Visão Geral', icon: LayoutGrid, end: true },
@@ -11,6 +11,7 @@ const gcpNavItems = [
   { to: '/gcp/networks', label: 'VPC Networks', icon: Network },
   { to: '/gcp/backup', label: 'Backup', icon: HardDriveDownload },
   { to: '/gcp/security', label: 'Segurança', icon: ShieldAlert },
+  { to: '/gcp/advisor', label: 'Recommender', icon: Lightbulb },
 ];
 
 const GcpSecondarySidebar = () => {

@@ -675,3 +675,52 @@ async def ws_delete_gcp_snapshot(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Advisor (GCP Recommender) ─────────────────────────────────────────────
+
+def _build_gcp_recommender_service(member: MemberContext, db: Session):
+    """Build a GCPRecommenderService from workspace credentials."""
+    from app.services.gcp_recommender_service import GCPRecommenderService
+    account = _get_gcp_account(member, db)
+    creds = decrypt_for_account(db, account)
+    return GCPRecommenderService(
+        project_id=creds.get("project_id", ""),
+        client_email=creds.get("client_email", ""),
+        private_key=creds.get("private_key", ""),
+        private_key_id=creds.get("private_key_id", ""),
+    )
+
+
+@ws_router.get("/advisor/summary")
+async def ws_gcp_advisor_summary(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Get GCP Recommender summary (counts by category and impact)."""
+    try:
+        advisor = _build_gcp_recommender_service(member, db)
+        return await _run(advisor.get_summary)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/advisor/recommendations")
+async def ws_gcp_advisor_recommendations(
+    category: Optional[str] = Query(None, description="cost, security, performance, operational_excellence"),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List GCP Recommender recommendations, optionally filtered by category."""
+    try:
+        advisor = _build_gcp_recommender_service(member, db)
+        recs = await _run(advisor.list_recommendations, category)
+        order = {"high": 0, "medium": 1, "low": 2}
+        recs.sort(key=lambda r: order.get(r.get("impact", "low"), 2))
+        return {"recommendations": recs, "total": len(recs)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

@@ -506,6 +506,20 @@ class AWSFinOpsScanner:
             logger.warning(f"AWS EC2 rightsizing scan error: {e}")
         return findings
 
+    def scan_advisor_cost(self) -> List[dict]:
+        """Fetch Cost recommendations from AWS Trusted Advisor / Compute Optimizer."""
+        try:
+            from app.services.aws_advisor_service import AWSAdvisorService
+            advisor = AWSAdvisorService(
+                access_key=self.access_key,
+                secret_key=self.secret_key,
+                region=self.region,
+            )
+            return advisor.list_cost_as_finops_findings()
+        except Exception as e:
+            logger.warning(f"AWS Advisor cost scan error: {e}")
+            return []
+
     def scan_all(self) -> List[dict]:
         findings = []
         findings.extend(self.scan_ec2_idle())
@@ -516,4 +530,5 @@ class AWSFinOpsScanner:
         findings.extend(self.scan_old_snapshots())
         findings.extend(self.scan_always_on())
         findings.extend(self.scan_cost_explorer())
+        findings.extend(self.scan_advisor_cost())
         return findings
