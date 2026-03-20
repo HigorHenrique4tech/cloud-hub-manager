@@ -52,7 +52,7 @@ def execute_scheduled_action(schedule_id: str) -> None:
     """
     from app.database import SessionLocal
     from app.models.db_models import ScheduledAction, CloudAccount
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
 
     db = SessionLocal()
     try:
@@ -71,7 +71,7 @@ def execute_scheduled_action(schedule_id: str) -> None:
             _record_run(db, s, "failed", f"No active {s.provider} account found for workspace")
             return
 
-        creds = decrypt_credential(account.encrypted_data)
+        creds = decrypt_for_account(db, account)
         try:
             if s.provider == "aws":
                 _exec_aws(s, creds)
@@ -256,7 +256,7 @@ def execute_finops_scan(workspace_id: str) -> None:
     """
     from app.database import SessionLocal
     from app.models.db_models import FinOpsScanSchedule, CloudAccount
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
     from app.services.finops_service import AWSFinOpsScanner, AzureFinOpsScanner
 
     db = SessionLocal()
@@ -278,7 +278,7 @@ def execute_finops_scan(workspace_id: str) -> None:
         for account in accounts:
             if sched.provider != "all" and account.provider != sched.provider:
                 continue
-            creds = decrypt_credential(account.encrypted_data)
+            creds = decrypt_for_account(db, account)
             try:
                 if account.provider == "aws":
                     scanner = AWSFinOpsScanner(
@@ -388,7 +388,7 @@ def execute_budget_eval() -> None:
     from datetime import timedelta
     from app.database import SessionLocal
     from app.models.db_models import FinOpsBudget, CloudAccount, Workspace, Organization
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
     from app.services.email_service import send_budget_alert_email
     from app.services.notification_channel_service import fire_event as _fire
 
@@ -496,7 +496,7 @@ def execute_anomaly_detection() -> None:
 def _fetch_budget_spend(db, budget) -> Optional[float]:
     """Fetch current month-to-date spend for a budget's provider in a workspace."""
     from app.models.db_models import CloudAccount
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
 
     accounts = db.query(CloudAccount).filter(
         CloudAccount.workspace_id == budget.workspace_id,
@@ -510,7 +510,7 @@ def _fetch_budget_spend(db, budget) -> Optional[float]:
         if budget.provider != "all" and account.provider != budget.provider:
             continue
         try:
-            creds = decrypt_credential(account.encrypted_data)
+            creds = decrypt_for_account(db, account)
             if account.provider == "aws":
                 spend = _fetch_aws_spend(creds)
             elif account.provider == "azure":
@@ -610,7 +610,7 @@ def execute_report(report_schedule_id: str) -> None:
         Organization, Workspace,
     )
     from app.services.email_service import send_report_email
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
 
     db = SessionLocal()
     try:
@@ -642,7 +642,7 @@ def execute_report(report_schedule_id: str) -> None:
             costs: dict = {}
             for account in accounts:
                 try:
-                    creds = decrypt_credential(account.encrypted_data)
+                    creds = decrypt_for_account(db, account)
                     if account.provider == "aws":
                         spend = _fetch_aws_spend(creds)
                     elif account.provider == "azure":

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_context import MemberContext
 from app.models.db_models import CloudAccount, Organization
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 from app.services.m365_service import M365AuthError, M365Service
 
 logger = logging.getLogger(__name__)
@@ -22,12 +22,12 @@ _svc_cache: dict = {}
 _svc_lock = threading.Lock()
 
 
-def _get_cached_service(acct) -> "M365Service":
+def _get_cached_service(acct, db: Session = None) -> "M365Service":
     """Return a cached M365Service for this cloud account, building it if necessary."""
     key = acct.id
     with _svc_lock:
         if key not in _svc_cache:
-            _svc_cache[key] = _build_service(acct)
+            _svc_cache[key] = _build_service(db, acct)
         return _svc_cache[key]
 
 
@@ -67,8 +67,8 @@ def _get_m365_account(db: Session, workspace_id) -> Optional[CloudAccount]:
     )
 
 
-def _build_service(acct: CloudAccount) -> M365Service:
-    creds = decrypt_credential(acct.encrypted_data)
+def _build_service(db: Session, acct: CloudAccount) -> M365Service:
+    creds = decrypt_for_account(db, acct)
     return M365Service(
         tenant_id=creds["tenant_id"],
         client_id=creds["client_id"],
@@ -80,7 +80,7 @@ def _get_service_or_404(db: Session, workspace_id) -> M365Service:
     acct = _get_m365_account(db, workspace_id)
     if not acct:
         raise HTTPException(status_code=404, detail="Conta M365 não encontrada. Configure as credenciais primeiro.")
-    return _get_cached_service(acct)
+    return _get_cached_service(acct, db=db)
 
 
 def _require_master_org(member: MemberContext, db: Session) -> None:

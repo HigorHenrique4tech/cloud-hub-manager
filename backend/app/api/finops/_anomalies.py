@@ -12,7 +12,7 @@ from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
 from app.database import get_db
 from app.models.db_models import CloudAccount, FinOpsAnomaly
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 
 from . import ws_router
 from ._helpers import _anomaly_to_dict, _get_org_plan, _require_plan
@@ -146,7 +146,7 @@ def detect_and_save_anomalies(workspace_id, db: Session) -> int:
     new_count = 0
 
     for acct in accounts:
-        creds = decrypt_credential(acct.encrypted_data)
+        creds = decrypt_for_account(db, acct)
 
         if acct.provider == "aws":
             ak = creds.get("access_key_id", "")

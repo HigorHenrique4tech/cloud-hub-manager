@@ -60,18 +60,95 @@ def decode_token(token: str) -> Optional[str]:
         return None
 
 
+# ── Per-org encryption keys ───────────────────────────────────────────────────
+
+def generate_org_key() -> bytes:
+    """Generate a new Fernet key for an organization."""
+    return Fernet.generate_key()
+
+
+def _encrypt_org_key(org_key: bytes) -> str:
+    """Encrypt an org's Fernet key with the master key."""
+    master = _get_fernet()
+    return master.encrypt(org_key).decode()
+
+
+def _decrypt_org_key(encrypted_org_key: str) -> bytes:
+    """Decrypt an org's Fernet key using the master key."""
+    master = _get_fernet()
+    return master.decrypt(encrypted_org_key.encode())
+
+
+def get_or_create_org_key(db: Session, org_id) -> bytes:
+    """Get the org's Fernet key, generating one if it doesn't exist yet."""
+    from app.models.db_models import Organization
+
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise ValueError(f"Organization {org_id} not found")
+
+    if org.encrypted_org_key:
+        return _decrypt_org_key(org.encrypted_org_key)
+
+    # Generate and persist a new key for this org
+    new_key = generate_org_key()
+    org.encrypted_org_key = _encrypt_org_key(new_key)
+    db.commit()
+    logger.info("Generated per-org encryption key for org %s", org_id)
+    return new_key
+
+
+def get_org_fernet(db: Session, org_id) -> Fernet:
+    """Return a Fernet instance using the org's own key."""
+    org_key = get_or_create_org_key(db, org_id)
+    return Fernet(org_key)
+
+
 # ── Credential encryption ─────────────────────────────────────────────────────
 
-def encrypt_credential(data: dict) -> str:
-    """Encrypt a dict of credential fields to a string."""
-    f = _get_fernet()
+def encrypt_credential(data: dict, org_key: bytes = None) -> str:
+    """Encrypt a dict of credential fields. Uses org_key if provided, else master key."""
+    f = Fernet(org_key) if org_key else _get_fernet()
     return f.encrypt(json.dumps(data).encode()).decode()
 
 
-def decrypt_credential(encrypted: str) -> dict:
-    """Decrypt an encrypted credential string back to a dict."""
+def decrypt_credential(encrypted: str, org_key: bytes = None) -> dict:
+    """
+    Decrypt an encrypted credential string.
+    If org_key is provided, tries it first, then falls back to master key
+    (for backward compatibility with credentials encrypted before per-org keys).
+    """
+    if org_key:
+        try:
+            f = Fernet(org_key)
+            return json.loads(f.decrypt(encrypted.encode()).decode())
+        except Exception:
+            # Fallback to master key (credential was encrypted before org key existed)
+            pass
     f = _get_fernet()
     return json.loads(f.decrypt(encrypted.encode()).decode())
+
+
+# ── High-level helpers (org-aware) ───────────────────────────────────────────
+
+def _get_org_id_for_workspace(db: Session, workspace_id):
+    """Resolve org_id from a workspace_id (cached in-request)."""
+    from app.models.db_models import Workspace
+    ws = db.query(Workspace.organization_id).filter(Workspace.id == workspace_id).first()
+    return ws.organization_id if ws else None
+
+
+def decrypt_for_account(db: Session, account) -> dict:
+    """Decrypt cloud account credentials using the org's per-org key (with fallback)."""
+    org_id = _get_org_id_for_workspace(db, account.workspace_id)
+    org_key = get_or_create_org_key(db, org_id) if org_id else None
+    return decrypt_credential(account.encrypted_data, org_key=org_key)
+
+
+def encrypt_for_org(db: Session, org_id, data: dict) -> str:
+    """Encrypt credentials using the org's per-org key."""
+    org_key = get_or_create_org_key(db, org_id)
+    return encrypt_credential(data, org_key=org_key)
 
 
 # ── MFA / OTP ─────────────────────────────────────────────────────────────────

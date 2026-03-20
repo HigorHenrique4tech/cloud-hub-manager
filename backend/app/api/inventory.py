@@ -20,7 +20,7 @@ from app.core.dependencies import require_permission
 from app.core.config import settings
 from app.database import get_db
 from app.models.db_models import CloudAccount
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 
 logger = logging.getLogger(__name__)
 
@@ -67,10 +67,10 @@ def _get_accounts(db: Session, workspace_id, provider: Optional[str] = None):
     return q.all()
 
 
-def _fetch_aws(account: CloudAccount) -> list:
+def _fetch_aws(db: Session, account: CloudAccount) -> list:
     try:
         import boto3
-        creds = decrypt_credential(account.encrypted_data)
+        creds = decrypt_for_account(db, account)
         ak = creds.get("access_key_id", "")
         sk = creds.get("secret_access_key", "")
         default_region = creds.get("region", getattr(settings, "AWS_DEFAULT_REGION", "us-east-1"))
@@ -186,13 +186,13 @@ def _extract_resource_group(resource_id: str) -> str:
     return ""
 
 
-def _fetch_azure(account: CloudAccount) -> list:
+def _fetch_azure(db: Session, account: CloudAccount) -> list:
     """Fetch ALL resources from an Azure subscription using the generic Resources API."""
     try:
         from azure.identity import ClientSecretCredential
         from azure.mgmt.resource import ResourceManagementClient
 
-        creds = decrypt_credential(account.encrypted_data)
+        creds = decrypt_for_account(db, account)
         tenant_id = creds.get("tenant_id", "")
         client_id = creds.get("client_id", "")
         client_secret = creds.get("client_secret", "")
@@ -253,10 +253,10 @@ def _fetch_azure(account: CloudAccount) -> list:
         return []
 
 
-def _fetch_gcp(account: CloudAccount) -> list:
+def _fetch_gcp(db: Session, account: CloudAccount) -> list:
     try:
         from app.services.gcp_service import GCPService
-        creds = decrypt_credential(account.encrypted_data)
+        creds = decrypt_for_account(db, account)
         project_id = creds.get("project_id", "")
         client_email = creds.get("client_email", "")
         private_key = creds.get("private_key", "")
@@ -355,11 +355,11 @@ def _collect_all(db: Session, workspace_id, provider_filter: str = "all") -> lis
         if provider_filter not in ("all", p):
             continue
         if p == "aws":
-            items.extend(_fetch_aws(account))
+            items.extend(_fetch_aws(db, account))
         elif p == "azure":
-            items.extend(_fetch_azure(account))
+            items.extend(_fetch_azure(db, account))
         elif p == "gcp":
-            items.extend(_fetch_gcp(account))
+            items.extend(_fetch_gcp(db, account))
 
     if provider_filter == "all":
         _set_cached(workspace_id, items)

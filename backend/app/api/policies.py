@@ -107,7 +107,7 @@ def list_policy_resources(
 ):
     """List available compute resources (VMs/instances) that can be targeted by a policy."""
     from app.models.db_models import CloudAccount
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
 
     if provider not in ("aws", "azure", "gcp"):
         raise HTTPException(status_code=400, detail="provider must be aws, azure or gcp")
@@ -121,7 +121,7 @@ def list_policy_resources(
     resources = []
     for account in accounts:
         try:
-            creds = decrypt_credential(account.encrypted_data)
+            creds = decrypt_for_account(db, account)
             if provider == "aws":
                 import boto3
                 ec2 = boto3.client(

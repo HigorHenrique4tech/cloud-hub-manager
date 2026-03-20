@@ -1318,3 +1318,93 @@ def download_billing_attachment(
         filename=record.attachment_filename or path.name,
         media_type="application/octet-stream",
     )
+
+
+# ── Per-org encryption key management ────────────────────────────────────────
+
+@admin_router.post("/orgs/generate-encryption-keys")
+def generate_all_org_keys(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Generate per-org encryption keys for all orgs that don't have one yet. Admin only."""
+    from app.services.auth_service import get_or_create_org_key
+
+    orgs = db.query(Organization).filter(Organization.encrypted_org_key.is_(None)).all()
+    generated = 0
+    for org in orgs:
+        get_or_create_org_key(db, org.id)
+        generated += 1
+    return {"generated": generated, "total_orgs": db.query(Organization).count()}
+
+
+@admin_router.post("/orgs/{org_id}/reencrypt-credentials")
+def reencrypt_org_credentials(
+    org_id: str,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Re-encrypt all cloud account credentials for an org using its per-org key. Admin only."""
+    from app.services.auth_service import decrypt_credential, encrypt_credential, get_or_create_org_key
+
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    org_key = get_or_create_org_key(db, org.id)
+
+    # Find all accounts in all workspaces of this org
+    workspaces = db.query(Workspace).filter(Workspace.organization_id == org.id).all()
+    ws_ids = [ws.id for ws in workspaces]
+    if not ws_ids:
+        return {"reencrypted": 0, "org": org.name}
+
+    accounts = db.query(CloudAccount).filter(CloudAccount.workspace_id.in_(ws_ids)).all()
+    reencrypted = 0
+    errors = []
+    for account in accounts:
+        try:
+            # Decrypt with fallback (tries org key, then master key)
+            data = decrypt_credential(account.encrypted_data, org_key=org_key)
+            # Re-encrypt with org key only
+            account.encrypted_data = encrypt_credential(data, org_key=org_key)
+            reencrypted += 1
+        except Exception as e:
+            errors.append({"account_id": str(account.id), "error": str(e)})
+
+    db.commit()
+    log_activity(db, admin, "admin.reencrypt_credentials", "Organization",
+                 resource_id=str(org.id), resource_name=org.name)
+    return {"reencrypted": reencrypted, "errors": errors, "org": org.name}
+
+
+@admin_router.post("/orgs/reencrypt-all")
+def reencrypt_all_credentials(
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Re-encrypt all cloud credentials across all orgs using per-org keys. Admin only."""
+    from app.services.auth_service import decrypt_credential, encrypt_credential, get_or_create_org_key
+
+    orgs = db.query(Organization).all()
+    total_reencrypted = 0
+    total_errors = []
+
+    for org in orgs:
+        org_key = get_or_create_org_key(db, org.id)
+        workspaces = db.query(Workspace).filter(Workspace.organization_id == org.id).all()
+        ws_ids = [ws.id for ws in workspaces]
+        if not ws_ids:
+            continue
+        accounts = db.query(CloudAccount).filter(CloudAccount.workspace_id.in_(ws_ids)).all()
+        for account in accounts:
+            try:
+                data = decrypt_credential(account.encrypted_data, org_key=org_key)
+                account.encrypted_data = encrypt_credential(data, org_key=org_key)
+                total_reencrypted += 1
+            except Exception as e:
+                total_errors.append({"account_id": str(account.id), "org": org.name, "error": str(e)})
+
+    db.commit()
+    log_activity(db, admin, "admin.reencrypt_all_credentials", "System")
+    return {"reencrypted": total_reencrypted, "errors": total_errors, "orgs_processed": len(orgs)}

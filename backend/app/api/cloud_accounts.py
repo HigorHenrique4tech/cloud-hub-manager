@@ -7,7 +7,7 @@ from app.database import get_db
 from app.models.db_models import CloudAccount, Organization, Workspace
 from app.core.dependencies import get_workspace_member, require_permission
 from app.core.auth_context import MemberContext
-from app.services.auth_service import encrypt_credential, decrypt_credential
+from app.services.auth_service import encrypt_credential, decrypt_credential, encrypt_for_org, decrypt_for_account
 from app.services.log_service import log_activity
 from app.services.plan_service import check_account_limit
 
@@ -100,7 +100,7 @@ async def create_account(
         provider=payload.provider,
         label=payload.label,
         account_id=payload.account_id,
-        encrypted_data=encrypt_credential(payload.data),
+        encrypted_data=encrypt_for_org(db, org.id, payload.data),
         created_by=member.user.id,
     )
     db.add(account)
@@ -156,7 +156,7 @@ async def test_account_connection(
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
 
-    data = decrypt_credential(account.encrypted_data)
+    data = decrypt_for_account(db, account)
 
     if account.provider == "aws":
         from app.services import AWSService

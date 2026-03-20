@@ -18,7 +18,7 @@ from app.core.auth_context import MemberContext
 from app.core.dependencies import get_workspace_member
 from app.database import get_db
 from app.models.db_models import CloudAccount
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 
 ws_router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces/{workspace_id}/pricing",
@@ -232,7 +232,7 @@ def _get_aws_creds(db: Session, workspace_id: str):
     )
     if not acct:
         return None, None, "us-east-1"
-    c = decrypt_credential(acct.encrypted_data)
+    c = decrypt_for_account(db, acct)
     return c.get("access_key"), c.get("secret_key"), c.get("region", "us-east-1")
 
 

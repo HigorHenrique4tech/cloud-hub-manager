@@ -10,7 +10,7 @@ from app.models.db_models import CloudAccount
 from app.core.dependencies import require_permission
 from app.core.auth_context import MemberContext
 from app.database import get_db
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 from app.services.gcp_service import GCPService
 from app.services.log_service import log_activity
 from app.services.security_service import GCPSecurityScanner
@@ -28,8 +28,8 @@ ws_router = APIRouter(
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
-def _build_gcp_service(account: CloudAccount) -> GCPService:
-    data = decrypt_credential(account.encrypted_data)
+def _build_gcp_service(account: CloudAccount, db: Session) -> GCPService:
+    data = decrypt_for_account(db, account)
     project_id = data.get("project_id", "")
     client_email = data.get("client_email", "")
     private_key = data.get("private_key", "")
@@ -61,7 +61,7 @@ def _get_gcp_account(member: MemberContext, db: Session) -> CloudAccount:
 
 
 def _get_gcp_service(member: MemberContext, db: Session) -> GCPService:
-    return _build_gcp_service(_get_gcp_account(member, db))
+    return _build_gcp_service(_get_gcp_account(member, db), db)
 
 
 async def _run(fn, *args, **kwargs):
@@ -482,7 +482,7 @@ async def gcp_security_scan(
     - Project-level IAM bindings with roles/owner for user accounts
     """
     account = _get_gcp_account(member, db)
-    creds = decrypt_credential(account.encrypted_data)
+    creds = decrypt_for_account(db, account)
     scanner = GCPSecurityScanner(
         project_id=creds.get("project_id", ""),
         client_email=creds.get("client_email", ""),
@@ -519,7 +519,7 @@ async def ws_get_gcp_costs(
     """
     try:
         account = _get_gcp_account(member, db)
-        svc = _build_gcp_service(account)
+        svc = _build_gcp_service(account, db)
         result = await _run(svc.get_cost_and_usage, start_date, end_date)
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Erro ao estimar custos GCP"))
@@ -541,7 +541,7 @@ async def ws_get_gcp_cost_resources(
     """Returns estimated cost breakdown by resource for a GCP service."""
     try:
         account = _get_gcp_account(member, db)
-        svc = _build_gcp_service(account)
+        svc = _build_gcp_service(account, db)
         result = await _run(svc.get_cost_by_resource, service, start_date, end_date)
         if not result.get("success"):
             raise HTTPException(status_code=500, detail=result.get("error", "Erro ao obter custos por recurso GCP"))
@@ -560,7 +560,7 @@ async def ws_get_gcp_metrics(
     """Returns CPU metrics for running GCE instances (last 1 hour)."""
     try:
         account = _get_gcp_account(member, db)
-        svc = _build_gcp_service(account)
+        svc = _build_gcp_service(account, db)
         return await _run(svc.get_metrics)
     except HTTPException:
         raise
@@ -584,7 +584,7 @@ async def ws_list_gcp_snapshots(
 ):
     """List persistent disk snapshots for this GCP project."""
     account = _get_gcp_account(member, db)
-    svc = _build_gcp_service(account)
+    svc = _build_gcp_service(account, db)
     try:
         from google.cloud import compute_v1
 
@@ -620,7 +620,7 @@ async def ws_create_gcp_snapshot(
 ):
     """Create a persistent disk snapshot."""
     account = _get_gcp_account(member, db)
-    svc = _build_gcp_service(account)
+    svc = _build_gcp_service(account, db)
     try:
         from google.cloud import compute_v1
 
@@ -657,7 +657,7 @@ async def ws_delete_gcp_snapshot(
 ):
     """Delete a persistent disk snapshot."""
     account = _get_gcp_account(member, db)
-    svc = _build_gcp_service(account)
+    svc = _build_gcp_service(account, db)
     try:
         from google.cloud import compute_v1
 

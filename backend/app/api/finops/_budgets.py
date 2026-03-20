@@ -174,8 +174,8 @@ async def evaluate_budgets(
     provider_spend: dict = {}
     for account in accounts:
         try:
-            from app.services.auth_service import decrypt_credential
-            creds = decrypt_credential(account.encrypted_data)
+            from app.services.auth_service import decrypt_for_account
+            creds = decrypt_for_account(db, account)
             spend = _fetch_provider_spend(account.provider, creds)
             if spend is not None:
                 provider_spend[account.provider] = (

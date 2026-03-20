@@ -68,7 +68,7 @@ def _get_daily_cost(db: Session, workspace_id: UUID, provider: str, days_ago: in
 def _get_instance_count(db: Session, workspace_id: UUID, provider: str) -> int:
     """Return count of running compute instances from CloudAccount records."""
     from app.models.db_models import CloudAccount
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
 
     accounts = db.query(CloudAccount).filter(
         CloudAccount.workspace_id == workspace_id,
@@ -80,7 +80,7 @@ def _get_instance_count(db: Session, workspace_id: UUID, provider: str) -> int:
     count = 0
     for account in accounts.all():
         try:
-            creds = decrypt_credential(account.encrypted_data)
+            creds = decrypt_for_account(db, account)
             if account.provider == "aws":
                 import boto3
                 ec2 = boto3.client(
@@ -128,7 +128,7 @@ def _get_vm_cpu(db: Session, workspace_id: UUID, provider: str, resource_id: str
     """Return average CPU % for a specific VM over the last 10 minutes."""
     from datetime import timedelta
     from app.models.db_models import CloudAccount
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
 
     account = db.query(CloudAccount).filter(
         CloudAccount.workspace_id == workspace_id,
@@ -138,7 +138,7 @@ def _get_vm_cpu(db: Session, workspace_id: UUID, provider: str, resource_id: str
     if not account:
         return 0.0
 
-    creds = decrypt_credential(account.encrypted_data)
+    creds = decrypt_for_account(db, account)
 
     if provider == "aws":
         import boto3
@@ -239,7 +239,7 @@ def _get_vm_memory(db: Session, workspace_id: UUID, provider: str, resource_id: 
     """Return memory usage % for a specific VM. Supported: Azure. AWS/GCP require monitoring agents."""
     from datetime import timedelta
     from app.models.db_models import CloudAccount
-    from app.services.auth_service import decrypt_credential
+    from app.services.auth_service import decrypt_credential, decrypt_for_account
 
     account = db.query(CloudAccount).filter(
         CloudAccount.workspace_id == workspace_id,
@@ -249,7 +249,7 @@ def _get_vm_memory(db: Session, workspace_id: UUID, provider: str, resource_id: 
     if not account:
         return 0.0
 
-    creds = decrypt_credential(account.encrypted_data)
+    creds = decrypt_for_account(db, account)
 
     if provider == "azure":
         try:
@@ -413,7 +413,7 @@ def execute_action(db: Session, workspace_id: UUID, policy, action: dict, snapsh
                 return "skipped"
 
             from app.models.db_models import CloudAccount
-            from app.services.auth_service import decrypt_credential
+            from app.services.auth_service import decrypt_credential, decrypt_for_account
 
             account = db.query(CloudAccount).filter(
                 CloudAccount.workspace_id == workspace_id,
@@ -424,7 +424,7 @@ def execute_action(db: Session, workspace_id: UUID, policy, action: dict, snapsh
             if not account:
                 return "skipped"
 
-            creds = decrypt_credential(account.encrypted_data)
+            creds = decrypt_for_account(db, account)
             if provider == "aws":
                 import boto3
                 ec2 = boto3.client(

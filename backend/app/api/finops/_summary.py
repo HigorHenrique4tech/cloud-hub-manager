@@ -15,7 +15,7 @@ from app.models.db_models import (
     FinOpsAnomaly,
     FinOpsRecommendation,
 )
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 
 from . import ws_router
 from ._helpers import (
@@ -146,7 +146,7 @@ async def get_cost_trend(
     ).all()
 
     for acct in accounts:
-        creds = decrypt_credential(acct.encrypted_data)
+        creds = decrypt_for_account(db, acct)
 
         if acct.provider == "aws":
             try:

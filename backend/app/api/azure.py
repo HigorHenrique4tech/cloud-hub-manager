@@ -14,7 +14,7 @@ from app.models.create_schemas import (
 from app.core.dependencies import require_permission
 from app.core.auth_context import MemberContext
 from app.database import get_db, SessionLocal
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 from app.services.log_service import log_activity
 from app.services.security_service import AzureSecurityScanner
 from app.services import background_task_service as bts
@@ -30,8 +30,8 @@ ws_router = APIRouter(
 )
 
 
-def _build_azure_service_from_account(account: CloudAccount) -> AzureService:
-    data = decrypt_credential(account.encrypted_data)
+def _build_azure_service_from_account(db: Session, account: CloudAccount) -> AzureService:
+    data = decrypt_for_account(db, account)
     subscription_id = data.get("subscription_id", "")
     tenant_id = data.get("tenant_id", "")
     client_id = data.get("client_id", "")
@@ -62,7 +62,7 @@ def _get_single_azure_service(member: MemberContext, db: Session) -> AzureServic
     )
     if not account:
         raise HTTPException(status_code=400, detail="Nenhuma conta Azure configurada neste workspace.")
-    return _build_azure_service_from_account(account)
+    return _build_azure_service_from_account(db, account)
 
 
 # ── Connection ──────────────────────────────────────────────────────────────
@@ -147,7 +147,7 @@ async def ws_list_virtual_machines(
         ).first()
         if not account:
             raise HTTPException(status_code=404, detail="Conta Azure não encontrada")
-        _svc = _build_azure_service_from_account(account)
+        _svc = _build_azure_service_from_account(db, account)
         return await _run(_svc.list_virtual_machines)
     cache_key = f"azure:{member.workspace_id}:vms"
     if cached := cache_get(cache_key):
@@ -787,7 +787,7 @@ async def ws_get_azure_costs(
         ).first()
         if not account:
             raise HTTPException(status_code=404, detail="Conta Azure não encontrada")
-        svc = _build_azure_service_from_account(account)
+        svc = _build_azure_service_from_account(db, account)
     else:
         svc = _get_single_azure_service(member, db)
     result = await _run(svc.get_cost_by_subscription, start_date, end_date, granularity.capitalize())
@@ -839,7 +839,7 @@ async def azure_security_scan(
     if not account:
         raise HTTPException(status_code=400, detail="Nenhuma conta Azure configurada neste workspace.")
 
-    creds = decrypt_credential(account.encrypted_data)
+    creds = decrypt_for_account(db, account)
     scanner = AzureSecurityScanner(
         subscription_id=creds.get("subscription_id", ""),
         tenant_id=creds.get("tenant_id", ""),

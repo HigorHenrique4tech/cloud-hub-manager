@@ -22,7 +22,7 @@ from app.models.db_models import (
     ReportSchedule,
 )
 from app.core.auth_context import MemberContext
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 from app.services.finops_service import AWSFinOpsScanner, AzureFinOpsScanner, GCPFinOpsScanner
 
 logger = logging.getLogger(__name__)
@@ -246,7 +246,7 @@ def _get_aws_scanner(workspace_id, db: Session,
     account = q.order_by(CloudAccount.created_at.desc()).first()
     if not account:
         return None
-    data = decrypt_credential(account.encrypted_data)
+    data = decrypt_for_account(db, account)
     access_key = data.get("access_key_id", "")
     secret_key = data.get("secret_access_key", "")
     region = data.get("region", "us-east-1")
@@ -269,7 +269,7 @@ def _get_azure_scanner(workspace_id, db: Session,
     account = q.order_by(CloudAccount.created_at.desc()).first()
     if not account:
         return None
-    data = decrypt_credential(account.encrypted_data)
+    data = decrypt_for_account(db, account)
     sub_id   = data.get("subscription_id", "")
     tenant   = data.get("tenant_id", "")
     client   = data.get("client_id", "")
@@ -296,7 +296,7 @@ def _get_gcp_scanner(workspace_id, db: Session,
     account = q.order_by(CloudAccount.created_at.desc()).first()
     if not account:
         return None
-    data = decrypt_credential(account.encrypted_data)
+    data = decrypt_for_account(db, account)
     project_id    = data.get("project_id", "")
     client_email  = data.get("client_email", "")
     private_key   = data.get("private_key", "")

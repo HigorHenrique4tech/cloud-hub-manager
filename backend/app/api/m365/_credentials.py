@@ -7,7 +7,7 @@ from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
 from app.database import get_db
 from app.models.db_models import CloudAccount
-from app.services.auth_service import encrypt_credential
+from app.services.auth_service import encrypt_for_org
 
 from . import ws_router
 from ._helpers import _get_org_plan, _require_enterprise, _get_m365_account, _evict_service, _acct_to_dict
@@ -34,12 +34,14 @@ async def save_credentials(
     plan = _get_org_plan(db, member.organization_id)
     _require_enterprise(plan)
 
-    encrypted = encrypt_credential(
+    encrypted = encrypt_for_org(
+        db,
+        member.organization_id,
         {
             "tenant_id": body.tenant_id,
             "client_id": body.client_id,
             "client_secret": body.client_secret,
-        }
+        },
     )
 
     acct = _get_m365_account(db, member.workspace_id)

@@ -15,7 +15,7 @@ from app.core import settings
 from app.core.dependencies import require_permission
 from app.core.auth_context import MemberContext
 from app.database import get_db
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 from app.services.log_service import log_activity
 from app.services.security_service import AWSSecurityScanner
 from app.core.cache import cache_get, cache_set, cache_delete
@@ -30,8 +30,8 @@ ws_router = APIRouter(
 )
 
 
-def _build_aws_service_from_account(account: CloudAccount) -> AWSService:
-    data = decrypt_credential(account.encrypted_data)
+def _build_aws_service_from_account(db: Session, account: CloudAccount) -> AWSService:
+    data = decrypt_for_account(db, account)
     access_key = data.get("access_key_id", "")
     secret_key = data.get("secret_access_key", "")
     region = data.get("region", settings.AWS_DEFAULT_REGION)
@@ -62,7 +62,7 @@ def _get_single_aws_service(member: MemberContext, db: Session) -> AWSService:
     accounts = _get_ws_aws_accounts(member, db)
     if not accounts:
         raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
-    return _build_aws_service_from_account(accounts[0])
+    return _build_aws_service_from_account(db, accounts[0])
 
 
 # ── Connection ──────────────────────────────────────────────────────────────
@@ -111,7 +111,7 @@ async def ws_list_ec2_instances(
         ).first()
         if not account:
             raise HTTPException(status_code=404, detail="Conta AWS não encontrada")
-        _svc = _build_aws_service_from_account(account)
+        _svc = _build_aws_service_from_account(db, account)
         return await _run(_svc.list_ec2_instances)
     cache_key = f"aws:{member.workspace_id}:ec2"
     if cached := cache_get(cache_key):
@@ -673,7 +673,7 @@ async def ws_get_aws_costs(
         ).first()
         if not account:
             raise HTTPException(status_code=404, detail="Conta AWS não encontrada")
-        svc = _build_aws_service_from_account(account)
+        svc = _build_aws_service_from_account(db, account)
     else:
         svc = _get_single_aws_service(member, db)
     result = await _run(svc.get_cost_and_usage, start_date, end_date, granularity.upper())
@@ -718,7 +718,7 @@ async def aws_security_scan(
 
     all_findings = []
     for account in accounts:
-        creds = decrypt_credential(account.encrypted_data)
+        creds = decrypt_for_account(db, account)
         scanner = AWSSecurityScanner(
             access_key=creds.get("access_key_id", ""),
             secret_key=creds.get("secret_access_key", ""),
@@ -748,7 +748,7 @@ async def ws_get_aws_metrics(
     if not accounts:
         raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
     try:
-        svc = _build_aws_service_from_account(accounts[0])
+        svc = _build_aws_service_from_account(db, accounts[0])
         return await _run(svc.get_metrics)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))

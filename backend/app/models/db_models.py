@@ -23,6 +23,7 @@ class Organization(Base):
     notes            = Column(Text, nullable=True)            # internal admin notes (partner SLA, contacts, etc.)
     suspended_reason = Column(String(500), nullable=True)     # reason shown when org is suspended
     suspended_at     = Column(DateTime, nullable=True)
+    encrypted_org_key = Column(Text, nullable=True)           # per-org Fernet key, encrypted by master key
     created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
