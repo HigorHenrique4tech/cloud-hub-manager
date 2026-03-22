@@ -32,7 +32,7 @@ def _task_to_dict(task) -> dict:
 
 @ws_router.get("/")
 async def list_workspace_tasks(
-    member: MemberContext = Depends(require_permission("resources.read")),
+    member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     cleanup_old_tasks(db)
@@ -43,7 +43,7 @@ async def list_workspace_tasks(
 @ws_router.get("/{task_id}")
 async def get_task_status(
     task_id: str,
-    member: MemberContext = Depends(require_permission("resources.read")),
+    member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     try:
