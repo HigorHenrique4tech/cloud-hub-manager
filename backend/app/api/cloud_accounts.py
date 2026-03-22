@@ -10,6 +10,8 @@ from app.core.auth_context import MemberContext
 from app.services.auth_service import encrypt_credential, decrypt_credential, encrypt_for_org, decrypt_for_account
 from app.services.log_service import log_activity
 from app.services.plan_service import check_account_limit, get_effective_plan
+from app.services.notification_service import push_notification
+from app.services.notification_channel_service import fire_event
 
 router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces/{workspace_id}/accounts",
@@ -113,6 +115,17 @@ async def create_account(
         resource_id=str(account.id), resource_name=account.label,
         provider=payload.provider,
     )
+    push_notification(
+        db, member.workspace_id, "cloud_account",
+        f"Conta cloud {payload.provider.upper()} '{account.label}' adicionada.",
+        "/settings",
+    )
+    fire_event(db, member.workspace_id, "resource.started", {
+        "type": "cloud_account",
+        "provider": payload.provider,
+        "label": account.label,
+        "account_id": str(account.id),
+    })
 
     return _account_to_dict(account)
 
@@ -131,11 +144,24 @@ async def delete_account(
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
 
+    label = account.label
+    provider = account.provider
+
     log_activity(
         db, member.user, "account.delete", "CloudAccount",
-        resource_id=str(account.id), resource_name=account.label,
-        provider=account.provider,
+        resource_id=str(account.id), resource_name=label,
+        provider=provider,
     )
+    push_notification(
+        db, member.workspace_id, "cloud_account",
+        f"Conta cloud {provider.upper()} '{label}' removida.",
+        "/settings",
+    )
+    fire_event(db, member.workspace_id, "resource.stopped", {
+        "type": "cloud_account",
+        "provider": provider,
+        "label": label,
+    })
 
     db.delete(account)
     db.commit()

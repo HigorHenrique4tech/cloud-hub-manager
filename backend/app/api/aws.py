@@ -18,6 +18,7 @@ from app.database import get_db
 from app.services.auth_service import decrypt_credential, decrypt_for_account
 from app.services.log_service import log_activity
 from app.services.security_service import AWSSecurityScanner
+from app.services.notification_service import push_notification
 from app.core.cache import cache_get, cache_set, cache_delete
 import logging
 from datetime import datetime
@@ -729,6 +730,14 @@ async def aws_security_scan(
     # Sort by severity
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     all_findings.sort(key=lambda f: order.get(f.get("severity", "low"), 3))
+
+    critical = sum(1 for f in all_findings if f.get("severity") in ("critical", "high"))
+    if critical > 0:
+        push_notification(
+            db, member.workspace_id, "security",
+            f"Scan de segurança AWS: {critical} finding(s) crítico(s)/alto(s) encontrado(s).",
+            "/security",
+        )
 
     return {
         "findings": all_findings,

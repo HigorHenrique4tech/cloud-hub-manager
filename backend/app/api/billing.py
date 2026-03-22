@@ -14,6 +14,8 @@ from app.core.limiter import limiter
 from app.services.payment_service import create_billing, check_billing_status
 from app.services.plan_service import get_plan_price
 from app.services.log_service import log_activity
+from app.services.notification_channel_service import fire_event
+from app.services.notification_service import push_notification
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +225,25 @@ async def abacatepay_webhook(
             "AbacatePay webhook: payment %s confirmed — org %s upgraded to %s",
             payment.id, payment.organization_id, payment.plan_tier,
         )
+
+        # Fire billing.paid event to notification channels (Teams/Telegram)
+        if org:
+            from app.models.db_models import Workspace
+            ws_list = db.query(Workspace).filter(
+                Workspace.organization_id == org.id,
+                Workspace.is_active == True,
+            ).all()
+            for ws in ws_list:
+                fire_event(db, ws.id, "billing.paid", {
+                    "organization": org.name,
+                    "plan": payment.plan_tier,
+                    "amount": str(payment.amount) if hasattr(payment, 'amount') else "N/A",
+                })
+                push_notification(
+                    db, ws.id, "billing",
+                    f"Pagamento confirmado — plano {payment.plan_tier.capitalize()} ativado.",
+                    "/billing",
+                )
 
     elif status_value in ("EXPIRED", "CANCELLED", "REFUNDED"):
         payment.status = status_value

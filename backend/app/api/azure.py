@@ -17,6 +17,7 @@ from app.database import get_db, SessionLocal
 from app.services.auth_service import decrypt_credential, decrypt_for_account
 from app.services.log_service import log_activity
 from app.services.security_service import AzureSecurityScanner
+from app.services.notification_service import push_notification
 from app.services import background_task_service as bts
 from app.core.cache import cache_get, cache_set, cache_delete
 import logging
@@ -850,6 +851,14 @@ async def azure_security_scan(
 
     order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
     findings.sort(key=lambda f: order.get(f.get("severity", "low"), 3))
+
+    critical = sum(1 for f in findings if f.get("severity") in ("critical", "high"))
+    if critical > 0:
+        push_notification(
+            db, member.workspace_id, "security",
+            f"Scan de segurança Azure: {critical} finding(s) crítico(s)/alto(s) encontrado(s).",
+            "/security",
+        )
 
     return {
         "findings": findings,

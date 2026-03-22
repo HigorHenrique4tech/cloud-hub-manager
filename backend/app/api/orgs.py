@@ -18,6 +18,8 @@ from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
 from app.services.plan_service import check_member_limit, check_managed_org_limit, get_org_usage, get_effective_plan, PLAN_PRICES
 from app.services.email_service import send_invite_email, send_org_member_added_email
+from app.services.notification_service import push_notification
+from app.services.notification_channel_service import fire_event
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
 
@@ -233,6 +235,18 @@ async def update_plan(
     log_activity(db, member.user, "org.plan.update", "Organization",
                  resource_id=str(org.id), resource_name=org.name,
                  detail=f"plan_tier={payload.plan_tier}")
+
+    # Notify all workspaces about plan change
+    workspaces = db.query(Workspace).filter(
+        Workspace.organization_id == member.organization_id,
+        Workspace.is_active == True,
+    ).all()
+    for ws in workspaces:
+        push_notification(
+            db, ws.id, "plan",
+            f"Plano da organização alterado para {payload.plan_tier.capitalize()}.",
+            "/billing",
+        )
 
     return _org_to_dict(org, role=member.role)
 
@@ -532,11 +546,25 @@ async def remove_member(
         if owner_count <= 1:
             raise HTTPException(status_code=400, detail="Não é possível remover o último owner")
 
+    target_user = db.query(User).filter(User.id == user_id).first()
+    target_email = target_user.email if target_user else user_id
+
     target.is_active = False
     db.commit()
 
     log_activity(db, member.user, "org.member.remove", "OrganizationMember",
                  resource_id=user_id, provider="system")
+
+    # Notify workspaces about member removal
+    workspaces = db.query(Workspace).filter(
+        Workspace.organization_id == member.organization_id,
+        Workspace.is_active == True,
+    ).all()
+    for ws in workspaces:
+        push_notification(
+            db, ws.id, "member",
+            f"Membro {target_email} removido da organização.",
+        )
 
     return None
 

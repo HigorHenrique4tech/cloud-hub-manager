@@ -15,6 +15,8 @@ from app.core.auth_context import MemberContext
 from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
 from app.services.plan_service import check_workspace_limit, get_effective_plan
+from app.services.notification_service import push_notification
+from app.services.notification_channel_service import fire_event
 
 router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces",
@@ -154,6 +156,15 @@ async def create_workspace(
 
     log_activity(db, member.user, "workspace.create", "Workspace",
                  resource_id=str(ws.id), resource_name=ws.name)
+    push_notification(
+        db, ws.id, "workspace",
+        f"Workspace '{ws.name}' criado com sucesso.",
+    )
+    fire_event(db, ws.id, "resource.started", {
+        "type": "workspace",
+        "name": ws.name,
+        "workspace_id": str(ws.id),
+    })
 
     return _ws_to_dict(ws)
 
@@ -215,8 +226,15 @@ async def delete_workspace(
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace não encontrado")
 
+    ws_name = ws.name
+
     log_activity(db, member.user, "workspace.delete", "Workspace",
-                 resource_id=str(ws.id), resource_name=ws.name)
+                 resource_id=str(ws.id), resource_name=ws_name)
+    fire_event(db, workspace_id, "resource.stopped", {
+        "type": "workspace",
+        "name": ws_name,
+        "workspace_id": workspace_id,
+    })
 
     db.delete(ws)
     db.commit()

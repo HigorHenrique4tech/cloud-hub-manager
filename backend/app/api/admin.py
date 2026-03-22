@@ -18,6 +18,8 @@ from app.core.dependencies import get_current_user, get_current_admin
 from app.services.log_service import log_activity
 from app.services.email_service import send_billing_invoice_email, send_billing_reminder_email, send_billing_status_email
 from app.services.payment_service import create_billing as create_abacatepay_billing
+from app.services.notification_service import push_notification
+from app.services.notification_channel_service import fire_event
 from app.core.config import settings
 
 BILLING_UPLOADS_DIR = Path(os.getenv("BILLING_UPLOADS_DIR", "/app/uploads/billing"))
@@ -554,6 +556,31 @@ def _record_status_change(
     db.add(entry)
 
 
+def _fire_billing_paid(db: Session, record: BillingRecord) -> None:
+    """Fire billing.paid event to notification channels and in-app notifications."""
+    if not record.org_id:
+        return
+    org = db.query(Organization).filter(Organization.id == record.org_id).first()
+    if not org:
+        return
+    ws_list = db.query(Workspace).filter(
+        Workspace.organization_id == org.id,
+        Workspace.is_active == True,
+    ).all()
+    for ws in ws_list:
+        fire_event(db, ws.id, "billing.paid", {
+            "organization": org.name,
+            "client": record.client_name,
+            "amount": float(record.amount) if record.amount else 0,
+            "period": record.period_ref or "",
+        })
+        push_notification(
+            db, ws.id, "billing",
+            f"Pagamento de {record.client_name} confirmado ({record.period_ref or 'N/A'}).",
+            "/billing",
+        )
+
+
 def _next_period_ref(period_type: str, period_ref: str, months: int) -> str:
     if period_type == "monthly":
         year, month = map(int, period_ref.split("-"))
@@ -730,6 +757,8 @@ def update_billing(
 
     if became_paid and record.is_recurring:
         _spawn_next_period(db, record, admin.id)
+    if became_paid:
+        _fire_billing_paid(db, record)
 
     db.commit()
     db.refresh(record)
@@ -959,6 +988,8 @@ def batch_update_status(
         record.status = payload.status
         if became_paid and record.is_recurring:
             _spawn_next_period(db, record, admin.id)
+        if became_paid:
+            _fire_billing_paid(db, record)
         updated += 1
 
     db.commit()
@@ -1314,6 +1345,8 @@ def patch_billing_status(
 
     if became_paid and record.is_recurring:
         _spawn_next_period(db, record, admin.id)
+    if became_paid:
+        _fire_billing_paid(db, record)
 
     db.commit()
     db.refresh(record)

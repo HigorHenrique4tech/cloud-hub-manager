@@ -1,4 +1,4 @@
-import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Wallet, Clock, Zap, Headphones } from 'lucide-react';
+import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Wallet, Clock, Zap, Headphones, Shield, Hourglass, CloudCog, Users, CreditCard } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -232,6 +232,15 @@ const Header = () => {
                           schedule:    { Icon: Clock,        color: 'text-blue-500',   label: 'Agendamento' },
                           finops_scan: { Icon: Zap,          color: 'text-indigo-500', label: 'FinOps' },
                           cost_alert:  { Icon: Bell,         color: 'text-orange-500', label: 'Alerta' },
+                          trial:       { Icon: Hourglass,    color: 'text-purple-500', label: 'Trial' },
+                          approval:    { Icon: CheckCircle2, color: 'text-green-500',  label: 'Aprovação' },
+                          policy:      { Icon: Shield,       color: 'text-slate-500',  label: 'Política' },
+                          security:    { Icon: Shield,       color: 'text-red-500',    label: 'Segurança' },
+                          cloud_account: { Icon: CloudCog,   color: 'text-cyan-500',   label: 'Conta Cloud' },
+                          workspace:   { Icon: Users,        color: 'text-teal-500',   label: 'Workspace' },
+                          billing:     { Icon: CreditCard,   color: 'text-green-500',  label: 'Cobrança' },
+                          member:      { Icon: Users,        color: 'text-blue-500',   label: 'Membro' },
+                          plan:        { Icon: Crown,        color: 'text-amber-500',  label: 'Plano' },
                         };
                         const meta = TYPE_META[ev.notification_type] || TYPE_META.cost_alert;
                         const { Icon, color, label } = meta;
