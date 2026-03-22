@@ -31,7 +31,7 @@ const PROVIDER_FILTERS = [
 ];
 
 const Costs = () => {
-  const { fmtCost } = useCurrency();
+  const { fmtCost, currency } = useCurrency();
   const [periodIdx, setPeriodIdx]           = useState(0);
   const [isCustom, setIsCustom]             = useState(false);
   const [customStart, setCustomStart]       = useState('');
@@ -212,7 +212,7 @@ const Costs = () => {
           <MetricCard
             icon={DollarSign}
             label={`Total (${activePeriodLabel})`}
-            value={fmtCost(metrics.total)}
+            value={fmtCost(metrics.total, currency)}
             color="blue"
             delta={metrics.deltaTotal}
             sparkline={metrics.sparkline}
@@ -221,7 +221,7 @@ const Costs = () => {
           <MetricCard
             icon={TrendingUp}
             label="Média Diária"
-            value={fmtCost(metrics.avgDaily)}
+            value={fmtCost(metrics.avgDaily, currency)}
             color="green"
             delta={metrics.deltaAvgDay}
             delay={1}
@@ -229,7 +229,7 @@ const Costs = () => {
           <MetricCard
             icon={TrendingDown}
             label="Projeção do Mês"
-            value={fmtCost(metrics.projection)}
+            value={fmtCost(metrics.projection, currency)}
             sub="baseado na média diária"
             color="purple"
             delay={2}
@@ -237,7 +237,7 @@ const Costs = () => {
           <MetricCard
             icon={AlertCircle}
             label="Maior Serviço"
-            value={metrics.topService ? fmtCost(metrics.topService.amount) : '—'}
+            value={metrics.topService ? fmtCost(metrics.topService.amount, currency) : '—'}
             sub={metrics.topService?.name || ''}
             color="orange"
             delay={3}

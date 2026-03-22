@@ -665,16 +665,25 @@ class AzureService:
             result = cost_client.query.usage(scope=scope, parameters=query)
             rows = result.rows or []
             columns = [col.name for col in (result.columns or [])]
+            logger.info("Azure cost columns: %s", columns)
             cost_candidates = ['PreTaxCost', 'Cost', 'CostUSD', 'BillingCurrencyTotalCost']
             cost_idx = next((columns.index(c) for c in cost_candidates if c in columns), 0)
             date_idx = next((columns.index(c) for c in ['UsageDate', 'BillingMonth', 'Date'] if c in columns), None)
             svc_idx = columns.index('ServiceName') if 'ServiceName' in columns else None
+            # Detect actual billing currency from result columns or rows
+            currency_col_names = ['BillingCurrency', 'Currency']
+            currency_idx = next((columns.index(c) for c in currency_col_names if c in columns), None)
+            # Which cost column did we use? PreTaxCost is in billing currency, CostUSD is always USD
+            cost_col_name = columns[cost_idx] if cost_idx < len(columns) else 'PreTaxCost'
+            detected_currency = 'USD' if cost_col_name == 'CostUSD' else None
             total = 0.0
             service_map: Dict[str, float] = {}
             daily_map: Dict[str, float] = {}
             for row in rows:
                 amount = float(row[cost_idx]) if cost_idx < len(row) else 0.0
                 total += amount
+                if currency_idx is not None and currency_idx < len(row) and not detected_currency:
+                    detected_currency = str(row[currency_idx])
                 svc = str(row[svc_idx]) if svc_idx is not None and svc_idx < len(row) else 'Other'
                 service_map[svc] = service_map.get(svc, 0.0) + amount
                 if date_idx is not None and date_idx < len(row):
@@ -686,6 +695,11 @@ class AzureService:
                     else:
                         date_str = raw_date[:10]
                     daily_map[date_str] = daily_map.get(date_str, 0.0) + amount
+            if not detected_currency:
+                # PreTaxCost is always in billing currency; we couldn't detect it from columns.
+                # Log for debugging and default to billing currency (likely BRL for BR subscriptions).
+                logger.warning("Could not detect Azure billing currency from columns: %s. Defaulting to 'BRL'.", columns)
+                detected_currency = 'BRL'
             by_service = sorted(
                 [{'name': k, 'amount': round(v, 4)} for k, v in service_map.items()],
                 key=lambda x: x['amount'], reverse=True,
@@ -696,7 +710,7 @@ class AzureService:
                 'period': {'start': start_date, 'end': end_date},
                 'granularity': granularity,
                 'total': round(total, 4),
-                'currency': 'USD',
+                'currency': detected_currency,
                 'by_service': by_service,
                 'daily': daily,
             }
@@ -731,6 +745,10 @@ class AzureService:
             cost_idx = next((columns.index(c) for c in cost_candidates if c in columns), 0)
             date_idx = next((columns.index(c) for c in ['UsageDate', 'BillingMonth', 'Date'] if c in columns), None)
             res_idx = columns.index('ResourceId') if 'ResourceId' in columns else None
+            currency_col_names = ['BillingCurrency', 'Currency']
+            currency_idx = next((columns.index(c) for c in currency_col_names if c in columns), None)
+            cost_col_name = columns[cost_idx] if cost_idx < len(columns) else 'PreTaxCost'
+            detected_currency = 'USD' if cost_col_name == 'CostUSD' else None
 
             total = 0.0
             resource_map: Dict[str, float] = {}
@@ -738,6 +756,8 @@ class AzureService:
             for row in rows:
                 amount = float(row[cost_idx]) if cost_idx < len(row) else 0.0
                 total += amount
+                if currency_idx is not None and currency_idx < len(row) and not detected_currency:
+                    detected_currency = str(row[currency_idx])
                 res_id = str(row[res_idx]) if res_idx is not None and res_idx < len(row) else 'Other'
                 resource_map[res_id] = resource_map.get(res_id, 0.0) + amount
                 if date_idx is not None and date_idx < len(row):
@@ -750,6 +770,8 @@ class AzureService:
                         date_str = raw_date[:10]
                     daily_map[date_str] = daily_map.get(date_str, 0.0) + amount
 
+            if not detected_currency:
+                detected_currency = 'BRL'
             resources = sorted(
                 [{'id': k, 'name': k.split('/')[-1] if '/' in k else k, 'amount': round(v, 4)} for k, v in resource_map.items()],
                 key=lambda x: x['amount'], reverse=True,
@@ -759,6 +781,7 @@ class AzureService:
                 'success': True,
                 'service': service_name,
                 'total': round(total, 4),
+                'currency': detected_currency,
                 'resources': resources,
                 'daily': daily,
             }

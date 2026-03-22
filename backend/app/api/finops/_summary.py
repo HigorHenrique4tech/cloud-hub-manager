@@ -135,6 +135,7 @@ async def get_cost_trend(
         "aws":    [0.0] * days,
         "azure":  [0.0] * days,
         "gcp":    [0.0] * days,
+        "currencies": {"aws": "USD", "azure": "USD", "gcp": "USD"},
     }
 
     # Build a date→index map for fast lookups
@@ -205,13 +206,20 @@ async def get_cost_trend(
                     ),
                 )
                 col_names = [c.name for c in query_res.columns]
-                cost_idx  = next(i for i, c in enumerate(col_names) if "cost" in c.name.lower())
+                cost_idx  = next(i for i, c in enumerate(col_names) if "cost" in c.lower())
                 date_col  = next(
-                    (i for i, c in enumerate(col_names) if "date" in c.name.lower() or "usage" in c.name.lower()),
+                    (i for i, c in enumerate(col_names) if "date" in c.lower() or "usage" in c.lower()),
                     None,
                 )
+                # Detect billing currency
+                curr_col = next((i for i, c in enumerate(col_names) if c in ('BillingCurrency', 'Currency')), None)
+                cost_col_name = col_names[cost_idx] if cost_idx < len(col_names) else 'Cost'
+                if cost_col_name != 'CostUSD' and curr_col is None:
+                    result["currencies"]["azure"] = "BRL"  # PreTaxCost/Cost in billing currency
                 if date_col is not None:
                     for row in query_res.rows:
+                        if curr_col is not None and curr_col < len(row):
+                            result["currencies"]["azure"] = str(row[curr_col])
                         raw_date = str(row[date_col])          # YYYYMMDD integer
                         if len(raw_date) == 8:
                             day = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"

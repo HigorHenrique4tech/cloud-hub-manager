@@ -2,17 +2,20 @@ import { useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import orgService from '../services/orgService';
-import { fmtCurrency, fmtUSD } from '../utils/formatters';
+import { fmtCurrency, fmtUSD, fmtBRL } from '../utils/formatters';
 
 /**
  * Hook for multi-currency cost display.
  *
- * Returns:
- *  - currency: 'USD' | 'BRL'
- *  - rate: exchange rate (float | null)
- *  - fmtCost(value): formatted cost string in the org's preferred currency
- *  - toggleCurrency(): switch between USD and BRL
- *  - isLoading: true while fetching exchange rate
+ * Each cloud provider may return costs in different currencies:
+ *  - AWS: always USD
+ *  - Azure: billing currency (BRL for Brazilian subscriptions, USD for others)
+ *  - GCP: estimated in USD
+ *
+ * fmtCost(value, sourceCurrency):
+ *  - If source is already the display currency → format directly, no conversion.
+ *  - If source differs → convert using exchange rate.
+ *  - If no sourceCurrency provided → assumes USD (backward compatible).
  */
 export function useCurrency() {
   const { currentOrg, refreshOrgs } = useOrgWorkspace();
@@ -36,10 +39,33 @@ export function useCurrency() {
     ? (isAuto ? rateData?.exchange_rate_brl : manualRate) || rateData?.bcb_rate || null
     : null;
 
+  /**
+   * Format a cost value for display.
+   * @param {number} value - The cost amount
+   * @param {string} [sourceCurrency='USD'] - The currency the value is already in ('USD'|'BRL')
+   */
   const fmtCost = useCallback(
-    (value) => {
+    (value, sourceCurrency = 'USD') => {
       if (value == null) return '—';
-      return fmtCurrency(value, currency, rate);
+      const src = (sourceCurrency || 'USD').toUpperCase();
+
+      // If source matches display → no conversion needed
+      if (src === currency) {
+        return currency === 'BRL' ? fmtBRL(value) : fmtUSD(value);
+      }
+
+      // Source is BRL, display is USD → divide by rate
+      if (src === 'BRL' && currency === 'USD' && rate) {
+        return fmtUSD(Number(value) / rate);
+      }
+
+      // Source is USD, display is BRL → multiply by rate
+      if (src === 'USD' && currency === 'BRL' && rate) {
+        return fmtBRL(Number(value) * rate);
+      }
+
+      // Fallback: format in source currency (no rate available)
+      return src === 'BRL' ? fmtBRL(value) : fmtUSD(value);
     },
     [currency, rate],
   );

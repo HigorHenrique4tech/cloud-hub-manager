@@ -2,7 +2,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, Resp
 import { useCurrency } from '../../hooks/useCurrency';
 
 const CostTrendChart = ({ costTrendQ }) => {
-  const { fmtCost } = useCurrency();
+  const { fmtCost, currency, rate } = useCurrency();
   if (costTrendQ.isLoading) {
     return (
       <div className="card p-4">
@@ -32,13 +32,22 @@ const CostTrendChart = ({ costTrendQ }) => {
 
   const trendData   = costTrendQ.data ?? {};
   const labels      = trendData.labels        ?? [];
-  const aws         = trendData.aws           ?? [];
-  const azure       = trendData.azure         ?? [];
-  const gcp         = trendData.gcp           ?? [];
+  const currencies  = trendData.currencies    ?? {};
+  // Normalize arrays to display currency
+  const normArr = (arr, provider) => {
+    const src = currencies[provider] || 'USD';
+    if (src === currency) return arr;
+    if (src === 'USD' && currency === 'BRL' && rate) return arr.map(v => v * rate);
+    if (src === 'BRL' && currency === 'USD' && rate) return arr.map(v => v / rate);
+    return arr;
+  };
+  const aws         = normArr(trendData.aws           ?? [], 'aws');
+  const azure       = normArr(trendData.azure         ?? [], 'azure');
+  const gcp         = normArr(trendData.gcp           ?? [], 'gcp');
   const fLabels     = trendData.forecast_labels ?? [];
-  const awsF        = trendData.aws_forecast  ?? [];
-  const azureF      = trendData.azure_forecast ?? [];
-  const gcpF        = trendData.gcp_forecast  ?? [];
+  const awsF        = normArr(trendData.aws_forecast  ?? [], 'aws');
+  const azureF      = normArr(trendData.azure_forecast ?? [], 'azure');
+  const gcpF        = normArr(trendData.gcp_forecast  ?? [], 'gcp');
   const hasAws      = aws.some((v) => v > 0);
   const hasAzure    = azure.some((v) => v > 0);
   const hasGcp      = gcp.some((v) => v > 0);
@@ -105,14 +114,14 @@ const CostTrendChart = ({ costTrendQ }) => {
           <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="rgba(148,163,184,0.4)" />
           <YAxis
             tick={{ fontSize: 10 }}
-            tickFormatter={(v) => `$${v}`}
+            tickFormatter={(v) => currency === 'BRL' ? `R$${v}` : `$${v}`}
             stroke="rgba(148,163,184,0.4)"
             width={45}
           />
           <RTooltip
             formatter={(v, name) => {
               const label = name.endsWith('_f') ? `${name.replace('_f', '')} (prev.)` : name;
-              return [`$${Number(v).toFixed(2)}`, label];
+              return [fmtCost(v, currency), label];
             }}
             contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 12 }}
             labelStyle={{ color: '#94a3b8' }}
@@ -140,25 +149,25 @@ const CostTrendChart = ({ costTrendQ }) => {
           {hasAws && awsMonthly > 0 && (
             <div className="rounded-lg border border-orange-200 dark:border-orange-800/30 bg-orange-50 dark:bg-orange-900/10 p-2.5">
               <p className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">AWS (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(awsMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(awsMonthly, currency)}</p>
             </div>
           )}
           {hasAzure && azureMonthly > 0 && (
             <div className="rounded-lg border border-blue-200 dark:border-blue-800/30 bg-blue-50 dark:bg-blue-900/10 p-2.5">
               <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Azure (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(azureMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(azureMonthly, currency)}</p>
             </div>
           )}
           {hasGcp && gcpMonthly > 0 && (
             <div className="rounded-lg border border-green-200 dark:border-green-800/30 bg-green-50 dark:bg-green-900/10 p-2.5">
               <p className="text-[10px] text-green-600 dark:text-green-400 font-medium">GCP (próx. 30d) *est.</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(gcpMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(gcpMonthly, currency)}</p>
             </div>
           )}
           {(awsMonthly + azureMonthly + gcpMonthly) > 0 && (
             <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 p-2.5">
               <p className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Total (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(awsMonthly + azureMonthly + gcpMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(awsMonthly + azureMonthly + gcpMonthly, currency)}</p>
             </div>
           )}
         </div>

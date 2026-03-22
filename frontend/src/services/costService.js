@@ -9,6 +9,11 @@ function _mergeCosts(awsResult, azureResult, gcpResult) {
     aws,
     azure,
     gcp,
+    currencies: {
+      aws:   aws?.currency   || 'USD',
+      azure: azure?.currency || 'USD',
+      gcp:   gcp?.currency   || 'USD',
+    },
     total: +((aws?.total || 0) + (azure?.total || 0) + (gcp?.total || 0)).toFixed(4),
     aws_total:   +(aws?.total   || 0).toFixed(4),
     azure_total: +(azure?.total || 0).toFixed(4),
@@ -96,12 +101,20 @@ export const costService = {
       .sort((a, b) => b.amount - a.amount)
       .slice(0, 10);
 
+    // Include native currency per provider so the frontend knows how to format
+    const currencies = {
+      aws:   aws?.currency   || 'USD',
+      azure: azure?.currency || 'USD',
+      gcp:   gcp?.currency   || 'USD',
+    };
+
     return {
       aws,
       azure,
       gcp,
       combined,
       by_service,
+      currencies,
       total: +((aws?.total || 0) + (azure?.total || 0) + (gcp?.total || 0)).toFixed(4),
     };
   },

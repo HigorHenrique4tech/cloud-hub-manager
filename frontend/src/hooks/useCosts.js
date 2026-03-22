@@ -2,9 +2,21 @@ import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import costService from '../services/costService';
 import alertService from '../services/alertService';
+import { useCurrency } from './useCurrency';
 
 const fmt = (d) => d.toISOString().slice(0, 10);
 const today = new Date();
+
+/**
+ * Normalize an amount from its source currency to the target display currency.
+ * If source == target, no conversion. Otherwise multiply/divide by rate.
+ */
+function normalizeCost(amount, sourceCurrency, targetCurrency, rate) {
+  if (!amount || sourceCurrency === targetCurrency) return amount;
+  if (sourceCurrency === 'USD' && targetCurrency === 'BRL' && rate) return amount * rate;
+  if (sourceCurrency === 'BRL' && targetCurrency === 'USD' && rate) return amount / rate;
+  return amount; // no rate available, return as-is
+}
 
 function calcDelta(current, previous) {
   if (!previous || previous === 0) return null;
@@ -35,6 +47,7 @@ function detectAnomalies(combined, providerFilter = 'all') {
 
 export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
   const qc = useQueryClient();
+  const { currency: displayCurrency, rate: exchangeRate } = useCurrency();
 
   // Previous period (same duration, shifted back)
   const periodMs = new Date(endDate) - new Date(startDate);
@@ -94,17 +107,39 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
 
   const metrics = useMemo(() => {
     if (!data) return null;
-    const total = data.total || 0;
-    const combined = data.combined || [];
+    const currencies = data.currencies || {};
+
+    // Normalize each provider's total to the display currency
+    const norm = (amount, provider) =>
+      normalizeCost(amount || 0, currencies[provider] || 'USD', displayCurrency, exchangeRate);
+
+    const awsTotal   = norm(data.aws?.total, 'aws');
+    const azureTotal = norm(data.azure?.total, 'azure');
+    const gcpTotal   = norm(data.gcp?.total, 'gcp');
+    const total = awsTotal + azureTotal + gcpTotal;
+
+    // Normalize combined daily timeline
+    const combined = (data.combined || []).map((d) => {
+      const nAws   = normalizeCost(d.aws || 0, currencies.aws || 'USD', displayCurrency, exchangeRate);
+      const nAzure = normalizeCost(d.azure || 0, currencies.azure || 'USD', displayCurrency, exchangeRate);
+      const nGcp   = normalizeCost(d.gcp || 0, currencies.gcp || 'USD', displayCurrency, exchangeRate);
+      return { ...d, aws: nAws, azure: nAzure, gcp: nGcp, total: nAws + nAzure + nGcp };
+    });
+
     const avgDaily = combined.length ? total / combined.length : 0;
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const daysLeft = daysInMonth - today.getDate();
-    const hasProviders = (data.aws?.total || 0) + (data.azure?.total || 0) + (data.gcp?.total || 0) > 0;
+    const hasProviders = total > 0;
     const projection = hasProviders ? avgDaily * daysLeft + total : 0;
     const topService = data.by_service?.[0];
 
-    // Deltas vs previous period
-    const prevTotal = prevData?.total || 0;
+    // Deltas vs previous period (normalize prev too)
+    const prevCurrencies = prevData?.currencies || {};
+    const prevNorm = (amount, provider) =>
+      normalizeCost(amount || 0, prevCurrencies[provider] || 'USD', displayCurrency, exchangeRate);
+    const prevTotal = prevData
+      ? prevNorm(prevData.aws?.total, 'aws') + prevNorm(prevData.azure?.total, 'azure') + prevNorm(prevData.gcp?.total, 'gcp')
+      : 0;
     const prevAvg = prevData?.combined?.length ? prevTotal / prevData.combined.length : 0;
     const deltaTotal = calcDelta(total, prevTotal);
     const deltaAvgDay = calcDelta(avgDaily, prevAvg);
@@ -112,8 +147,8 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
     // Sparkline data (last 14 days of daily totals)
     const sparkline = combined.slice(-14).map((d) => d.total || 0);
 
-    return { total, avgDaily, projection, topService, deltaTotal, deltaAvgDay, sparkline };
-  }, [data, prevData]);
+    return { total, avgDaily, projection, topService, deltaTotal, deltaAvgDay, sparkline, combined };
+  }, [data, prevData, displayCurrency, exchangeRate]);
 
   // ── Anomaly detection ────────────────────────────────────────────────────
   const anomalies = useMemo(
