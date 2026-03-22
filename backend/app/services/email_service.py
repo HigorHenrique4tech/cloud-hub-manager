@@ -673,3 +673,104 @@ def send_billing_status_email(
 
     html = _billing_base(cfg["icon"], cfg["label"], cfg["accent"], body)
     return _send_email(to_email, f"[CloudAtlas] {cfg['label']} — {period_ref} — {_fmt_brl(amount)}", html)
+
+
+# ── Trial reminder ──────────────────────────────────────────────────────────
+
+
+def send_trial_reminder_email(
+    to_email: str,
+    user_name: str,
+    days_remaining: int,
+    savings_found: float | None,
+    trial_end_date: str,
+) -> bool:
+    """Send a trial expiry reminder email with optional FinOps savings summary."""
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured. Trial reminder not sent to %s.", to_email)
+        return True
+
+    # Color scheme based on urgency
+    if days_remaining <= 1:
+        accent, bg, label = "#dc2626", "#fef2f2", "Último dia"
+        header_text = "Seu trial Pro termina hoje!"
+    elif days_remaining <= 3:
+        accent, bg, label = "#f59e0b", "#fffbeb", "3 dias"
+        header_text = f"Seu trial Pro termina em {days_remaining} dias"
+    else:
+        accent, bg, label = "#22c55e", "#f0fdf4", "7 dias"
+        header_text = f"Seu trial Pro termina em {days_remaining} dias"
+
+    # Savings card (only if FinOps found savings)
+    savings_html = ""
+    if savings_found and savings_found > 0:
+        savings_html = f"""
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <p style="color: #166534; font-size: 13px; margin: 0 0 4px 0; font-weight: 600;">
+            💰 Economia encontrada pelo Cloud Atlas
+          </p>
+          <p style="color: #15803d; font-size: 24px; font-weight: 700; margin: 0;">
+            ${savings_found:,.2f}<span style="font-size: 13px; font-weight: 400;">/mês</span>
+          </p>
+          <p style="color: #166534; font-size: 12px; margin: 4px 0 0 0;">
+            em recomendações de otimização de custos identificadas
+          </p>
+        </div>
+        """
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 0;">
+      <!-- Header -->
+      <div style="background: linear-gradient(135deg, {accent}, {accent}cc); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+        <p style="color: rgba(255,255,255,0.9); font-size: 13px; margin: 0 0 4px 0;">⏳ TRIAL PRO — {label}</p>
+        <h1 style="color: #ffffff; font-size: 22px; margin: 0;">{header_text}</h1>
+      </div>
+
+      <!-- Body -->
+      <div style="padding: 24px 32px; background: #ffffff;">
+        <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+          Olá <strong>{user_name}</strong>,
+        </p>
+        <p style="color: #475569; font-size: 14px; line-height: 1.6;">
+          Seu período de trial do plano <strong>Pro</strong> termina em
+          <strong style="color: {accent};">{trial_end_date}</strong>.
+          Após essa data, sua organização voltará ao plano Free com recursos limitados.
+        </p>
+
+        {savings_html}
+
+        <div style="background: {bg}; border: 1px solid {accent}33; border-radius: 8px; padding: 16px; margin: 16px 0;">
+          <p style="color: #334155; font-size: 13px; margin: 0; font-weight: 600;">
+            O que você perde ao expirar:
+          </p>
+          <ul style="color: #475569; font-size: 13px; margin: 8px 0 0 0; padding-left: 20px; line-height: 1.8;">
+            <li>FinOps — orçamentos, scans e relatórios automáticos</li>
+            <li>Advisor — recomendações de custo, segurança e performance</li>
+            <li>Agendamentos — start/stop automático de recursos</li>
+            <li>Webhooks — integrações com Teams, Slack e mais</li>
+            <li>Limites ampliados — até 10 workspaces e 20 contas cloud</li>
+          </ul>
+        </div>
+
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="{settings.FRONTEND_URL}/billing"
+             style="display: inline-block; padding: 14px 40px; background-color: {accent};
+                    color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 700;
+                    font-size: 15px;">
+            Fazer upgrade agora
+          </a>
+        </div>
+
+        <p style="color: #94a3b8; font-size: 12px; text-align: center;">
+          Plano Pro a partir de R$ 497/mês
+        </p>
+      </div>
+
+      <!-- Footer -->
+      <div style="padding: 16px 32px; background: #f8fafc; border-radius: 0 0 12px 12px;">
+        {_FOOTER}
+      </div>
+    </div>
+    """
+    subject = f"CloudAtlas — Seu trial Pro termina em {days_remaining} dia{'s' if days_remaining != 1 else ''}"
+    return _send_email(to_email, subject, html)

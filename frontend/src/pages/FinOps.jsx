@@ -34,7 +34,7 @@ const TABS = [
 const FinOps = () => {
   const qc = useQueryClient();
   const { currentOrg } = useOrgWorkspace();
-  const planTier = (currentOrg?.plan_tier || 'free').toLowerCase();
+  const planTier = (currentOrg?.effective_plan || currentOrg?.plan_tier || 'free').toLowerCase();
   const isPro = ['pro', 'enterprise'].includes(planTier);
 
   /* ── UI state ── */

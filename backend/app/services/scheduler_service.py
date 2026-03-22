@@ -6,7 +6,7 @@ SQLAlchemyJobStore ensures a single execution per job across multiple
 gunicorn workers (coalesce=True, max_instances=1).
 """
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -797,6 +797,95 @@ def execute_billing_overdue_check() -> None:
         db.close()
 
 
+def execute_trial_reminders() -> None:
+    """Send trial expiry reminder emails for orgs expiring in 1, 3, or 7 days."""
+    from app.database import SessionLocal
+    from app.models.db_models import Organization, OrganizationMember, User, Workspace, FinOpsRecommendation
+    from app.services.email_service import send_trial_reminder_email
+    from app.services.notification_service import push_notification
+    from sqlalchemy import func
+
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        target_days = [1, 3, 7]
+        sent = 0
+
+        for days in target_days:
+            # Window: target day ± 12h to avoid missing due to timing
+            target = now + timedelta(days=days)
+            window_start = target - timedelta(hours=12)
+            window_end = target + timedelta(hours=12)
+
+            orgs = (
+                db.query(Organization)
+                .filter(
+                    Organization.plan_tier == "free",
+                    Organization.is_active == True,
+                    Organization.trial_ends_at >= window_start,
+                    Organization.trial_ends_at <= window_end,
+                )
+                .all()
+            )
+
+            for org in orgs:
+                # Find owner
+                owner_member = (
+                    db.query(OrganizationMember)
+                    .filter(
+                        OrganizationMember.organization_id == org.id,
+                        OrganizationMember.role == "owner",
+                        OrganizationMember.is_active == True,
+                    )
+                    .first()
+                )
+                if not owner_member:
+                    continue
+                user = db.query(User).filter(User.id == owner_member.user_id).first()
+                if not user or not user.email:
+                    continue
+
+                # Total savings from FinOps recommendations
+                savings = (
+                    db.query(func.sum(FinOpsRecommendation.estimated_saving_monthly))
+                    .join(Workspace, FinOpsRecommendation.workspace_id == Workspace.id)
+                    .filter(
+                        Workspace.organization_id == org.id,
+                        FinOpsRecommendation.status == "pending",
+                    )
+                    .scalar()
+                ) or 0.0
+
+                trial_end_str = org.trial_ends_at.strftime("%d/%m/%Y") if org.trial_ends_at else ""
+
+                send_trial_reminder_email(
+                    to_email=user.email,
+                    user_name=user.name or user.email,
+                    days_remaining=days,
+                    savings_found=savings if savings > 0 else None,
+                    trial_end_date=trial_end_str,
+                )
+
+                # In-app notification for the first workspace
+                first_ws = db.query(Workspace).filter(Workspace.organization_id == org.id).first()
+                if first_ws:
+                    push_notification(
+                        db, first_ws.id, "trial",
+                        f"Seu trial Pro termina em {days} dia{'s' if days != 1 else ''}",
+                        "/billing",
+                    )
+
+                sent += 1
+
+        db.commit()
+        logger.info(f"Trial reminders sent: {sent}")
+    except Exception as exc:
+        logger.error(f"execute_trial_reminders failed: {exc}")
+        db.rollback()
+    finally:
+        db.close()
+
+
 def load_report_schedules(db) -> int:
     """Load all enabled ReportSchedule rows into APScheduler. Returns count."""
     from app.models.db_models import ReportSchedule
@@ -872,6 +961,18 @@ def load_report_schedules(db) -> int:
         logger.info("Monthly executive reports job registered")
     except Exception as exc:
         logger.error(f"Failed to register executive_reports_monthly job: {exc}")
+
+    # Register daily trial reminder check (10:00 UTC)
+    try:
+        scheduler.add_job(
+            execute_trial_reminders,
+            CronTrigger(hour=10, minute=0),
+            id="trial_reminder_daily",
+            replace_existing=True,
+        )
+        logger.info("Daily trial reminder job registered")
+    except Exception as exc:
+        logger.error(f"Failed to register trial_reminder_daily job: {exc}")
 
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from sqlalchemy.orm import Session
 
 from app.models.db_models import (
@@ -20,6 +22,32 @@ PLAN_PRICES = {
     "partner_base_workspaces":  10,      # workspaces incluídos em cada org parceira
     "partner_extra_workspace":  29000,   # R$ 290,00 por workspace extra/mês
 }
+
+
+def get_effective_plan(org: Organization) -> str:
+    """Return the effective plan considering trial status.
+    Trial active + free tier → 'pro'.  Pro/Enterprise → as-is.
+    """
+    plan = (org.plan_tier or "free").lower()
+    if plan != "free":
+        return plan
+    if org.trial_ends_at and org.trial_ends_at > datetime.utcnow():
+        return "pro"
+    return "free"
+
+
+def get_trial_info(org: Organization) -> dict:
+    """Return trial metadata for serialization."""
+    if not org.trial_ends_at:
+        return {"has_trial": False, "trial_active": False, "days_remaining": 0}
+    now = datetime.utcnow()
+    remaining = (org.trial_ends_at - now).days
+    return {
+        "has_trial": True,
+        "trial_ends_at": org.trial_ends_at.isoformat(),
+        "trial_active": org.trial_ends_at > now,
+        "days_remaining": max(remaining, 0),
+    }
 
 
 def get_plan_limits(plan_tier: str) -> dict:

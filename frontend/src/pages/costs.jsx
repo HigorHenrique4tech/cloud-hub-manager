@@ -11,11 +11,10 @@ import CostExport from '../components/costs/CostExport';
 import CostHeatmap from '../components/costs/CostHeatmap';
 import ServiceDrilldownDrawer from '../components/costs/ServiceDrilldownDrawer';
 import { useCosts } from '../hooks/useCosts';
+import { useCurrency } from '../hooks/useCurrency';
 
 const today = new Date();
 const fmt = (d) => d.toISOString().slice(0, 10);
-const fmtUSD = (v) =>
-  v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const PERIODS = [
   { label: '30d',   days: 30  },
@@ -32,6 +31,7 @@ const PROVIDER_FILTERS = [
 ];
 
 const Costs = () => {
+  const { fmtCost } = useCurrency();
   const [periodIdx, setPeriodIdx]           = useState(0);
   const [isCustom, setIsCustom]             = useState(false);
   const [customStart, setCustomStart]       = useState('');
@@ -212,7 +212,7 @@ const Costs = () => {
           <MetricCard
             icon={DollarSign}
             label={`Total (${activePeriodLabel})`}
-            value={fmtUSD(metrics.total)}
+            value={fmtCost(metrics.total)}
             color="blue"
             delta={metrics.deltaTotal}
             sparkline={metrics.sparkline}
@@ -221,7 +221,7 @@ const Costs = () => {
           <MetricCard
             icon={TrendingUp}
             label="Média Diária"
-            value={fmtUSD(metrics.avgDaily)}
+            value={fmtCost(metrics.avgDaily)}
             color="green"
             delta={metrics.deltaAvgDay}
             delay={1}
@@ -229,7 +229,7 @@ const Costs = () => {
           <MetricCard
             icon={TrendingDown}
             label="Projeção do Mês"
-            value={fmtUSD(metrics.projection)}
+            value={fmtCost(metrics.projection)}
             sub="baseado na média diária"
             color="purple"
             delay={2}
@@ -237,7 +237,7 @@ const Costs = () => {
           <MetricCard
             icon={AlertCircle}
             label="Maior Serviço"
-            value={metrics.topService ? fmtUSD(metrics.topService.amount) : '—'}
+            value={metrics.topService ? fmtCost(metrics.topService.amount) : '—'}
             sub={metrics.topService?.name || ''}
             color="orange"
             delay={3}

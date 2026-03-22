@@ -1,7 +1,8 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer, Legend, ReferenceLine } from 'recharts';
-import { fmtUSD } from '../../utils/formatters';
+import { useCurrency } from '../../hooks/useCurrency';
 
 const CostTrendChart = ({ costTrendQ }) => {
+  const { fmtCost } = useCurrency();
   if (costTrendQ.isLoading) {
     return (
       <div className="card p-4">
@@ -139,25 +140,25 @@ const CostTrendChart = ({ costTrendQ }) => {
           {hasAws && awsMonthly > 0 && (
             <div className="rounded-lg border border-orange-200 dark:border-orange-800/30 bg-orange-50 dark:bg-orange-900/10 p-2.5">
               <p className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">AWS (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(awsMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(awsMonthly)}</p>
             </div>
           )}
           {hasAzure && azureMonthly > 0 && (
             <div className="rounded-lg border border-blue-200 dark:border-blue-800/30 bg-blue-50 dark:bg-blue-900/10 p-2.5">
               <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Azure (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(azureMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(azureMonthly)}</p>
             </div>
           )}
           {hasGcp && gcpMonthly > 0 && (
             <div className="rounded-lg border border-green-200 dark:border-green-800/30 bg-green-50 dark:bg-green-900/10 p-2.5">
               <p className="text-[10px] text-green-600 dark:text-green-400 font-medium">GCP (próx. 30d) *est.</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(gcpMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(gcpMonthly)}</p>
             </div>
           )}
           {(awsMonthly + azureMonthly + gcpMonthly) > 0 && (
             <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 p-2.5">
               <p className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Total (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtUSD(awsMonthly + azureMonthly + gcpMonthly)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(awsMonthly + azureMonthly + gcpMonthly)}</p>
             </div>
           )}
         </div>

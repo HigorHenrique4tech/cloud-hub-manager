@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, UserPlus, Trash2, Shield, Copy, Clock, ArrowUpRight, Search,
-  ChevronRight,
+  ChevronRight, Wallet,
 } from 'lucide-react';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
@@ -76,6 +76,31 @@ const OrgSettings = () => {
   const [selectedMember, setSelectedMember] = useState(null);
   const [showDeleteOrg, setShowDeleteOrg]   = useState(false);
   const [orgName, setOrgName]               = useState('');
+
+  // ── Currency state ───────────────────────────────────────────────────────
+  const [currDisplay, setCurrDisplay] = useState(currentOrg?.currency_display || 'USD');
+  const [manualRate, setManualRate]   = useState(currentOrg?.exchange_rate_brl || '');
+  const [autoRate, setAutoRate]       = useState(currentOrg?.exchange_rate_auto || false);
+
+  useEffect(() => {
+    if (currentOrg) {
+      setCurrDisplay(currentOrg.currency_display || 'USD');
+      setManualRate(currentOrg.exchange_rate_brl || '');
+      setAutoRate(currentOrg.exchange_rate_auto || false);
+    }
+  }, [currentOrg?.id]);
+
+  const { data: rateData } = useQuery({
+    queryKey: ['exchange-rate', slug],
+    queryFn: () => orgService.getExchangeRate(slug),
+    enabled: !!slug,
+    staleTime: 60 * 60 * 1000,
+  });
+
+  const currencyMutation = useMutation({
+    mutationFn: (data) => orgService.updateCurrency(slug, data),
+    onSuccess: () => { if (refreshOrgs) refreshOrgs(); },
+  });
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const inviteMutation = useMutation({
@@ -348,6 +373,106 @@ const OrgSettings = () => {
               </div>
             </div>
           )}
+
+          {/* Currency Settings */}
+          <RoleGate allowed={['owner', 'admin']}>
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2 mb-4">
+                <Wallet className="w-5 h-5 text-green-500" />
+                Moeda de Exibição
+              </h2>
+              <div className="space-y-4">
+                {/* Currency toggle */}
+                <div className="flex items-center gap-4">
+                  <label className="text-sm text-gray-600 dark:text-gray-400">Exibir custos em:</label>
+                  <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-0.5">
+                    {['USD', 'BRL'].map((c) => (
+                      <button
+                        key={c}
+                        onClick={() => setCurrDisplay(c)}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                          currDisplay === c
+                            ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                            : 'text-gray-500 dark:text-gray-400 hover:text-gray-700'
+                        }`}
+                      >
+                        {c === 'USD' ? '$ USD' : 'R$ BRL'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {currDisplay === 'BRL' && (
+                  <>
+                    {/* Auto rate toggle */}
+                    <label className="flex items-center gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={autoRate}
+                        onChange={(e) => setAutoRate(e.target.checked)}
+                        className="w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm text-gray-600 dark:text-gray-400">
+                        Usar taxa automática do Banco Central (BCB)
+                      </span>
+                      {rateData?.bcb_rate && (
+                        <span className="text-xs text-gray-400 dark:text-gray-500">
+                          (atual: R$ {rateData.bcb_rate.toFixed(4)})
+                        </span>
+                      )}
+                    </label>
+
+                    {/* Manual rate */}
+                    {!autoRate && (
+                      <div className="flex items-center gap-3">
+                        <label className="text-sm text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                          Taxa manual (1 USD =)
+                        </label>
+                        <div className="relative w-40">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={manualRate}
+                            onChange={(e) => setManualRate(e.target.value)}
+                            placeholder="5.50"
+                            className="w-full pl-9 pr-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600
+                                       bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm
+                                       focus:ring-2 focus:ring-primary focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Preview */}
+                    {(autoRate ? rateData?.bcb_rate : manualRate) && (
+                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 text-sm text-gray-600 dark:text-gray-400">
+                        Exemplo: $100.00 USD = R$ {((autoRate ? rateData?.bcb_rate : Number(manualRate)) * 100).toFixed(2)} BRL
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {/* Save button */}
+                <button
+                  onClick={() => currencyMutation.mutate({
+                    currency_display: currDisplay,
+                    exchange_rate_brl: currDisplay === 'BRL' && !autoRate && manualRate ? Number(manualRate) : null,
+                    exchange_rate_auto: currDisplay === 'BRL' && autoRate,
+                  })}
+                  disabled={currencyMutation.isPending}
+                  className="px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90
+                             transition-colors disabled:opacity-50"
+                >
+                  {currencyMutation.isPending ? 'Salvando...' : 'Salvar configuração de moeda'}
+                </button>
+                {currencyMutation.isSuccess && (
+                  <span className="text-sm text-green-600 dark:text-green-400 ml-2">Salvo!</span>
+                )}
+              </div>
+            </div>
+          </RoleGate>
 
           {/* Danger Zone */}
           <RoleGate allowed={['owner']}>

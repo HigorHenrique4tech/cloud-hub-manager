@@ -16,7 +16,7 @@ from app.core.dependencies import (
 from app.core.auth_context import MemberContext
 from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
-from app.services.plan_service import check_member_limit, check_managed_org_limit, get_org_usage, PLAN_PRICES
+from app.services.plan_service import check_member_limit, check_managed_org_limit, get_org_usage, get_effective_plan, PLAN_PRICES
 from app.services.email_service import send_invite_email, send_org_member_added_email
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
@@ -65,15 +65,22 @@ def _slugify(text: str) -> str:
 
 
 def _org_to_dict(org: Organization, role: str = None):
+    from app.services.plan_service import get_trial_info
+    trial = get_trial_info(org)
     d = {
         "id": str(org.id),
         "name": org.name,
         "slug": org.slug,
         "plan_tier": org.plan_tier,
+        "effective_plan": get_effective_plan(org),
         "org_type": org.org_type,
         "parent_org_id": str(org.parent_org_id) if org.parent_org_id else None,
         "is_active": org.is_active,
         "created_at": org.created_at.isoformat() if org.created_at else None,
+        "trial": trial,
+        "currency_display": org.currency_display or "USD",
+        "exchange_rate_brl": org.exchange_rate_brl,
+        "exchange_rate_auto": org.exchange_rate_auto or False,
     }
     if role:
         d["role"] = role
@@ -120,7 +127,11 @@ async def create_org(
     if existing:
         raise HTTPException(status_code=409, detail="Slug já está em uso")
 
-    org = Organization(name=payload.name, slug=slug)
+    org = Organization(
+        name=payload.name,
+        slug=slug,
+        trial_ends_at=datetime.utcnow() + timedelta(days=30),
+    )
     db.add(org)
     db.flush()
 
@@ -236,7 +247,64 @@ async def org_usage(
 ):
     """Return plan usage and limits for the organization."""
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    return get_org_usage(db, org.id, org.plan_tier, org.org_type)
+    return get_org_usage(db, org.id, get_effective_plan(org), org.org_type)
+
+
+# ── Currency settings ────────────────────────────────────────────────────────
+
+
+class CurrencySettings(BaseModel):
+    currency_display: str = "USD"
+    exchange_rate_brl: Optional[float] = None
+    exchange_rate_auto: bool = False
+
+
+@router.put("/{org_slug}/currency")
+async def update_currency(
+    payload: CurrencySettings,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Update currency display settings for the organization."""
+    if payload.currency_display not in ("USD", "BRL"):
+        raise HTTPException(status_code=400, detail="currency_display deve ser 'USD' ou 'BRL'")
+
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    org.currency_display = payload.currency_display
+    org.exchange_rate_brl = payload.exchange_rate_brl
+    org.exchange_rate_auto = payload.exchange_rate_auto
+    db.commit()
+
+    return {
+        "currency_display": org.currency_display,
+        "exchange_rate_brl": org.exchange_rate_brl,
+        "exchange_rate_auto": org.exchange_rate_auto,
+    }
+
+
+@router.get("/{org_slug}/exchange-rate")
+async def get_exchange_rate_endpoint(
+    member: MemberContext = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Return the current exchange rate (manual or BCB auto)."""
+    from app.services.currency_service import get_exchange_rate, fetch_bcb_rate
+
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    rate = get_exchange_rate(db, org)
+    return {
+        "currency_display": org.currency_display,
+        "exchange_rate_brl": rate,
+        "exchange_rate_auto": org.exchange_rate_auto,
+        "bcb_rate": fetch_bcb_rate(),
+        "updated_at": org.exchange_rate_updated_at.isoformat() if org.exchange_rate_updated_at else None,
+    }
 
 
 # ── Members ──────────────────────────────────────────────────────────────────
@@ -287,11 +355,12 @@ async def invite_member(
 
     # Plan limit check
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    allowed, current, limit = check_member_limit(db, member.organization_id, org.plan_tier)
+    effective = get_effective_plan(org)
+    allowed, current, limit = check_member_limit(db, member.organization_id, effective)
     if not allowed:
         raise HTTPException(
             status_code=403,
-            detail=f"Limite de membros atingido para o plano {org.plan_tier.capitalize()} (máx {limit}). Faça upgrade para convidar mais.",
+            detail=f"Limite de membros atingido para o plano {effective.capitalize()} (máx {limit}). Faça upgrade para convidar mais.",
         )
 
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()

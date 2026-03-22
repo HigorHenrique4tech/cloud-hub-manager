@@ -14,7 +14,7 @@ const PLAN_ORDER = { free: 0, pro: 1, enterprise: 2 };
  */
 const PlanGate = ({ minPlan = 'pro', feature = '', children, inline = false }) => {
   const { currentOrg } = useOrgWorkspace();
-  const plan = (currentOrg?.plan_tier || 'free').toLowerCase();
+  const plan = (currentOrg?.effective_plan || currentOrg?.plan_tier || 'free').toLowerCase();
 
   const hasAccess = (PLAN_ORDER[plan] ?? 0) >= (PLAN_ORDER[minPlan] ?? 0);
   if (hasAccess) return children;

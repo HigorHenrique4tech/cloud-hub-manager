@@ -43,8 +43,11 @@ async def _run(fn, *args, **kwargs):
 
 
 def _get_org_plan(db: Session, organization_id) -> str:
+    from app.services.plan_service import get_effective_plan
     org = db.query(Organization).filter(Organization.id == organization_id).first()
-    return (org.plan_tier if org and org.plan_tier else "free").lower()
+    if not org:
+        return "free"
+    return get_effective_plan(org)
 
 
 def _require_enterprise(plan: str, feature: str = "Microsoft 365"):

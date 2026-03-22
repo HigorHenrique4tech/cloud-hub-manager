@@ -14,7 +14,7 @@ from app.core.dependencies import (
 from app.core.auth_context import MemberContext
 from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
-from app.services.plan_service import check_workspace_limit
+from app.services.plan_service import check_workspace_limit, get_effective_plan
 
 router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces",
@@ -114,11 +114,12 @@ async def create_workspace(
     """Create a new workspace (admin+ required)."""
     # Plan limit check
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    allowed, current, limit = check_workspace_limit(db, member.organization_id, org.plan_tier, org.org_type)
+    effective = get_effective_plan(org)
+    allowed, current, limit = check_workspace_limit(db, member.organization_id, effective, org.org_type)
     if not allowed:
         raise HTTPException(
             status_code=403,
-            detail=f"Limite de workspaces atingido para o plano {org.plan_tier.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
+            detail=f"Limite de workspaces atingido para o plano {effective.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
         )
 
     slug = payload.slug or _slugify(payload.name)

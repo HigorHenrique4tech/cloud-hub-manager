@@ -9,7 +9,7 @@ from app.core.dependencies import get_workspace_member, require_permission
 from app.core.auth_context import MemberContext
 from app.services.auth_service import encrypt_credential, decrypt_credential, encrypt_for_org, decrypt_for_account
 from app.services.log_service import log_activity
-from app.services.plan_service import check_account_limit
+from app.services.plan_service import check_account_limit, get_effective_plan
 
 router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces/{workspace_id}/accounts",
@@ -85,11 +85,12 @@ async def create_account(
     # Plan limit check
     ws = db.query(Workspace).filter(Workspace.id == member.workspace_id).first()
     org = db.query(Organization).filter(Organization.id == ws.organization_id).first()
-    allowed, current, limit = check_account_limit(db, org.id, org.plan_tier)
+    effective = get_effective_plan(org)
+    allowed, current, limit = check_account_limit(db, org.id, effective)
     if not allowed:
         raise HTTPException(
             status_code=403,
-            detail=f"Limite de contas cloud atingido para o plano {org.plan_tier.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
+            detail=f"Limite de contas cloud atingido para o plano {effective.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
         )
 
     if payload.provider not in ("aws", "azure", "gcp", "m365"):

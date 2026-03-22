@@ -53,7 +53,9 @@ const Billing = () => {
   const navigate = useNavigate();
   const { currentOrg, isMasterOrg } = useOrgWorkspace();
   const slug = currentOrg?.slug;
-  const isEnterprise = currentOrg?.plan_tier === 'enterprise';
+  const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
+  const isEnterprise = effectivePlan === 'enterprise';
+  const trial = currentOrg?.trial || {};
 
   const { data: usageData, isLoading: usageLoading } = useQuery({
     queryKey: ['org-usage', slug],
@@ -74,7 +76,7 @@ const Billing = () => {
     retry: false,
   });
 
-  const plan = PLAN_INFO[currentOrg?.plan_tier] || PLAN_INFO.free;
+  const plan = PLAN_INFO[effectivePlan] || PLAN_INFO.free;
   const usage = usageData?.usage || {};
   const limits = usageData?.limits || {};
   const payments = historyData?.payments || [];
@@ -124,6 +126,44 @@ const Billing = () => {
             </button>
           </div>
         </div>
+
+        {/* Trial info */}
+        {trial.has_trial && (
+          <div className={`rounded-xl border p-4 flex items-center justify-between ${
+            trial.trial_active
+              ? trial.days_remaining <= 7
+                ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-800'
+                : trial.days_remaining <= 14
+                  ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-800'
+                  : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'
+              : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'
+          }`}>
+            <div>
+              <p className={`text-sm font-semibold ${
+                trial.trial_active
+                  ? trial.days_remaining <= 7 ? 'text-red-700 dark:text-red-400' : trial.days_remaining <= 14 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}>
+                {trial.trial_active
+                  ? `Trial Pro — ${trial.days_remaining} dia${trial.days_remaining !== 1 ? 's' : ''} restante${trial.days_remaining !== 1 ? 's' : ''}`
+                  : 'Trial expirado'}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {trial.trial_active
+                  ? 'Aproveite todos os recursos Pro durante o período de teste'
+                  : 'Faça upgrade para continuar usando os recursos Pro'}
+              </p>
+            </div>
+            {!trial.trial_active && currentOrg?.plan_tier === 'free' && (
+              <button
+                onClick={() => navigate('/select-plan')}
+                className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Fazer upgrade
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Usage */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">

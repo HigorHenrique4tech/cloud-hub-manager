@@ -5,6 +5,7 @@ import AzureSecondarySidebar from './AzureSecondarySidebar';
 import AwsSecondarySidebar from './AwsSecondarySidebar';
 import GcpSecondarySidebar from './GcpSecondarySidebar';
 import M365SecondarySidebar from './M365SecondarySidebar';
+import TrialBanner from '../common/TrialBanner';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 
 const Layout = ({ children }) => {
@@ -17,6 +18,7 @@ const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+      <TrialBanner />
       <Header />
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />

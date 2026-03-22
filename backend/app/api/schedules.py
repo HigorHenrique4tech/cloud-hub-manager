@@ -125,8 +125,11 @@ def _schedule_to_dict(s: ScheduledAction) -> dict:
 
 
 def _get_org_plan(member: MemberContext, db: Session) -> str:
+    from app.services.plan_service import get_effective_plan
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    return (org.plan_tier if org and org.plan_tier else "free").lower()
+    if not org:
+        return "free"
+    return get_effective_plan(org)
 
 
 def _require_pro(member: MemberContext, db: Session):

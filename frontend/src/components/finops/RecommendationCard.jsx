@@ -5,13 +5,11 @@ import {
 } from 'lucide-react';
 import PermissionGate from '../common/PermissionGate';
 import PlanGate from '../common/PlanGate';
+import { useCurrency } from '../../hooks/useCurrency';
 
 const HIGH_IMPACT_TYPES = new Set(['stop', 'delete', 'right_size']);
 const needsApproval = (rec) =>
   rec.severity === 'high' || HIGH_IMPACT_TYPES.has(rec.recommendation_type);
-
-const fmtUSD = (v) =>
-  v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const SEVERITY_STYLES = {
   high:   'bg-red-100 text-red-700 border border-red-300 dark:bg-red-500/20 dark:text-red-300 dark:border-red-500/30',
@@ -51,6 +49,7 @@ const STATUS_ICON = {
 
 const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyLoading, dismissLoading, requestingApprovalId, planTier = 'free', selected = false, onToggle }) => {
   const [expanded, setExpanded] = useState(false);
+  const { fmtCost } = useCurrency();
   const isLocked = rec._locked;
   const isPending = rec.status === 'pending';
   const isScheduleType = rec.recommendation_type === 'schedule';
@@ -138,7 +137,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
             </div>
           ) : (
             <span className="text-base font-bold text-green-600 dark:text-green-400">
-              {fmtUSD(rec.estimated_saving_monthly)}<span className="text-xs font-normal text-gray-400 dark:text-slate-400">/mês</span>
+              {fmtCost(rec.estimated_saving_monthly)}<span className="text-xs font-normal text-gray-400 dark:text-slate-400">/mês</span>
             </span>
           )}
 
@@ -191,8 +190,8 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
 
           {/* Cost row */}
           <div className="flex items-center gap-6 text-xs text-gray-500 dark:text-slate-400">
-            <span>Custo atual: <strong className="text-gray-800 dark:text-slate-200">{fmtUSD(rec.current_monthly_cost)}/mês</strong></span>
-            <span>Economia estimada: <strong className="text-green-600 dark:text-green-400">{fmtUSD(rec.estimated_saving_monthly)}/mês</strong></span>
+            <span>Custo atual: <strong className="text-gray-800 dark:text-slate-200">{fmtCost(rec.current_monthly_cost)}/mês</strong></span>
+            <span>Economia estimada: <strong className="text-green-600 dark:text-green-400">{fmtCost(rec.estimated_saving_monthly)}/mês</strong></span>
           </div>
 
           {/* Action buttons */}

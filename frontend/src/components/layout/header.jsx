@@ -12,6 +12,24 @@ import NewTicketModal from '../support/NewTicketModal';
 import Logo from '../common/Logo';
 import alertService from '../../services/alertService';
 import authService from '../../services/authService';
+import { useCurrency } from '../../hooks/useCurrency';
+
+const CurrencyToggle = () => {
+  const { currency, toggleCurrency } = useCurrency();
+  return (
+    <button
+      onClick={toggleCurrency}
+      title={currency === 'USD' ? 'Exibir custos em BRL' : 'Exibir custos em USD'}
+      className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold
+                 bg-gray-100 text-gray-600 hover:bg-gray-200
+                 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600
+                 transition-colors"
+    >
+      <Wallet className="w-3.5 h-3.5" />
+      {currency === 'USD' ? 'USD' : 'R$'}
+    </button>
+  );
+};
 
 const Header = () => {
   const { isDark, toggleTheme } = useTheme();
@@ -253,23 +271,32 @@ const Header = () => {
                 onClick={() => navigate('/billing')}
                 title="Gerenciar plano"
                 className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  currentOrg.plan_tier === 'pro'
+                  (currentOrg.effective_plan || currentOrg.plan_tier) === 'pro'
                     ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary hover:bg-primary/20 dark:hover:bg-primary/30'
-                    : currentOrg.plan_tier === 'enterprise'
+                    : (currentOrg.effective_plan || currentOrg.plan_tier) === 'enterprise'
                       ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'
                       : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                 }`}
               >
                 <Crown className={`w-3.5 h-3.5 ${
-                  currentOrg.plan_tier === 'pro'
+                  (currentOrg.effective_plan || currentOrg.plan_tier) === 'pro'
                     ? 'text-primary'
-                    : currentOrg.plan_tier === 'enterprise'
+                    : (currentOrg.effective_plan || currentOrg.plan_tier) === 'enterprise'
                       ? 'text-amber-500'
                       : 'text-gray-400 dark:text-gray-500'
                 }`} />
-                {currentOrg.plan_tier === 'enterprise' ? 'Enterprise' : currentOrg.plan_tier === 'pro' ? 'Pro' : 'Free'}
+                {(() => {
+                  const ep = currentOrg.effective_plan || currentOrg.plan_tier;
+                  const isTrial = currentOrg.trial?.trial_active && currentOrg.plan_tier === 'free';
+                  if (ep === 'enterprise') return 'Enterprise';
+                  if (ep === 'pro') return isTrial ? 'Trial Pro' : 'Pro';
+                  return 'Free';
+                })()}
               </button>
             )}
+
+            {/* Currency toggle */}
+            <CurrencyToggle />
 
             {/* Dark mode toggle */}
             <button

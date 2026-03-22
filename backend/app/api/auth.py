@@ -86,7 +86,11 @@ def _ensure_personal_org(db: Session, user: User) -> Organization:
         slug = f"{slug_base}-{counter}"
         counter += 1
 
-    org = Organization(name=f"Personal – {user.name}", slug=slug)
+    org = Organization(
+        name=f"Personal – {user.name}",
+        slug=slug,
+        trial_ends_at=datetime.utcnow() + timedelta(days=30),
+    )
     db.add(org)
     db.flush()
 

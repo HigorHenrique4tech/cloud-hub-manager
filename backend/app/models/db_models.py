@@ -24,6 +24,11 @@ class Organization(Base):
     suspended_reason = Column(String(500), nullable=True)     # reason shown when org is suspended
     suspended_at     = Column(DateTime, nullable=True)
     encrypted_org_key = Column(Text, nullable=True)           # per-org Fernet key, encrypted by master key
+    trial_ends_at    = Column(DateTime, nullable=True)        # end of 30-day Pro trial
+    currency_display = Column(String(10), nullable=False, default="USD")  # USD | BRL
+    exchange_rate_brl = Column(Float, nullable=True)           # manual rate (1 USD = X BRL)
+    exchange_rate_auto = Column(Boolean, default=False, nullable=False)  # auto-fetch from BCB
+    exchange_rate_updated_at = Column(DateTime, nullable=True)
     created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

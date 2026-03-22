@@ -227,6 +227,8 @@ def list_all_orgs(
             "notes": org.notes,
             "members_count": member_counts.get(org.id, 0),
             "created_at": org.created_at.isoformat() if org.created_at else None,
+            "trial_ends_at": org.trial_ends_at.isoformat() if org.trial_ends_at else None,
+            "trial_active": org.trial_ends_at > datetime.utcnow() if org.trial_ends_at else False,
         }
         for org in orgs
     ]
@@ -270,6 +272,71 @@ def admin_set_org_plan(
         "name": org.name,
         "plan_tier": org.plan_tier,
     }
+
+
+# ── Trial management ──────────────────────────────────────────────────────────
+
+
+class TrialPayload(BaseModel):
+    days: int = 30
+
+
+@router.put("/orgs/{org_id}/trial")
+async def set_trial(
+    org_id: str,
+    payload: TrialPayload,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Extend or reset the trial period for an organization."""
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    org.trial_ends_at = datetime.utcnow() + timedelta(days=payload.days)
+    db.commit()
+
+    log_activity(
+        db, admin, "admin.set_trial", "Organization",
+        resource_id=str(org.id),
+        resource_name=org.name,
+        detail=f"trial_days={payload.days}",
+        provider="system",
+    )
+
+    logger.info("Admin %s set org %s trial: %d days", admin.email, org.slug, payload.days)
+
+    return {
+        "id": str(org.id),
+        "slug": org.slug,
+        "name": org.name,
+        "trial_ends_at": org.trial_ends_at.isoformat() if org.trial_ends_at else None,
+    }
+
+
+@router.delete("/orgs/{org_id}/trial")
+async def remove_trial(
+    org_id: str,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Remove trial from an organization (set to expired)."""
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    org.trial_ends_at = datetime.utcnow() - timedelta(days=1)
+    db.commit()
+
+    log_activity(
+        db, admin, "admin.remove_trial", "Organization",
+        resource_id=str(org.id),
+        resource_name=org.name,
+        detail="trial removed",
+        provider="system",
+    )
+
+    return {"ok": True}
 
 
 # ── Org extras (metrics, suspend, notes) ──────────────────────────────────────

@@ -65,6 +65,12 @@ export const orgService = {
   updatePartnerNotes: async (partnerSlug, notes) =>
     (await api.patch(`/admin/orgs/${partnerSlug}/notes`, { notes })).data,
 
+  // ── Currency ────────────────────────────────────────────────────────────
+  updateCurrency: async (slug, data) =>
+    (await api.put(`/orgs/${slug}/currency`, data)).data,
+  getExchangeRate: async (slug) =>
+    (await api.get(`/orgs/${slug}/exchange-rate`)).data,
+
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {
     const params = provider ? { provider } : {};

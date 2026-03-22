@@ -216,9 +216,12 @@ def _report_schedule_to_dict(s: ReportSchedule, next_run: Optional[str] = None) 
 
 
 def _get_org_plan(member: MemberContext, db: Session) -> str:
-    """Returns the org's plan_tier (free | pro | enterprise)."""
+    """Returns the org's effective plan considering trial (free | pro | enterprise)."""
+    from app.services.plan_service import get_effective_plan
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    return (org.plan_tier if org and org.plan_tier else "free").lower()
+    if not org:
+        return "free"
+    return get_effective_plan(org)
 
 
 def _require_plan(plan: str, minimum: str, feature: str):

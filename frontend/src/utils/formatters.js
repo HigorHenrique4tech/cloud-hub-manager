@@ -69,3 +69,16 @@ export const formatInstanceType = (type) => {
 // Format USD currency
 export const fmtUSD = (v) =>
   v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Format BRL currency
+export const fmtBRL = (v) =>
+  v == null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+// Format cost in the org's preferred currency
+export const fmtCurrency = (v, currency = 'USD', rate = null) => {
+  if (v == null) return '—';
+  if (currency === 'BRL' && rate) {
+    return fmtBRL(Number(v) * rate);
+  }
+  return fmtUSD(v);
+};

@@ -3,11 +3,12 @@ import LoadingSpinner from '../common/loadingspinner';
 import EmptyState from '../common/emptystate';
 import PlanGate from '../common/PlanGate';
 import PermissionGate from '../common/PermissionGate';
-import { fmtUSD } from '../../utils/formatters';
+import { useCurrency } from '../../hooks/useCurrency';
 
 const PERIOD_LABEL = { monthly: 'Mensal', quarterly: 'Trimestral', annual: 'Anual' };
 
 const BudgetCard = ({ budget, onDelete, onEdit }) => {
+  const { fmtCost } = useCurrency();
   const pct = Math.min((budget.pct ?? 0) * 100, 100);
   const barColor =
     pct >= budget.alert_threshold * 100
@@ -46,7 +47,7 @@ const BudgetCard = ({ budget, onDelete, onEdit }) => {
         </PermissionGate>
       </div>
 
-      <p className="mt-3 text-2xl font-bold text-gray-900 dark:text-slate-100">{fmtUSD(budget.amount)}</p>
+      <p className="mt-3 text-2xl font-bold text-gray-900 dark:text-slate-100">{fmtCost(budget.amount)}</p>
 
       <div className="mt-3 space-y-1">
         <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-slate-700">
@@ -58,8 +59,8 @@ const BudgetCard = ({ budget, onDelete, onEdit }) => {
         </div>
         {budget.last_spend != null && (
           <p className="text-xs text-gray-500 dark:text-slate-500">
-            Gasto atual: <strong className="text-gray-700 dark:text-slate-300">{fmtUSD(budget.last_spend)}</strong>
-            {' '}/{' '}{fmtUSD(budget.amount)}
+            Gasto atual: <strong className="text-gray-700 dark:text-slate-300">{fmtCost(budget.last_spend)}</strong>
+            {' '}/{' '}{fmtCost(budget.amount)}
           </p>
         )}
       </div>
@@ -79,7 +80,7 @@ const BudgetCard = ({ budget, onDelete, onEdit }) => {
                 <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-slate-700">
                   <div className={`h-1.5 rounded-full ${color}`} style={{ width: `${barPct}%` }} />
                 </div>
-                <span className="text-xs text-gray-400 dark:text-slate-400 w-16 text-right">{fmtUSD(v)}</span>
+                <span className="text-xs text-gray-400 dark:text-slate-400 w-16 text-right">{fmtCost(v)}</span>
               </div>
             );
           })}

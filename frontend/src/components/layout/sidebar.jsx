@@ -62,7 +62,8 @@ const CLOUD_ACTIVE = {
 const Sidebar = () => {
   const { isMasterOrg, currentOrg } = useOrgWorkspace();
   const { user } = useAuth();
-  const isEnterprise = currentOrg?.plan_tier === 'enterprise';
+  const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
+  const isEnterprise = effectivePlan === 'enterprise';
 
   const pendingCountQ = useQuery({
     queryKey: ['approvals-count'],
