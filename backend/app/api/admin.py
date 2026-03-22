@@ -281,7 +281,7 @@ class TrialPayload(BaseModel):
     days: int = 30
 
 
-@router.put("/orgs/{org_id}/trial")
+@admin_router.put("/orgs/{org_id}/trial")
 async def set_trial(
     org_id: str,
     payload: TrialPayload,
@@ -314,7 +314,7 @@ async def set_trial(
     }
 
 
-@router.delete("/orgs/{org_id}/trial")
+@admin_router.delete("/orgs/{org_id}/trial")
 async def remove_trial(
     org_id: str,
     admin: User = Depends(get_current_admin),
