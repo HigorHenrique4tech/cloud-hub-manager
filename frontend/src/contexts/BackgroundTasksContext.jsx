@@ -29,7 +29,7 @@ export function BackgroundTasksProvider({ children }) {
 
   const wsUrl = useCallback(() => {
     if (!currentOrg?.slug || !currentWorkspace?.id) return null;
-    return `/api/v1/orgs/${currentOrg.slug}/workspaces/${currentWorkspace.id}/tasks/`;
+    return `/orgs/${currentOrg.slug}/workspaces/${currentWorkspace.id}/tasks/`;
   }, [currentOrg?.slug, currentWorkspace?.id]);
 
   const fetchTasks = useCallback(async () => {
