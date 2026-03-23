@@ -12,17 +12,47 @@ import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import { useAuth } from '../../contexts/AuthContext';
 import approvalService from '../../services/approvalService';
 
+// ── Prefetch map: route → lazy import for preloading on hover ─────────────────
+const _prefetchMap = {
+  '/': () => import('../../pages/dashboard'),
+  '/aws': () => import('../../pages/aws/AwsOverview'),
+  '/azure': () => import('../../pages/azure/AzureOverview'),
+  '/gcp': () => import('../../pages/gcp/GcpOverview'),
+  '/m365': () => import('../../pages/m365/M365Dashboard'),
+  '/costs': () => import('../../pages/costs'),
+  '/finops': () => import('../../pages/FinOps'),
+  '/inventory': () => import('../../pages/Inventory'),
+  '/schedules': () => import('../../pages/Schedules'),
+  '/approvals': () => import('../../pages/ApprovalsPage'),
+  '/notifications': () => import('../../pages/NotificationChannels'),
+  '/logs': () => import('../../pages/logs'),
+  '/billing': () => import('../../pages/Billing'),
+  '/org/settings': () => import('../../pages/OrgSettings'),
+  '/workspace/settings': () => import('../../pages/WorkspaceSettings'),
+  '/org/managed': () => import('../../pages/ManagedOrgsPage'),
+  '/admin': () => import('../../pages/AdminPanel'),
+  '/settings': () => import('../../pages/settings'),
+};
+const _prefetched = new Set();
+const prefetch = (to) => {
+  if (_prefetched.has(to)) return;
+  const loader = _prefetchMap[to];
+  if (loader) { _prefetched.add(to); loader(); }
+};
+
 // ── Sub-components ────────────────────────────────────────────────────────────
 
 /**
  * Nav item with optional per-cloud active color.
  * activeColor: Tailwind classes applied when the route is active.
  * Falls back to the global bg-primary style when not specified.
+ * On hover, prefetches the lazy chunk so navigation is instant.
  */
 const NavItem = ({ to, label, icon: Icon, end, activeColor, badge }) => (
   <NavLink
     to={to}
     end={end}
+    onMouseEnter={() => prefetch(to)}
     className={({ isActive }) => {
       const base = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors';
       if (isActive) {

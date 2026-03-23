@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
@@ -9,68 +10,94 @@ import { BackgroundTasksProvider } from './contexts/BackgroundTasksContext';
 import Toaster from './components/common/Toaster';
 import TaskNotifications from './components/common/TaskNotifications';
 import ProtectedRoute from './components/common/ProtectedRoute';
-import Dashboard from './pages/dashboard';
-import Costs from './pages/costs';
-import Settings from './pages/settings';
-import Login from './pages/login';
-import Register from './pages/register';
-// Azure
-import AzureOverview from './pages/azure/AzureOverview';
-import AzureVMs from './pages/azure/AzureVMs';
-import AzureStorage from './pages/azure/AzureStorage';
-import AzureVNets from './pages/azure/AzureVNets';
-import AzureDatabases from './pages/azure/AzureDatabases';
-import AzureAppServices from './pages/azure/AzureAppServices';
-import AzureSecurity from './pages/azure/AzureSecurity';
-import AzureBackup from './pages/azure/AzureBackup';
-import AzureAdvisor from './pages/azure/AzureAdvisor';
-// GCP
-import GcpOverview from './pages/gcp/GcpOverview';
-import GcpComputeEngine from './pages/gcp/GcpComputeEngine';
-import GcpStorage from './pages/gcp/GcpStorage';
-import GcpCloudSQL from './pages/gcp/GcpCloudSQL';
-import GcpFunctions from './pages/gcp/GcpFunctions';
-import GcpVPC from './pages/gcp/GcpVPC';
-import GcpSecurity from './pages/gcp/GcpSecurity';
-import GcpBackup from './pages/gcp/GcpBackup';
-import GcpAdvisor from './pages/gcp/GcpAdvisor';
-// AWS
-import AwsOverview from './pages/aws/AwsOverview';
-import AwsEC2 from './pages/aws/AwsEC2';
-import AwsS3 from './pages/aws/AwsS3';
-import AwsRDS from './pages/aws/AwsRDS';
-import AwsLambda from './pages/aws/AwsLambda';
-import AwsVPC from './pages/aws/AwsVPC';
-import AwsSecurity from './pages/aws/AwsSecurity';
-import AwsBackup from './pages/aws/AwsBackup';
-import AwsAdvisor from './pages/aws/AwsAdvisor';
-import Logs from './pages/logs';
-import FinOps from './pages/FinOps';
-import Schedules from './pages/Schedules';
-// Multi-tenant
-import OrgSettings from './pages/OrgSettings';
-import WorkspaceSettings from './pages/WorkspaceSettings';
-import ManagedOrgsPage from './pages/ManagedOrgsPage';
-import InviteAccept from './pages/InviteAccept';
-import PlanSelection from './pages/PlanSelection';
-import VerifyEmail from './pages/VerifyEmail';
-import VerifyCallback from './pages/VerifyCallback';
-import Billing from './pages/Billing';
-import BillingSuccess from './pages/BillingSuccess';
-import AdminPanel from './pages/AdminPanel';
-import NotificationChannels from './pages/NotificationChannels';
-import OAuthCallback from './pages/OAuthCallback';
-import M365Dashboard from './pages/m365/M365Dashboard';
-import M365SharePoint from './pages/m365/SharePoint';
-import M365Exchange from './pages/m365/Exchange';
-import M365TeamsAdmin from './pages/m365/TeamsAdmin';
-import M365Audit from './pages/m365/Audit';
-import GdapManager from './pages/m365/GdapManager';
-import Inventory from './pages/Inventory';
-import Onboarding from './pages/Onboarding';
-import ApprovalsPage from './pages/ApprovalsPage';
 import './styles/index.css';
 
+// ── Lazy-loaded pages ─────────────────────────────────────────────────────────
+// Only the current route is loaded — all others are fetched on demand.
+
+// Auth (not protected — load eagerly for fast first paint)
+import Login from './pages/login';
+import Register from './pages/register';
+
+// Core (loaded on demand)
+const Dashboard = lazy(() => import('./pages/dashboard'));
+const Costs = lazy(() => import('./pages/costs'));
+const Settings = lazy(() => import('./pages/settings'));
+const Logs = lazy(() => import('./pages/logs'));
+const FinOps = lazy(() => import('./pages/FinOps'));
+const Schedules = lazy(() => import('./pages/Schedules'));
+const Inventory = lazy(() => import('./pages/Inventory'));
+const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage'));
+const NotificationChannels = lazy(() => import('./pages/NotificationChannels'));
+
+// AWS
+const AwsOverview = lazy(() => import('./pages/aws/AwsOverview'));
+const AwsEC2 = lazy(() => import('./pages/aws/AwsEC2'));
+const AwsS3 = lazy(() => import('./pages/aws/AwsS3'));
+const AwsRDS = lazy(() => import('./pages/aws/AwsRDS'));
+const AwsLambda = lazy(() => import('./pages/aws/AwsLambda'));
+const AwsVPC = lazy(() => import('./pages/aws/AwsVPC'));
+const AwsSecurity = lazy(() => import('./pages/aws/AwsSecurity'));
+const AwsBackup = lazy(() => import('./pages/aws/AwsBackup'));
+const AwsAdvisor = lazy(() => import('./pages/aws/AwsAdvisor'));
+
+// Azure
+const AzureOverview = lazy(() => import('./pages/azure/AzureOverview'));
+const AzureVMs = lazy(() => import('./pages/azure/AzureVMs'));
+const AzureStorage = lazy(() => import('./pages/azure/AzureStorage'));
+const AzureVNets = lazy(() => import('./pages/azure/AzureVNets'));
+const AzureDatabases = lazy(() => import('./pages/azure/AzureDatabases'));
+const AzureAppServices = lazy(() => import('./pages/azure/AzureAppServices'));
+const AzureSecurity = lazy(() => import('./pages/azure/AzureSecurity'));
+const AzureBackup = lazy(() => import('./pages/azure/AzureBackup'));
+const AzureAdvisor = lazy(() => import('./pages/azure/AzureAdvisor'));
+
+// GCP
+const GcpOverview = lazy(() => import('./pages/gcp/GcpOverview'));
+const GcpComputeEngine = lazy(() => import('./pages/gcp/GcpComputeEngine'));
+const GcpStorage = lazy(() => import('./pages/gcp/GcpStorage'));
+const GcpCloudSQL = lazy(() => import('./pages/gcp/GcpCloudSQL'));
+const GcpFunctions = lazy(() => import('./pages/gcp/GcpFunctions'));
+const GcpVPC = lazy(() => import('./pages/gcp/GcpVPC'));
+const GcpSecurity = lazy(() => import('./pages/gcp/GcpSecurity'));
+const GcpBackup = lazy(() => import('./pages/gcp/GcpBackup'));
+const GcpAdvisor = lazy(() => import('./pages/gcp/GcpAdvisor'));
+
+// M365
+const M365Dashboard = lazy(() => import('./pages/m365/M365Dashboard'));
+const M365SharePoint = lazy(() => import('./pages/m365/SharePoint'));
+const M365Exchange = lazy(() => import('./pages/m365/Exchange'));
+const M365TeamsAdmin = lazy(() => import('./pages/m365/TeamsAdmin'));
+const M365Audit = lazy(() => import('./pages/m365/Audit'));
+const GdapManager = lazy(() => import('./pages/m365/GdapManager'));
+
+// Multi-tenant & Admin
+const OrgSettings = lazy(() => import('./pages/OrgSettings'));
+const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
+const ManagedOrgsPage = lazy(() => import('./pages/ManagedOrgsPage'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const Billing = lazy(() => import('./pages/Billing'));
+const BillingSuccess = lazy(() => import('./pages/BillingSuccess'));
+const PlanSelection = lazy(() => import('./pages/PlanSelection'));
+
+// One-time pages
+const Onboarding = lazy(() => import('./pages/Onboarding'));
+const InviteAccept = lazy(() => import('./pages/InviteAccept'));
+const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
+const VerifyCallback = lazy(() => import('./pages/VerifyCallback'));
+const OAuthCallback = lazy(() => import('./pages/OAuthCallback'));
+
+// ── Route loading fallback ────────────────────────────────────────────────────
+const RouteFallback = () => (
+  <div className="flex items-center justify-center h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="flex flex-col items-center gap-3">
+      <div className="w-8 h-8 border-3 border-primary border-t-transparent rounded-full animate-spin" />
+      <span className="text-sm text-gray-500 dark:text-gray-400">Carregando...</span>
+    </div>
+  </div>
+);
+
+// ── Query client ──────────────────────────────────────────────────────────────
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -94,6 +121,7 @@ function App() {
               <BrandingProvider>
               <BackgroundTasksProvider>
               <BrowserRouter>
+              <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
@@ -161,6 +189,7 @@ function App() {
                 <Route path="/workspace/settings" element={<PR><WorkspaceSettings /></PR>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
+              </Suspense>
               </BrowserRouter>
               <TaskNotifications />
               </BackgroundTasksProvider>
