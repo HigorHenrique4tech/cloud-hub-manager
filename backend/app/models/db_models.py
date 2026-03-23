@@ -29,6 +29,17 @@ class Organization(Base):
     exchange_rate_brl = Column(Float, nullable=True)           # manual rate (1 USD = X BRL)
     exchange_rate_auto = Column(Boolean, default=False, nullable=False)  # auto-fetch from BCB
     exchange_rate_updated_at = Column(DateTime, nullable=True)
+    # ── White-label branding (enterprise only) ──────────────────────────────
+    wl_platform_name    = Column(String(100), nullable=True)        # custom platform name
+    wl_logo_light       = Column(Text, nullable=True)               # base64 logo for light bg
+    wl_logo_dark        = Column(Text, nullable=True)               # base64 logo for dark bg
+    wl_logo_mime        = Column(String(50), nullable=True)         # image/png, image/svg+xml
+    wl_favicon          = Column(Text, nullable=True)               # base64 favicon
+    wl_favicon_mime     = Column(String(50), nullable=True)         # favicon mime type
+    wl_color_primary    = Column(String(7), nullable=True)          # hex #RRGGBB
+    wl_color_accent     = Column(String(7), nullable=True)          # hex #RRGGBB
+    wl_powered_by       = Column(Boolean, default=True, nullable=False)  # show "Powered by CloudAtlas"
+    wl_email_sender_name = Column(String(100), nullable=True)       # custom email sender name
     created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

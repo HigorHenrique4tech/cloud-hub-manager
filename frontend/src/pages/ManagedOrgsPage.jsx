@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud, AlertTriangle, Grid3x3, CheckCircle, XCircle, PlusCircle, Pencil, StickyNote, Search, ArrowUpDown, Ban } from 'lucide-react';
+import { Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud, AlertTriangle, Grid3x3, CheckCircle, XCircle, PlusCircle, Pencil, StickyNote, Search, ArrowUpDown, Ban, Palette } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
@@ -157,9 +157,126 @@ const NotesModal = ({ org, onClose, onSave, saving }) => {
   );
 };
 
+/* ── Branding Partner Modal ──────────────────────────────────────────────── */
+
+const BrandingPartnerModal = ({ org, onClose, onSave, saving }) => {
+  const [form, setForm] = useState({
+    platform_name: org.branding?.platform_name === 'CloudAtlas' ? '' : (org.branding?.platform_name || ''),
+    color_primary: org.branding?.color_primary || '#1E6FD9',
+    color_accent: org.branding?.color_accent || '#0EA5E9',
+    powered_by: org.branding?.powered_by ?? true,
+    email_sender_name: org.branding?.email_sender_name === 'CloudAtlas' ? '' : (org.branding?.email_sender_name || ''),
+  });
+  const [inherit, setInherit] = useState(!org.has_custom_branding);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
+          <div className="flex items-center gap-2">
+            <Palette size={18} className="text-purple-500" />
+            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Personalizar Marca — {org.name}</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white"><X size={18} /></button>
+        </div>
+        <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
+          {/* Inherit toggle */}
+          <div className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 px-4 py-3">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Herdar marca da org principal</p>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Quando ativo, usa a personalização da organização master</p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={inherit}
+              onClick={() => setInherit(!inherit)}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${inherit ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'}`}
+            >
+              <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${inherit ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
+
+          {!inherit && (
+            <>
+              {/* Platform Name */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Nome da Plataforma</label>
+                <input
+                  value={form.platform_name}
+                  onChange={(e) => setForm({ ...form, platform_name: e.target.value })}
+                  placeholder="Herdar da org principal"
+                  maxLength={100}
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+                />
+              </div>
+
+              {/* Colors */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Cor Primária</label>
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={form.color_primary} onChange={(e) => setForm({ ...form, color_primary: e.target.value })}
+                      className="h-9 w-12 rounded border border-gray-300 dark:border-slate-700 cursor-pointer" />
+                    <input value={form.color_primary} onChange={(e) => setForm({ ...form, color_primary: e.target.value })}
+                      maxLength={7} className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-mono text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Cor Accent</label>
+                  <div className="flex items-center gap-2">
+                    <input type="color" value={form.color_accent} onChange={(e) => setForm({ ...form, color_accent: e.target.value })}
+                      className="h-9 w-12 rounded border border-gray-300 dark:border-slate-700 cursor-pointer" />
+                    <input value={form.color_accent} onChange={(e) => setForm({ ...form, color_accent: e.target.value })}
+                      maxLength={7} className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-mono text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Powered by */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-gray-700 dark:text-slate-300">Powered by CloudAtlas</span>
+                <button
+                  type="button" role="switch" aria-checked={form.powered_by}
+                  onClick={() => setForm({ ...form, powered_by: !form.powered_by })}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.powered_by ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'}`}
+                >
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.powered_by ? 'translate-x-6' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              {/* Email sender */}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Remetente de E-mail</label>
+                <input
+                  value={form.email_sender_name}
+                  onChange={(e) => setForm({ ...form, email_sender_name: e.target.value })}
+                  placeholder="Herdar da org principal"
+                  maxLength={100}
+                  className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+                />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-200 dark:border-slate-700 px-5 py-4">
+          <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+          <button
+            onClick={() => inherit ? onSave(null) : onSave(form)}
+            disabled={saving}
+            className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-60 transition-colors"
+          >
+            {saving ? 'Salvando…' : 'Salvar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ── Partner Org Card ────────────────────────────────────────────────────── */
 
-const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, isAddon, addonPricePerOrg }) => {
+const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isAddon, addonPricePerOrg }) => {
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
   const fmtBRL = (v) => v?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) ?? '—';
   const initials = (name) => name ? name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() : '?';
@@ -188,6 +305,13 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, isAddon, addonP
           <span className="text-xs font-medium text-red-600 dark:text-red-400">Suspensa</span>
         </div>
       )}
+      {/* Branding badge */}
+      {org.has_custom_branding && (
+        <div className="flex items-center gap-1.5 rounded-md bg-purple-50 dark:bg-purple-500/10 border border-purple-300/50 dark:border-purple-500/30 px-2.5 py-1.5 -mt-1">
+          <Palette size={13} className="text-purple-500 flex-shrink-0" />
+          <span className="text-xs font-medium text-purple-700 dark:text-purple-400">Marca personalizada</span>
+        </div>
+      )}
 
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
@@ -206,6 +330,13 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, isAddon, addonP
           </button>
           <button onClick={() => onNotes(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-yellow-500 dark:hover:text-yellow-400 transition-colors rounded" title="Notas internas">
             <StickyNote size={14} />
+          </button>
+          <button
+            onClick={() => onBranding(org)}
+            title="Personalizar marca"
+            className="p-1.5 rounded-lg text-gray-400 dark:text-slate-500 hover:text-purple-500 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors"
+          >
+            <Palette size={15} />
           </button>
           <button onClick={() => onRemove(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors rounded" title="Remover parceira">
             <Trash2 size={14} />
@@ -374,6 +505,7 @@ const ManagedOrgsPage = () => {
   const [removeTarget, setRemoveTarget] = useState(null);
   const [editTarget, setEditTarget]     = useState(null);
   const [notesTarget, setNotesTarget]   = useState(null);
+  const [brandingOrg, setBrandingOrg]   = useState(null);
   const [search, setSearch]             = useState('');
   const [sortBy, setSortBy]             = useState('recent');
 
@@ -426,6 +558,19 @@ const ManagedOrgsPage = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['managed-orgs'] });
       setNotesTarget(null);
+    },
+  });
+
+  const brandingMut = useMutation({
+    mutationFn: async ({ slug, data }) => {
+      if (data === null) {
+        return orgService.resetBranding(slug);
+      }
+      return orgService.updateBranding(slug, data);
+    },
+    onSuccess: () => {
+      setBrandingOrg(null);
+      qc.invalidateQueries({ queryKey: ['managed-orgs'] });
     },
   });
 
@@ -601,6 +746,7 @@ const ManagedOrgsPage = () => {
                       onRemove={setRemoveTarget}
                       onEdit={setEditTarget}
                       onNotes={setNotesTarget}
+                      onBranding={(org) => setBrandingOrg(org)}
                       isAddon={isAddon}
                       addonPricePerOrg={addonPricePerOrg}
                     />
@@ -650,6 +796,14 @@ const ManagedOrgsPage = () => {
           onClose={() => setNotesTarget(null)}
           onSave={(notes) => notesMut.mutate({ partnerSlug: notesTarget.slug, notes })}
           saving={notesMut.isPending}
+        />
+      )}
+      {brandingOrg && (
+        <BrandingPartnerModal
+          org={brandingOrg}
+          onClose={() => setBrandingOrg(null)}
+          onSave={(data) => brandingMut.mutate({ slug: brandingOrg.slug, data })}
+          saving={brandingMut.isPending}
         />
       )}
     </Layout>

@@ -20,6 +20,9 @@ from app.services.plan_service import check_member_limit, check_managed_org_limi
 from app.services.email_service import send_invite_email, send_org_member_added_email
 from app.services.notification_service import push_notification
 from app.services.notification_channel_service import fire_event
+from app.services.branding_service import (
+    get_branding, validate_color, validate_logo, validate_mime, strip_data_uri,
+)
 
 router = APIRouter(prefix="/orgs", tags=["Organizations"])
 
@@ -66,7 +69,7 @@ def _slugify(text: str) -> str:
     return re.sub(r"[\s_]+", "-", slug)[:100]
 
 
-def _org_to_dict(org: Organization, role: str = None):
+def _org_to_dict(org: Organization, role: str = None, db: Session = None):
     from app.services.plan_service import get_trial_info
     trial = get_trial_info(org)
     d = {
@@ -84,6 +87,8 @@ def _org_to_dict(org: Organization, role: str = None):
         "exchange_rate_brl": org.exchange_rate_brl,
         "exchange_rate_auto": org.exchange_rate_auto or False,
     }
+    if org.org_type in ("master", "partner"):
+        d["branding"] = get_branding(org, db)
     if role:
         d["role"] = role
     return d
@@ -110,7 +115,7 @@ async def list_orgs(
     for m in memberships:
         org = db.query(Organization).filter(Organization.id == m.organization_id, Organization.is_active == True).first()
         if org:
-            result.append(_org_to_dict(org, role=m.role))
+            result.append(_org_to_dict(org, role=m.role, db=db))
     return {"organizations": result}
 
 
@@ -171,7 +176,7 @@ async def create_org(
     log_activity(db, current_user, "org.create", "Organization",
                  resource_id=str(org.id), resource_name=org.name)
 
-    return _org_to_dict(org, role="owner")
+    return _org_to_dict(org, role="owner", db=db)
 
 
 @router.get("/{org_slug}")
@@ -181,7 +186,7 @@ async def get_org(
 ):
     """Get organization details."""
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    return _org_to_dict(org, role=member.role)
+    return _org_to_dict(org, role=member.role, db=db)
 
 
 @router.put("/{org_slug}")
@@ -196,7 +201,7 @@ async def update_org(
         org.name = payload.name
     db.commit()
     db.refresh(org)
-    return _org_to_dict(org, role=member.role)
+    return _org_to_dict(org, role=member.role, db=db)
 
 
 @router.delete("/{org_slug}", status_code=204)
@@ -248,7 +253,7 @@ async def update_plan(
             "/billing",
         )
 
-    return _org_to_dict(org, role=member.role)
+    return _org_to_dict(org, role=member.role, db=db)
 
 
 # ── Usage ────────────────────────────────────────────────────────────────────
@@ -265,6 +270,19 @@ async def org_usage(
 
 
 # ── Currency settings ────────────────────────────────────────────────────────
+
+
+class BrandingUpdate(BaseModel):
+    platform_name: Optional[str] = None
+    logo_light: Optional[str] = None       # base64
+    logo_dark: Optional[str] = None        # base64
+    logo_mime: Optional[str] = None        # image/png, image/svg+xml
+    favicon: Optional[str] = None          # base64
+    favicon_mime: Optional[str] = None
+    color_primary: Optional[str] = None    # #RRGGBB
+    color_accent: Optional[str] = None     # #RRGGBB
+    powered_by: Optional[bool] = None
+    email_sender_name: Optional[str] = None
 
 
 class CurrencySettings(BaseModel):
@@ -671,6 +689,11 @@ def _managed_org_to_dict(org: Organization, db: Session) -> dict:
         "owner_name": owner.name if owner else None,
         "owner_email": owner.email if owner else None,
         "owner_avatar_url": getattr(owner, "avatar_url", None) if owner else None,
+        "branding": get_branding(org, db),
+        "has_custom_branding": any([
+            org.wl_platform_name, org.wl_logo_light, org.wl_color_primary,
+            org.wl_color_accent, org.wl_favicon,
+        ]),
     }
 
 
@@ -875,3 +898,180 @@ async def remove_managed_org(
                  detail=f"master={master_org.slug}")
 
     return None
+
+
+# ── White-label branding ─────────────────────────────────────────────────────
+
+
+@router.get("/{org_slug}/branding")
+async def get_branding_endpoint(
+    member: MemberContext = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Return resolved branding for the organization."""
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+    return get_branding(org, db)
+
+
+@router.put("/{org_slug}/branding")
+async def update_branding(
+    payload: BrandingUpdate,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Update white-label branding (enterprise orgs only)."""
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    # Allow master orgs to set their own branding.
+    # Also allow if caller is editing a partner org via managed-orgs flow
+    # (the member context already verifies ownership via require_org_permission).
+    if org.org_type not in ("master", "partner"):
+        raise HTTPException(status_code=403, detail="White-label disponível apenas para planos Enterprise")
+
+    # Validate fields
+    if payload.platform_name is not None:
+        pn = payload.platform_name.strip()
+        if len(pn) < 2 or len(pn) > 100:
+            raise HTTPException(status_code=400, detail="Nome da plataforma deve ter entre 2 e 100 caracteres")
+        org.wl_platform_name = pn
+
+    if payload.color_primary is not None:
+        if not validate_color(payload.color_primary):
+            raise HTTPException(status_code=400, detail="Cor primária inválida (use #RRGGBB)")
+        org.wl_color_primary = payload.color_primary
+
+    if payload.color_accent is not None:
+        if not validate_color(payload.color_accent):
+            raise HTTPException(status_code=400, detail="Cor accent inválida (use #RRGGBB)")
+        org.wl_color_accent = payload.color_accent
+
+    if payload.logo_mime is not None:
+        if not validate_mime(payload.logo_mime):
+            raise HTTPException(status_code=400, detail="Formato de imagem não suportado")
+        org.wl_logo_mime = payload.logo_mime
+
+    if payload.logo_light is not None:
+        raw = strip_data_uri(payload.logo_light)
+        if not validate_logo(raw, max_kb=300):
+            raise HTTPException(status_code=400, detail="Logo claro inválido ou maior que 300KB")
+        org.wl_logo_light = raw
+
+    if payload.logo_dark is not None:
+        raw = strip_data_uri(payload.logo_dark)
+        if not validate_logo(raw, max_kb=300):
+            raise HTTPException(status_code=400, detail="Logo escuro inválido ou maior que 300KB")
+        org.wl_logo_dark = raw
+
+    if payload.favicon is not None:
+        raw = strip_data_uri(payload.favicon)
+        if not validate_logo(raw, max_kb=100):
+            raise HTTPException(status_code=400, detail="Favicon inválido ou maior que 100KB")
+        org.wl_favicon = raw
+
+    if payload.favicon_mime is not None:
+        if not validate_mime(payload.favicon_mime):
+            raise HTTPException(status_code=400, detail="Formato de favicon não suportado")
+        org.wl_favicon_mime = payload.favicon_mime
+
+    if payload.powered_by is not None:
+        org.wl_powered_by = payload.powered_by
+
+    if payload.email_sender_name is not None:
+        esn = payload.email_sender_name.strip()
+        if len(esn) < 2 or len(esn) > 100:
+            raise HTTPException(status_code=400, detail="Nome do remetente deve ter entre 2 e 100 caracteres")
+        org.wl_email_sender_name = esn
+
+    db.commit()
+    db.refresh(org)
+
+    log_activity(db, member.user, "org.branding.update", "Organization",
+                 resource_id=str(org.id), resource_name=org.name)
+
+    return get_branding(org, db)
+
+
+@router.delete("/{org_slug}/branding")
+async def reset_branding(
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Reset white-label branding to defaults."""
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    org.wl_platform_name = None
+    org.wl_logo_light = None
+    org.wl_logo_dark = None
+    org.wl_logo_mime = None
+    org.wl_favicon = None
+    org.wl_favicon_mime = None
+    org.wl_color_primary = None
+    org.wl_color_accent = None
+    org.wl_powered_by = True
+    org.wl_email_sender_name = None
+    db.commit()
+
+    log_activity(db, member.user, "org.branding.reset", "Organization",
+                 resource_id=str(org.id), resource_name=org.name)
+
+    return {"detail": "Branding resetado para padrão"}
+
+
+@router.get("/{org_slug}/branding/logo-light")
+async def serve_logo_light(
+    org_slug: str = Path(...),
+    db: Session = Depends(get_db),
+):
+    """Serve the light-background logo (public, cached)."""
+    import base64
+    from fastapi.responses import Response
+
+    org = db.query(Organization).filter(Organization.slug == org_slug).first()
+    if not org or not org.wl_logo_light:
+        raise HTTPException(status_code=404, detail="Logo não encontrado")
+
+    data = base64.b64decode(org.wl_logo_light)
+    mime = org.wl_logo_mime or "image/png"
+    return Response(content=data, media_type=mime, headers={"Cache-Control": "public, max-age=3600"})
+
+
+@router.get("/{org_slug}/branding/logo-dark")
+async def serve_logo_dark(
+    org_slug: str = Path(...),
+    db: Session = Depends(get_db),
+):
+    """Serve the dark-background logo (public, cached)."""
+    import base64
+    from fastapi.responses import Response
+
+    org = db.query(Organization).filter(Organization.slug == org_slug).first()
+    if not org or not org.wl_logo_dark:
+        raise HTTPException(status_code=404, detail="Logo não encontrado")
+
+    data = base64.b64decode(org.wl_logo_dark)
+    mime = org.wl_logo_mime or "image/png"
+    return Response(content=data, media_type=mime, headers={"Cache-Control": "public, max-age=3600"})
+
+
+@router.get("/{org_slug}/branding/favicon")
+async def serve_favicon(
+    org_slug: str = Path(...),
+    db: Session = Depends(get_db),
+):
+    """Serve the org favicon (public, cached)."""
+    import base64
+    from fastapi.responses import Response
+
+    org = db.query(Organization).filter(Organization.slug == org_slug).first()
+    if not org or not org.wl_favicon:
+        raise HTTPException(status_code=404, detail="Favicon não encontrado")
+
+    data = base64.b64decode(org.wl_favicon)
+    mime = org.wl_favicon_mime or "image/x-icon"
+    return Response(content=data, media_type=mime, headers={"Cache-Control": "public, max-age=3600"})

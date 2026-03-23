@@ -8,6 +8,7 @@ import {
 import Layout from '../components/layout/layout';
 import supportService from '../services/supportService';
 import { useAuth } from '../contexts/AuthContext';
+import { useBranding } from '../contexts/BrandingContext';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ function fmtTicketId(t) {
 // ── Message bubble ────────────────────────────────────────────────────────────
 
 function MessageBubble({ msg, isOwn }) {
+  const branding = useBranding();
   const isAdmin = msg.sender?.is_admin || msg.sender?.is_helpdesk;
 
   return (
@@ -54,7 +56,7 @@ function MessageBubble({ msg, isOwn }) {
       <div className={`max-w-[70%] ${isOwn ? 'items-end' : 'items-start'} flex flex-col gap-1`}>
         <div className={`flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 ${isOwn ? 'flex-row-reverse' : 'flex-row'}`}>
           <span className="font-medium">
-            {isAdmin ? 'Suporte CloudAtlas' : (msg.sender?.name || 'Usuário')}
+            {isAdmin ? `Suporte ${branding.platform_name}` : (msg.sender?.name || 'Usuário')}
           </span>
           <span>{fmtTime(msg.created_at)}</span>
         </div>

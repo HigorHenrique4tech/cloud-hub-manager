@@ -30,6 +30,7 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.services.branding_service import get_branding, DEFAULT_BRANDING
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,16 @@ def _load_logo() -> Optional[bytes]:
             return f.read()
     except Exception:
         return None
+
+
+def _load_org_logo(branding: dict = None) -> Optional[bytes]:
+    """Load org logo from branding base64 or fall back to default."""
+    if branding and branding.get("is_white_labeled"):
+        # Try to fetch org's logo from DB via branding URL
+        # For PDF, we need the base64 data directly, not the URL
+        # The branding dict doesn't contain base64 directly, so fall back to default
+        pass
+    return _load_logo()
 
 
 # ── Default settings object ───────────────────────────────────────────────────
@@ -244,7 +255,7 @@ def _collect_summary_data(db: Session, workspace_id: UUID, period: str, report_s
 # ── PDF generation ────────────────────────────────────────────────────────────
 
 
-def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = None) -> bytes:
+def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = None, branding: dict = None) -> bytes:
     """Build a styled PDF from summary data using reportlab. Returns raw PDF bytes."""
     try:
         from reportlab.lib import colors
@@ -269,8 +280,8 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
     CONTENT_W = PAGE_W - L_MARGIN - R_MARGIN   # ≈ 481.89 pt
 
     # ── Colour palette ────────────────────────────────────────────────────────
-    BLUE       = colors.HexColor("#2563EB")
-    BLUE_DARK  = colors.HexColor("#1D4ED8")
+    BLUE       = colors.HexColor((branding or {}).get("color_primary", "#2563EB"))
+    BLUE_DARK  = colors.HexColor((branding or {}).get("color_primary", "#1D4ED8") if (branding or {}).get("color_primary") else "#1D4ED8")
     BLUE_LIGHT = colors.HexColor("#EFF6FF")
     BLUE_BAR   = colors.HexColor("#93C5FD")
     GRAY       = colors.HexColor("#6B7280")
@@ -320,15 +331,17 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
         # "CloudAtlas" wordmark in header right corner
         canvas.setFillColor(colors.HexColor("#DBEAFE"))
         canvas.setFont("Helvetica-Bold", 9)
-        canvas.drawRightString(PAGE_W - 16, PAGE_H - 42, "CloudAtlas")
+        canvas.drawRightString(PAGE_W - 16, PAGE_H - 42, (branding or {}).get("platform_name", "CloudAtlas"))
 
         # ── Footer band ───────────────────────────────────────────────────────
         canvas.setFillColor(colors.HexColor("#F3F4F6"))
         canvas.rect(0, 0, PAGE_W, FOOTER_H, fill=1, stroke=0)
 
-        canvas.setFillColor(BLUE)
-        canvas.setFont("Helvetica-Bold", 7)
-        canvas.drawString(16, 7, "CloudAtlas")
+        _platform = (branding or {}).get("platform_name", "CloudAtlas")
+        if (branding or {}).get("powered_by", True):
+            canvas.setFillColor(BLUE)
+            canvas.setFont("Helvetica-Bold", 7)
+            canvas.drawString(16, 7, _platform)
 
         canvas.setFillColor(GRAY)
         canvas.setFont("Helvetica", 7)
@@ -665,6 +678,7 @@ def _build_rich_email_html(
     period: str,
     summary_data: dict,
     logo_bytes: Optional[bytes] = None,
+    branding: dict = None,
 ) -> str:
     """Build a rich HTML email body with logo, KPI cards, anomalies and recommendations."""
     costs          = summary_data.get("costs", {})
@@ -676,15 +690,17 @@ def _build_rich_email_html(
     sched          = summary_data.get("schedules", {})
     inventory      = summary_data.get("inventory", {})
 
+    _platform = (branding or {}).get("platform_name", "CloudAtlas")
+
     # Logo img tag (inline base64) or text fallback
     if logo_bytes:
         logo_b64 = base64.b64encode(logo_bytes).decode()
         logo_img = (
             f'<img src="data:image/png;base64,{logo_b64}" '
-            f'height="44" alt="CloudAtlas" style="display:block;" />'
+            f'height="44" alt="{_platform}" style="display:block;" />'
         )
     else:
-        logo_img = '<span style="font-size:20px;font-weight:800;color:#1D4ED8;">CloudAtlas</span>'
+        logo_img = f'<span style="font-size:20px;font-weight:800;color:#1D4ED8;">{_platform}</span>'
 
     # Delta badge
     if delta_pct is not None:
@@ -884,7 +900,7 @@ def _build_rich_email_html(
         <a href="#" style="display:inline-block;background:#2563EB;color:#ffffff;
                            text-decoration:none;font-size:14px;font-weight:600;
                            padding:12px 28px;border-radius:8px;letter-spacing:.2px;">
-          Abrir CloudAtlas &rarr;
+          Abrir {_platform} &rarr;
         </a>
       </div>
 
@@ -892,7 +908,7 @@ def _build_rich_email_html(
 
     <!-- Footer -->
     <div style="background:#F9FAFB;border-top:1px solid #E5E7EB;padding:16px 32px;text-align:center;">
-      <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#1D4ED8;">CloudAtlas</p>
+      {'<p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#1D4ED8;">' + _platform + '</p>' if (branding or {}).get("powered_by", True) else ''}
       <p style="margin:0;font-size:11px;color:#9CA3AF;">
         E-mail gerado automaticamente. Para alterar as configura&ccedil;&otilde;es de envio,
         acesse as configura&ccedil;&otilde;es do workspace.
@@ -952,7 +968,7 @@ def _send_email(recipients: List[str], subject: str, body_html: str, pdf_bytes: 
 # ── Main functions ────────────────────────────────────────────────────────────
 
 
-def generate_report(db: Session, workspace_id: UUID, period: str) -> "ExecutiveReport":
+def generate_report(db: Session, workspace_id: UUID, period: str, branding: dict = None, logo_bytes: bytes = None) -> "ExecutiveReport":
     """
     Generate an ExecutiveReport for the given workspace and period.
     Creates a DB record, generates PDF, stores base64-encoded bytes.
@@ -975,9 +991,10 @@ def generate_report(db: Session, workspace_id: UUID, period: str) -> "ExecutiveR
     db.refresh(report)
 
     try:
-        logo_bytes   = _load_logo()
+        if logo_bytes is None:
+            logo_bytes = _load_org_logo(branding)
         summary_data = _collect_summary_data(db, workspace_id, period, report_settings)
-        pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes)
+        pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes, branding=branding)
 
         report.status       = "ready"
         report.pdf_bytes    = base64.b64encode(pdf_bytes).decode("ascii")
@@ -996,7 +1013,7 @@ def generate_report(db: Session, workspace_id: UUID, period: str) -> "ExecutiveR
     return report
 
 
-def retry_report(db: Session, report_id: UUID):
+def retry_report(db: Session, report_id: UUID, branding: dict = None, logo_bytes: bytes = None):
     """Re-run generation for an existing failed report (same period, same record)."""
     from app.models.db_models import ExecutiveReport, ExecutiveReportSettings
 
@@ -1012,9 +1029,10 @@ def retry_report(db: Session, report_id: UUID):
     ).first() or _DefaultSettings()
 
     try:
-        logo_bytes   = _load_logo()
+        if logo_bytes is None:
+            logo_bytes = _load_org_logo(branding)
         summary_data = _collect_summary_data(db, workspace_id, period, report_settings)
-        pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes)
+        pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes, branding=branding)
 
         report.status       = "ready"
         report.pdf_bytes    = base64.b64encode(pdf_bytes).decode("ascii")
@@ -1031,7 +1049,7 @@ def retry_report(db: Session, report_id: UUID):
         db.commit()
 
 
-def send_report(db: Session, report_id: UUID, recipients: List[str]):
+def send_report(db: Session, report_id: UUID, recipients: List[str], branding: dict = None, logo_bytes: bytes = None):
     """Send an already-generated report by email."""
     from app.models.db_models import ExecutiveReport
 
@@ -1041,11 +1059,12 @@ def send_report(db: Session, report_id: UUID, recipients: List[str]):
 
     pdf_bytes      = base64.b64decode(report.pdf_bytes)
     workspace_name = (report.summary_data or {}).get("workspace_name", "Workspace")
-    logo_bytes     = _load_logo()
+    if logo_bytes is None:
+        logo_bytes = _load_org_logo(branding)
 
     subject   = f"Relatório Executivo — {workspace_name} — {report.period}"
     body_html = _build_rich_email_html(
-        workspace_name, report.period, report.summary_data or {}, logo_bytes,
+        workspace_name, report.period, report.summary_data or {}, logo_bytes, branding=branding,
     )
 
     _send_email(recipients, subject, body_html, pdf_bytes, report.period)

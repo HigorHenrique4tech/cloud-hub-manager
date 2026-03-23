@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AuthProvider } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { OrgWorkspaceProvider } from './contexts/OrgWorkspaceContext';
+import { BrandingProvider } from './contexts/BrandingContext';
 import { ToastProvider } from './contexts/ToastContext';
 import { BackgroundTasksProvider } from './contexts/BackgroundTasksContext';
 import Toaster from './components/common/Toaster';
@@ -90,6 +91,7 @@ function App() {
         <ToastProvider>
           <AuthProvider>
             <OrgWorkspaceProvider>
+              <BrandingProvider>
               <BackgroundTasksProvider>
               <BrowserRouter>
               <Routes>
@@ -162,6 +164,7 @@ function App() {
               </BrowserRouter>
               <TaskNotifications />
               </BackgroundTasksProvider>
+              </BrandingProvider>
             </OrgWorkspaceProvider>
           </AuthProvider>
           <Toaster />

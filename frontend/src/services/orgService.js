@@ -71,6 +71,14 @@ export const orgService = {
   getExchangeRate: async (slug) =>
     (await api.get(`/orgs/${slug}/exchange-rate`)).data,
 
+  // ── Branding (White Label) ──────────────────────────────────────────────
+  getBranding: async (slug) =>
+    (await api.get(`/orgs/${slug}/branding`)).data,
+  updateBranding: async (slug, data) =>
+    (await api.put(`/orgs/${slug}/branding`, data)).data,
+  resetBranding: async (slug) =>
+    (await api.delete(`/orgs/${slug}/branding`)).data,
+
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {
     const params = provider ? { provider } : {};

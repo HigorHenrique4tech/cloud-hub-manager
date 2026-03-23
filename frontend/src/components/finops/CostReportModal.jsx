@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { X, Printer, TrendingUp, DollarSign, FileText } from 'lucide-react';
 import ReportSuggestions, { generateSuggestions } from './ReportSuggestions';
+import { useBranding } from '../../contexts/BrandingContext';
 
 /* ── helpers ─────────────────────────────────────────────── */
 const fmtUSD = (v) =>
@@ -29,6 +30,7 @@ const ChartTooltip = ({ active, payload, label }) => {
 
 /* ── Main component ──────────────────────────────────────── */
 const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days, onClose }) => {
+  const branding = useBranding();
   const hasAws   = !!data?.aws;
   const hasAzure = !!data?.azure;
   const hasGcp   = !!data?.gcp;
@@ -125,7 +127,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Gerado em: {generatedAt}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold">CloudAtlas</p>
+              <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold">{branding.platform_name}</p>
               <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mt-1">{fmtUSD(data.total)}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500">total no período</p>
             </div>
@@ -350,7 +352,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
 
           {/* Footer */}
           <div className="border-t border-gray-200 dark:border-gray-700 pt-4 text-center text-xs text-gray-400 dark:text-gray-500">
-            Relatório gerado automaticamente pelo <strong className="text-gray-500 dark:text-gray-400">CloudAtlas</strong> · {generatedAt}
+            Relatório gerado automaticamente pelo <strong className="text-gray-500 dark:text-gray-400">{branding.platform_name}</strong> · {generatedAt}
           </div>
 
         </div>

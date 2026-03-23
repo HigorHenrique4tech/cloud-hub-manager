@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # ── Internal SMTP sender ────────────────────────────────────────────────────
 
-def _send_email(to_email: str, subject: str, html_body: str) -> bool:
+def _send_email(to_email: str, subject: str, html_body: str, sender_name: str = "CloudAtlas") -> bool:
     """Send an email via SMTP. Returns True on success.
 
     To switch to SendGrid later, replace this function body with:
@@ -24,7 +24,7 @@ def _send_email(to_email: str, subject: str, html_body: str) -> bool:
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
-        msg["From"] = f"CloudAtlas <{settings.SMTP_FROM}>"
+        msg["From"] = f"{sender_name} <{settings.SMTP_FROM}>"
         msg["To"] = to_email
         msg.attach(MIMEText(html_body, "html"))
 
@@ -59,7 +59,44 @@ _FOOTER = """
 """
 
 
-def send_verification_email(to_email: str, user_name: str, token: str) -> bool:
+def _branded_footer(branding: dict = None) -> str:
+    """Return footer HTML with optional white-label branding."""
+    if not branding:
+        return _FOOTER
+    name = branding.get("platform_name", "CloudAtlas")
+    powered = ""
+    if branding.get("powered_by", True):
+        powered = " · Powered by CloudAtlas"
+    return f"""
+    <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 24px 0;" />
+    <p style="color: #cbd5e1; font-size: 11px; text-align: center;">
+      {name} — Gerenciamento multi-cloud centralizado{powered}
+    </p>
+    """
+
+
+def _brand_name(branding: dict = None) -> str:
+    """Return platform name from branding or default."""
+    if branding:
+        return branding.get("platform_name", "CloudAtlas")
+    return "CloudAtlas"
+
+
+def _brand_color(branding: dict = None) -> str:
+    """Return primary color from branding or default."""
+    if branding:
+        return branding.get("color_primary", "#3b82f6")
+    return "#3b82f6"
+
+
+def _brand_sender(branding: dict = None) -> str:
+    """Return email sender name from branding or default."""
+    if branding:
+        return branding.get("email_sender_name", "CloudAtlas")
+    return "CloudAtlas"
+
+
+def send_verification_email(to_email: str, user_name: str, token: str, branding: dict = None) -> bool:
     """Send an email verification link."""
     verify_url = f"{settings.FRONTEND_URL}/verify/{token}"
 
@@ -69,7 +106,7 @@ def send_verification_email(to_email: str, user_name: str, token: str) -> bool:
 
     html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
-      <h2 style="color: #1e293b; margin-bottom: 8px;">Bem-vindo ao CloudAtlas!</h2>
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Bem-vindo ao {_brand_name(branding)}!</h2>
       <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
       <p style="color: #64748b; font-size: 14px;">
         Para ativar sua conta, clique no botão abaixo:
@@ -87,10 +124,10 @@ def send_verification_email(to_email: str, user_name: str, token: str) -> bool:
         <a href="{verify_url}" style="color: #3b82f6;">{verify_url}</a>
       </p>
       <p style="color: #94a3b8; font-size: 12px;">Este link expira em 24 horas.</p>
-      {_FOOTER}
+      {_branded_footer(branding)}
     </div>
     """
-    return _send_email(to_email, "CloudAtlas — Confirme seu email", html)
+    return _send_email(to_email, f"{_brand_name(branding)} — Confirme seu email", html, sender_name=_brand_sender(branding))
 
 
 def send_invite_email(
@@ -99,6 +136,7 @@ def send_invite_email(
     inviter_name: str,
     role: str,
     token: str,
+    branding: dict = None,
 ) -> bool:
     """Send an organization invite email with a join link."""
     invite_url = f"{settings.FRONTEND_URL}/invite/{token}"
@@ -121,7 +159,7 @@ def send_invite_email(
       <h2 style="color: #1e293b; margin-bottom: 8px;">Você foi convidado!</h2>
       <p style="color: #64748b; font-size: 14px;">
         <strong>{inviter_name}</strong> convidou você para a organização
-        <strong>{org_name}</strong> no CloudAtlas como <strong>{role_label}</strong>.
+        <strong>{org_name}</strong> no {_brand_name(branding)} como <strong>{role_label}</strong>.
       </p>
       <div style="text-align: center; margin: 32px 0;">
         <a href="{invite_url}"
@@ -136,10 +174,10 @@ def send_invite_email(
         <a href="{invite_url}" style="color: #3b82f6;">{invite_url}</a>
       </p>
       <p style="color: #94a3b8; font-size: 12px;">Este convite expira em 7 dias.</p>
-      {_FOOTER}
+      {_branded_footer(branding)}
     </div>
     """
-    return _send_email(to_email, f"CloudAtlas — Convite para {org_name}", html)
+    return _send_email(to_email, f"{_brand_name(branding)} — Convite para {org_name}", html, sender_name=_brand_sender(branding))
 
 
 def send_org_member_added_email(
@@ -148,6 +186,7 @@ def send_org_member_added_email(
     org_name: str,
     role: str,
     inviter_name: str,
+    branding: dict = None,
 ) -> bool:
     """Notify an existing user that they were added to an organization."""
     if not settings.SMTP_HOST:
@@ -170,31 +209,31 @@ def send_org_member_added_email(
       <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
       <p style="color: #64748b; font-size: 14px;">
         <strong>{inviter_name}</strong> adicionou você à organização
-        <strong>{org_name}</strong> no CloudAtlas como <strong>{role_label}</strong>.
+        <strong>{org_name}</strong> no {_brand_name(branding)} como <strong>{role_label}</strong>.
       </p>
       <div style="text-align: center; margin: 32px 0;">
         <a href="{dashboard_url}"
            style="display: inline-block; padding: 12px 32px; background-color: #3b82f6;
                   color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
                   font-size: 14px;">
-          Acessar o CloudAtlas
+          Acessar o {_brand_name(branding)}
         </a>
       </div>
-      {_FOOTER}
+      {_branded_footer(branding)}
     </div>
     """
-    return _send_email(to_email, f"CloudAtlas — Você foi adicionado a {org_name}", html)
+    return _send_email(to_email, f"{_brand_name(branding)} — Você foi adicionado a {org_name}", html, sender_name=_brand_sender(branding))
 
 
-def send_otp_email(to_email: str, user_name: str, otp_code: str) -> bool:
+def send_otp_email(to_email: str, user_name: str, otp_code: str, branding: dict = None) -> bool:
     """Send a 6-digit OTP code for MFA login verification."""
-    subject = "Seu código de verificação — CloudAtlas"
+    subject = f"Seu código de verificação — {_brand_name(branding)}"
     html = f"""
     <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
       <h2 style="color: #1e293b; margin-bottom: 8px;">Verificação em dois fatores</h2>
       <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
       <p style="color: #64748b; font-size: 14px;">
-        Use o código abaixo para completar seu login no CloudAtlas:
+        Use o código abaixo para completar seu login no {_brand_name(branding)}:
       </p>
       <div style="text-align: center; margin: 32px 0;">
         <div style="display: inline-block; font-size: 40px; font-weight: bold; letter-spacing: 12px;
@@ -207,10 +246,10 @@ def send_otp_email(to_email: str, user_name: str, otp_code: str) -> bool:
         Este código expira em <strong>5 minutos</strong>.<br/>
         Se não foi você quem tentou fazer login, ignore este email.
       </p>
-      {_FOOTER}
+      {_branded_footer(branding)}
     </div>
     """
-    return _send_email(to_email, subject, html)
+    return _send_email(to_email, subject, html, sender_name=_brand_sender(branding))
 
 
 def send_alert_email(
@@ -220,6 +259,7 @@ def send_alert_email(
     provider: str,
     current_value: str,
     threshold: str,
+    branding: dict = None,
 ) -> bool:
     """Send a cost alert notification email."""
     if not settings.SMTP_HOST:
@@ -248,10 +288,10 @@ def send_alert_email(
           Ver custos
         </a>
       </div>
-      {_FOOTER}
+      {_branded_footer(branding)}
     </div>
     """
-    return _send_email(to_email, f"CloudAtlas — Alerta: {alert_name}", html)
+    return _send_email(to_email, f"{_brand_name(branding)} — Alerta: {alert_name}", html, sender_name=_brand_sender(branding))
 
 
 def send_budget_alert_email(
@@ -262,6 +302,7 @@ def send_budget_alert_email(
     current_spend: float,
     budget_amount: float,
     pct: float,
+    branding: dict = None,
 ) -> bool:
     """Send a budget threshold alert email."""
     if not settings.SMTP_HOST:
@@ -298,10 +339,10 @@ def send_budget_alert_email(
           Ver Orçamentos no FinOps
         </a>
       </div>
-      {_FOOTER}
+      {_branded_footer(branding)}
     </div>
     """
-    return _send_email(to_email, f"CloudAtlas — Orçamento '{budget_name}' em alerta ({pct_display})", html)
+    return _send_email(to_email, f"{_brand_name(branding)} — Orçamento '{budget_name}' em alerta ({pct_display})", html, sender_name=_brand_sender(branding))
 
 
 def send_report_email(
@@ -310,6 +351,7 @@ def send_report_email(
     ws_name: str,
     period_label: str,
     report_data: dict,
+    branding: dict = None,
 ) -> bool:
     """Send a weekly/monthly cost report email.
 
@@ -411,13 +453,13 @@ def send_report_email(
            style="display: inline-block; padding: 12px 32px; background-color: #3b82f6;
                   color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
                   font-size: 14px;">
-          Abrir CloudAtlas
+          Abrir {_brand_name(branding)}
         </a>
       </div>
-      {_FOOTER}
+      {_branded_footer(branding)}
     </div>
     """
-    return _send_email(to_email, f"CloudAtlas — Relatório {period_label} · {org_name}", html)
+    return _send_email(to_email, f"{_brand_name(branding)} — Relatório {period_label} · {org_name}", html, sender_name=_brand_sender(branding))
 
 
 # ── GDAP Invite ───────────────────────────────────────────────────────────────
@@ -440,6 +482,7 @@ def send_gdap_invite_email(
     role_ids: list,
     invite_url: str,
     org_name: str,
+    branding: dict = None,
 ) -> bool:
     """Send a GDAP delegation invite to a customer's Global Admin."""
     role_labels = [_GDAP_ROLE_NAMES.get(rid, rid) for rid in role_ids]
@@ -460,29 +503,29 @@ def send_gdap_invite_email(
         <a href="{invite_url}" style="display:inline-block;background:linear-gradient(135deg,#0ea5e9,#2563eb);color:#fff;text-decoration:none;padding:14px 28px;border-radius:8px;font-weight:600;font-size:15px;">Revisar e Aprovar Acesso →</a>
         <p style="color:#475569;font-size:12px;margin-top:24px;">⚠️ Este link expira em <strong>30 dias</strong>. Você deve ser o Administrador Global do seu tenant para aprovar.<br>Após aprovação, {org_name} terá acesso às permissões listadas acima.</p>
         <hr style="border:none;border-top:1px solid #334155;margin:24px 0;">
-        <p style="color:#334155;font-size:11px;">Enviado via CloudAtlas por {org_name}</p>
+        <p style="color:#334155;font-size:11px;">Enviado via {_brand_name(branding)} por {org_name}</p>
       </div>
     </div>
     """
-    return _send_email(to_email, f"[{org_name}] Convite de Administração Delegada M365 — {relationship_name}", html_body)
+    return _send_email(to_email, f"[{org_name}] Convite de Administração Delegada M365 — {relationship_name}", html_body, sender_name=_brand_sender(branding))
 
 
 # ── Billing email templates ─────────────────────────────────────────────────
 
 
-def _billing_base(title_icon: str, title: str, accent: str, body_content: str) -> str:
+def _billing_base(title_icon: str, title: str, accent: str, body_content: str, branding: dict = None) -> str:
     """Shared billing email wrapper with professional dark header."""
     return f"""
     <div style="font-family:Inter,Arial,sans-serif;max-width:600px;margin:0 auto;background:#f8fafc;border-radius:12px;overflow:hidden;">
       <div style="background:linear-gradient(135deg,{accent},#1e293b);padding:28px 32px;">
         <h1 style="color:#ffffff;font-size:20px;margin:0;">{title_icon} {title}</h1>
-        <p style="color:rgba(255,255,255,0.7);font-size:13px;margin:6px 0 0;">CloudAtlas — Gestão Multi-Cloud</p>
+        <p style="color:rgba(255,255,255,0.7);font-size:13px;margin:6px 0 0;">{_brand_name(branding)} — Gestão Multi-Cloud</p>
       </div>
       <div style="padding:32px;">
         {body_content}
         <hr style="border:none;border-top:1px solid #e2e8f0;margin:28px 0 16px;" />
         <p style="color:#94a3b8;font-size:11px;text-align:center;margin:0;">
-          Este email foi enviado automaticamente pelo CloudAtlas.<br>
+          Este email foi enviado automaticamente pelo {_brand_name(branding)}.<br>
           Em caso de dúvidas, entre em contato com nosso suporte.
         </p>
       </div>
@@ -504,6 +547,7 @@ def send_billing_invoice_email(
     due_date: str | None,
     notes: str | None = None,
     payment_url: str | None = None,
+    branding: dict = None,
 ) -> bool:
     """Send an invoice/billing notification email."""
     period_label = "Mensal" if period_type == "monthly" else "Anual"
@@ -557,8 +601,8 @@ def send_billing_invoice_email(
         {'<p style="text-align:center;color:#94a3b8;font-size:11px;margin-top:12px;">Clique no botão acima para realizar o pagamento de forma rápida e segura.</p>' if payment_url else ''}
     """
 
-    html = _billing_base("💰", "Nova Cobrança", "#3b82f6", body)
-    return _send_email(to_email, f"[CloudAtlas] Cobrança {period_label} — {period_ref} — {_fmt_brl(amount)}", html)
+    html = _billing_base("💰", "Nova Cobrança", "#3b82f6", body, branding)
+    return _send_email(to_email, f"[{_brand_name(branding)}] Cobrança {period_label} — {period_ref} — {_fmt_brl(amount)}", html, sender_name=_brand_sender(branding))
 
 
 def send_billing_reminder_email(
@@ -569,6 +613,7 @@ def send_billing_reminder_email(
     due_date: str | None,
     days_info: str = "",
     is_overdue: bool = False,
+    branding: dict = None,
 ) -> bool:
     """Send a payment reminder (before due date or after overdue)."""
     accent = "#ef4444" if is_overdue else "#f59e0b"
@@ -608,9 +653,9 @@ def send_billing_reminder_email(
         </div>
     """
 
-    html = _billing_base(icon, title, accent, body)
+    html = _billing_base(icon, title, accent, body, branding)
     subject_prefix = "ATRASO" if is_overdue else "LEMBRETE"
-    return _send_email(to_email, f"[CloudAtlas] {subject_prefix} — Cobrança {period_ref} — {_fmt_brl(amount)}", html)
+    return _send_email(to_email, f"[{_brand_name(branding)}] {subject_prefix} — Cobrança {period_ref} — {_fmt_brl(amount)}", html, sender_name=_brand_sender(branding))
 
 
 def send_billing_status_email(
@@ -620,6 +665,7 @@ def send_billing_status_email(
     period_ref: str,
     new_status: str,
     paid_at: str | None = None,
+    branding: dict = None,
 ) -> bool:
     """Send a status change notification (payment confirmed, cancelled, etc)."""
     status_config = {
@@ -671,8 +717,8 @@ def send_billing_status_email(
         </div>
     """
 
-    html = _billing_base(cfg["icon"], cfg["label"], cfg["accent"], body)
-    return _send_email(to_email, f"[CloudAtlas] {cfg['label']} — {period_ref} — {_fmt_brl(amount)}", html)
+    html = _billing_base(cfg["icon"], cfg["label"], cfg["accent"], body, branding)
+    return _send_email(to_email, f"[{_brand_name(branding)}] {cfg['label']} — {period_ref} — {_fmt_brl(amount)}", html, sender_name=_brand_sender(branding))
 
 
 # ── Trial reminder ──────────────────────────────────────────────────────────
@@ -684,6 +730,7 @@ def send_trial_reminder_email(
     days_remaining: int,
     savings_found: float | None,
     trial_end_date: str,
+    branding: dict = None,
 ) -> bool:
     """Send a trial expiry reminder email with optional FinOps savings summary."""
     if not settings.SMTP_HOST:
@@ -707,7 +754,7 @@ def send_trial_reminder_email(
         savings_html = f"""
         <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
           <p style="color: #166534; font-size: 13px; margin: 0 0 4px 0; font-weight: 600;">
-            💰 Economia encontrada pelo Cloud Atlas
+            💰 Economia encontrada pelo {_brand_name(branding)}
           </p>
           <p style="color: #15803d; font-size: 24px; font-weight: 700; margin: 0;">
             ${savings_found:,.2f}<span style="font-size: 13px; font-weight: 400;">/mês</span>
@@ -768,9 +815,9 @@ def send_trial_reminder_email(
 
       <!-- Footer -->
       <div style="padding: 16px 32px; background: #f8fafc; border-radius: 0 0 12px 12px;">
-        {_FOOTER}
+        {_branded_footer(branding)}
       </div>
     </div>
     """
-    subject = f"CloudAtlas — Seu trial Pro termina em {days_remaining} dia{'s' if days_remaining != 1 else ''}"
-    return _send_email(to_email, subject, html)
+    subject = f"{_brand_name(branding)} — Seu trial Pro termina em {days_remaining} dia{'s' if days_remaining != 1 else ''}"
+    return _send_email(to_email, subject, html, sender_name=_brand_sender(branding))

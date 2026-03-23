@@ -1,9 +1,11 @@
 import { Download, Printer, FileText } from 'lucide-react';
+import { useBranding } from '../../contexts/BrandingContext';
 
 const fmt2 = (v) => (v == null ? '0.00' : Number(v).toFixed(2));
 const fmtVal = (v) => (v == null || v === 0 ? '—' : Number(v).toFixed(2));
 
 const CostExport = ({ data, startDate, endDate, hasAny, onShowReport }) => {
+  const branding = useBranding();
   const exportCSV = () => {
     if (!data) return;
 
@@ -29,7 +31,7 @@ const CostExport = ({ data, startDate, endDate, hasAny, onShowReport }) => {
     // ── Build rows ──────────────────────────────────────────────────────────
     const rows = [
       // Header metadata
-      ['Relatório de Custos CloudAtlas', '', '', '', ''],
+      [`Relatório de Custos ${branding.platform_name}`, '', '', '', ''],
       [`Período: ${startDate} a ${endDate}`, '', '', '', ''],
       [`Gerado em: ${genDate}`, '', '', '', ''],
       ['', '', '', '', ''],

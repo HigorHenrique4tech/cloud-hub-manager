@@ -12,14 +12,14 @@ export default {
       },
       colors: {
         primary: {
-          DEFAULT: '#1E6FD9',
+          DEFAULT: 'rgb(var(--color-brand-primary, 30 111 217) / <alpha-value>)',
           dark: '#1558B0',
           light: '#4A90E8',
           50: '#EBF3FE',
           900: '#0B3362',
         },
         accent: {
-          DEFAULT: '#0EA5E9',
+          DEFAULT: 'rgb(var(--color-brand-accent, 14 165 233) / <alpha-value>)',
           dark: '#0284C7',
         },
         success: {

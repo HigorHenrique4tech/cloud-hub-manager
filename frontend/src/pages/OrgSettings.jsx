@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, UserPlus, Trash2, Shield, Copy, Clock, ArrowUpRight, Search,
-  ChevronRight, Wallet,
+  ChevronRight, Wallet, Palette,
 } from 'lucide-react';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
@@ -14,6 +14,7 @@ import InviteMemberModal from '../components/org/InviteMemberModal';
 import MemberDetailDrawer from '../components/org/MemberDetailDrawer';
 import orgService from '../services/orgService';
 import WorkspaceCostComparison from '../components/workspace/WorkspaceCostComparison';
+import WhiteLabelSettings from '../components/org/WhiteLabelSettings';
 
 const ROLE_BADGE = {
   owner:    'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
@@ -473,6 +474,13 @@ const OrgSettings = () => {
               </div>
             </div>
           </RoleGate>
+
+          {/* White Label (enterprise only) */}
+          {currentOrg?.org_type === 'master' && (
+            <div className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+              <WhiteLabelSettings />
+            </div>
+          )}
 
           {/* Danger Zone */}
           <RoleGate allowed={['owner']}>

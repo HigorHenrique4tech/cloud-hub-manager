@@ -7,6 +7,7 @@ import {
 import notificationChannelService from '../services/notificationChannelService';
 import Layout from '../components/layout/layout';
 import { RoleGate } from '../components/common/PermissionGate';
+import { useBranding } from '../contexts/BrandingContext';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ const EMPTY_FORM = {
 // ── ChannelModal ──────────────────────────────────────────────────────────────
 
 function ChannelModal({ initial = null, supportedEvents = [], onSave, onClose, isPending }) {
+  const branding = useBranding();
   const isEdit = !!initial;
   const [form, setForm] = useState(initial ? {
     name: initial.name,
@@ -148,7 +150,7 @@ function ChannelModal({ initial = null, supportedEvents = [], onSave, onClose, i
                 <p>① Abra o Microsoft Teams e vá até o <strong>canal</strong> desejado</p>
                 <p>② Clique em <strong>···</strong> (mais opções) ao lado do canal → <strong>Conectores</strong></p>
                 <p>③ Pesquise por <span className="font-mono">Incoming Webhook</span> e clique em <strong>Configurar</strong></p>
-                <p>④ Dê um nome ao webhook (ex: <span className="font-mono">CloudAtlas Alerts</span>) e clique em <strong>Criar</strong></p>
+                <p>④ Dê um nome ao webhook (ex: <span className="font-mono">{`${branding.platform_name} Alerts`}</span>) e clique em <strong>Criar</strong></p>
                 <p>⑤ Copie a URL gerada e cole no campo acima</p>
                 <p className="text-amber-500 dark:text-amber-400">⚠ A URL começa com <span className="font-mono">https://outlook.office.com/webhook/</span> ou <span className="font-mono">https://&lt;org&gt;.webhook.office.com/</span></p>
                 <p className="text-amber-500 dark:text-amber-400">⚠ Certifique-se de que o bot <strong>Incoming Webhook</strong> está habilitado pelo administrador do Teams</p>
