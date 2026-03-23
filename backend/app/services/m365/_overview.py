@@ -11,33 +11,73 @@ logger = logging.getLogger(__name__)
 class OverviewMixin:
     """Overview and service health methods for M365Service."""
 
+    def _count_with_odata(self, path: str, timeout: int = 15) -> int | None:
+        """Use $count + ConsistencyLevel:eventual to count entities without downloading them."""
+        try:
+            r = requests.get(
+                f"{GRAPH_V1}{path}",
+                headers={**self._headers(), "ConsistencyLevel": "eventual"},
+                params={"$count": "true", "$top": "1", "$select": "id"},
+                timeout=timeout,
+            )
+            r.raise_for_status()
+            return r.json().get("@odata.count")
+        except Exception as exc:
+            logger.warning("Could not count %s: %s", path, exc)
+            return None
+
     def get_overview(self) -> dict:
         """
         Tenant summary: users, licenses, groups.
-        Lightweight — uses $select to reduce payload.
+        Uses $count for users instead of downloading all pages — much faster.
         """
-        users = self._get_all_pages(
-            "/users", select="id,assignedLicenses,accountEnabled"
-        )
         skus = self._get("/subscribedSkus").get("value", [])
-
-        # Count groups via /groups (Directory.Read.All) — avoids Team.ReadBasic.All requirement.
-        total_teams = 0
-        try:
-            r = requests.get(
-                f"{GRAPH_V1}/groups",
-                headers={**self._headers(), "ConsistencyLevel": "eventual"},
-                params={"$count": "true", "$top": "1", "$select": "id"},
-                timeout=30,
-            )
-            r.raise_for_status()
-            data = r.json()
-            total_teams = data.get("@odata.count", len(data.get("value", [])))
-        except Exception as exc:
-            logger.warning("Could not count groups: %s", exc)
 
         total_licenses = sum(s["prepaidUnits"]["enabled"] for s in skus)
         assigned_licenses = sum(s["consumedUnits"] for s in skus)
+
+        # ── User counts via $count + $filter (fast, no pagination) ───────────
+        total_users = self._count_with_odata("/users") or 0
+        active_users = 0
+        disabled_users = 0
+        licensed_users = 0
+        try:
+            r = requests.get(
+                f"{GRAPH_V1}/users",
+                headers={**self._headers(), "ConsistencyLevel": "eventual"},
+                params={
+                    "$count": "true",
+                    "$top": "1",
+                    "$select": "id",
+                    "$filter": "accountEnabled eq true",
+                },
+                timeout=15,
+            )
+            r.raise_for_status()
+            active_users = r.json().get("@odata.count", 0)
+            disabled_users = total_users - active_users
+        except Exception as exc:
+            logger.warning("Could not count active users: %s", exc)
+
+        try:
+            r = requests.get(
+                f"{GRAPH_V1}/users",
+                headers={**self._headers(), "ConsistencyLevel": "eventual"},
+                params={
+                    "$count": "true",
+                    "$top": "1",
+                    "$select": "id",
+                    "$filter": "accountEnabled eq true and assignedLicenses/$count ne 0",
+                },
+                timeout=15,
+            )
+            r.raise_for_status()
+            licensed_users = r.json().get("@odata.count", 0)
+        except Exception as exc:
+            logger.warning("Could not count licensed users: %s", exc)
+
+        # ── Group count ──────────────────────────────────────────────────────
+        total_teams = self._count_with_odata("/groups") or 0
 
         # ── Primary domain ────────────────────────────────────────────────────
         primary_domain = None
@@ -51,19 +91,8 @@ class OverviewMixin:
         except Exception as exc:
             logger.warning("Could not fetch primary domain: %s", exc)
 
-        # ── Device count (Azure AD registered/joined) ─────────────────────────
-        device_count = None
-        try:
-            r = requests.get(
-                f"{GRAPH_V1}/devices",
-                headers={**self._headers(), "ConsistencyLevel": "eventual"},
-                params={"$count": "true", "$top": "1", "$select": "id"},
-                timeout=15,
-            )
-            r.raise_for_status()
-            device_count = r.json().get("@odata.count", len(r.json().get("value", [])))
-        except Exception as exc:
-            logger.warning("Could not count devices: %s", exc)
+        # ── Device count ─────────────────────────────────────────────────────
+        device_count = self._count_with_odata("/devices")
 
         # ── Global admins ─────────────────────────────────────────────────────
         global_admins = []
@@ -86,12 +115,10 @@ class OverviewMixin:
             logger.warning("Could not fetch global admins: %s", exc)
 
         return {
-            "total_users": len(users),
-            "active_users": sum(1 for u in users if u.get("accountEnabled")),
-            "licensed_users": sum(
-                1 for u in users if u.get("assignedLicenses") and u.get("accountEnabled")
-            ),
-            "disabled_users": sum(1 for u in users if not u.get("accountEnabled")),
+            "total_users": total_users,
+            "active_users": active_users,
+            "licensed_users": licensed_users,
+            "disabled_users": disabled_users,
             "total_licenses": total_licenses,
             "assigned_licenses": assigned_licenses,
             "available_licenses": total_licenses - assigned_licenses,
