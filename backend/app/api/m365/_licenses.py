@@ -27,7 +27,7 @@ async def get_license_users(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return {"users": await _run(svc.get_license_users, sku_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -50,7 +50,7 @@ async def assign_license(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         await _run(svc.assign_license, body.user_id, sku_id)
         cache_delete(f"m365:{member.workspace_id}:licenses")
         cache_delete(f"m365:{member.workspace_id}:users")
@@ -76,7 +76,7 @@ async def remove_license(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         await _run(svc.remove_license, user_id, sku_id)
         cache_delete(f"m365:{member.workspace_id}:licenses")
         cache_delete(f"m365:{member.workspace_id}:users")

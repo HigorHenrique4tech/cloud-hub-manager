@@ -29,7 +29,7 @@ async def create_group(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = await _run(
             svc.create_group,
             display_name=body.display_name,
@@ -62,7 +62,7 @@ async def get_group_members(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return {"members": await _run(svc.get_team_members, group_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -87,7 +87,7 @@ async def add_group_member(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = await _run(svc.add_team_member, group_id, body.user_id, body.roles)
         cache_delete(f"m365:{member.workspace_id}:groups")
         return {"detail": "Membro adicionado com sucesso", "member": result}
@@ -124,7 +124,7 @@ async def remove_group_member(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = await _run(svc.remove_team_member, group_id, user_id)
         cache_delete(f"m365:{member.workspace_id}:groups")
         return result

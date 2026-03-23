@@ -74,7 +74,7 @@ async def list_m365_tenants(
             }
             if acct:
                 try:
-                    svc = _get_cached_service(acct)
+                    svc = _get_cached_service(acct, db=db)
                     entry["overview"] = await _run(svc.get_overview)
                 except Exception as exc:
                     logger.warning(

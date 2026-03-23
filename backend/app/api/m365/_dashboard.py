@@ -29,7 +29,7 @@ async def get_overview(
     if cached is not None:
         return cached
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = await _run(svc.get_overview)
         cache_set(cache_key, result, ttl=120)
         return result
@@ -58,7 +58,7 @@ async def get_users(
     if cached is not None:
         return cached
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = {"users": await _run(svc.get_users)}
         cache_set(cache_key, result, ttl=300)
         return result
@@ -87,7 +87,7 @@ async def get_licenses(
     if cached is not None:
         return cached
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = {"licenses": await _run(svc.get_licenses)}
         cache_set(cache_key, result, ttl=300)
         return result
@@ -116,7 +116,7 @@ async def get_groups(
     if cached is not None:
         return cached
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = {"groups": await _run(svc.get_groups)}
         cache_set(cache_key, result, ttl=300)
         return result
@@ -145,7 +145,7 @@ async def get_teams(
     if cached is not None:
         return cached
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = {"teams": await _run(svc.get_teams)}
         cache_set(cache_key, result, ttl=300)
         return result
@@ -174,7 +174,7 @@ async def get_security(
     if cached is not None:
         return cached
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = await _run(svc.get_security_overview)
         cache_set(cache_key, result, ttl=300)
         return result
@@ -197,7 +197,7 @@ async def get_service_health(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return {"services": await _run(svc.get_service_health)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")

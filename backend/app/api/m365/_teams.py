@@ -29,7 +29,7 @@ async def get_team_members(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return {"members": await _run(svc.get_team_members, team_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -54,7 +54,7 @@ async def add_team_member(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = await _run(svc.add_team_member, team_id, body.user_id, body.roles)
         return {"detail": "Membro adicionado com sucesso", "member": result}
     except M365AuthError as exc:

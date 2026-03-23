@@ -29,7 +29,7 @@ async def create_user(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = await _run(
             svc.create_user,
             display_name=body.display_name,
@@ -67,7 +67,7 @@ async def toggle_user_account(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return await _run(svc.toggle_user_account, user_id, body.enabled)
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -90,7 +90,7 @@ async def reset_user_password(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return await _run(svc.reset_user_password, user_id, body.new_password, body.force_change)
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -113,7 +113,7 @@ async def create_tap(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return await _run(svc.create_tap, user_id, body.lifetime_minutes, body.is_usable_once)
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -137,7 +137,7 @@ async def revoke_user_sessions(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         result = await _run(svc.revoke_user_sessions, user_id)
         return {"detail": "Sessões revogadas com sucesso", "result": result}
     except M365AuthError as exc:
@@ -162,7 +162,7 @@ async def get_user_auth_methods(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return {"methods": await _run(svc.get_user_auth_methods, user_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
@@ -188,7 +188,7 @@ async def delete_user_auth_method(
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
 
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         await _run(svc.delete_user_auth_method, user_id, method_type, method_id)
         return {"detail": "Método de autenticação removido com sucesso"}
     except ValueError as exc:
@@ -213,7 +213,7 @@ async def get_user_groups(
     if not acct:
         raise HTTPException(status_code=404, detail="M365 tenant not connected")
     try:
-        svc = _get_cached_service(acct)
+        svc = _get_cached_service(acct, db=db)
         return {"groups": await _run(svc.get_user_groups, user_id)}
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")

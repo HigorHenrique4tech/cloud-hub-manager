@@ -29,18 +29,17 @@ class OverviewMixin:
     def get_overview(self) -> dict:
         """
         Tenant summary: users, licenses, groups.
-        Uses $count for users instead of downloading all pages — much faster.
+        Uses $count for user totals and $filter for active — much faster than downloading all pages.
         """
         skus = self._get("/subscribedSkus").get("value", [])
 
         total_licenses = sum(s["prepaidUnits"]["enabled"] for s in skus)
         assigned_licenses = sum(s["consumedUnits"] for s in skus)
 
-        # ── User counts via $count + $filter (fast, no pagination) ───────────
+        # ── User counts via $count (fast, no pagination) ─────────────────────
         total_users = self._count_with_odata("/users") or 0
         active_users = 0
         disabled_users = 0
-        licensed_users = 0
         try:
             r = requests.get(
                 f"{GRAPH_V1}/users",
@@ -59,22 +58,8 @@ class OverviewMixin:
         except Exception as exc:
             logger.warning("Could not count active users: %s", exc)
 
-        try:
-            r = requests.get(
-                f"{GRAPH_V1}/users",
-                headers={**self._headers(), "ConsistencyLevel": "eventual"},
-                params={
-                    "$count": "true",
-                    "$top": "1",
-                    "$select": "id",
-                    "$filter": "accountEnabled eq true and assignedLicenses/$count ne 0",
-                },
-                timeout=15,
-            )
-            r.raise_for_status()
-            licensed_users = r.json().get("@odata.count", 0)
-        except Exception as exc:
-            logger.warning("Could not count licensed users: %s", exc)
+        # Licensed users ≈ consumed units from SKUs (no extra Graph call needed)
+        licensed_users = assigned_licenses
 
         # ── Group count ──────────────────────────────────────────────────────
         total_teams = self._count_with_odata("/groups") or 0

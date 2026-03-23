@@ -23,10 +23,20 @@ _svc_lock = threading.Lock()
 
 
 def _get_cached_service(acct, db: Session = None) -> "M365Service":
-    """Return a cached M365Service for this cloud account, building it if necessary."""
+    """Return a cached M365Service for this cloud account, building it if necessary.
+
+    `db` is only needed when creating a new service (cache miss) — it is used
+    to decrypt credentials stored in the DB.  All callers should pass `db` so
+    that the service can always be (re)built after a container restart.
+    """
     key = acct.id
     with _svc_lock:
         if key not in _svc_cache:
+            if db is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Sessão de banco necessária para criar serviço M365 (cache miss).",
+                )
             _svc_cache[key] = _build_service(db, acct)
         return _svc_cache[key]
 
