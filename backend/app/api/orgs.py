@@ -427,12 +427,14 @@ async def invite_member(
                      provider="system")
 
         # Notify the existing user by email
+        _brand = get_branding(org, db)
         send_org_member_added_email(
             to_email=user.email,
             user_name=user.name or user.email,
             org_name=org.name,
             role=payload.role,
             inviter_name=member.user.name or member.user.email,
+            branding=_brand,
         )
 
         from app.services.notification_channel_service import fire_event as _fire
@@ -476,12 +478,14 @@ async def invite_member(
                  provider="system")
 
     # Send invite email
+    _brand = get_branding(org, db)
     send_invite_email(
         to_email=payload.email,
         org_name=org.name,
         inviter_name=member.user.name or member.user.email,
         role=payload.role,
         token=token,
+        branding=_brand,
     )
 
     return {

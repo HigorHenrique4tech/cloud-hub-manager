@@ -47,13 +47,15 @@ def _load_logo() -> Optional[bytes]:
         return None
 
 
-def _load_org_logo(branding: dict = None) -> Optional[bytes]:
-    """Load org logo from branding base64 or fall back to default."""
-    if branding and branding.get("is_white_labeled"):
-        # Try to fetch org's logo from DB via branding URL
-        # For PDF, we need the base64 data directly, not the URL
-        # The branding dict doesn't contain base64 directly, so fall back to default
-        pass
+def _load_org_logo(branding: dict = None, db: Session = None, org: "Organization" = None) -> Optional[bytes]:
+    """Load org logo from DB (base64) or fall back to default asset."""
+    if org and branding and branding.get("is_white_labeled"):
+        logo_b64 = org.wl_logo_light or org.wl_logo_dark
+        if logo_b64:
+            try:
+                return base64.b64decode(logo_b64)
+            except Exception:
+                logger.warning("Failed to decode org logo for %s", org.slug)
     return _load_logo()
 
 
@@ -924,7 +926,7 @@ def _build_rich_email_html(
 # ── Email sending ─────────────────────────────────────────────────────────────
 
 
-def _send_email(recipients: List[str], subject: str, body_html: str, pdf_bytes: bytes, period: str):
+def _send_email(recipients: List[str], subject: str, body_html: str, pdf_bytes: bytes, period: str, sender_name: str = "CloudAtlas"):
     """Send PDF report via SMTP."""
     if not settings.SMTP_HOST:
         logger.warning("SMTP not configured — skipping email send.")
@@ -932,7 +934,7 @@ def _send_email(recipients: List[str], subject: str, body_html: str, pdf_bytes: 
 
     msg = MIMEMultipart("mixed")
     msg["Subject"] = subject
-    msg["From"]    = settings.SMTP_FROM
+    msg["From"]    = f"{sender_name} <{settings.SMTP_FROM}>"
     msg["To"]      = ", ".join(recipients)
 
     msg.attach(MIMEText(body_html, "html", "utf-8"))
@@ -968,7 +970,7 @@ def _send_email(recipients: List[str], subject: str, body_html: str, pdf_bytes: 
 # ── Main functions ────────────────────────────────────────────────────────────
 
 
-def generate_report(db: Session, workspace_id: UUID, period: str, branding: dict = None, logo_bytes: bytes = None) -> "ExecutiveReport":
+def generate_report(db: Session, workspace_id: UUID, period: str, branding: dict = None, logo_bytes: bytes = None, org: "Organization" = None) -> "ExecutiveReport":
     """
     Generate an ExecutiveReport for the given workspace and period.
     Creates a DB record, generates PDF, stores base64-encoded bytes.
@@ -991,8 +993,19 @@ def generate_report(db: Session, workspace_id: UUID, period: str, branding: dict
     db.refresh(report)
 
     try:
+        # Auto-resolve branding if not provided
+        if branding is None or org is None:
+            from app.models.db_models import Workspace as _Ws, Organization as _Org
+            from app.services.branding_service import get_branding as _gb
+            ws = db.query(_Ws).filter(_Ws.id == workspace_id).first()
+            if ws:
+                _o = org or db.query(_Org).filter(_Org.id == ws.organization_id).first()
+                if _o:
+                    org = _o
+                    branding = branding or _gb(_o, db)
+
         if logo_bytes is None:
-            logo_bytes = _load_org_logo(branding)
+            logo_bytes = _load_org_logo(branding, db, org)
         summary_data = _collect_summary_data(db, workspace_id, period, report_settings)
         pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes, branding=branding)
 
@@ -1029,8 +1042,19 @@ def retry_report(db: Session, report_id: UUID, branding: dict = None, logo_bytes
     ).first() or _DefaultSettings()
 
     try:
+        # Auto-resolve branding
+        org = None
+        if branding is None:
+            from app.models.db_models import Workspace as _Ws, Organization as _Org
+            from app.services.branding_service import get_branding as _gb
+            ws = db.query(_Ws).filter(_Ws.id == workspace_id).first()
+            if ws:
+                org = db.query(_Org).filter(_Org.id == ws.organization_id).first()
+                if org:
+                    branding = _gb(org, db)
+
         if logo_bytes is None:
-            logo_bytes = _load_org_logo(branding)
+            logo_bytes = _load_org_logo(branding, db, org)
         summary_data = _collect_summary_data(db, workspace_id, period, report_settings)
         pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes, branding=branding)
 
@@ -1059,15 +1083,28 @@ def send_report(db: Session, report_id: UUID, recipients: List[str], branding: d
 
     pdf_bytes      = base64.b64decode(report.pdf_bytes)
     workspace_name = (report.summary_data or {}).get("workspace_name", "Workspace")
+
+    # Auto-resolve branding
+    org = None
+    if branding is None:
+        from app.models.db_models import Workspace as _Ws, Organization as _Org
+        from app.services.branding_service import get_branding as _gb
+        ws = db.query(_Ws).filter(_Ws.id == report.workspace_id).first()
+        if ws:
+            org = db.query(_Org).filter(_Org.id == ws.organization_id).first()
+            if org:
+                branding = _gb(org, db)
+
     if logo_bytes is None:
-        logo_bytes = _load_org_logo(branding)
+        logo_bytes = _load_org_logo(branding, db, org)
 
     subject   = f"Relatório Executivo — {workspace_name} — {report.period}"
     body_html = _build_rich_email_html(
         workspace_name, report.period, report.summary_data or {}, logo_bytes, branding=branding,
     )
 
-    _send_email(recipients, subject, body_html, pdf_bytes, report.period)
+    _sender = (branding or {}).get("email_sender_name", "CloudAtlas")
+    _send_email(recipients, subject, body_html, pdf_bytes, report.period, sender_name=_sender)
 
     report.sent_at    = datetime.utcnow()
     report.recipients = recipients

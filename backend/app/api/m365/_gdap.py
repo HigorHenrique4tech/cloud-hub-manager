@@ -116,8 +116,10 @@ async def ws_send_gdap_invite(
     roles = [r.get("roleDefinitionId", "") for r in rel.get("accessDetails", {}).get("unifiedRoles", [])]
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     org_name = org.name if org else "CloudAtlas"
+    from app.services.branding_service import get_branding as _gb
+    _brand = _gb(org, db) if org else None
     sent, failed = [], []
     for email in body.emails:
-        ok = send_gdap_invite_email(email, rel_name, roles, invite_url, org_name)
+        ok = send_gdap_invite_email(email, rel_name, roles, invite_url, org_name, branding=_brand)
         (sent if ok else failed).append(email)
     return {"sent": sent, "failed": failed}

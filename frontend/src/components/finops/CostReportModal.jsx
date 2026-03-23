@@ -115,6 +115,19 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
         {/* Content */}
         <div className="p-6 space-y-8">
 
+          {/* ── Print header with logo ── */}
+          <div className="flex items-center justify-between text-xs text-gray-400 dark:text-gray-500 mb-2 print:mb-4">
+            <span>{generatedAt}</span>
+            <div className="flex items-center gap-2">
+              <img
+                src={branding.logo_dark_url || branding.logo_light_url || '/logo.png'}
+                alt={branding.platform_name}
+                className="h-5 w-auto object-contain"
+              />
+              <span className="font-semibold text-gray-600 dark:text-gray-300">{branding.platform_name}</span>
+            </div>
+          </div>
+
           {/* ── Report header ── */}
           <div className="flex items-start justify-between border-b-2 border-indigo-600 pb-4">
             <div>
@@ -351,7 +364,12 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           )}
 
           {/* Footer */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 text-center text-xs text-gray-400 dark:text-gray-500">
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 flex items-center justify-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+            <img
+              src={branding.logo_dark_url || branding.logo_light_url || '/logo.png'}
+              alt={branding.platform_name}
+              className="h-4 w-auto object-contain opacity-60"
+            />
             Relatório gerado automaticamente pelo <strong className="text-gray-500 dark:text-gray-400">{branding.platform_name}</strong> · {generatedAt}
           </div>
 

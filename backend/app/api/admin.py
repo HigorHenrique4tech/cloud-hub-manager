@@ -1136,6 +1136,10 @@ async def send_invoice_email(
             # Continue sending email without payment link
 
     due_str = record.due_date.strftime("%d/%m/%Y") if record.due_date else None
+    _brand = None
+    if record.org:
+        from app.services.branding_service import get_branding as _gb
+        _brand = _gb(record.org, db)
     success = send_billing_invoice_email(
         to_email=to_email,
         client_name=record.client_name,
@@ -1145,6 +1149,7 @@ async def send_invoice_email(
         due_date=due_str,
         notes=record.notes,
         payment_url=payment_url,
+        branding=_brand,
     )
 
     if not success:
@@ -1266,6 +1271,10 @@ def send_status_email(
         raise HTTPException(status_code=400, detail="Nenhum email disponível.")
 
     paid_str = record.paid_at.strftime("%d/%m/%Y") if record.paid_at else None
+    _brand = None
+    if record.org:
+        from app.services.branding_service import get_branding as _gb_status
+        _brand = _gb_status(record.org, db)
     success = send_billing_status_email(
         to_email=to_email,
         client_name=record.client_name,
@@ -1273,6 +1282,7 @@ def send_status_email(
         period_ref=record.period_ref,
         new_status=record.status,
         paid_at=paid_str,
+        branding=_brand,
     )
 
     if not success:

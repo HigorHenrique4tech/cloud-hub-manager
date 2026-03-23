@@ -207,6 +207,8 @@ async def evaluate_budgets(
 
         if pct >= budget.alert_threshold and not already_alerted:
             from app.models.db_models import User
+            from app.services.branding_service import get_branding_for_workspace as _gbw
+            _brand = _gbw(db, member.workspace_id)
             creator = db.query(User).filter(User.id == budget.created_by).first()
             if creator:
                 send_budget_alert_email(
@@ -217,6 +219,7 @@ async def evaluate_budgets(
                     current_spend=spend,
                     budget_amount=budget.amount,
                     pct=pct,
+                    branding=_brand,
                 )
             _fire(db, member.workspace_id, "budget.threshold_crossed", {
                 "budget_id":     str(budget.id),

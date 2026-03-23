@@ -413,6 +413,10 @@ def execute_budget_eval() -> None:
                 )
 
                 if pct >= budget.alert_threshold and not already_alerted:
+                    # Resolve branding for white-label emails
+                    from app.services.branding_service import get_branding_for_workspace as _gbw
+                    _b = _gbw(db, budget.workspace_id)
+
                     # Get creator email for alert
                     from app.models.db_models import User
                     creator = db.query(User).filter(User.id == budget.created_by).first()
@@ -425,6 +429,7 @@ def execute_budget_eval() -> None:
                             current_spend=spend,
                             budget_amount=budget.amount,
                             pct=pct,
+                            branding=_b,
                         )
                     _fire(db, budget.workspace_id, "budget.threshold_crossed", {
                         "budget_id":    str(budget.id),
@@ -691,6 +696,12 @@ def execute_report(report_schedule_id: str) -> None:
                 for r in recs[:3]
             ]
 
+        # Resolve branding for white-label
+        _branding = None
+        if org:
+            from app.services.branding_service import get_branding as _get_brand
+            _branding = _get_brand(org, db)
+
         # Send to all recipients
         success_count = 0
         for email in (sched.recipients or []):
@@ -701,6 +712,7 @@ def execute_report(report_schedule_id: str) -> None:
                     ws_name=ws_name,
                     period_label=period_label,
                     report_data=report_data,
+                    branding=_branding,
                 )
                 success_count += 1
             except Exception as exc:
@@ -858,12 +870,17 @@ def execute_trial_reminders() -> None:
 
                 trial_end_str = org.trial_ends_at.strftime("%d/%m/%Y") if org.trial_ends_at else ""
 
+                # Resolve branding for white-label
+                from app.services.branding_service import get_branding as _gb_trial
+                _trial_brand = _gb_trial(org, db)
+
                 send_trial_reminder_email(
                     to_email=user.email,
                     user_name=user.name or user.email,
                     days_remaining=days,
                     savings_found=savings if savings > 0 else None,
                     trial_end_date=trial_end_str,
+                    branding=_trial_brand,
                 )
 
                 # In-app notification for the first workspace
