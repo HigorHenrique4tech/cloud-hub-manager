@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Loader2, AlertCircle } from 'lucide-react';
+import { X, Loader2, AlertCircle, AlertTriangle } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import scheduleService from '../../services/scheduleService';
 import awsService from '../../services/awsservices';
@@ -22,8 +22,20 @@ const TIMEZONES = [
 
 const SCHEDULE_TYPES = [
   { value: 'daily',    label: 'Diário' },
-  { value: 'weekdays', label: 'Seg – Sex' },
-  { value: 'weekends', label: 'Sáb – Dom' },
+  { value: 'weekdays', label: 'Seg–Sex' },
+  { value: 'weekends', label: 'Sáb–Dom' },
+  { value: 'custom',   label: 'Personalizado' },
+  { value: 'monthly',  label: 'Mensal' },
+];
+
+const WEEKDAYS = [
+  { value: 'mon', label: 'Seg' },
+  { value: 'tue', label: 'Ter' },
+  { value: 'wed', label: 'Qua' },
+  { value: 'thu', label: 'Qui' },
+  { value: 'fri', label: 'Sex' },
+  { value: 'sat', label: 'Sáb' },
+  { value: 'sun', label: 'Dom' },
 ];
 
 const empty = {
@@ -36,6 +48,8 @@ const empty = {
   schedule_time: '19:00',
   timezone: 'America/Sao_Paulo',
   is_enabled: true,
+  custom_days: [],
+  monthly_days: [],
 };
 
 /* ── Fetch resources based on provider + type ───────────────── */
@@ -48,6 +62,13 @@ async function fetchResources(provider, resource_type) {
   }
   if (provider === 'azure' && resource_type === 'app_service') {
     return azureService.listAppServices();
+  }
+  if (provider === 'gcp' && resource_type === 'instance') {
+    // Dynamically import to avoid issues if not available
+    try {
+      const gcpService = (await import('../../services/gcpservices')).default;
+      return gcpService.listInstances();
+    } catch { return null; }
   }
   return null;
 }
@@ -80,11 +101,20 @@ function toOptions(provider, resource_type, data) {
       sublabel:      `${a.resource_group} · ${a.state || a.status || ''}`,
     }));
   }
+  if (provider === 'gcp' && resource_type === 'instance') {
+    const items = data.instances || data.vms || (Array.isArray(data) ? data : []);
+    return items.map((i) => ({
+      resource_id:   `${i.zone || 'unknown'}/${i.name}`,
+      resource_name: i.name,
+      label:         i.name,
+      sublabel:      `${i.zone || ''} · ${i.machine_type || ''} · ${i.status || ''}`,
+    }));
+  }
   return [];
 }
 
 /* ── Main component ─────────────────────────────────────────── */
-const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
+const ScheduleFormModal = ({ isOpen, onClose, initialData = null, existingSchedules = [] }) => {
   const queryClient = useQueryClient();
   const isEdit = Boolean(initialData?.id);
 
@@ -101,7 +131,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
   /* Reset resource fields when provider or type changes */
   const handleProviderChange = (e) => {
     const provider = e.target.value;
-    const resource_type = provider === 'aws' ? 'ec2' : 'vm';
+    const resource_type = provider === 'aws' ? 'ec2' : provider === 'gcp' ? 'instance' : 'vm';
     setForm((f) => ({ ...f, provider, resource_type, resource_id: '', resource_name: '' }));
   };
 
@@ -140,6 +170,34 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
     }
   };
 
+  /* Conflict detection */
+  const conflict = useMemo(() => {
+    if (!form.resource_id || isEdit) return null;
+    const same = existingSchedules.filter(s => s.resource_id === form.resource_id && s.provider === form.provider);
+    if (same.length === 0) return null;
+    const hasOpposite = same.some(s => s.action !== form.action);
+    const hasSame = same.some(s => s.action === form.action);
+    if (hasSame) return { type: 'duplicate', msg: `Já existe um agendamento de ${form.action.toUpperCase()} para este recurso.` };
+    if (!hasOpposite) return { type: 'missing', msg: `Este recurso tem ${same[0].action.toUpperCase()} mas nenhum ${form.action.toUpperCase()} correspondente. Considere criar ambos.` };
+    return null;
+  }, [form.resource_id, form.provider, form.action, existingSchedules, isEdit]);
+
+  /* Custom days toggle */
+  const toggleCustomDay = (day) => {
+    setForm(f => {
+      const days = f.custom_days || [];
+      return { ...f, custom_days: days.includes(day) ? days.filter(d => d !== day) : [...days, day] };
+    });
+  };
+
+  /* Monthly days toggle */
+  const toggleMonthlyDay = (day) => {
+    setForm(f => {
+      const days = f.monthly_days || [];
+      return { ...f, monthly_days: days.includes(day) ? days.filter(d => d !== day) : [...days, day].sort((a,b) => a-b) };
+    });
+  };
+
   /* Mutations */
   const createMutation = useMutation({
     mutationFn: (data) => scheduleService.createSchedule(data),
@@ -165,9 +223,15 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
         timezone:      form.timezone,
         resource_name: form.resource_name,
         is_enabled:    form.is_enabled,
+        custom_days:   form.schedule_type === 'custom' ? form.custom_days : null,
+        monthly_days:  form.schedule_type === 'monthly' ? form.monthly_days : null,
       });
     } else {
-      createMutation.mutate(form);
+      createMutation.mutate({
+        ...form,
+        custom_days:  form.schedule_type === 'custom' ? form.custom_days : null,
+        monthly_days: form.schedule_type === 'monthly' ? form.monthly_days : null,
+      });
     }
   };
 
@@ -176,18 +240,18 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
 
   if (!isOpen) return null;
 
-  const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 placeholder-gray-400 dark:placeholder-slate-500 focus:border-primary focus:outline-none';
-  const labelCls = 'block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1';
+  const inputCls = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:border-primary focus:outline-none';
+  const labelCls = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
+      <div className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4 bg-white dark:bg-gray-800">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
             {isEdit ? 'Editar Agendamento' : 'Novo Agendamento'}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -202,29 +266,23 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={labelCls}>Provedor</label>
-                  <select
-                    value={form.provider}
-                    onChange={handleProviderChange}
-                    className={inputCls}
-                  >
+                  <select value={form.provider} onChange={handleProviderChange} className={inputCls}>
                     <option value="aws">AWS</option>
                     <option value="azure">Azure</option>
+                    <option value="gcp">GCP</option>
                   </select>
                 </div>
                 <div>
                   <label className={labelCls}>Tipo</label>
-                  <select
-                    value={form.resource_type}
-                    onChange={handleTypeChange}
-                    className={inputCls}
-                  >
-                    {form.provider === 'aws'
-                      ? <option value="ec2">EC2</option>
-                      : <>
-                          <option value="vm">VM</option>
-                          <option value="app_service">App Service</option>
-                        </>
-                    }
+                  <select value={form.resource_type} onChange={handleTypeChange} className={inputCls}>
+                    {form.provider === 'aws' && <option value="ec2">EC2</option>}
+                    {form.provider === 'azure' && (
+                      <>
+                        <option value="vm">VM</option>
+                        <option value="app_service">App Service</option>
+                      </>
+                    )}
+                    {form.provider === 'gcp' && <option value="instance">Compute Engine</option>}
                   </select>
                 </div>
               </div>
@@ -232,14 +290,12 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
               {/* Resource picker */}
               <div>
                 <label className={labelCls}>Recurso</label>
-
                 {resourcesLoading ? (
-                  <div className="flex items-center gap-2 h-10 px-3 rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-50 dark:bg-slate-800 text-gray-500 dark:text-slate-500 text-sm">
+                  <div className="flex items-center gap-2 h-10 px-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-gray-500 text-sm">
                     <Loader2 size={14} className="animate-spin" />
                     Carregando recursos…
                   </div>
                 ) : resourcesError || options.length === 0 ? (
-                  /* Fallback: manual text input */
                   <div className="space-y-2">
                     {resourcesError && (
                       <div className="flex items-center gap-1.5 text-xs text-yellow-600 dark:text-yellow-400">
@@ -248,24 +304,23 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                       </div>
                     )}
                     {options.length === 0 && !resourcesError && (
-                      <p className="text-xs text-gray-500 dark:text-slate-500">Nenhum recurso encontrado. Insira o ID manualmente.</p>
+                      <p className="text-xs text-gray-500">Nenhum recurso encontrado. Insira o ID manualmente.</p>
                     )}
                     <input
                       type="text"
                       value={form.resource_id}
                       onChange={set('resource_id')}
                       required
-                      placeholder={form.provider === 'aws' ? 'i-0abc12345' : 'meu-rg/minha-vm'}
+                      placeholder={
+                        form.provider === 'aws' ? 'i-0abc12345' :
+                        form.provider === 'gcp' ? 'us-central1-a/minha-vm' :
+                        'meu-rg/minha-vm'
+                      }
                       className={inputCls}
                     />
                   </div>
                 ) : (
-                  <select
-                    value={form.resource_id}
-                    onChange={handleResourceSelect}
-                    required
-                    className={inputCls}
-                  >
+                  <select value={form.resource_id} onChange={handleResourceSelect} required className={inputCls}>
                     <option value="">Selecionar recurso…</option>
                     {options.map((o) => (
                       <option key={o.resource_id} value={o.resource_id}>
@@ -275,15 +330,27 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                   </select>
                 )}
               </div>
+
+              {/* Conflict warning */}
+              {conflict && (
+                <div className={`flex items-start gap-2 text-xs p-2.5 rounded-lg border ${
+                  conflict.type === 'duplicate'
+                    ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/50 text-amber-700 dark:text-amber-400'
+                    : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-700/50 text-blue-700 dark:text-blue-400'
+                }`}>
+                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  {conflict.msg}
+                </div>
+              )}
             </>
           )}
 
-          {/* Resource name — auto-filled on select, editable */}
+          {/* Resource name */}
           <div>
             <label className={labelCls}>
               Nome do Recurso
               {!isEdit && form.resource_id && (
-                <span className="ml-1 text-gray-400 dark:text-slate-600">(editável)</span>
+                <span className="ml-1 text-gray-400">(editável)</span>
               )}
             </label>
             <input
@@ -299,7 +366,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
           {/* Action (create only) */}
           {!isEdit && (
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1.5">Ação</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Ação</label>
               <div className="flex gap-2">
                 {['start', 'stop'].map((a) => (
                   <button
@@ -311,7 +378,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
                         ? a === 'start'
                           ? 'border-green-500 bg-green-500/20 text-green-700 dark:text-green-300'
                           : 'border-red-500 bg-red-500/20 text-red-700 dark:text-red-300'
-                        : 'border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-500 dark:text-slate-400 hover:border-gray-400 dark:hover:border-slate-500'
+                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-400'
                     }`}
                   >
                     {a === 'start' ? '▶ Ligar' : '■ Desligar'}
@@ -323,17 +390,17 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
 
           {/* Schedule type */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1.5">Dias</label>
-            <div className="flex gap-2">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Dias</label>
+            <div className="flex flex-wrap gap-1.5">
               {SCHEDULE_TYPES.map(({ value, label }) => (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setDirect('schedule_type', value)}
-                  className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors ${
                     form.schedule_type === value
-                      ? 'border-primary bg-primary/20 text-primary-dark dark:text-primary-light'
-                      : 'border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-gray-500 dark:text-slate-400 hover:border-gray-400 dark:hover:border-slate-500'
+                      ? 'border-primary bg-primary/20 text-primary'
+                      : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:border-gray-400'
                   }`}
                 >
                   {label}
@@ -342,28 +409,71 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
             </div>
           </div>
 
+          {/* Custom days picker */}
+          {form.schedule_type === 'custom' && (
+            <div>
+              <label className={labelCls}>Selecione os dias</label>
+              <div className="flex gap-1.5">
+                {WEEKDAYS.map(({ value, label }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    onClick={() => toggleCustomDay(value)}
+                    className={`flex-1 rounded-lg border py-2 text-xs font-medium transition-colors ${
+                      (form.custom_days || []).includes(value)
+                        ? 'border-primary bg-primary/20 text-primary'
+                        : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {(form.custom_days || []).length === 0 && (
+                <p className="text-[11px] text-amber-500 mt-1">Selecione ao menos um dia.</p>
+              )}
+            </div>
+          )}
+
+          {/* Monthly days picker */}
+          {form.schedule_type === 'monthly' && (
+            <div>
+              <label className={labelCls}>Dias do mês</label>
+              <div className="grid grid-cols-7 gap-1">
+                {Array.from({ length: 31 }, (_, i) => i + 1).map(d => (
+                  <button
+                    key={d}
+                    type="button"
+                    onClick={() => toggleMonthlyDay(d)}
+                    className={`rounded-md py-1 text-xs font-medium transition-colors ${
+                      (form.monthly_days || []).includes(d)
+                        ? 'bg-primary text-white'
+                        : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
+                    }`}
+                  >
+                    {d}
+                  </button>
+                ))}
+              </div>
+              {(form.monthly_days || []).length === 0 && (
+                <p className="text-[11px] text-amber-500 mt-1">Selecione ao menos um dia do mês.</p>
+              )}
+              {(form.monthly_days || []).some(d => d > 28) && (
+                <p className="text-[11px] text-gray-400 mt-1">Dia 29+ pula em meses com menos dias.</p>
+              )}
+            </div>
+          )}
+
           {/* Time + timezone */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelCls}>Horário</label>
-              <input
-                type="time"
-                value={form.schedule_time}
-                onChange={set('schedule_time')}
-                required
-                className={inputCls}
-              />
+              <input type="time" value={form.schedule_time} onChange={set('schedule_time')} required className={inputCls} />
             </div>
             <div>
               <label className={labelCls}>Fuso horário</label>
-              <select
-                value={form.timezone}
-                onChange={set('timezone')}
-                className={inputCls}
-              >
-                {TIMEZONES.map((tz) => (
-                  <option key={tz} value={tz}>{tz}</option>
-                ))}
+              <select value={form.timezone} onChange={set('timezone')} className={inputCls}>
+                {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
               </select>
             </div>
           </div>
@@ -379,7 +489,7 @@ const ScheduleFormModal = ({ isOpen, onClose, initialData = null }) => {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white hover:border-gray-400 dark:hover:border-slate-400 transition-colors"
+              className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:border-gray-400 transition-colors"
             >
               Cancelar
             </button>

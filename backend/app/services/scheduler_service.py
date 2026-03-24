@@ -30,24 +30,30 @@ scheduler = BackgroundScheduler(
 
 # ── Trigger helpers ───────────────────────────────────────────────────────────
 
-def _day_of_week(schedule_type: str) -> str:
+def _day_of_week(schedule_type: str, custom_days=None) -> str:
+    if schedule_type == "custom" and custom_days:
+        return ",".join(custom_days)
     return {"daily": "*", "weekdays": "mon-fri", "weekends": "sat,sun"}.get(schedule_type, "*")
 
 
-def _build_trigger(schedule_type: str, schedule_time: str, timezone: str) -> CronTrigger:
+def _build_trigger(schedule_type: str, schedule_time: str, timezone: str,
+                   custom_days=None, monthly_days=None) -> CronTrigger:
     h, m = map(int, schedule_time.split(":"))
+    if schedule_type == "monthly":
+        days_str = ",".join(str(d) for d in (monthly_days or [1]))
+        return CronTrigger(hour=h, minute=m, day=days_str, timezone=timezone)
     return CronTrigger(
         hour=h, minute=m,
-        day_of_week=_day_of_week(schedule_type),
+        day_of_week=_day_of_week(schedule_type, custom_days),
         timezone=timezone,
     )
 
 
 # ── Job executor ──────────────────────────────────────────────────────────────
 
-def execute_scheduled_action(schedule_id: str) -> None:
+def execute_scheduled_action(schedule_id: str, trigger_type: str = "scheduled") -> None:
     """
-    Called by APScheduler at the configured cron time.
+    Called by APScheduler at the configured cron time or manually via "Run Now".
     Fetches the ScheduledAction from DB and performs start/stop on the cloud resource.
     """
     from app.database import SessionLocal
@@ -57,7 +63,10 @@ def execute_scheduled_action(schedule_id: str) -> None:
     db = SessionLocal()
     try:
         s = db.query(ScheduledAction).filter(ScheduledAction.id == schedule_id).first()
-        if not s or not s.is_enabled:
+        if not s:
+            return
+        # For scheduled triggers, respect is_enabled; manual triggers always run
+        if trigger_type == "scheduled" and not s.is_enabled:
             return
 
         # Fetch the cloud account for this workspace + provider
@@ -68,7 +77,7 @@ def execute_scheduled_action(schedule_id: str) -> None:
         ).order_by(CloudAccount.created_at.desc()).first()
 
         if not account:
-            _record_run(db, s, "failed", f"No active {s.provider} account found for workspace")
+            _record_run(db, s, "failed", f"No active {s.provider} account found for workspace", trigger_type)
             return
 
         creds = decrypt_for_account(db, account)
@@ -77,10 +86,12 @@ def execute_scheduled_action(schedule_id: str) -> None:
                 _exec_aws(s, creds)
             elif s.provider == "azure":
                 _exec_azure(s, creds)
+            elif s.provider == "gcp":
+                _exec_gcp(s, creds)
             else:
                 raise ValueError(f"Unsupported provider: {s.provider}")
 
-            _record_run(db, s, "success", None)
+            _record_run(db, s, "success", None, trigger_type)
             from app.services.notification_channel_service import fire_event as _fire
             _action_payload = {
                 "resource_id":   s.resource_id,
@@ -97,7 +108,7 @@ def execute_scheduled_action(schedule_id: str) -> None:
                   "/schedules")
         except Exception as exc:
             logger.exception(f"Scheduled action {schedule_id} failed: {exc}")
-            _record_run(db, s, "failed", str(exc)[:500])
+            _record_run(db, s, "failed", str(exc)[:500], trigger_type)
             from app.services.notification_channel_service import fire_event as _fire
             _fail_payload = {
                 "resource_id":   s.resource_id,
@@ -120,10 +131,21 @@ def execute_scheduled_action(schedule_id: str) -> None:
         db.close()
 
 
-def _record_run(db, s, status: str, error: Optional[str]) -> None:
-    s.last_run_at = datetime.utcnow()
+def _record_run(db, s, status: str, error: Optional[str], trigger_type: str = "scheduled") -> None:
+    from app.models.db_models import ScheduleRun
+    now = datetime.utcnow()
+    s.last_run_at = now
     s.last_run_status = status
     s.last_run_error = error
+    run = ScheduleRun(
+        schedule_id=s.id,
+        triggered_at=now,
+        completed_at=now if status != "running" else None,
+        status=status,
+        error=error,
+        trigger_type=trigger_type,
+    )
+    db.add(run)
     db.commit()
 
 
@@ -194,6 +216,42 @@ def _exec_azure(s, creds: dict) -> None:
         raise ValueError(f"Azure resource type '{s.resource_type}' not supported for scheduling")
 
 
+def _exec_gcp(s, creds: dict) -> None:
+    from googleapiclient.discovery import build
+    from google.oauth2.service_account import Credentials
+
+    project_id = creds.get("project_id", "")
+    client_email = creds.get("client_email", "")
+    private_key = creds.get("private_key", "")
+
+    if not all([project_id, client_email, private_key]):
+        raise ValueError("GCP credentials missing")
+
+    creds_info = {
+        "type": "service_account",
+        "project_id": project_id,
+        "client_email": client_email,
+        "private_key": private_key,
+        "private_key_id": creds.get("private_key_id", ""),
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    credentials = Credentials.from_service_account_info(
+        creds_info, scopes=["https://www.googleapis.com/auth/compute"]
+    )
+    compute = build("compute", "v1", credentials=credentials, cache_discovery=False)
+
+    # resource_id format: "zone/instance_name" (e.g. "us-central1-a/my-vm")
+    parts = s.resource_id.split("/", 1)
+    if len(parts) != 2:
+        raise ValueError(f"GCP resource_id must be 'zone/name', got: {s.resource_id}")
+    zone, name = parts
+
+    if s.action == "start":
+        compute.instances().start(project=project_id, zone=zone, instance=name).execute()
+    elif s.action == "stop":
+        compute.instances().stop(project=project_id, zone=zone, instance=name).execute()
+
+
 # ── Registration helpers ──────────────────────────────────────────────────────
 
 def register_schedule(s) -> None:
@@ -201,7 +259,8 @@ def register_schedule(s) -> None:
     try:
         scheduler.add_job(
             execute_scheduled_action,
-            trigger=_build_trigger(s.schedule_type, s.schedule_time, s.timezone),
+            trigger=_build_trigger(s.schedule_type, s.schedule_time, s.timezone,
+                                   custom_days=s.custom_days, monthly_days=s.monthly_days),
             args=[str(s.id)],
             id=str(s.id),
             replace_existing=True,

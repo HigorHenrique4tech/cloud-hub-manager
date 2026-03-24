@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
-  Clock, Plus, Zap, Shield, ChevronDown, ChevronUp, Power, PowerOff,
-  Trash2, ScrollText, X, AlertTriangle, CheckCircle,
+  Clock, Plus, Zap, Shield, Power, PowerOff,
+  Trash2, ScrollText, X, Filter,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import PlanGate from '../components/common/PlanGate';
@@ -10,6 +10,9 @@ import PermissionGate from '../components/common/PermissionGate';
 import LoadingSpinner from '../components/common/loadingspinner';
 import ScheduleCard from '../components/schedules/ScheduleCard';
 import ScheduleFormModal from '../components/schedules/ScheduleFormModal';
+import ScheduleStats from '../components/schedules/ScheduleStats';
+import DailyTimeline from '../components/schedules/DailyTimeline';
+import ExecutionHistoryDrawer from '../components/schedules/ExecutionHistoryDrawer';
 import scheduleService from '../services/scheduleService';
 import policyService from '../services/policyService';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
@@ -19,6 +22,13 @@ const PLAN_ORDER = { free: 0, pro: 1, enterprise: 2 };
 const TABS = [
   { id: 'schedules', label: 'Agendamentos', icon: Clock },
   { id: 'policies',  label: 'Políticas',    icon: Shield },
+];
+
+const PROVIDER_FILTERS = [
+  { id: 'all',   label: 'Todos' },
+  { id: 'aws',   label: 'AWS',   color: 'text-orange-600 dark:text-orange-400' },
+  { id: 'azure', label: 'Azure', color: 'text-sky-600 dark:text-sky-400' },
+  { id: 'gcp',   label: 'GCP',   color: 'text-green-600 dark:text-green-400' },
 ];
 
 // ── Metric labels ─────────────────────────────────────────────────────────────
@@ -445,7 +455,7 @@ function PoliciesTab({ isPro }) {
       {policiesQ.isLoading && <div className="flex justify-center py-8"><LoadingSpinner /></div>}
 
       {!policiesQ.isLoading && policies.length === 0 && (
-        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 py-12 text-center">
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 py-12 text-center">
           <Shield className="w-8 h-8 text-gray-300 dark:text-gray-600" />
           <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Nenhuma política configurada</p>
           <p className="text-xs text-gray-500 dark:text-gray-500 max-w-xs">
@@ -486,11 +496,157 @@ function PoliciesTab({ isPro }) {
   );
 }
 
+// ── Schedules tab ─────────────────────────────────────────────────────────────
+
+function SchedulesTab({ isPro, schedules, isLoading, error, onEdit, onCreate }) {
+  const [providerFilter, setProviderFilter] = useState('all');
+  const [historyTarget, setHistoryTarget] = useState(null);
+
+  if (!isPro) {
+    return (
+      <PlanGate minPlan="pro" feature="Agendamentos de recursos">
+        <span />
+      </PlanGate>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-300 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+        Erro ao carregar agendamentos: {error?.response?.data?.detail || error.message}
+      </div>
+    );
+  }
+
+  const filtered = providerFilter === 'all'
+    ? schedules
+    : schedules.filter(s => s.provider === providerFilter);
+
+  const startSchedules = filtered.filter(s => s.action === 'start');
+  const stopSchedules = filtered.filter(s => s.action === 'stop');
+
+  return (
+    <div className="space-y-5">
+      {/* Stats */}
+      <ScheduleStats schedules={schedules} />
+
+      {/* Timeline */}
+      <DailyTimeline schedules={filtered} />
+
+      {/* Provider filter */}
+      {schedules.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Filter className="w-3.5 h-3.5 text-gray-400" />
+          <div className="flex gap-1 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            {PROVIDER_FILTERS.map(f => {
+              const count = f.id === 'all' ? schedules.length : schedules.filter(s => s.provider === f.id).length;
+              if (f.id !== 'all' && count === 0) return null;
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setProviderFilter(f.id)}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    providerFilter === f.id
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {f.label}
+                  <span className="ml-1 text-[10px] opacity-60">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {schedules.length === 0 && (
+        <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 py-14 text-center">
+          <Zap size={28} className="text-gray-400 dark:text-gray-500" />
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Nenhum agendamento configurado</p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 max-w-xs">
+            Use o FinOps para detectar candidatos automaticamente, ou clique em{' '}
+            <span className="text-gray-700 dark:text-gray-300">"Novo"</span> para criar manualmente.
+          </p>
+          <PermissionGate permission="resources.start_stop">
+            <button
+              onClick={onCreate}
+              className="mt-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
+            >
+              Criar agendamento
+            </button>
+          </PermissionGate>
+        </div>
+      )}
+
+      {/* Schedule cards — grouped by action */}
+      {filtered.length > 0 && (
+        <div className="space-y-6">
+          {startSchedules.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                <span className="rounded bg-emerald-500/20 px-1.5 py-0.5">▶ START</span>
+                {startSchedules.length} agendamento{startSchedules.length > 1 ? 's' : ''}
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {startSchedules.map(s => (
+                  <ScheduleCard
+                    key={s.id}
+                    schedule={s}
+                    onEdit={() => onEdit(s)}
+                    onShowHistory={() => setHistoryTarget(s)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+
+          {stopSchedules.length > 0 && (
+            <section className="space-y-2">
+              <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400">
+                <span className="rounded bg-red-500/20 px-1.5 py-0.5">■ STOP</span>
+                {stopSchedules.length} agendamento{stopSchedules.length > 1 ? 's' : ''}
+              </h2>
+              <div className="grid gap-3 sm:grid-cols-2">
+                {stopSchedules.map(s => (
+                  <ScheduleCard
+                    key={s.id}
+                    schedule={s}
+                    onEdit={() => onEdit(s)}
+                    onShowHistory={() => setHistoryTarget(s)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </div>
+      )}
+
+      {/* Execution history drawer */}
+      {historyTarget && (
+        <ExecutionHistoryDrawer
+          schedule={historyTarget}
+          onClose={() => setHistoryTarget(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const Schedules = () => {
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
-  const plan = (currentOrg?.plan_tier || 'free').toLowerCase();
+  const plan = (currentOrg?.effective_plan || currentOrg?.plan_tier || 'free').toLowerCase();
   const isPro = (PLAN_ORDER[plan] ?? 0) >= 1;
 
   const [activeTab, setActiveTab] = useState('schedules');
@@ -503,15 +659,12 @@ const Schedules = () => {
     enabled: isPro && Boolean(currentWorkspace),
   });
 
-  const awsSchedules   = schedules.filter((s) => s.provider === 'aws');
-  const azureSchedules = schedules.filter((s) => s.provider === 'azure');
-
   const openCreate = () => { setEditTarget(null); setModalOpen(true); };
   const openEdit = (s) => { setEditTarget(s); setModalOpen(true); };
 
   return (
     <Layout>
-      <div className="max-w-4xl mx-auto space-y-6">
+      <div className="max-w-5xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -519,8 +672,8 @@ const Schedules = () => {
               <Clock size={20} className="text-primary-light" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">Agendamentos & Políticas</h1>
-              <p className="text-sm text-gray-500 dark:text-slate-400">
+              <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Agendamentos & Políticas</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 Automação por horário e por condição
               </p>
             </div>
@@ -534,7 +687,7 @@ const Schedules = () => {
                 className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
               >
                 <Plus size={16} />
-                Novo
+                Novo Agendamento
               </button>
             </PermissionGate>
           )}
@@ -560,76 +713,14 @@ const Schedules = () => {
 
         {/* ── Schedules tab ── */}
         {activeTab === 'schedules' && (
-          <>
-            {!isPro && (
-              <PlanGate minPlan="pro" feature="Agendamentos de recursos">
-                <span />
-              </PlanGate>
-            )}
-
-            {isPro && (
-              <>
-                {isLoading && (
-                  <div className="flex justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-                  </div>
-                )}
-
-                {error && (
-                  <div className="rounded-lg border border-red-300 dark:border-red-700/40 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
-                    Erro ao carregar agendamentos: {error?.response?.data?.detail || error.message}
-                  </div>
-                )}
-
-                {!isLoading && !error && schedules.length === 0 && (
-                  <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 py-14 text-center">
-                    <Zap size={28} className="text-gray-400 dark:text-slate-500" />
-                    <p className="text-sm font-medium text-gray-700 dark:text-slate-300">Nenhum agendamento configurado</p>
-                    <p className="text-xs text-gray-500 dark:text-slate-500 max-w-xs">
-                      Use o FinOps para detectar candidatos automaticamente, ou clique em{' '}
-                      <span className="text-gray-700 dark:text-slate-300">"Novo"</span> para criar manualmente.
-                    </p>
-                    <PermissionGate permission="resources.start_stop">
-                      <button
-                        onClick={openCreate}
-                        className="mt-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
-                      >
-                        Criar agendamento
-                      </button>
-                    </PermissionGate>
-                  </div>
-                )}
-
-                {awsSchedules.length > 0 && (
-                  <section className="space-y-2">
-                    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">
-                      <span className="rounded bg-orange-500/20 px-1.5 py-0.5">AWS</span>
-                      {awsSchedules.length} agendamento{awsSchedules.length > 1 ? 's' : ''}
-                    </h2>
-                    <div className="space-y-2">
-                      {awsSchedules.map((s) => (
-                        <ScheduleCard key={s.id} schedule={s} onEdit={() => openEdit(s)} />
-                      ))}
-                    </div>
-                  </section>
-                )}
-
-                {azureSchedules.length > 0 && (
-                  <section className="space-y-2">
-                    <h2 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-sky-600 dark:text-sky-400">
-                      <span className="rounded bg-sky-500/20 px-1.5 py-0.5">Azure</span>
-                      {azureSchedules.length} agendamento{azureSchedules.length > 1 ? 's' : ''}
-                    </h2>
-                    <div className="space-y-2">
-                      {azureSchedules.map((s) => (
-                        <ScheduleCard key={s.id} schedule={s} onEdit={() => openEdit(s)} />
-                      ))}
-                    </div>
-                  </section>
-                )}
-              </>
-            )}
-          </>
+          <SchedulesTab
+            isPro={isPro}
+            schedules={schedules}
+            isLoading={isLoading}
+            error={error}
+            onEdit={openEdit}
+            onCreate={openCreate}
+          />
         )}
 
         {/* ── Policies tab ── */}
@@ -640,6 +731,7 @@ const Schedules = () => {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         initialData={editTarget}
+        existingSchedules={schedules}
       />
     </Layout>
   );

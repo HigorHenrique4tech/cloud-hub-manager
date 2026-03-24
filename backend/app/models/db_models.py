@@ -382,8 +382,27 @@ class ScheduledAction(Base):
     created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
 
+    custom_days   = Column(JSONB, nullable=True)       # ["mon","wed","fri"] for custom
+    monthly_days  = Column(JSONB, nullable=True)       # [1, 15] for monthly
+
     workspace  = relationship("Workspace")
     creator    = relationship("User", foreign_keys=[created_by])
+    runs       = relationship("ScheduleRun", back_populates="schedule", cascade="all, delete-orphan",
+                              order_by="ScheduleRun.triggered_at.desc()", lazy="dynamic")
+
+
+class ScheduleRun(Base):
+    __tablename__ = "schedule_runs"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    schedule_id   = Column(UUID(as_uuid=True), ForeignKey("scheduled_actions.id", ondelete="CASCADE"), nullable=False, index=True)
+    triggered_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at  = Column(DateTime, nullable=True)
+    status        = Column(String(10), nullable=False)      # "success" | "failed" | "running"
+    error         = Column(String(500), nullable=True)
+    trigger_type  = Column(String(10), nullable=False, default="scheduled")  # "scheduled" | "manual"
+
+    schedule = relationship("ScheduledAction", back_populates="runs")
 
 
 # ── FinOps Scan Schedule ─────────────────────────────────────────────────────

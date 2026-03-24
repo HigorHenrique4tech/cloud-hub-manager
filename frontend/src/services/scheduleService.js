@@ -22,6 +22,16 @@ const scheduleService = {
   deleteSchedule: async (id) => {
     await api.delete(wsUrl(`/schedules/${id}`));
   },
+
+  runNow: async (id) => {
+    const { data } = await api.post(wsUrl(`/schedules/${id}/run-now`));
+    return data;
+  },
+
+  getScheduleRuns: async (id, limit = 50) => {
+    const { data } = await api.get(wsUrl(`/schedules/${id}/runs`), { params: { limit } });
+    return data;
+  },
 };
 
 export default scheduleService;
