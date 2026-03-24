@@ -4,11 +4,13 @@ import { Palette, Upload, RotateCcw, Eye, Mail, Type, Image } from 'lucide-react
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import { useBranding } from '../../contexts/BrandingContext';
 import orgService from '../../services/orgService';
+import { useToast } from '../../contexts/ToastContext';
 
 export default function WhiteLabelSettings() {
-  const { currentOrg } = useOrgWorkspace();
+  const { currentOrg, refreshOrgs } = useOrgWorkspace();
   const branding = useBranding();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const slug = currentOrg?.slug;
 
   // Form state initialized from current branding
@@ -80,10 +82,12 @@ export default function WhiteLabelSettings() {
       }
       await orgService.updateBranding(slug, payload);
       qc.invalidateQueries({ queryKey: ['orgs'] });
+      await refreshOrgs();
+      toast.success('Personalização salva com sucesso!');
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (err) {
-      alert(err.response?.data?.detail || 'Erro ao salvar branding');
+      toast.error(err.response?.data?.detail || 'Erro ao salvar branding');
     } finally {
       setSaving(false);
     }
@@ -105,8 +109,13 @@ export default function WhiteLabelSettings() {
         powered_by: true,
         email_sender_name: '',
       });
+      await refreshOrgs();
+      // Restore default favicon
+      const link = document.querySelector("link[rel~='icon']");
+      if (link) link.href = '/favicon.ico';
+      toast.success('Personalização resetada para o padrão CloudAtlas');
     } catch (err) {
-      alert(err.response?.data?.detail || 'Erro ao resetar');
+      toast.error(err.response?.data?.detail || 'Erro ao resetar');
     } finally {
       setSaving(false);
     }

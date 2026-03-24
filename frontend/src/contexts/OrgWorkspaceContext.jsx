@@ -101,6 +101,12 @@ export const OrgWorkspaceProvider = ({ children }) => {
     try {
       const { organizations } = await orgService.listOrgs();
       setOrgs(organizations || []);
+      // Also refresh currentOrg so branding/plan changes take effect immediately
+      setCurrentOrg(prev => {
+        if (!prev) return prev;
+        const updated = organizations.find(o => o.id === prev.id);
+        return updated || prev;
+      });
     } catch (err) {
       console.error('Failed to refresh orgs:', err);
     }
