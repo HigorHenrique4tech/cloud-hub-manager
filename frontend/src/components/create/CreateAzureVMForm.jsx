@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
-import { Plus, Trash2, Loader2, Network } from 'lucide-react';
+import { Plus, Trash2, Loader2, Network, AlertTriangle } from 'lucide-react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
 import FieldError from '../common/FieldError';
@@ -68,9 +68,21 @@ const CreateAzureVMForm = forwardRef(function CreateAzureVMForm({ form, setForm 
   useImperativeHandle(ref, () => ({ touchAll, isValid }));
 
   const locations = apiLocations.length > 0 ? apiLocations : AZURE_LOCATIONS;
-  const sizes = apiSizes.length > 0 ? apiSizes : AZURE_VM_SIZES;
+  const allSizes = apiSizes.length > 0 ? apiSizes : AZURE_VM_SIZES;
   const location = form.location || '';
   const rg = form.resource_group || '';
+
+  // Determine required HyperV generation from selected image preset
+  const currentPreset = VM_OS_PRESETS.find(p => p.label === selectedPreset);
+  const requiredGen = currentPreset?.gen || null; // 'V1', 'V2', or null (custom/unknown)
+
+  // Filter sizes by HyperV generation compatibility (only when API returns generation info)
+  const sizes = allSizes.filter(s => {
+    if (!requiredGen || !s.hyper_v_generations) return true;
+    return s.hyper_v_generations.includes(requiredGen);
+  });
+  const hasGenFilter = requiredGen && apiSizes.length > 0 && apiSizes[0]?.hyper_v_generations;
+  const filteredOutCount = hasGenFilter ? allSizes.length - sizes.length : 0;
 
   const availableVnets = allVnets.filter(v =>
     (!rg || v.resource_group === rg) &&
@@ -124,13 +136,24 @@ const CreateAzureVMForm = forwardRef(function CreateAzureVMForm({ form, setForm 
     if (!preset) return;
     setSelectedPreset(presetLabel);
     if (preset.publisher !== '') {
-      setForm((p) => ({
-        ...p,
-        image_publisher: preset.publisher,
-        image_offer: preset.offer,
-        image_sku: preset.sku,
-        image_version: preset.version || 'latest',
-      }));
+      setForm((p) => {
+        const next = {
+          ...p,
+          image_publisher: preset.publisher,
+          image_offer: preset.offer,
+          image_sku: preset.sku,
+          image_version: preset.version || 'latest',
+        };
+        // Reset vm_size if incompatible with new generation
+        if (preset.gen && apiSizes.length > 0) {
+          const cur = apiSizes.find(s => s.name === p.vm_size);
+          if (cur?.hyper_v_generations && !cur.hyper_v_generations.includes(preset.gen)) {
+            const compatible = apiSizes.find(s => s.hyper_v_generations?.includes(preset.gen));
+            if (compatible) next.vm_size = compatible.name;
+          }
+        }
+        return next;
+      });
     }
     if (preset.publisher === '') setOsMode('manual');
   };
@@ -214,9 +237,21 @@ const CreateAzureVMForm = forwardRef(function CreateAzureVMForm({ form, setForm 
               ))}
             </select>
           )}
+          {filteredOutCount > 0 && (
+            <p className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 mt-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              {filteredOutCount} tamanhos ocultos por incompatibilidade com imagem {requiredGen} selecionada.
+            </p>
+          )}
+          {sizes.length === 0 && !sizesLoading && requiredGen && (
+            <p className="flex items-center gap-1.5 text-xs text-red-500 mt-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              Nenhum tamanho compatível com {requiredGen} nesta região. Tente uma imagem Gen1.
+            </p>
+          )}
           <p className="text-xs text-gray-400 mt-1">
             {apiSizes.length > 0 && location
-              ? `${apiSizes.length} tamanhos disponíveis em ${locations.find(l => l.name === location)?.display_name || location}.`
+              ? `${sizes.length} tamanhos compatíveis de ${allSizes.length} em ${locations.find(l => l.name === location)?.display_name || location}.`
               : 'Disponibilidade varia por região.'
             }{' '}
             <a href="https://learn.microsoft.com/pt-br/azure/virtual-machines/sizes" target="_blank" rel="noreferrer" className="text-primary hover:underline">
@@ -250,7 +285,18 @@ const CreateAzureVMForm = forwardRef(function CreateAzureVMForm({ form, setForm 
             </select>
             {form.image_publisher && (
               <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-900/40 rounded-lg text-xs text-gray-500 dark:text-gray-400 font-mono space-y-0.5">
-                <div>Publisher: <span className="text-gray-700 dark:text-gray-200">{form.image_publisher}</span></div>
+                <div className="flex items-center gap-2">
+                  Publisher: <span className="text-gray-700 dark:text-gray-200">{form.image_publisher}</span>
+                  {requiredGen && (
+                    <span className={`ml-auto px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+                      requiredGen === 'V2'
+                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                        : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-400'
+                    }`}>
+                      Gen {requiredGen === 'V2' ? '2' : '1'}
+                    </span>
+                  )}
+                </div>
                 <div>Offer: <span className="text-gray-700 dark:text-gray-200">{form.image_offer}</span></div>
                 <div>SKU: <span className="text-gray-700 dark:text-gray-200">{form.image_sku}</span></div>
               </div>

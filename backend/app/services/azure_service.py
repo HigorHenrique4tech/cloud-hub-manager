@@ -111,14 +111,28 @@ class AzureService:
 
     def list_vm_sizes(self, location: str) -> Dict:
         try:
+            # Fetch HyperV generation capabilities from resource SKUs
+            gen_map: Dict[str, list] = {}
+            try:
+                for sku in self.compute_client.resource_skus.list(filter=f"location eq '{location}'"):
+                    if sku.resource_type != "virtualMachines":
+                        continue
+                    caps = {c.name: c.value for c in (sku.capabilities or [])}
+                    hv = caps.get("HyperVGenerations", "V1")
+                    gen_map[sku.name] = [g.strip() for g in hv.split(",")]
+            except Exception as sku_err:
+                logger.warning("Failed to fetch resource SKUs for generation info: %s", sku_err)
+
             sizes = []
             for size in self.compute_client.virtual_machine_sizes.list(location):
+                generations = gen_map.get(size.name, ["V1"])
                 sizes.append({
                     'name': size.name,
                     'vcpus': size.number_of_cores,
                     'memory_mb': size.memory_in_mb,
                     'max_data_disks': size.max_data_disk_count,
                     'os_disk_size_mb': size.os_disk_size_in_mb,
+                    'hyper_v_generations': generations,
                 })
             sizes.sort(key=lambda x: (x['vcpus'], x['memory_mb']))
             return {'success': True, 'sizes': sizes}

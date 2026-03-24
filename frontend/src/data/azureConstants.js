@@ -85,6 +85,7 @@ export const VM_OS_PRESETS = [
     offer: 'ubuntu-24_04-lts',
     sku: 'server',
     version: 'latest',
+    gen: 'V2',
   },
   {
     label: 'Ubuntu 22.04 LTS (Jammy)',
@@ -93,6 +94,16 @@ export const VM_OS_PRESETS = [
     offer: '0001-com-ubuntu-server-jammy',
     sku: '22_04-lts-gen2',
     version: 'latest',
+    gen: 'V2',
+  },
+  {
+    label: 'Ubuntu 22.04 LTS (Gen1)',
+    group: 'Linux — Ubuntu',
+    publisher: 'Canonical',
+    offer: '0001-com-ubuntu-server-jammy',
+    sku: '22_04-lts',
+    version: 'latest',
+    gen: 'V1',
   },
   {
     label: 'Ubuntu 20.04 LTS (Focal)',
@@ -101,6 +112,16 @@ export const VM_OS_PRESETS = [
     offer: '0001-com-ubuntu-server-focal',
     sku: '20_04-lts-gen2',
     version: 'latest',
+    gen: 'V2',
+  },
+  {
+    label: 'Ubuntu 20.04 LTS (Gen1)',
+    group: 'Linux — Ubuntu',
+    publisher: 'Canonical',
+    offer: '0001-com-ubuntu-server-focal',
+    sku: '20_04-lts',
+    version: 'latest',
+    gen: 'V1',
   },
   // Windows Server
   {
@@ -110,6 +131,16 @@ export const VM_OS_PRESETS = [
     offer: 'WindowsServer',
     sku: '2022-datacenter-g2',
     version: 'latest',
+    gen: 'V2',
+  },
+  {
+    label: 'Windows Server 2022 Datacenter (Gen1)',
+    group: 'Windows Server',
+    publisher: 'MicrosoftWindowsServer',
+    offer: 'WindowsServer',
+    sku: '2022-datacenter',
+    version: 'latest',
+    gen: 'V1',
   },
   {
     label: 'Windows Server 2022 Datacenter (Core)',
@@ -118,6 +149,7 @@ export const VM_OS_PRESETS = [
     offer: 'WindowsServer',
     sku: '2022-datacenter-core-g2',
     version: 'latest',
+    gen: 'V2',
   },
   {
     label: 'Windows Server 2019 Datacenter',
@@ -126,6 +158,16 @@ export const VM_OS_PRESETS = [
     offer: 'WindowsServer',
     sku: '2019-datacenter-gensecond',
     version: 'latest',
+    gen: 'V2',
+  },
+  {
+    label: 'Windows Server 2019 Datacenter (Gen1)',
+    group: 'Windows Server',
+    publisher: 'MicrosoftWindowsServer',
+    offer: 'WindowsServer',
+    sku: '2019-Datacenter',
+    version: 'latest',
+    gen: 'V1',
   },
   {
     label: 'Windows Server 2016 Datacenter',
@@ -134,6 +176,16 @@ export const VM_OS_PRESETS = [
     offer: 'WindowsServer',
     sku: '2016-datacenter-gensecond',
     version: 'latest',
+    gen: 'V2',
+  },
+  {
+    label: 'Windows Server 2016 Datacenter (Gen1)',
+    group: 'Windows Server',
+    publisher: 'MicrosoftWindowsServer',
+    offer: 'WindowsServer',
+    sku: '2016-Datacenter',
+    version: 'latest',
+    gen: 'V1',
   },
   // Red Hat
   {
@@ -143,6 +195,7 @@ export const VM_OS_PRESETS = [
     offer: 'RHEL',
     sku: '9_2',
     version: 'latest',
+    gen: 'V1',
   },
   {
     label: 'RHEL 8.9 (Red Hat Enterprise Linux)',
@@ -151,6 +204,7 @@ export const VM_OS_PRESETS = [
     offer: 'RHEL',
     sku: '8_9',
     version: 'latest',
+    gen: 'V1',
   },
   // Debian
   {
@@ -160,6 +214,7 @@ export const VM_OS_PRESETS = [
     offer: 'debian-12',
     sku: '12',
     version: 'latest',
+    gen: 'V1',
   },
   {
     label: 'Debian 11 (Bullseye)',
@@ -168,6 +223,7 @@ export const VM_OS_PRESETS = [
     offer: 'debian-11',
     sku: '11',
     version: 'latest',
+    gen: 'V1',
   },
   // SUSE
   {
@@ -176,6 +232,7 @@ export const VM_OS_PRESETS = [
     publisher: 'SUSE',
     offer: 'sles-15-sp5',
     sku: 'gen2',
+    gen: 'V2',
     version: 'latest',
   },
   // Custom
@@ -186,5 +243,6 @@ export const VM_OS_PRESETS = [
     offer: '',
     sku: '',
     version: 'latest',
+    gen: null,
   },
 ];
