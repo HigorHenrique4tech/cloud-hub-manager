@@ -66,7 +66,7 @@ async function fetchResources(provider, resource_type) {
   if (provider === 'gcp' && resource_type === 'instance') {
     // Dynamically import to avoid issues if not available
     try {
-      const gcpService = (await import('../../services/gcpservices')).default;
+      const gcpService = (await import('../../services/gcpService')).default;
       return gcpService.listInstances();
     } catch { return null; }
   }
