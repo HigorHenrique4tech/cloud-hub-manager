@@ -10,7 +10,8 @@
       "Bash(done)",
       "Bash(wc -l backend/app/api/*.py)",
       "Bash(wc -l backend/app/services/*.py)",
-      "Bash(python -c \"from app.services.m365 import M365Service, M365AuthError, GRAPH_V1; print\\(''Direct import OK''\\); from app.services.m365_service import M365Service, M365AuthError, GRAPH_V1; print\\(''Shim import OK''\\); print\\(''Methods:'', len\\([m for m in dir\\(M365Service\\) if not m.startswith\\(''__''\\)]\\)\\)\")"
+      "Bash(python -c \"from app.services.m365 import M365Service, M365AuthError, GRAPH_V1; print\\(''Direct import OK''\\); from app.services.m365_service import M365Service, M365AuthError, GRAPH_V1; print\\(''Shim import OK''\\); print\\(''Methods:'', len\\([m for m in dir\\(M365Service\\) if not m.startswith\\(''__''\\)]\\)\\)\")",
+      "WebSearch"
     ]
   }
 }

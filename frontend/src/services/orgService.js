@@ -98,6 +98,8 @@ export const orgService = {
     (await api.delete(`/orgs/${slug}/workspaces/${wsId}/accounts/${accountId}`)).data,
   testAccount: async (slug, wsId, accountId) =>
     (await api.post(`/orgs/${slug}/workspaces/${wsId}/accounts/${accountId}/test`)).data,
+  healthCheckAccounts: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/accounts/health-check`)).data,
 };
 
 export default orgService;

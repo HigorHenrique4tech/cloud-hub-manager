@@ -777,3 +777,39 @@ class BackgroundTask(Base):
 
     workspace = relationship("Workspace")
     user      = relationship("User", foreign_keys=[user_id])
+
+
+class WebhookEndpoint(Base):
+    __tablename__ = "webhook_endpoints"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name         = Column(String(200), nullable=False)
+    url          = Column(String(500), nullable=False)
+    events       = Column(JSONB, nullable=False, default=list)
+    secret       = Column(String(100), nullable=False)
+    is_active    = Column(Boolean, nullable=False, default=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace  = relationship("Workspace")
+    creator    = relationship("User", foreign_keys=[created_by])
+    deliveries = relationship("WebhookDelivery", back_populates="endpoint", cascade="all, delete-orphan")
+
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    webhook_id     = Column(UUID(as_uuid=True), ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type     = Column(String(100), nullable=False)
+    payload        = Column(JSONB, nullable=True)
+    status         = Column(String(20), nullable=False, default="pending")  # pending | delivered | failed | retrying
+    http_status    = Column(Integer, nullable=True)
+    response_body  = Column(Text, nullable=True)
+    attempt_count  = Column(Integer, nullable=False, default=1)
+    next_retry_at  = Column(DateTime, nullable=True)
+    delivered_at   = Column(DateTime, nullable=True)
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    endpoint = relationship("WebhookEndpoint", back_populates="deliveries")

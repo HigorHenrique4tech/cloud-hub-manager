@@ -1,10 +1,16 @@
-import { Plus, ArrowUpRight, TestTube2, CheckCircle2, XCircle, Trash2 } from 'lucide-react';
+import { useState } from 'react';
+import { useMutation } from '@tanstack/react-query';
+import { Plus, ArrowUpRight, TestTube2, CheckCircle2, XCircle, Trash2, Activity } from 'lucide-react';
 import { RoleGate } from '../common/PermissionGate';
 import GcpJsonImporter from './GcpJsonImporter';
+import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
+import orgService from '../../services/orgService';
 
 const AWS_FIELDS   = ['access_key_id', 'secret_access_key', 'region'];
 const AZURE_FIELDS = ['subscription_id', 'tenant_id', 'client_id', 'client_secret'];
 const GCP_FIELDS   = ['project_id', 'client_email', 'private_key_id', 'private_key'];
+
+const PROVIDER_LABEL = { aws: 'AWS', azure: 'Azure', gcp: 'GCP', m365: 'M365' };
 
 const CloudAccountsSection = ({
   accounts, isLoading,
@@ -16,6 +22,13 @@ const CloudAccountsSection = ({
   createMutation, deleteMutation, testMutation,
   setAccountToDelete, navigate,
 }) => {
+  const { currentOrg, currentWorkspace } = useOrgWorkspace();
+  const [healthResults, setHealthResults] = useState(null);
+
+  const healthMut = useMutation({
+    mutationFn: () => orgService.healthCheckAccounts(currentOrg.slug, currentWorkspace.id),
+    onSuccess: (data) => setHealthResults(data),
+  });
   const fields = provider === 'aws' ? AWS_FIELDS : provider === 'gcp' ? GCP_FIELDS : AZURE_FIELDS;
 
   return (
@@ -24,15 +37,69 @@ const CloudAccountsSection = ({
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
           Contas Cloud ({accounts.length})
         </h2>
-        <RoleGate allowed={['owner', 'admin']}>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
-          >
-            <Plus className="w-4 h-4" /> Adicionar
-          </button>
-        </RoleGate>
+        <div className="flex items-center gap-2">
+          {accounts.length > 0 && (
+            <button
+              onClick={() => healthMut.mutate()}
+              disabled={healthMut.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
+            >
+              <Activity className={`w-4 h-4 ${healthMut.isPending ? 'animate-pulse' : ''}`} />
+              {healthMut.isPending ? 'Testando...' : 'Testar Conexões'}
+            </button>
+          )}
+          <RoleGate allowed={['owner', 'admin']}>
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="flex items-center gap-1 px-3 py-1.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90"
+            >
+              <Plus className="w-4 h-4" /> Adicionar
+            </button>
+          </RoleGate>
+        </div>
       </div>
+
+      {/* Health Check Results */}
+      {healthResults && (
+        <div className="mb-4 p-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+              Diagnóstico de Conexões
+            </span>
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-green-600 dark:text-green-400 font-medium">
+                {healthResults.summary.healthy} saudáveis
+              </span>
+              {healthResults.summary.failed > 0 && (
+                <span className="text-red-600 dark:text-red-400 font-medium">
+                  {healthResults.summary.failed} com erro
+                </span>
+              )}
+              <button onClick={() => setHealthResults(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
+            </div>
+          </div>
+          <div className="space-y-1">
+            {healthResults.accounts.map((acc) => (
+              <div key={acc.id} className="flex items-center gap-2 text-sm">
+                {acc.status === 'healthy' ? (
+                  <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                ) : (
+                  <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                )}
+                <span className="font-medium text-gray-700 dark:text-gray-300">
+                  {PROVIDER_LABEL[acc.provider] || acc.provider}
+                </span>
+                <span className="text-gray-500 dark:text-gray-400">{acc.label}</span>
+                {acc.error && (
+                  <span className="text-xs text-red-500 dark:text-red-400 truncate max-w-xs" title={acc.error}>
+                    — {acc.error}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Add Account Form */}
       {showForm && (

@@ -30,11 +30,11 @@ const MiniTooltip = ({ active, payload, label }) => {
 const ServiceDrilldownDrawer = ({ service, startDate, endDate, totalCost, onClose }) => {
   const { provider, service: serviceName } = parseServiceKey(service);
 
-  const { data, isLoading, isError } = useQuery({
+  const { data, isLoading, isError, error } = useQuery({
     queryKey: ['cost-resources', provider, serviceName, startDate, endDate],
     queryFn: () => costService.getServiceResources(provider, serviceName, startDate, endDate),
     enabled: !!provider && !!serviceName,
-    retry: false,
+    retry: 1,
     staleTime: 300_000,
   });
 
@@ -107,16 +107,24 @@ const ServiceDrilldownDrawer = ({ service, startDate, endDate, totalCost, onClos
             )}
 
             {isError && (
-              <div className="flex items-center gap-2 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                <span>Erro ao carregar recursos. A conta pode não ter permissão para consultar custos por recurso.</span>
+              <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-300 space-y-1">
+                <div className="flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+                  <span className="font-medium">Erro ao carregar recursos</span>
+                </div>
+                <p className="text-xs text-red-600/80 dark:text-red-400/80 pl-6">
+                  {error?.response?.data?.detail || 'A conta pode não ter permissão para consultar custos por recurso. Verifique se o Service Principal tem a role "Cost Management Reader" na subscription.'}
+                </p>
               </div>
             )}
 
             {!isLoading && !isError && resources.length === 0 && (
               <div className="text-center py-8 text-gray-500 dark:text-gray-400">
                 <HardDrive className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                <p className="text-sm">Nenhum recurso detalhado disponível para este serviço.</p>
+                <p className="text-sm">Detalhamento por recurso não disponível para este serviço.</p>
+                {daily.length > 0 && (
+                  <p className="text-xs mt-1 text-gray-400 dark:text-gray-500">O gráfico de evolução diária está disponível acima.</p>
+                )}
               </div>
             )}
 

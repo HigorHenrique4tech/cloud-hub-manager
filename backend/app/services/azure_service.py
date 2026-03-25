@@ -732,70 +732,119 @@ class AzureService:
             logger.error(f"Azure cost error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
+    def _parse_cost_rows(self, rows, columns) -> Dict:
+        """Parse Cost Management query rows into totals, resource map, daily map, and currency."""
+        cost_candidates = ['PreTaxCost', 'Cost', 'CostUSD', 'BillingCurrencyTotalCost']
+        cost_idx = next((columns.index(c) for c in cost_candidates if c in columns), 0)
+        date_idx = next((columns.index(c) for c in ['UsageDate', 'BillingMonth', 'Date'] if c in columns), None)
+        res_idx = columns.index('ResourceId') if 'ResourceId' in columns else None
+        currency_col_names = ['BillingCurrency', 'Currency']
+        currency_idx = next((columns.index(c) for c in currency_col_names if c in columns), None)
+        cost_col_name = columns[cost_idx] if cost_idx < len(columns) else 'PreTaxCost'
+        detected_currency = 'USD' if cost_col_name == 'CostUSD' else None
+
+        total = 0.0
+        resource_map: Dict[str, float] = {}
+        daily_map: Dict[str, float] = {}
+        for row in rows:
+            amount = float(row[cost_idx]) if cost_idx < len(row) else 0.0
+            total += amount
+            if currency_idx is not None and currency_idx < len(row) and not detected_currency:
+                detected_currency = str(row[currency_idx])
+            if res_idx is not None and res_idx < len(row):
+                res_id = str(row[res_idx])
+                resource_map[res_id] = resource_map.get(res_id, 0.0) + amount
+            if date_idx is not None and date_idx < len(row):
+                raw_date = str(int(row[date_idx])) if isinstance(row[date_idx], float) else str(row[date_idx])
+                if len(raw_date) == 8:
+                    date_str = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+                elif len(raw_date) == 6:
+                    date_str = f"{raw_date[:4]}-{raw_date[4:6]}-01"
+                else:
+                    date_str = raw_date[:10]
+                daily_map[date_str] = daily_map.get(date_str, 0.0) + amount
+
+        if not detected_currency:
+            detected_currency = 'BRL'
+        return {
+            'total': total,
+            'resource_map': resource_map,
+            'daily_map': daily_map,
+            'currency': detected_currency,
+        }
+
     def get_cost_by_resource(self, service_name: str, start_date: str, end_date: str) -> Dict:
-        """Get cost breakdown by resource for a specific Azure service."""
+        """Get cost breakdown by resource for a specific Azure service.
+
+        Tries grouping by ResourceId first. If the API rejects it (some services
+        don't support resource-level breakdown), falls back to daily-only query
+        so the user still sees the cost trend and total.
+        """
         try:
             cost_client = CostManagementClient(self.credential)
             scope = f"/subscriptions/{self.subscription_id}"
             dt_start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
             dt_end = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
-            query = QueryDefinition(
-                type="Usage",
-                timeframe="Custom",
-                time_period=QueryTimePeriod(from_property=dt_start, to=dt_end),
-                dataset=QueryDataset(
-                    granularity="Daily",
-                    aggregation={"totalCost": QueryAggregation(name="PreTaxCost", function="Sum")},
-                    grouping=[QueryGrouping(type="Dimension", name="ResourceId")],
-                    filter=QueryFilter(
-                        dimensions=QueryComparisonExpression(name="ServiceName", operator="In", values=[service_name]),
-                    ),
-                ),
+
+            svc_filter = QueryFilter(
+                dimensions=QueryComparisonExpression(name="ServiceName", operator="In", values=[service_name]),
             )
-            result = cost_client.query.usage(scope=scope, parameters=query)
-            rows = result.rows or []
-            columns = [col.name for col in (result.columns or [])]
-            cost_candidates = ['PreTaxCost', 'Cost', 'CostUSD', 'BillingCurrencyTotalCost']
-            cost_idx = next((columns.index(c) for c in cost_candidates if c in columns), 0)
-            date_idx = next((columns.index(c) for c in ['UsageDate', 'BillingMonth', 'Date'] if c in columns), None)
-            res_idx = columns.index('ResourceId') if 'ResourceId' in columns else None
-            currency_col_names = ['BillingCurrency', 'Currency']
-            currency_idx = next((columns.index(c) for c in currency_col_names if c in columns), None)
-            cost_col_name = columns[cost_idx] if cost_idx < len(columns) else 'PreTaxCost'
-            detected_currency = 'USD' if cost_col_name == 'CostUSD' else None
 
-            total = 0.0
-            resource_map: Dict[str, float] = {}
-            daily_map: Dict[str, float] = {}
-            for row in rows:
-                amount = float(row[cost_idx]) if cost_idx < len(row) else 0.0
-                total += amount
-                if currency_idx is not None and currency_idx < len(row) and not detected_currency:
-                    detected_currency = str(row[currency_idx])
-                res_id = str(row[res_idx]) if res_idx is not None and res_idx < len(row) else 'Other'
-                resource_map[res_id] = resource_map.get(res_id, 0.0) + amount
-                if date_idx is not None and date_idx < len(row):
-                    raw_date = str(int(row[date_idx])) if isinstance(row[date_idx], float) else str(row[date_idx])
-                    if len(raw_date) == 8:
-                        date_str = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
-                    elif len(raw_date) == 6:
-                        date_str = f"{raw_date[:4]}-{raw_date[4:6]}-01"
-                    else:
-                        date_str = raw_date[:10]
-                    daily_map[date_str] = daily_map.get(date_str, 0.0) + amount
+            # ── Attempt 1: group by ResourceId ────────────────────────────────
+            try:
+                query = QueryDefinition(
+                    type="Usage",
+                    timeframe="Custom",
+                    time_period=QueryTimePeriod(from_property=dt_start, to=dt_end),
+                    dataset=QueryDataset(
+                        granularity="Daily",
+                        aggregation={"totalCost": QueryAggregation(name="PreTaxCost", function="Sum")},
+                        grouping=[QueryGrouping(type="Dimension", name="ResourceId")],
+                        filter=svc_filter,
+                    ),
+                )
+                result = cost_client.query.usage(scope=scope, parameters=query)
+                rows = result.rows or []
+                columns = [col.name for col in (result.columns or [])]
+                parsed = self._parse_cost_rows(rows, columns)
+            except Exception as e:
+                logger.warning("Azure ResourceId grouping failed for '%s', falling back to daily-only: %s", service_name, e)
+                parsed = None
 
-            if not detected_currency:
-                detected_currency = 'BRL'
+            # ── Attempt 2 (fallback): no resource grouping, daily only ────────
+            if parsed is None or not parsed['resource_map']:
+                try:
+                    query_daily = QueryDefinition(
+                        type="Usage",
+                        timeframe="Custom",
+                        time_period=QueryTimePeriod(from_property=dt_start, to=dt_end),
+                        dataset=QueryDataset(
+                            granularity="Daily",
+                            aggregation={"totalCost": QueryAggregation(name="PreTaxCost", function="Sum")},
+                            filter=svc_filter,
+                        ),
+                    )
+                    result2 = cost_client.query.usage(scope=scope, parameters=query_daily)
+                    rows2 = result2.rows or []
+                    columns2 = [col.name for col in (result2.columns or [])]
+                    parsed = self._parse_cost_rows(rows2, columns2)
+                except Exception as e2:
+                    logger.error("Azure daily-only cost query also failed for '%s': %s", service_name, e2)
+                    err_msg = str(e2)
+                    if "AuthorizationFailed" in err_msg or "403" in err_msg:
+                        return {'success': False, 'error': 'Sem permissão para consultar custos. Verifique se o Service Principal tem a role "Cost Management Reader".'}
+                    return {'success': False, 'error': f'Erro ao consultar custos do serviço "{service_name}": {err_msg}'}
+
             resources = sorted(
-                [{'id': k, 'name': k.split('/')[-1] if '/' in k else k, 'amount': round(v, 4)} for k, v in resource_map.items()],
+                [{'id': k, 'name': k.split('/')[-1] if '/' in k else k, 'amount': round(v, 4)} for k, v in parsed['resource_map'].items()],
                 key=lambda x: x['amount'], reverse=True,
             )
-            daily = [{'date': k, 'total': round(v, 4)} for k, v in sorted(daily_map.items())]
+            daily = [{'date': k, 'total': round(v, 4)} for k, v in sorted(parsed['daily_map'].items())]
             return {
                 'success': True,
                 'service': service_name,
-                'total': round(total, 4),
-                'currency': detected_currency,
+                'total': round(parsed['total'], 4),
+                'currency': parsed['currency'],
                 'resources': resources,
                 'daily': daily,
             }

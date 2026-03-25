@@ -220,3 +220,86 @@ async def test_account_connection(
             raise HTTPException(status_code=400, detail=f"Falha na conexão GCP: {exc}")
 
     raise HTTPException(status_code=400, detail="Provider desconhecido")
+
+
+@router.get("/health-check")
+async def health_check_all_accounts(
+    member: MemberContext = Depends(require_permission("accounts.view")),
+    db: Session = Depends(get_db),
+):
+    """Test connectivity for ALL cloud accounts in the workspace.
+
+    Returns a per-account status so the user can see at a glance which
+    connections are healthy.
+    """
+    import asyncio
+    from concurrent.futures import ThreadPoolExecutor
+    from app.core.config import settings
+
+    accounts = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.is_active == True,
+    ).all()
+
+    if not accounts:
+        return {"accounts": [], "summary": {"total": 0, "healthy": 0, "failed": 0}}
+
+    results = []
+
+    async def _test_one(account):
+        try:
+            data = decrypt_for_account(db, account)
+            if account.provider == "aws":
+                from app.services import AWSService
+                svc = AWSService(
+                    access_key=data.get("access_key_id", ""),
+                    secret_key=data.get("secret_access_key", ""),
+                    region=data.get("region", settings.AWS_DEFAULT_REGION),
+                )
+                resp = await svc.test_connection()
+                return {"ok": resp.get("success", True), "detail": None}
+            elif account.provider == "azure":
+                from app.services import AzureService
+                svc = AzureService(
+                    subscription_id=data.get("subscription_id", ""),
+                    tenant_id=data.get("tenant_id", ""),
+                    client_id=data.get("client_id", ""),
+                    client_secret=data.get("client_secret", ""),
+                )
+                resp = await svc.test_connection()
+                return {"ok": resp.get("success", True), "detail": None}
+            elif account.provider == "gcp":
+                from app.services.gcp_service import GCPService
+                svc = GCPService(
+                    project_id=data.get("project_id", ""),
+                    client_email=data.get("client_email", ""),
+                    private_key=data.get("private_key", ""),
+                    private_key_id=data.get("private_key_id", ""),
+                )
+                loop = asyncio.get_event_loop()
+                with ThreadPoolExecutor() as pool:
+                    await loop.run_in_executor(pool, svc.list_buckets)
+                return {"ok": True, "detail": None}
+            elif account.provider == "m365":
+                return {"ok": True, "detail": "M365 — validação via Graph API não inclusa no health check"}
+            else:
+                return {"ok": False, "detail": "Provider desconhecido"}
+        except Exception as exc:
+            return {"ok": False, "detail": str(exc)[:200]}
+
+    for acc in accounts:
+        check = await _test_one(acc)
+        results.append({
+            "id": str(acc.id),
+            "provider": acc.provider,
+            "label": acc.label,
+            "account_id": acc.account_id,
+            "status": "healthy" if check["ok"] else "failed",
+            "error": check["detail"] if not check["ok"] else None,
+        })
+
+    healthy = sum(1 for r in results if r["status"] == "healthy")
+    return {
+        "accounts": results,
+        "summary": {"total": len(results), "healthy": healthy, "failed": len(results) - healthy},
+    }

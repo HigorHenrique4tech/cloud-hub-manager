@@ -20,7 +20,7 @@ async def google_get_user_info(code: str, redirect_uri: str) -> dict:
     Returns: {"email", "name", "oauth_id", "avatar_url"}
     Raises: httpx.HTTPStatusError on failure.
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         # 1. Exchange code for access token
         token_resp = await client.post(GOOGLE_TOKEN_URL, data={
             "code": code,
@@ -53,7 +53,7 @@ async def github_get_user_info(code: str) -> dict:
     Returns: {"email", "name", "oauth_id", "avatar_url"}
     Raises: httpx.HTTPStatusError on failure.
     """
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         # 1. Exchange code for access token
         token_resp = await client.post(GITHUB_TOKEN_URL, json={
             "client_id": settings.GITHUB_CLIENT_ID,
@@ -103,7 +103,7 @@ async def microsoft_get_user_info(code: str, redirect_uri: str) -> dict:
     """
     token_url = f"https://login.microsoftonline.com/{settings.MICROSOFT_TENANT_ID}/oauth2/v2.0/token"
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=30) as client:
         # 1. Exchange code for access token
         token_resp = await client.post(token_url, data={
             "client_id": settings.MICROSOFT_CLIENT_ID,

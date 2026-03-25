@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { PackageSearch, Download, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
 import Layout from '../components/layout/layout';
@@ -50,6 +50,8 @@ const Inventory = () => {
   const [page, setPage] = useState(1);
 
   const [forceRefresh, setForceRefresh] = useState(false);
+  const refreshTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(refreshTimerRef.current), []);
 
   const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['inventory', provider, resourceType, page, forceRefresh],
@@ -63,8 +65,8 @@ const Inventory = () => {
 
   const handleRefresh = () => {
     setForceRefresh(true);
-    // Reset flag after query fires so subsequent navigations use cache
-    setTimeout(() => setForceRefresh(false), 500);
+    clearTimeout(refreshTimerRef.current);
+    refreshTimerRef.current = setTimeout(() => setForceRefresh(false), 500);
   };
 
   const items = data?.items ?? [];

@@ -19,6 +19,7 @@ import AlertsWidget from '../components/dashboard/widgets/AlertsWidget';
 import SchedulesWidget from '../components/dashboard/widgets/SchedulesWidget';
 import ActivityWidget from '../components/dashboard/widgets/ActivityWidget';
 import MspHealthWidget from '../components/dashboard/widgets/MspHealthWidget';
+import WidgetErrorBoundary from '../components/common/WidgetErrorBoundary';
 import {
   DashboardConfigProvider,
   useDashboardConfig,
@@ -30,6 +31,12 @@ import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import { useAuth } from '../contexts/AuthContext';
 
 /* ── Widget registry ───────────────────────────────────────── */
+const WIDGET_NAMES = {
+  stats: 'Estatísticas', cost: 'Custos', finops: 'FinOps',
+  alerts: 'Alertas', schedules: 'Agendamentos', activity: 'Atividade',
+  msp_health: 'Saúde MSP',
+};
+
 const WIDGET_COMPONENTS = {
   stats:     <StatsWidget />,
   cost:      <CostWidget />,
@@ -170,7 +177,9 @@ const DashboardInner = () => {
           <div className="space-y-5">
             {visibleWidgets.map((w) => (
               <SortableWidget key={w.id} id={w.id}>
-                {WIDGET_COMPONENTS[w.id]}
+                <WidgetErrorBoundary name={WIDGET_NAMES[w.id] || w.id}>
+                  {WIDGET_COMPONENTS[w.id]}
+                </WidgetErrorBoundary>
               </SortableWidget>
             ))}
           </div>

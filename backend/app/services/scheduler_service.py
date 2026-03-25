@@ -12,6 +12,7 @@ from typing import Optional
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.jobstores.sqlalchemy import SQLAlchemyJobStore
 from apscheduler.triggers.cron import CronTrigger
+from apscheduler.triggers.interval import IntervalTrigger
 
 from app.core.config import settings
 
@@ -1049,6 +1050,33 @@ def load_report_schedules(db) -> int:
         logger.info("Daily trial reminder job registered")
     except Exception as exc:
         logger.error(f"Failed to register trial_reminder_daily job: {exc}")
+
+    # Register webhook retry job (every 30 seconds)
+    try:
+        from app.services.webhook_service import retry_failed_deliveries as _wh_retry
+
+        def _webhook_retry_job():
+            from app.database import SessionLocal
+            _db = SessionLocal()
+            try:
+                retried = _wh_retry(_db)
+                if retried:
+                    logger.info(f"Webhook retry: {retried} deliveries retried")
+            except Exception as e:
+                logger.error(f"Webhook retry job failed: {e}")
+                _db.rollback()
+            finally:
+                _db.close()
+
+        scheduler.add_job(
+            _webhook_retry_job,
+            IntervalTrigger(seconds=30),
+            id="webhook_retry",
+            replace_existing=True,
+        )
+        logger.info("Webhook retry job registered (every 30s)")
+    except Exception as exc:
+        logger.error(f"Failed to register webhook_retry job: {exc}")
 
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count

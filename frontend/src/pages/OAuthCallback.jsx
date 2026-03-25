@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
@@ -8,13 +8,19 @@ export default function OAuthCallback({ provider }) {
   const { loginWithTokens } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const calledRef = useRef(false);
 
   useEffect(() => {
+    if (calledRef.current) return;
+    calledRef.current = true;
+
     const code = searchParams.get('code');
     if (!code) {
       setError('Código de autorização não encontrado.');
       return;
     }
+
+    let cancelled = false;
 
     (async () => {
       try {
@@ -28,6 +34,7 @@ export default function OAuthCallback({ provider }) {
         } else {
           data = await authService.githubCallback(code);
         }
+        if (cancelled) return;
         loginWithTokens(data);
         const oauthRedirect = sessionStorage.getItem('oauth_redirect');
         if (oauthRedirect === 'desk') {
@@ -37,10 +44,14 @@ export default function OAuthCallback({ provider }) {
         }
         navigate('/', { replace: true });
       } catch (err) {
-        setError(err.response?.data?.detail || `Falha na autenticação com ${provider}.`);
+        if (!cancelled) {
+          setError(err.response?.data?.detail || `Falha na autenticação com ${provider}.`);
+        }
       }
     })();
-  }, []);
+
+    return () => { cancelled = true; };
+  }, [provider, searchParams, loginWithTokens, navigate]);
 
   if (error) {
     return (

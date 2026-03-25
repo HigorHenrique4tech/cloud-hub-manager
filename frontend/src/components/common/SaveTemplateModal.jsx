@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, BookmarkPlus, Check } from 'lucide-react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import templateService from '../../services/templateService';
@@ -17,6 +17,8 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [saved, setSaved] = useState(false);
+  const closeTimerRef = useRef(null);
+  useEffect(() => () => clearTimeout(closeTimerRef.current), []);
 
   const saveMut = useMutation({
     mutationFn: () =>
@@ -30,7 +32,7 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['templates', provider, resourceType] });
       setSaved(true);
-      setTimeout(onClose, 1200);
+      closeTimerRef.current = setTimeout(onClose, 1200);
     },
   });
 

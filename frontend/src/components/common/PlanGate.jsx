@@ -21,7 +21,7 @@ const PlanGate = ({ minPlan = 'pro', feature = '', children, inline = false }) =
 
   if (inline) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-slate-400 cursor-not-allowed select-none">
+      <span className="inline-flex items-center gap-1 text-xs text-gray-400 dark:text-slate-400 cursor-not-allowed select-none">
         <Lock size={12} />
         {minPlan.charAt(0).toUpperCase() + minPlan.slice(1)}
       </span>
@@ -29,11 +29,11 @@ const PlanGate = ({ minPlan = 'pro', feature = '', children, inline = false }) =
   }
 
   return (
-    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-slate-700 bg-slate-900/40 p-6 text-center">
-      <Lock size={22} className="text-slate-500" />
-      <p className="text-sm font-medium text-slate-300">
+    <div className="flex flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-gray-300 dark:border-slate-700 bg-gray-50 dark:bg-slate-900/40 p-6 text-center">
+      <Lock size={22} className="text-gray-400 dark:text-slate-500" />
+      <p className="text-sm font-medium text-gray-600 dark:text-slate-300">
         {feature || 'Este recurso'} requer o plano{' '}
-        <span className="font-semibold text-white capitalize">{minPlan}</span>
+        <span className="font-semibold text-gray-900 dark:text-white capitalize">{minPlan}</span>
       </p>
       <a
         href="/billing"

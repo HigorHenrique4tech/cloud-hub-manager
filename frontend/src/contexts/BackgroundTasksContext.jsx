@@ -32,11 +32,19 @@ export function BackgroundTasksProvider({ children }) {
     return `/orgs/${currentOrg.slug}/workspaces/${currentWorkspace.id}/tasks/`;
   }, [currentOrg?.slug, currentWorkspace?.id]);
 
+  const abortRef = useRef(null);
+
   const fetchTasks = useCallback(async () => {
     const url = wsUrl();
     if (!url || !user || !isVisible) return;
+
+    // Cancel previous in-flight request to avoid race conditions
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     try {
-      const { data } = await api.get(url);
+      const { data } = await api.get(url, { signal: controller.signal });
       failCountRef.current = 0; // reset on success
 
       setTasks(data);
@@ -65,7 +73,8 @@ export function BackgroundTasksProvider({ children }) {
       const next = {};
       data.forEach(t => { next[t.id] = t.status; });
       prevStatusRef.current = next;
-    } catch {
+    } catch (err) {
+      if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
       failCountRef.current += 1;
       // After repeated failures, drop optimistic tasks older than STALE_AFTER_MS
       if (failCountRef.current >= MAX_FAIL_BEFORE_STALE) {
@@ -86,7 +95,10 @@ export function BackgroundTasksProvider({ children }) {
     }
     fetchTasks();
     intervalRef.current = setInterval(fetchTasks, POLL_INTERVAL);
-    return () => clearInterval(intervalRef.current);
+    return () => {
+      clearInterval(intervalRef.current);
+      abortRef.current?.abort();
+    };
   }, [fetchTasks, user, currentWorkspace]);
 
   const dismissNotification = useCallback((id) => {

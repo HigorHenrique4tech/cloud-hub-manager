@@ -82,7 +82,7 @@ const FinOps = () => {
       } catch { clearInterval(interval); }
     }, 2500);
     return () => clearInterval(interval);
-  }, [scanJobId, scanJobStatus?.status]);
+  }, [scanJobId, scanJobStatus?.status, qc]);
 
   /* ── Queries ── */
   const summaryQ = useQuery({
@@ -208,8 +208,7 @@ const FinOps = () => {
 
   useEffect(() => {
     if (activeTab === 'budgets' && isPro) evaluateBudgets.mutate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab]);
+  }, [activeTab, isPro]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* ── Handlers ── */
   const handleApply   = (id) => { setApplyingId(id);   applyMut.mutate(id); };

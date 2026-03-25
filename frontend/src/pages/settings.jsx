@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Save, Eye, EyeOff, Check, AlertCircle, User as UserIcon, Lock, ShieldCheck } from 'lucide-react';
@@ -13,6 +13,16 @@ const Settings = () => {
   const { user, setUser, logout } = useAuth();
   const navigate = useNavigate();
 
+  // ── Timers cleanup ────────────────────────────────────────
+  const profileTimerRef = useRef(null);
+  const pwdTimerRef = useRef(null);
+  useEffect(() => {
+    return () => {
+      clearTimeout(profileTimerRef.current);
+      clearTimeout(pwdTimerRef.current);
+    };
+  }, []);
+
   // ── Profile form state ─────────────────────────────────────
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -23,7 +33,8 @@ const Settings = () => {
     onSuccess: (updatedUser) => {
       setUser(updatedUser);
       setProfileMsg({ type: 'success', text: 'Perfil atualizado com sucesso!' });
-      setTimeout(() => setProfileMsg(null), 4000);
+      clearTimeout(profileTimerRef.current);
+      profileTimerRef.current = setTimeout(() => setProfileMsg(null), 4000);
     },
     onError: (err) => {
       const detail = err.response?.data?.detail || 'Erro ao atualizar perfil';
@@ -57,7 +68,8 @@ const Settings = () => {
       setCurrentPwd('');
       setNewPwd('');
       setConfirmPwd('');
-      setTimeout(() => setPwdMsg(null), 4000);
+      clearTimeout(pwdTimerRef.current);
+      pwdTimerRef.current = setTimeout(() => setPwdMsg(null), 4000);
     },
     onError: (err) => {
       const detail = err.response?.data?.detail || 'Erro ao alterar senha';
