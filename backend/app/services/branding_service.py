@@ -82,14 +82,36 @@ def validate_color(hex_str: str) -> bool:
     return bool(_HEX_RE.match(hex_str))
 
 
-def validate_logo(base64_data: str, max_kb: int = 300) -> bool:
-    """Validate base64 logo data: decodes cleanly and within size limit."""
+def _svg_contains_scripts(raw_bytes: bytes) -> bool:
+    """Check if SVG content contains potentially dangerous scripts or event handlers."""
+    try:
+        content = raw_bytes.decode("utf-8", errors="ignore").lower()
+    except Exception:
+        return True  # can't decode = suspicious
+
+    dangerous_patterns = [
+        "<script", "javascript:", "onerror", "onload", "onclick", "onmouseover",
+        "onfocus", "onblur", "oninput", "onchange", "onsubmit", "onanimationend",
+        "eval(", "expression(", "url(data:", "xlink:href=\"javascript",
+        "xlink:href='javascript", "data:text/html", "foreignobject",
+    ]
+    return any(p in content for p in dangerous_patterns)
+
+
+def validate_logo(base64_data: str, max_kb: int = 300, mime: str = None) -> bool:
+    """Validate base64 logo data: decodes cleanly, within size limit, and safe content."""
     try:
         # Strip data URI prefix if present
         if "," in base64_data:
             base64_data = base64_data.split(",", 1)[1]
         raw = base64.b64decode(base64_data)
-        return len(raw) <= max_kb * 1024
+        if len(raw) > max_kb * 1024:
+            return False
+        # Extra check for SVG: reject if it contains scripts
+        if mime == "image/svg+xml" and _svg_contains_scripts(raw):
+            logger.warning("SVG upload rejected: contains script or event handler")
+            return False
+        return True
     except Exception:
         return False
 

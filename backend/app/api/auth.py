@@ -125,7 +125,7 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Email já cadastrado"
+            detail="Não foi possível criar a conta. Verifique os dados e tente novamente."
         )
 
     verification_token = secrets.token_urlsafe(32)

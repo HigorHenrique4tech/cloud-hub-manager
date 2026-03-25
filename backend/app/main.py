@@ -63,6 +63,20 @@ def _custom_rate_limit_handler(request: Request, exc: RateLimitExceeded):
 app.add_exception_handler(RateLimitExceeded, _custom_rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+# ── Request body size limit (2 MB default, protects against large payloads) ──
+MAX_BODY_SIZE = 2 * 1024 * 1024  # 2 MB
+
+@app.middleware("http")
+async def limit_request_body(request: Request, call_next):
+    content_length = request.headers.get("content-length")
+    if content_length and int(content_length) > MAX_BODY_SIZE:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=413,
+            content={"detail": "Payload muito grande. Limite: 2 MB."},
+        )
+    return await call_next(request)
+
 
 # ── Inject user into request.state for per-user rate limiting ────────────────
 @app.middleware("http")

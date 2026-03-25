@@ -6,13 +6,14 @@ import uuid as _uuid_lib
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File
+from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, Request
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session, joinedload
 from pydantic import BaseModel, EmailStr
 
 from app.database import get_db
+from app.core.limiter import limiter
 from app.models.db_models import User, Organization, OrganizationMember, EnterpriseLead, BillingRecord, BillingStatusHistory, BillingConfig, ActivityLog, Workspace, CloudAccount
 from app.core.dependencies import get_current_user, get_current_admin
 from app.services.log_service import log_activity
@@ -52,7 +53,8 @@ public_contact_router = APIRouter(prefix="/contact", tags=["Public"])
 
 
 @public_contact_router.post("", status_code=201)
-def public_contact(payload: LeadCreate, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+def public_contact(request: Request, payload: LeadCreate, db: Session = Depends(get_db)):
     """Public endpoint for landing page contact form. No auth required."""
     lead = EnterpriseLead(
         user_id=None,

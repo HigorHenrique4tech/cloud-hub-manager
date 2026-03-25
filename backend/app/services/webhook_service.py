@@ -96,7 +96,7 @@ def _deliver(db, ep, event_type: str, payload_dict: dict) -> None:
                 "User-Agent": "CloudAtlas-Webhooks/1.0",
             },
             timeout=10.0,
-            follow_redirects=True,
+            follow_redirects=False,
         )
         delivery.status = "delivered" if resp.is_success else "failed"
         delivery.http_status = resp.status_code

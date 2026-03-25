@@ -34,15 +34,46 @@ GLOBAL = "120/minute"
 
 
 # ── Key functions ────────────────────────────────────────────────────────────
+def _is_valid_ip(ip: str) -> bool:
+    """Basic validation that a string looks like an IPv4/IPv6 address."""
+    import ipaddress
+    try:
+        ipaddress.ip_address(ip)
+        return True
+    except ValueError:
+        return False
+
+
+def _is_private_ip(ip: str) -> bool:
+    """Check if IP is a private/internal address (trusted proxy candidate)."""
+    import ipaddress
+    try:
+        return ipaddress.ip_address(ip).is_private
+    except ValueError:
+        return False
+
+
 def get_real_ip(request: Request) -> str:
-    """Extract the real client IP, respecting reverse-proxy headers."""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip.strip()
-    return request.client.host if request.client else "unknown"
+    """Extract the real client IP, respecting reverse-proxy headers.
+
+    Only trusts X-Forwarded-For if the direct client is a private IP (i.e., a known
+    reverse proxy like nginx/traefik). This prevents IP spoofing attacks where an
+    external client injects a fake X-Forwarded-For header to bypass rate limits.
+    """
+    client_ip = request.client.host if request.client else "unknown"
+
+    # Only trust proxy headers if the direct connection is from a private/trusted IP
+    if _is_private_ip(client_ip):
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            candidate = forwarded.split(",")[0].strip()
+            if _is_valid_ip(candidate):
+                return candidate
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip and _is_valid_ip(real_ip.strip()):
+            return real_ip.strip()
+
+    return client_ip
 
 
 def get_user_or_ip(request: Request) -> str:

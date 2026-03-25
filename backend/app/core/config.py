@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
-    DEBUG: bool = True
+    DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
     # CORS

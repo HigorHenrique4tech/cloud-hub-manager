@@ -109,20 +109,17 @@ async def list_orgs(
     db: Session = Depends(get_db),
 ):
     """List organizations the authenticated user belongs to."""
-    memberships = (
-        db.query(OrganizationMember)
+    rows = (
+        db.query(OrganizationMember, Organization)
+        .join(Organization, OrganizationMember.organization_id == Organization.id)
         .filter(
             OrganizationMember.user_id == current_user.id,
             OrganizationMember.is_active == True,
+            Organization.is_active == True,
         )
         .all()
     )
-    result = []
-    for m in memberships:
-        org = db.query(Organization).filter(Organization.id == m.organization_id, Organization.is_active == True).first()
-        if org:
-            result.append(_org_to_dict(org, role=m.role, db=db))
-    return {"organizations": result}
+    return {"organizations": [_org_to_dict(org, role=m.role, db=db) for m, org in rows]}
 
 
 @router.post("", status_code=201)
@@ -607,7 +604,8 @@ async def list_pending_invitations(
 ):
     """List pending (unaccepted) invitations for this organization."""
     invites = (
-        db.query(PendingInvitation)
+        db.query(PendingInvitation, User)
+        .outerjoin(User, PendingInvitation.invited_by == User.id)
         .filter(
             PendingInvitation.organization_id == member.organization_id,
             PendingInvitation.accepted_at == None,
@@ -617,8 +615,7 @@ async def list_pending_invitations(
     )
     now = datetime.utcnow()
     result = []
-    for inv in invites:
-        inviter = db.query(User).filter(User.id == inv.invited_by).first() if inv.invited_by else None
+    for inv, inviter in invites:
         result.append({
             "id": str(inv.id),
             "email": inv.email,
@@ -653,26 +650,122 @@ async def cancel_invitation(
 # ── Managed Organizations (MSP / Enterprise) ─────────────────────────────────
 
 
-def _managed_org_to_dict(org: Organization, db: Session) -> dict:
-    """Return org dict enriched with usage counts for the managed-orgs panel."""
+def _build_managed_org_stats(db: Session, org_ids: list) -> dict:
+    """Pre-fetch all stats for a batch of org IDs in bulk queries (avoids N+1)."""
     from app.models.db_models import Workspace, CloudAccount, OrganizationMember, User, ActivityLog
-    ws_count = db.query(Workspace).filter(
-        Workspace.organization_id == org.id,
-        Workspace.is_active == True,
-    ).count()
 
-    # Cloud accounts — also gather providers for health/icon display
-    cloud_accounts = (
-        db.query(CloudAccount)
+    if not org_ids:
+        return {}
+
+    # Workspace counts per org
+    ws_counts = dict(
+        db.query(Workspace.organization_id, sa_func.count(Workspace.id))
+        .filter(Workspace.organization_id.in_(org_ids), Workspace.is_active == True)
+        .group_by(Workspace.organization_id)
+        .all()
+    )
+
+    # Cloud account counts + providers per org
+    acc_rows = (
+        db.query(
+            Workspace.organization_id,
+            sa_func.count(CloudAccount.id),
+            sa_func.array_agg(sa_func.distinct(CloudAccount.provider)),
+        )
         .join(Workspace, CloudAccount.workspace_id == Workspace.id)
+        .filter(Workspace.organization_id.in_(org_ids), CloudAccount.is_active == True)
+        .group_by(Workspace.organization_id)
+        .all()
+    )
+    acc_counts = {r[0]: r[1] for r in acc_rows}
+    providers_map = {r[0]: sorted([p for p in (r[2] or []) if p]) for r in acc_rows}
+
+    # Member counts per org
+    mem_counts = dict(
+        db.query(OrganizationMember.organization_id, sa_func.count(OrganizationMember.id))
+        .filter(OrganizationMember.organization_id.in_(org_ids), OrganizationMember.is_active == True)
+        .group_by(OrganizationMember.organization_id)
+        .all()
+    )
+
+    # Owners (one per org)
+    from sqlalchemy.orm import aliased
+    owner_rows = (
+        db.query(OrganizationMember.organization_id, User.name, User.email, User.avatar_url)
+        .join(User, OrganizationMember.user_id == User.id)
         .filter(
-            Workspace.organization_id == org.id,
-            CloudAccount.is_active == True,
+            OrganizationMember.organization_id.in_(org_ids),
+            OrganizationMember.role == "owner",
+            OrganizationMember.is_active == True,
         )
         .all()
     )
-    acc_count = len(cloud_accounts)
-    providers = sorted(set(a.provider for a in cloud_accounts))
+    owners = {r[0]: {"name": r[1], "email": r[2], "avatar_url": r[3]} for r in owner_rows}
+
+    # Last activity per org — use a lateral subquery approach
+    from sqlalchemy import literal_column
+    activity_rows = (
+        db.query(ActivityLog.organization_id, sa_func.max(ActivityLog.created_at))
+        .filter(ActivityLog.organization_id.in_(org_ids))
+        .group_by(ActivityLog.organization_id)
+        .all()
+    )
+    last_activity = {r[0]: r[1] for r in activity_rows}
+
+    # Build result dict keyed by org_id
+    result = {}
+    for oid in org_ids:
+        acc_count = acc_counts.get(oid, 0)
+        result[oid] = {
+            "ws_count": ws_counts.get(oid, 0),
+            "acc_count": acc_count,
+            "providers": providers_map.get(oid, []),
+            "mem_count": mem_counts.get(oid, 0),
+            "owner": owners.get(oid),
+            "last_activity_at": last_activity.get(oid),
+        }
+    return result
+
+
+def _managed_org_to_dict(org: Organization, db: Session, stats: dict = None) -> dict:
+    """Return org dict enriched with usage counts for the managed-orgs panel.
+
+    If `stats` dict is provided (from _build_managed_org_stats), use it to avoid
+    per-org queries. Falls back to individual queries if stats not provided.
+    """
+    if stats and org.id in stats:
+        s = stats[org.id]
+        ws_count = s["ws_count"]
+        acc_count = s["acc_count"]
+        providers = s["providers"]
+        mem_count = s["mem_count"]
+        owner = s["owner"]
+        last_act = s["last_activity_at"]
+    else:
+        # Fallback: individual queries (for single-org calls)
+        from app.models.db_models import Workspace, CloudAccount, OrganizationMember, User, ActivityLog
+        ws_count = db.query(Workspace).filter(
+            Workspace.organization_id == org.id, Workspace.is_active == True,
+        ).count()
+        cloud_accounts = (
+            db.query(CloudAccount.provider)
+            .join(Workspace, CloudAccount.workspace_id == Workspace.id)
+            .filter(Workspace.organization_id == org.id, CloudAccount.is_active == True)
+            .all()
+        )
+        acc_count = len(cloud_accounts)
+        providers = sorted(set(a[0] for a in cloud_accounts))
+        mem_count = db.query(OrganizationMember).filter(
+            OrganizationMember.organization_id == org.id, OrganizationMember.is_active == True,
+        ).count()
+        owner_member = (
+            db.query(OrganizationMember).join(User, OrganizationMember.user_id == User.id)
+            .filter(OrganizationMember.organization_id == org.id, OrganizationMember.role == "owner", OrganizationMember.is_active == True)
+            .first()
+        )
+        owner = {"name": owner_member.user.name, "email": owner_member.user.email, "avatar_url": getattr(owner_member.user, "avatar_url", None)} if owner_member else None
+        last_act_row = db.query(ActivityLog.created_at).filter(ActivityLog.organization_id == org.id).order_by(desc(ActivityLog.created_at)).first()
+        last_act = last_act_row[0] if last_act_row else None
 
     # Health status
     if not org.is_active:
@@ -682,29 +775,6 @@ def _managed_org_to_dict(org: Organization, db: Session) -> dict:
     else:
         health = "healthy"
 
-    # Last activity
-    last_activity = (
-        db.query(ActivityLog.created_at)
-        .filter(ActivityLog.organization_id == org.id)
-        .order_by(desc(ActivityLog.created_at))
-        .first()
-    )
-
-    mem_count = db.query(OrganizationMember).filter(
-        OrganizationMember.organization_id == org.id,
-        OrganizationMember.is_active == True,
-    ).count()
-    owner_member = (
-        db.query(OrganizationMember)
-        .join(User, OrganizationMember.user_id == User.id)
-        .filter(
-            OrganizationMember.organization_id == org.id,
-            OrganizationMember.role == "owner",
-            OrganizationMember.is_active == True,
-        )
-        .first()
-    )
-    owner = owner_member.user if owner_member else None
     return {
         "id": str(org.id),
         "name": org.name,
@@ -717,9 +787,9 @@ def _managed_org_to_dict(org: Organization, db: Session) -> dict:
         "workspaces_count": ws_count,
         "cloud_accounts_count": acc_count,
         "members_count": mem_count,
-        "owner_name": owner.name if owner else None,
-        "owner_email": owner.email if owner else None,
-        "owner_avatar_url": getattr(owner, "avatar_url", None) if owner else None,
+        "owner_name": owner["name"] if owner else None,
+        "owner_email": owner["email"] if owner else None,
+        "owner_avatar_url": owner.get("avatar_url") if owner else None,
         "branding": get_branding(org, db),
         "has_custom_branding": any([
             org.wl_platform_name, org.wl_logo_light, org.wl_color_primary,
@@ -727,7 +797,7 @@ def _managed_org_to_dict(org: Organization, db: Session) -> dict:
         ]),
         "health_status": health,
         "cloud_providers": providers,
-        "last_activity_at": last_activity[0].isoformat() if last_activity else None,
+        "last_activity_at": last_act.isoformat() if last_act else None,
     }
 
 
@@ -764,8 +834,11 @@ async def list_managed_orgs(
     total_pages = ceil(total / per_page) if total > 0 else 1
     child_orgs = q.offset((page - 1) * per_page).limit(per_page).all()
 
+    # Bulk-fetch stats to avoid N+1 queries
+    stats = _build_managed_org_stats(db, [o.id for o in child_orgs]) if child_orgs else {}
+
     return {
-        "managed_orgs": [_managed_org_to_dict(o, db) for o in child_orgs],
+        "managed_orgs": [_managed_org_to_dict(o, db, stats=stats) for o in child_orgs],
         "pagination": {
             "page": page,
             "per_page": per_page,
@@ -851,7 +924,6 @@ async def managed_orgs_widget_summary(
     db: Session = Depends(get_db),
 ):
     """Lightweight summary for dashboard MSP widget."""
-    from app.models.db_models import Workspace, CloudAccount
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     if master_org.plan_tier != "enterprise" or master_org.org_type not in ("master", "standalone"):
         raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
@@ -860,17 +932,17 @@ async def managed_orgs_widget_summary(
         Organization.parent_org_id == master_org.id,
     ).order_by(Organization.name.asc()).all()
 
+    # Bulk-fetch stats to avoid N+1 queries
+    org_ids = [o.id for o in child_orgs]
+    stats = _build_managed_org_stats(db, org_ids) if org_ids else {}
+
     partners_summary = []
     counts = {"healthy": 0, "warning": 0, "critical": 0}
     for org in child_orgs:
-        accounts = (
-            db.query(CloudAccount.provider)
-            .join(Workspace, CloudAccount.workspace_id == Workspace.id)
-            .filter(Workspace.organization_id == org.id, CloudAccount.is_active == True)
-            .all()
-        )
-        providers = sorted(set(a[0] for a in accounts))
-        if not org.is_active or len(accounts) == 0:
+        s = stats.get(org.id, {})
+        providers = s.get("providers", [])
+        acc_count = s.get("acc_count", 0)
+        if not org.is_active or acc_count == 0:
             health = "critical"
         else:
             health = "healthy"
@@ -1125,20 +1197,20 @@ async def update_branding(
 
     if payload.logo_light is not None:
         raw = strip_data_uri(payload.logo_light)
-        if not validate_logo(raw, max_kb=300):
-            raise HTTPException(status_code=400, detail="Logo claro inválido ou maior que 300KB")
+        if not validate_logo(raw, max_kb=300, mime=payload.logo_mime or org.wl_logo_mime):
+            raise HTTPException(status_code=400, detail="Logo claro inválido, maior que 300KB, ou contém conteúdo não permitido")
         org.wl_logo_light = raw
 
     if payload.logo_dark is not None:
         raw = strip_data_uri(payload.logo_dark)
-        if not validate_logo(raw, max_kb=300):
-            raise HTTPException(status_code=400, detail="Logo escuro inválido ou maior que 300KB")
+        if not validate_logo(raw, max_kb=300, mime=payload.logo_mime or org.wl_logo_mime):
+            raise HTTPException(status_code=400, detail="Logo escuro inválido, maior que 300KB, ou contém conteúdo não permitido")
         org.wl_logo_dark = raw
 
     if payload.favicon is not None:
         raw = strip_data_uri(payload.favicon)
-        if not validate_logo(raw, max_kb=100):
-            raise HTTPException(status_code=400, detail="Favicon inválido ou maior que 100KB")
+        if not validate_logo(raw, max_kb=100, mime=payload.favicon_mime or org.wl_favicon_mime):
+            raise HTTPException(status_code=400, detail="Favicon inválido, maior que 100KB, ou contém conteúdo não permitido")
         org.wl_favicon = raw
 
     if payload.favicon_mime is not None:
@@ -1205,7 +1277,10 @@ async def serve_logo_light(
     if not org or not org.wl_logo_light:
         raise HTTPException(status_code=404, detail="Logo não encontrado")
 
-    data = base64.b64decode(org.wl_logo_light)
+    try:
+        data = base64.b64decode(org.wl_logo_light)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Erro ao decodificar logo")
     mime = org.wl_logo_mime or "image/png"
     return Response(content=data, media_type=mime, headers={"Cache-Control": "public, max-age=3600"})
 
@@ -1223,7 +1298,10 @@ async def serve_logo_dark(
     if not org or not org.wl_logo_dark:
         raise HTTPException(status_code=404, detail="Logo não encontrado")
 
-    data = base64.b64decode(org.wl_logo_dark)
+    try:
+        data = base64.b64decode(org.wl_logo_dark)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Erro ao decodificar logo")
     mime = org.wl_logo_mime or "image/png"
     return Response(content=data, media_type=mime, headers={"Cache-Control": "public, max-age=3600"})
 
@@ -1241,6 +1319,9 @@ async def serve_favicon(
     if not org or not org.wl_favicon:
         raise HTTPException(status_code=404, detail="Favicon não encontrado")
 
-    data = base64.b64decode(org.wl_favicon)
+    try:
+        data = base64.b64decode(org.wl_favicon)
+    except Exception:
+        raise HTTPException(status_code=500, detail="Erro ao decodificar favicon")
     mime = org.wl_favicon_mime or "image/x-icon"
     return Response(content=data, media_type=mime, headers={"Cache-Control": "public, max-age=3600"})

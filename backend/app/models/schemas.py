@@ -93,6 +93,15 @@ class UserCreate(BaseModel):
             raise ValueError('A senha deve ter no mínimo 8 caracteres')
         if len(v.encode('utf-8')) > 72:
             raise ValueError('A senha deve ter no máximo 72 caracteres')
+        import re
+        if not re.search(r'[a-z]', v):
+            raise ValueError('A senha deve conter pelo menos uma letra minúscula')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('A senha deve conter pelo menos uma letra maiúscula')
+        if not re.search(r'\d', v):
+            raise ValueError('A senha deve conter pelo menos um número')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~/]', v):
+            raise ValueError('A senha deve conter pelo menos um caractere especial')
         return v
 
 
@@ -157,6 +166,17 @@ class PasswordChange(BaseModel):
     @field_validator('new_password')
     @classmethod
     def password_max_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError('A senha deve ter no mínimo 8 caracteres')
         if len(v.encode('utf-8')) > 72:
             raise ValueError('A senha deve ter no máximo 72 caracteres')
+        import re
+        if not re.search(r'[a-z]', v):
+            raise ValueError('A senha deve conter pelo menos uma letra minúscula')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('A senha deve conter pelo menos uma letra maiúscula')
+        if not re.search(r'\d', v):
+            raise ValueError('A senha deve conter pelo menos um número')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~/]', v):
+            raise ValueError('A senha deve conter pelo menos um caractere especial')
         return v
