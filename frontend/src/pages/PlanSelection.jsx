@@ -50,7 +50,7 @@ const plans = [
     period: '/mês',
     description: 'Para MSPs e empresas com múltiplas organizações.',
     features: [
-      'Workspaces Ilimitados',
+      '20 Workspaces incluídos (+R$ 290/ws extra)',
       'Contas Cloud Ilimitadas',
       'Membros Ilimitados',
       'Orgs gerenciadas (MSP)',

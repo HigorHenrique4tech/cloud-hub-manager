@@ -20,7 +20,7 @@
 
 | Recurso | Free | Pro | Enterprise |
 |---------|------|-----|------------|
-| Workspaces | 2 | 10 | Ilimitado |
+| Workspaces | 2 | 10 | 20 (+R$ 290/extra) |
 | Contas Cloud | 3 | 20 | Ilimitado |
 | Membros por organização | 3 | 20 | Ilimitado |
 | Organizações gerenciadas (MSP) | 0 | 0 | Ilimitado (5 inclusas no base) |

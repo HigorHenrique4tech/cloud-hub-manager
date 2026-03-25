@@ -308,7 +308,7 @@ Um **App Registration** no Azure AD do tenant M365 com permissões de aplicativo
 | Funcionalidade | Free | Pro | Enterprise |
 |---|:---:|:---:|:---:|
 | Dashboards de recursos (AWS/Azure/GCP) | Leitura | Leitura + Escrita | Leitura + Escrita |
-| Múltiplos workspaces | 1 | Ilimitado | Ilimitado |
+| Múltiplos workspaces | 1 | 10 | 20 (+R$ 290/extra) |
 | FinOps (orçamentos, recomendações, relatórios) | — | Sim | Sim |
 | Agendamentos (start/stop automático) | — | Sim | Sim |
 | Webhooks | — | Sim | Sim |

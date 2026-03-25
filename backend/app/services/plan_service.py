@@ -11,7 +11,7 @@ from app.models.db_models import (
 PLAN_LIMITS = {
     "free":       {"workspaces": 2,    "cloud_accounts": 3,    "members": 3,    "managed_orgs": 0},
     "pro":        {"workspaces": 10,   "cloud_accounts": 20,   "members": 20,   "managed_orgs": 0},
-    "enterprise": {"workspaces": None, "cloud_accounts": None, "members": None, "managed_orgs": None},
+    "enterprise": {"workspaces": 20,   "cloud_accounts": None, "members": None, "managed_orgs": None},
 }
 
 PLAN_PRICES = {
@@ -19,6 +19,8 @@ PLAN_PRICES = {
     "enterprise":               249700,  # R$ 2.497,00 (base, sob consulta — apenas exibição)
     "enterprise_extra_org":     39700,   # R$ 397,00 por org parceira adicional
     "enterprise_base_orgs":     5,       # orgs parceiras incluídas no base Enterprise
+    "enterprise_base_workspaces": 20,     # workspaces incluídos na org master Enterprise
+    "enterprise_extra_workspace": 29000, # R$ 290,00 por workspace extra/mês (master)
     "partner_base_workspaces":  10,      # workspaces incluídos em cada org parceira
     "partner_extra_workspace":  29000,   # R$ 290,00 por workspace extra/mês
 }
@@ -65,7 +67,7 @@ def get_plan_price(plan_tier: str) -> int:
 
 def check_workspace_limit(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> tuple:
     """Returns (allowed, current_count, max_count).
-    Partner orgs always allow creation (charge extra above base); base used for display only.
+    Partner and master/enterprise orgs always allow creation (charge extra above base).
     """
     current = db.query(Workspace).filter(
         Workspace.organization_id == org_id,
@@ -73,6 +75,9 @@ def check_workspace_limit(db: Session, org_id, plan_tier: str, org_type: str = "
     ).count()
     if org_type == "partner":
         base = PLAN_PRICES.get("partner_base_workspaces", 10)
+        return (True, current, base)
+    if org_type == "master" and plan_tier == "enterprise":
+        base = get_plan_limits("enterprise")["workspaces"] or 20
         return (True, current, base)
     limits = get_plan_limits(plan_tier)
     max_ws = limits["workspaces"]
@@ -127,7 +132,9 @@ def check_managed_org_limit(db: Session, org_id, plan_tier: str) -> tuple:
 def get_org_usage(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> dict:
     """Return usage and limits for an organization."""
     limits = dict(get_plan_limits(plan_tier))
-    if org_type == "partner":
+    if org_type == "master" and plan_tier == "enterprise":
+        limits["workspaces"] = PLAN_PRICES.get("enterprise_base_workspaces", 20)
+    elif org_type == "partner":
         limits["workspaces"] = PLAN_PRICES.get("partner_base_workspaces", 10)
     ws_count = db.query(Workspace).filter(
         Workspace.organization_id == org_id,

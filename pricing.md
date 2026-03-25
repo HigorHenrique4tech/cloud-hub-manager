@@ -69,7 +69,7 @@ Para MSPs, consultorias e empresas que gerenciam múltiplos clientes/parceiros.
 
 | Recurso | Limite |
 |---------|--------|
-| Workspaces | Ilimitados |
+| Workspaces | 20 incluídos (+R$ 290/extra) |
 | Contas Cloud | Ilimitadas |
 | Membros por organização | Ilimitados |
 | Tudo do plano Pro | Sim |

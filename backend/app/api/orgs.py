@@ -904,6 +904,15 @@ async def managed_orgs_summary(
     total_extra_ws = sum(max(0, ws_per_org.get(cid, 0) - partner_base_ws) for cid in child_ids)
     extra_ws_centavos = total_extra_ws * PLAN_PRICES.get("partner_extra_workspace", 29000)
 
+    # ── Master org workspace add-on cost ────────────────────────────────────
+    master_ws_count = db.query(Workspace).filter(
+        Workspace.organization_id == org.id,
+        Workspace.is_active == True,
+    ).count()
+    master_base_ws = PLAN_PRICES.get("enterprise_base_workspaces", 20)
+    master_extra_ws = max(0, master_ws_count - master_base_ws)
+    master_extra_ws_centavos = master_extra_ws * PLAN_PRICES.get("enterprise_extra_workspace", 29000)
+
     return {
         "total_partners": len(child_orgs),
         "total_workspaces": total_ws,
@@ -915,6 +924,10 @@ async def managed_orgs_summary(
         "partner_base_workspaces": partner_base_ws,
         "total_extra_workspaces": total_extra_ws,
         "extra_workspace_cost_brl": extra_ws_centavos / 100,
+        "master_workspaces": master_ws_count,
+        "master_base_workspaces": master_base_ws,
+        "master_extra_workspaces": master_extra_ws,
+        "master_extra_workspace_cost_brl": master_extra_ws_centavos / 100,
     }
 
 

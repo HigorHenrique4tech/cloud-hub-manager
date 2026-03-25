@@ -144,7 +144,7 @@ O plano Enterprise transforma o parceiro em um **provedor MSP (Managed Service P
 | **Criação rápida de clientes** | Um clique: cria organização + workspace + convida o cliente |
 | **Isolamento completo** | Cada cliente só vê seus próprios dados |
 | **GDAP integrado** | Gerencia delegações Microsoft 365 dos clientes direto na plataforma |
-| **Workspaces ilimitados** | Separe produção/dev/staging para cada cliente |
+| **20 workspaces incluídos** | Separe produção/dev/staging para cada cliente (+R$ 290/extra) |
 | **Contas cloud ilimitadas** | Conecte múltiplas accounts de cada provider por cliente |
 
 ---
@@ -164,7 +164,7 @@ O plano Enterprise transforma o parceiro em um **provedor MSP (Managed Service P
 - ✅ MSP: até **5 organizações gerenciadas** incluídas
 - ✅ GDAP Manager para parceiros Microsoft
 - ✅ Suporte dedicado
-- ✅ Workspaces e contas cloud **ilimitados**
+- ✅ **20 workspaces** incluídos (+R$ 290/extra) e contas cloud **ilimitadas**
 - ➕ Orgs adicionais: **R$ 397/mês** por organização
 
 ---

@@ -367,7 +367,7 @@ Camadas de segurança em toda a plataforma:
 | Inventário multi-cloud | ✅ | ✅ | ✅ |
 | Logs de atividade | ✅ | ✅ | ✅ |
 | Até 1 workspace | ✅ | — | — |
-| Workspaces ilimitados | — | ✅ | ✅ |
+| Workspaces | 2 | 10 | 20 (+R$ 290/extra) |
 | FinOps + Recomendações | — | ✅ | ✅ |
 | Agendamentos + Políticas | — | ✅ | ✅ |
 | Webhooks + Notificações | — | ✅ | ✅ |

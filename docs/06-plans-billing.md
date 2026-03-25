@@ -6,9 +6,9 @@
 |-------|-------|-----------|-------------|
 | **Free** | R$ 0/mês | 2 | 3 |
 | **Pro** | R$ 497/mês | 10 | 20 |
-| **Enterprise** | R$ 2.497/mês | Ilimitados | Ilimitadas |
+| **Enterprise** | R$ 2.497/mês | 20 (+R$ 290/extra) | Ilimitadas |
 
-Enterprise: base inclui 5 orgs gerenciadas + R$397/org extra.
+Enterprise: base inclui 20 workspaces (+R$ 290/extra), 5 orgs gerenciadas (+R$ 397/org extra).
 
 ---
 
@@ -27,7 +27,7 @@ if plan == "free":
 PLAN_LIMITS = {
     "free":       {"workspaces": 2, "cloud_accounts": 3, "budgets": 0},
     "pro":        {"workspaces": 10, "cloud_accounts": 20, "budgets": 5},
-    "enterprise": {"workspaces": -1, "cloud_accounts": -1, "budgets": -1},
+    "enterprise": {"workspaces": 20, "cloud_accounts": -1, "budgets": -1},
 }
 ```
 
