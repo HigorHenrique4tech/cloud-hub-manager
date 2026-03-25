@@ -676,7 +676,10 @@ async def ws_get_aws_costs(
             raise HTTPException(status_code=404, detail="Conta AWS não encontrada")
         svc = _build_aws_service_from_account(db, account)
     else:
-        svc = _get_single_aws_service(member, db)
+        try:
+            svc = _get_single_aws_service(member, db)
+        except HTTPException:
+            return {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD"}
     result = await _run(svc.get_cost_and_usage, start_date, end_date, granularity.upper())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo AWS'))

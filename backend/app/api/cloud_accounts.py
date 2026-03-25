@@ -232,8 +232,6 @@ async def health_check_all_accounts(
     Returns a per-account status so the user can see at a glance which
     connections are healthy.
     """
-    import asyncio
-    from concurrent.futures import ThreadPoolExecutor
     from app.core.config import settings
 
     accounts = db.query(CloudAccount).filter(
@@ -246,7 +244,7 @@ async def health_check_all_accounts(
 
     results = []
 
-    async def _test_one(account):
+    def _test_one(account):
         try:
             data = decrypt_for_account(db, account)
             if account.provider == "aws":
@@ -256,7 +254,7 @@ async def health_check_all_accounts(
                     secret_key=data.get("secret_access_key", ""),
                     region=data.get("region", settings.AWS_DEFAULT_REGION),
                 )
-                resp = await svc.test_connection()
+                resp = svc.test_connection()
                 return {"ok": resp.get("success", True), "detail": None}
             elif account.provider == "azure":
                 from app.services import AzureService
@@ -266,7 +264,7 @@ async def health_check_all_accounts(
                     client_id=data.get("client_id", ""),
                     client_secret=data.get("client_secret", ""),
                 )
-                resp = await svc.test_connection()
+                resp = svc.test_connection()
                 return {"ok": resp.get("success", True), "detail": None}
             elif account.provider == "gcp":
                 from app.services.gcp_service import GCPService
@@ -276,19 +274,17 @@ async def health_check_all_accounts(
                     private_key=data.get("private_key", ""),
                     private_key_id=data.get("private_key_id", ""),
                 )
-                loop = asyncio.get_event_loop()
-                with ThreadPoolExecutor() as pool:
-                    await loop.run_in_executor(pool, svc.list_buckets)
+                svc.list_buckets()
                 return {"ok": True, "detail": None}
             elif account.provider == "m365":
-                return {"ok": True, "detail": "M365 — validação via Graph API não inclusa no health check"}
+                return {"ok": True, "detail": None}
             else:
                 return {"ok": False, "detail": "Provider desconhecido"}
         except Exception as exc:
             return {"ok": False, "detail": str(exc)[:200]}
 
     for acc in accounts:
-        check = await _test_one(acc)
+        check = _test_one(acc)
         results.append({
             "id": str(acc.id),
             "provider": acc.provider,

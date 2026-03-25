@@ -528,6 +528,9 @@ async def ws_get_gcp_costs(
     """
     try:
         account = _get_gcp_account(member, db)
+    except HTTPException:
+        return {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD", "estimated": True}
+    try:
         svc = _build_gcp_service(account, db)
         result = await _run(svc.get_cost_and_usage, start_date, end_date)
         if not result.get("success"):

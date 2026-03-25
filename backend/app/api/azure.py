@@ -790,7 +790,10 @@ async def ws_get_azure_costs(
             raise HTTPException(status_code=404, detail="Conta Azure não encontrada")
         svc = _build_azure_service_from_account(db, account)
     else:
-        svc = _get_single_azure_service(member, db)
+        try:
+            svc = _get_single_azure_service(member, db)
+        except HTTPException:
+            return {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD"}
     result = await _run(svc.get_cost_by_subscription, start_date, end_date, granularity.capitalize())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo Azure'))
