@@ -279,7 +279,7 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
           ? 'border-red-300/50 dark:border-red-800/40 opacity-70'
           : isAddon
           ? 'border-amber-400/50 dark:border-amber-500/40 hover:border-amber-400 dark:hover:border-amber-500/60'
-          : 'border-gray-200 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600'
+          : 'border-gray-300 dark:border-slate-700 hover:border-gray-400 dark:hover:border-slate-600 shadow-sm'
       }`}
       onClick={batchMode ? () => onToggleSelect(org.slug) : undefined}
       style={batchMode ? { cursor: 'pointer' } : undefined}
@@ -291,7 +291,7 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
           <button onClick={(e) => { e.stopPropagation(); onToggleSelect(org.slug); }} className="flex-shrink-0">
             {isSelected
               ? <CheckSquare size={18} className="text-primary" />
-              : <Square size={18} className="text-gray-300 dark:text-slate-600" />
+              : <Square size={18} className="text-gray-400 dark:text-slate-600" />
             }
           </button>
         )}
@@ -338,22 +338,22 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{org.name}</p>
-            <p className="text-xs text-gray-400 dark:text-slate-500 font-mono truncate">{org.slug}</p>
+            <p className="text-xs text-gray-500 dark:text-slate-500 font-mono truncate">{org.slug}</p>
           </div>
         </div>
         {!batchMode && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => onEdit(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-indigo-500 dark:hover:text-primary-light transition-colors rounded" title="Renomear">
+            <button onClick={() => onEdit(org)} className="p-1.5 text-gray-500 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-primary-light hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors rounded" title="Renomear">
               <Pencil size={14} />
             </button>
-            <button onClick={() => onNotes(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-yellow-500 dark:hover:text-yellow-400 transition-colors rounded" title="Notas internas">
+            <button onClick={() => onNotes(org)} className="p-1.5 text-gray-500 dark:text-slate-600 hover:text-yellow-600 dark:hover:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-500/10 transition-colors rounded" title="Notas internas">
               <StickyNote size={14} />
             </button>
             <button onClick={() => onBranding(org)} title="Personalizar marca"
-              className="p-1.5 rounded-lg text-gray-400 dark:text-slate-500 hover:text-purple-500 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors">
+              className="p-1.5 rounded-lg text-gray-500 dark:text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors">
               <Palette size={15} />
             </button>
-            <button onClick={() => onRemove(org)} className="p-1.5 text-gray-300 dark:text-slate-600 hover:text-red-400 dark:hover:text-red-400 transition-colors rounded" title="Remover parceira">
+            <button onClick={() => onRemove(org)} className="p-1.5 text-gray-500 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors rounded" title="Remover parceira">
               <Trash2 size={14} />
             </button>
           </div>
@@ -368,7 +368,7 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
           </div>
           <div className="min-w-0">
             <p className="text-xs font-medium text-gray-700 dark:text-slate-300 truncate">{org.owner_name}</p>
-            {org.owner_email && <p className="text-[10px] text-gray-400 dark:text-slate-500 truncate">{org.owner_email}</p>}
+            {org.owner_email && <p className="text-[10px] text-gray-500 dark:text-slate-500 truncate">{org.owner_email}</p>}
           </div>
         </div>
       )}
@@ -382,35 +382,35 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
 
       {/* Connection health bar */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 h-1.5 bg-gray-100 dark:bg-slate-700 rounded-full overflow-hidden">
+        <div className="flex-1 h-1.5 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
           {org.cloud_accounts_count > 0 ? (
             <div className="h-full bg-green-500 rounded-full" style={{ width: '100%' }} />
           ) : (
             <div className="h-full bg-red-400 rounded-full" style={{ width: '100%' }} />
           )}
         </div>
-        <span className="text-[10px] text-gray-400 dark:text-slate-500 whitespace-nowrap">
+        <span className="text-[10px] text-gray-500 dark:text-slate-500 whitespace-nowrap font-medium">
           {org.cloud_accounts_count} conta{org.cloud_accounts_count !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg bg-gray-50 dark:bg-slate-700/50 px-2 py-1.5 text-center">
+        <div className="rounded-lg bg-gray-100 dark:bg-slate-700/50 px-2 py-1.5 text-center">
           <p className="text-base font-bold text-gray-900 dark:text-slate-100">{org.workspaces_count}</p>
-          <p className="text-[10px] text-gray-400 dark:text-slate-500 flex items-center justify-center gap-0.5">
+          <p className="text-[10px] text-gray-600 dark:text-slate-500 flex items-center justify-center gap-0.5 font-medium">
             <Layers size={9} /> Workspaces
           </p>
         </div>
-        <div className="rounded-lg bg-gray-50 dark:bg-slate-700/50 px-2 py-1.5 text-center">
+        <div className="rounded-lg bg-gray-100 dark:bg-slate-700/50 px-2 py-1.5 text-center">
           <p className="text-base font-bold text-gray-900 dark:text-slate-100">{org.cloud_accounts_count}</p>
-          <p className="text-[10px] text-gray-400 dark:text-slate-500 flex items-center justify-center gap-0.5">
+          <p className="text-[10px] text-gray-600 dark:text-slate-500 flex items-center justify-center gap-0.5 font-medium">
             <Cloud size={9} /> Contas
           </p>
         </div>
-        <div className="rounded-lg bg-gray-50 dark:bg-slate-700/50 px-2 py-1.5 text-center">
+        <div className="rounded-lg bg-gray-100 dark:bg-slate-700/50 px-2 py-1.5 text-center">
           <p className="text-base font-bold text-gray-900 dark:text-slate-100">{org.members_count}</p>
-          <p className="text-[10px] text-gray-400 dark:text-slate-500 flex items-center justify-center gap-0.5">
+          <p className="text-[10px] text-gray-600 dark:text-slate-500 flex items-center justify-center gap-0.5 font-medium">
             <Users size={9} /> Membros
           </p>
         </div>
@@ -418,9 +418,9 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
 
       {/* Footer */}
       <div className="flex items-center justify-between">
-        <div className="text-xs text-gray-400 dark:text-slate-500">
+        <div className="text-xs text-gray-500 dark:text-slate-500">
           <p>Criada em {fmtDate(org.created_at)}</p>
-          {activityAgo && <p className="text-[10px]">Atividade: {activityAgo}</p>}
+          {activityAgo && <p className="text-[10px] text-gray-500 dark:text-slate-500">Atividade: {activityAgo}</p>}
         </div>
         {!batchMode && (
           <button onClick={() => onAccess(org)}
@@ -770,10 +770,10 @@ const ManagedOrgsPage = () => {
               { label: 'Contas cloud', value: summary.total_cloud_accounts, sub: 'em todas as parceiras' },
               { label: 'Membros', value: summary.total_members, sub: 'em todas as parceiras' },
             ].map(({ label, value, sub }) => (
-              <div key={label} className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-4">
+              <div key={label} className="rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-4 shadow-sm">
                 <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">{value}</p>
-                <p className="text-sm font-medium text-gray-600 dark:text-slate-300 mt-0.5">{label}</p>
-                <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">{sub}</p>
+                <p className="text-sm font-medium text-gray-700 dark:text-slate-300 mt-0.5">{label}</p>
+                <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">{sub}</p>
               </div>
             ))}
           </div>
