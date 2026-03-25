@@ -18,6 +18,7 @@ import FinOpsWidget from '../components/dashboard/widgets/FinOpsWidget';
 import AlertsWidget from '../components/dashboard/widgets/AlertsWidget';
 import SchedulesWidget from '../components/dashboard/widgets/SchedulesWidget';
 import ActivityWidget from '../components/dashboard/widgets/ActivityWidget';
+import MspHealthWidget from '../components/dashboard/widgets/MspHealthWidget';
 import {
   DashboardConfigProvider,
   useDashboardConfig,
@@ -36,6 +37,7 @@ const WIDGET_COMPONENTS = {
   alerts:    <AlertsWidget />,
   schedules: <SchedulesWidget />,
   activity:  <ActivityWidget />,
+  msp_health: <MspHealthWidget />,
 };
 
 /* ── Empty state ──────────────────────────────────────────── */

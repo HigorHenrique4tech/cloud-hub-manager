@@ -52,10 +52,18 @@ export const orgService = {
     (await api.delete(`/orgs/${slug}/workspaces/${wsId}/members/${userId}`)).data,
 
   // ── Managed Orgs (MSP / Enterprise) ─────────────────────────────────────
-  listManagedOrgs: async (slug) =>
-    (await api.get(`/orgs/${slug}/managed-orgs`)).data,
+  listManagedOrgs: async (slug, { page = 1, perPage = 50, search, sortBy } = {}) =>
+    (await api.get(`/orgs/${slug}/managed-orgs`, {
+      params: { page, per_page: perPage, search: search || undefined, sort_by: sortBy || undefined },
+    })).data,
   getManagedOrgsSummary: async (slug) =>
     (await api.get(`/orgs/${slug}/managed-orgs/summary`)).data,
+  getMspWidgetSummary: async (slug) =>
+    (await api.get(`/orgs/${slug}/managed-orgs/widget-summary`)).data,
+  batchSuspendPartners: async (slug, partnerSlugs) =>
+    (await api.post(`/orgs/${slug}/managed-orgs/batch-suspend`, { partner_slugs: partnerSlugs })).data,
+  batchActivatePartners: async (slug, partnerSlugs) =>
+    (await api.post(`/orgs/${slug}/managed-orgs/batch-activate`, { partner_slugs: partnerSlugs })).data,
   createManagedOrg: async (slug, name) =>
     (await api.post(`/orgs/${slug}/managed-orgs`, { name })).data,
   removeManagedOrg: async (slug, partnerSlug) =>

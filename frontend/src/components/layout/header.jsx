@@ -1,4 +1,4 @@
-import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Wallet, Clock, Zap, Headphones, Shield, Hourglass, CloudCog, Users, CreditCard } from 'lucide-react';
+import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Clock, Zap, Headphones, Shield, Hourglass, CloudCog, Users, CreditCard } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -12,24 +12,6 @@ import NewTicketModal from '../support/NewTicketModal';
 import Logo from '../common/Logo';
 import alertService from '../../services/alertService';
 import authService from '../../services/authService';
-import { useCurrency } from '../../hooks/useCurrency';
-
-const CurrencyToggle = () => {
-  const { currency, toggleCurrency } = useCurrency();
-  return (
-    <button
-      onClick={toggleCurrency}
-      title={currency === 'USD' ? 'Exibir custos em BRL' : 'Exibir custos em USD'}
-      className="hidden sm:flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold
-                 bg-gray-100 text-gray-600 hover:bg-gray-200
-                 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600
-                 transition-colors"
-    >
-      <Wallet className="w-3.5 h-3.5" />
-      {currency === 'USD' ? 'USD' : 'R$'}
-    </button>
-  );
-};
 
 const Header = () => {
   const { isDark, toggleTheme } = useTheme();
@@ -303,9 +285,6 @@ const Header = () => {
                 })()}
               </button>
             )}
-
-            {/* Currency toggle */}
-            <CurrencyToggle />
 
             {/* Dark mode toggle */}
             <button

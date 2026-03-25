@@ -1,10 +1,12 @@
 import re
 import secrets
+from math import ceil
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Path
+from fastapi import APIRouter, HTTPException, Depends, Path, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func as sa_func, desc
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 
 from app.database import get_db
 from app.models.db_models import (
@@ -59,6 +61,10 @@ class MemberRoleUpdate(BaseModel):
 
 class ManagedOrgCreate(BaseModel):
     name: str
+
+
+class BatchPartnerAction(BaseModel):
+    partner_slugs: List[str]
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -649,20 +655,41 @@ async def cancel_invitation(
 
 def _managed_org_to_dict(org: Organization, db: Session) -> dict:
     """Return org dict enriched with usage counts for the managed-orgs panel."""
-    from app.models.db_models import Workspace, CloudAccount, OrganizationMember, User
+    from app.models.db_models import Workspace, CloudAccount, OrganizationMember, User, ActivityLog
     ws_count = db.query(Workspace).filter(
         Workspace.organization_id == org.id,
         Workspace.is_active == True,
     ).count()
-    acc_count = (
+
+    # Cloud accounts — also gather providers for health/icon display
+    cloud_accounts = (
         db.query(CloudAccount)
         .join(Workspace, CloudAccount.workspace_id == Workspace.id)
         .filter(
             Workspace.organization_id == org.id,
             CloudAccount.is_active == True,
         )
-        .count()
+        .all()
     )
+    acc_count = len(cloud_accounts)
+    providers = sorted(set(a.provider for a in cloud_accounts))
+
+    # Health status
+    if not org.is_active:
+        health = "critical"
+    elif acc_count == 0:
+        health = "critical"
+    else:
+        health = "healthy"
+
+    # Last activity
+    last_activity = (
+        db.query(ActivityLog.created_at)
+        .filter(ActivityLog.organization_id == org.id)
+        .order_by(desc(ActivityLog.created_at))
+        .first()
+    )
+
     mem_count = db.query(OrganizationMember).filter(
         OrganizationMember.organization_id == org.id,
         OrganizationMember.is_active == True,
@@ -698,11 +725,18 @@ def _managed_org_to_dict(org: Organization, db: Session) -> dict:
             org.wl_platform_name, org.wl_logo_light, org.wl_color_primary,
             org.wl_color_accent, org.wl_favicon,
         ]),
+        "health_status": health,
+        "cloud_providers": providers,
+        "last_activity_at": last_activity[0].isoformat() if last_activity else None,
     }
 
 
 @router.get("/{org_slug}/managed-orgs")
 async def list_managed_orgs(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    sort_by: str = Query("recent"),
     member: MemberContext = Depends(get_current_member),
     db: Session = Depends(get_db),
 ):
@@ -710,10 +744,35 @@ async def list_managed_orgs(
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     if master_org.org_type not in ("master", "standalone") or master_org.plan_tier != "enterprise":
         raise HTTPException(status_code=403, detail="Apenas organizações Enterprise podem gerenciar parceiros.")
-    child_orgs = db.query(Organization).filter(
-        Organization.parent_org_id == master_org.id,
-    ).order_by(Organization.created_at.asc()).all()
-    return {"managed_orgs": [_managed_org_to_dict(o, db) for o in child_orgs]}
+
+    q = db.query(Organization).filter(Organization.parent_org_id == master_org.id)
+
+    # Search
+    if search:
+        pattern = f"%{search}%"
+        q = q.filter(
+            (Organization.name.ilike(pattern)) | (Organization.slug.ilike(pattern))
+        )
+
+    # Sort
+    if sort_by == "name":
+        q = q.order_by(Organization.name.asc())
+    else:  # recent
+        q = q.order_by(Organization.created_at.desc())
+
+    total = q.count()
+    total_pages = ceil(total / per_page) if total > 0 else 1
+    child_orgs = q.offset((page - 1) * per_page).limit(per_page).all()
+
+    return {
+        "managed_orgs": [_managed_org_to_dict(o, db) for o in child_orgs],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+        },
+    }
 
 
 @router.get("/{org_slug}/managed-orgs/summary")
@@ -758,7 +817,6 @@ async def managed_orgs_summary(
     extra_org_centavos = extra_orgs * PLAN_PRICES.get("enterprise_extra_org", 39700)
 
     # ── Workspace add-on cost (per-partner overage) ───────────────────────────
-    from sqlalchemy import func as sa_func
     ws_per_org = dict(
         db.query(Workspace.organization_id, sa_func.count(Workspace.id))
         .filter(
@@ -785,6 +843,113 @@ async def managed_orgs_summary(
         "total_extra_workspaces": total_extra_ws,
         "extra_workspace_cost_brl": extra_ws_centavos / 100,
     }
+
+
+@router.get("/{org_slug}/managed-orgs/widget-summary")
+async def managed_orgs_widget_summary(
+    member: MemberContext = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Lightweight summary for dashboard MSP widget."""
+    from app.models.db_models import Workspace, CloudAccount
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.plan_tier != "enterprise" or master_org.org_type not in ("master", "standalone"):
+        raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
+
+    child_orgs = db.query(Organization).filter(
+        Organization.parent_org_id == master_org.id,
+    ).order_by(Organization.name.asc()).all()
+
+    partners_summary = []
+    counts = {"healthy": 0, "warning": 0, "critical": 0}
+    for org in child_orgs:
+        accounts = (
+            db.query(CloudAccount.provider)
+            .join(Workspace, CloudAccount.workspace_id == Workspace.id)
+            .filter(Workspace.organization_id == org.id, CloudAccount.is_active == True)
+            .all()
+        )
+        providers = sorted(set(a[0] for a in accounts))
+        if not org.is_active or len(accounts) == 0:
+            health = "critical"
+        else:
+            health = "healthy"
+        counts[health] += 1
+        partners_summary.append({
+            "name": org.name,
+            "slug": org.slug,
+            "health": health,
+            "providers": providers,
+            "is_active": org.is_active,
+        })
+
+    return {
+        "total_partners": len(child_orgs),
+        **counts,
+        "partners_summary": partners_summary[:10],
+    }
+
+
+@router.post("/{org_slug}/managed-orgs/batch-suspend")
+async def batch_suspend_partners(
+    payload: BatchPartnerAction,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Suspend multiple partner orgs at once."""
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.plan_tier != "enterprise":
+        raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
+
+    updated = []
+    for slug in payload.partner_slugs:
+        org = db.query(Organization).filter(
+            Organization.slug == slug,
+            Organization.parent_org_id == master_org.id,
+        ).first()
+        if org and org.is_active:
+            org.is_active = False
+            org.suspended_at = datetime.utcnow()
+            org.suspended_reason = "Suspenso via operação em massa"
+            updated.append(slug)
+            log_activity(
+                db, user=member.user, action="suspend_partner",
+                resource_type="organization", resource_name=org.name,
+                organization_id=master_org.id,
+            )
+    db.commit()
+    return {"suspended": len(updated), "slugs": updated}
+
+
+@router.post("/{org_slug}/managed-orgs/batch-activate")
+async def batch_activate_partners(
+    payload: BatchPartnerAction,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Reactivate multiple partner orgs at once."""
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.plan_tier != "enterprise":
+        raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
+
+    updated = []
+    for slug in payload.partner_slugs:
+        org = db.query(Organization).filter(
+            Organization.slug == slug,
+            Organization.parent_org_id == master_org.id,
+        ).first()
+        if org and not org.is_active:
+            org.is_active = True
+            org.suspended_at = None
+            org.suspended_reason = None
+            updated.append(slug)
+            log_activity(
+                db, user=member.user, action="activate_partner",
+                resource_type="organization", resource_name=org.name,
+                organization_id=master_org.id,
+            )
+    db.commit()
+    return {"activated": len(updated), "slugs": updated}
 
 
 @router.post("/{org_slug}/managed-orgs", status_code=201)

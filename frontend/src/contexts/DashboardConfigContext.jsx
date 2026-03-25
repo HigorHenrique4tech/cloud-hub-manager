@@ -11,6 +11,7 @@ export const DEFAULT_WIDGETS = [
   { id: 'alerts',    visible: false, order: 3 },
   { id: 'schedules', visible: false, order: 4 },
   { id: 'activity',  visible: true,  order: 5 },
+  { id: 'msp_health', visible: false, order: 6 },
 ];
 
 export const WIDGET_META = {
@@ -20,6 +21,7 @@ export const WIDGET_META = {
   alerts:    { label: 'Alertas de Custo' },
   schedules: { label: 'Próximos Agendamentos' },
   activity:  { label: 'Atividade Recente' },
+  msp_health: { label: 'Saúde dos Parceiros (MSP)' },
 };
 
 const DashboardConfigContext = createContext(null);

@@ -40,6 +40,26 @@ export const AzureIcon = ({ className }) => (
 );
 
 /**
+ * Microsoft 365 — brand icon (4-square grid)
+ */
+export const M365Icon = ({ className }) => (
+  <svg
+    viewBox="0 0 16 16"
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    className={className}
+    aria-label="Microsoft 365"
+  >
+    <g fill="currentColor">
+      <rect x="1" y="1" width="6.5" height="6.5" rx="0.75" />
+      <rect x="8.5" y="1" width="6.5" height="6.5" rx="0.75" />
+      <rect x="1" y="8.5" width="6.5" height="6.5" rx="0.75" />
+      <rect x="8.5" y="8.5" width="6.5" height="6.5" rx="0.75" />
+    </g>
+  </svg>
+);
+
+/**
  * Google Cloud Platform — official SVG icon
  */
 export const GcpIcon = ({ className }) => (

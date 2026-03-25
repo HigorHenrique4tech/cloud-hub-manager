@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Mail, BarChart2, X, Check, RefreshCw, Save, Inbox, Plus, Trash2, UserPlus, Shield } from 'lucide-react';
+import { Mail, X, Check, RefreshCw, Save, Inbox, Plus, Trash2, UserPlus, Shield } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
 import { useToast } from '../../contexts/ToastContext';
@@ -15,7 +15,6 @@ const tdCls = 'px-4 py-3 text-sm text-gray-700 dark:text-gray-300';
 
 const TABS = [
   { id: 'mailboxes', label: 'Caixas de Correio',    icon: Mail },
-  { id: 'activity',  label: 'Atividade de E-mail',  icon: BarChart2 },
   { id: 'shared',    label: 'Caixas Compartilhadas', icon: Inbox },
 ];
 
@@ -346,81 +345,6 @@ function MailboxesTab({ onSelectMailbox }) {
   );
 }
 
-// ─ Activity Tab ──────────────────────────────────────────────────────────────
-function ActivityTab() {
-  const actQ = useQuery({
-    queryKey: ['m365-email-activity'],
-    queryFn: m365Service.getEmailActivity,
-    staleTime: 300_000,
-    retry: false,
-  });
-
-  const rows = actQ.data?.activity || [];
-
-  // backend field names: send_count, receive_count, read_count
-  const totals = rows.reduce((acc, r) => ({
-    sent: acc.sent + (r.send_count || 0),
-    received: acc.received + (r.receive_count || 0),
-    read: acc.read + (r.read_count || 0),
-  }), { sent: 0, received: 0, read: 0 });
-
-  return (
-    <div className="space-y-6">
-      {/* Summary cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        {[
-          { label: 'E-mails Enviados (D30)', value: totals.sent.toLocaleString(), color: 'text-blue-500' },
-          { label: 'E-mails Recebidos (D30)', value: totals.received.toLocaleString(), color: 'text-green-500' },
-          { label: 'E-mails Lidos (D30)', value: totals.read.toLocaleString(), color: 'text-purple-500' },
-        ].map(({ label, value, color }) => (
-          <div key={label} className="card p-4 rounded-xl">
-            <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
-            <p className={`text-2xl font-bold mt-1 ${color}`}>{value}</p>
-          </div>
-        ))}
-      </div>
-
-      {/* Activity table */}
-      <div className="card rounded-xl overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-            <tr>
-              <th className={thCls}>Usuário</th>
-              <th className={thCls}>Enviados</th>
-              <th className={thCls}>Recebidos</th>
-              <th className={thCls}>Lidos</th>
-              <th className={thCls}>Última Atividade</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {actQ.isLoading
-              ? Array.from({ length: 8 }).map((_, i) => <SkeletonRow key={i} cols={5} />)
-              : rows.length === 0
-              ? <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">
-                  Sem dados de atividade. Verifique a permissão <code>Reports.Read.All</code>.
-                </td></tr>
-              : rows.map((r, idx) => (
-                <tr key={idx} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <td className={tdCls}>
-                    <div>
-                      <p className="font-medium text-gray-900 dark:text-gray-100">{r.display_name || '—'}</p>
-                      <p className="text-xs text-gray-500 dark:text-gray-400">{r.upn || ''}</p>
-                    </div>
-                  </td>
-                  <td className={tdCls}>{(r.send_count || 0).toLocaleString()}</td>
-                  <td className={tdCls}>{(r.receive_count || 0).toLocaleString()}</td>
-                  <td className={tdCls}>{(r.read_count || 0).toLocaleString()}</td>
-                  <td className={tdCls}>{fmtDate(r.last_activity)}</td>
-                </tr>
-              ))
-            }
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 // ─ Shared Mailboxes Tab ───────────────────────────────────────────────────────
 // ─ Create Shared Mailbox Modal ────────────────────────────────────────────────
 function CreateSharedMailboxModal({ onClose }) {
@@ -643,7 +567,6 @@ export default function Exchange() {
 
         {/* Content */}
         {activeTab === 'mailboxes'     && <MailboxesTab onSelectMailbox={setSelectedMailbox} />}
-        {activeTab === 'activity'      && <ActivityTab />}
         {activeTab === 'shared'        && <SharedMailboxesTab onSelectMailbox={setSelectedMailbox} allUsers={allUsers} />}
       </div>
 

@@ -2,10 +2,10 @@ import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
-  ShieldCheck, Bell, Grid3x3, PackageSearch, GitPullRequestArrow,
+  ShieldCheck, Bell, PackageSearch, GitPullRequestArrow,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
-import { AwsIcon, AzureIcon, GcpIcon } from '../common/CloudProviderIcons';
+import { AwsIcon, AzureIcon, GcpIcon, M365Icon } from '../common/CloudProviderIcons';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import PermissionGate from '../common/PermissionGate';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
@@ -128,7 +128,7 @@ const Sidebar = () => {
           <NavItem to="/gcp"   label="GCP"   icon={GcpIcon}   activeColor={CLOUD_ACTIVE.gcp} />
         </PermissionGate>
         {isEnterprise && (
-          <NavItem to="/m365" label="Microsoft 365" icon={Grid3x3} activeColor={CLOUD_ACTIVE.m365} />
+          <NavItem to="/m365" label="Microsoft 365" icon={M365Icon} activeColor={CLOUD_ACTIVE.m365} />
         )}
 
         {/* ── Ferramentas ── */}
