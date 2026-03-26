@@ -86,6 +86,8 @@ export const orgService = {
     (await api.put(`/orgs/${slug}/branding`, data)).data,
   resetBranding: async (slug) =>
     (await api.delete(`/orgs/${slug}/branding`)).data,
+  sendTestBrandingEmail: async (slug) =>
+    (await api.post(`/orgs/${slug}/branding/test-email`)).data,
 
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {

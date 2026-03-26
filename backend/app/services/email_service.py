@@ -821,3 +821,413 @@ def send_trial_reminder_email(
     """
     subject = f"{_brand_name(branding)} — Seu trial Pro termina em {days_remaining} dia{'s' if days_remaining != 1 else ''}"
     return _send_email(to_email, subject, html, sender_name=_brand_sender(branding))
+
+
+# ── Welcome (post-verification) ─────────────────────────────────────────────
+
+
+def send_welcome_email(to_email: str, user_name: str, branding: dict = None) -> bool:
+    """Send a welcome email after email verification."""
+    color = _brand_color(branding)
+    name = _brand_name(branding)
+    dashboard_url = f"{settings.FRONTEND_URL}/"
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Conta ativada com sucesso! 🎉</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        Seu email foi verificado e sua conta no <strong>{name}</strong> está pronta para uso.
+      </p>
+      <div style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="color: #166534; font-size: 14px; margin: 0 0 8px 0; font-weight: 600;">Próximos passos:</p>
+        <ol style="color: #166534; font-size: 13px; margin: 0; padding-left: 20px;">
+          <li>Conecte sua primeira conta cloud (AWS, Azure ou GCP)</li>
+          <li>Explore o dashboard de recursos</li>
+          <li>Configure alertas de custo</li>
+        </ol>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{dashboard_url}"
+           style="display: inline-block; padding: 12px 32px; background-color: {color};
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Acessar meu painel
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(to_email, f"{name} — Conta ativada!", html, sender_name=_brand_sender(branding))
+
+
+# ── Schedule Failed ──────────────────────────────────────────────────────────
+
+
+def send_schedule_failed_email(
+    to_email: str,
+    user_name: str,
+    resource_name: str,
+    action: str,
+    provider: str,
+    error_message: str,
+    branding: dict = None,
+) -> bool:
+    """Notify user that a scheduled action (start/stop) failed."""
+    action_label = "iniciar" if action == "start" else "parar"
+    color = _brand_color(branding)
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #dc2626; margin-bottom: 8px;">Agendamento Falhou</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        A ação agendada para <strong>{action_label}</strong> o recurso
+        <strong>{resource_name}</strong> ({provider.upper()}) falhou.
+      </p>
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="color: #991b1b; font-size: 13px; margin: 0;">
+          <strong>Erro:</strong> {error_message[:200]}
+        </p>
+      </div>
+      <p style="color: #64748b; font-size: 13px;">
+        Verifique se as credenciais da conta cloud estão válidas e se o recurso ainda existe.
+      </p>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/schedules"
+           style="display: inline-block; padding: 12px 32px; background-color: {color};
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Ver agendamentos
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{_brand_name(branding)} — Falha no agendamento: {resource_name}",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
+# ── FinOps Scan Results ──────────────────────────────────────────────────────
+
+
+def send_finops_scan_email(
+    to_email: str,
+    user_name: str,
+    findings_count: int,
+    total_savings: float,
+    top_findings: list,
+    branding: dict = None,
+) -> bool:
+    """Notify user about FinOps scan results with potential savings."""
+    color = _brand_color(branding)
+
+    rows = ""
+    for f in top_findings[:5]:
+        rows += f"""
+        <tr>
+          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #334155;">{f.get('resource_name', '—')}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #334155;">{f.get('recommendation_type', '—')}</td>
+          <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 13px; color: #16a34a; font-weight: 600;">
+            ${f.get('estimated_saving_monthly', 0):.2f}/mês
+          </td>
+        </tr>
+        """
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Scan FinOps Concluído</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        O scan automático encontrou <strong>{findings_count} recomendação(ões)</strong>
+        com economia potencial de <strong style="color: #16a34a;">${total_savings:.2f}/mês</strong>.
+      </p>
+      {f'''
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0;">
+        <thead>
+          <tr style="background: #f8fafc;">
+            <th style="padding: 8px; text-align: left; font-size: 12px; color: #64748b; border-bottom: 2px solid #e2e8f0;">Recurso</th>
+            <th style="padding: 8px; text-align: left; font-size: 12px; color: #64748b; border-bottom: 2px solid #e2e8f0;">Ação</th>
+            <th style="padding: 8px; text-align: left; font-size: 12px; color: #64748b; border-bottom: 2px solid #e2e8f0;">Economia</th>
+          </tr>
+        </thead>
+        <tbody>{rows}</tbody>
+      </table>
+      ''' if rows else ''}
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/finops"
+           style="display: inline-block; padding: 12px 32px; background-color: {color};
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Ver recomendações
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{_brand_name(branding)} — {findings_count} oportunidades de economia encontradas",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
+# ── Approval Pending ─────────────────────────────────────────────────────────
+
+
+def send_approval_pending_email(
+    to_email: str,
+    approver_name: str,
+    requester_name: str,
+    action_type: str,
+    resource_name: str,
+    branding: dict = None,
+) -> bool:
+    """Notify admin/owner that an approval request is pending."""
+    color = _brand_color(branding)
+    action_label = action_type.replace("_", " ").title()
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #f59e0b; margin-bottom: 8px;">Aprovação Pendente</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {approver_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        <strong>{requester_name}</strong> solicitou aprovação para executar uma ação:
+      </p>
+      <div style="background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="color: #92400e; font-size: 14px; margin: 0;">
+          <strong>Ação:</strong> {action_label}<br/>
+          <strong>Recurso:</strong> {resource_name}
+        </p>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/approvals"
+           style="display: inline-block; padding: 12px 32px; background-color: {color};
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Revisar solicitação
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{_brand_name(branding)} — Aprovação pendente: {resource_name}",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
+# ── Approval Resolved ────────────────────────────────────────────────────────
+
+
+def send_approval_resolved_email(
+    to_email: str,
+    requester_name: str,
+    action_type: str,
+    resource_name: str,
+    approved: bool,
+    resolver_name: str,
+    notes: str = None,
+    branding: dict = None,
+) -> bool:
+    """Notify requester that their approval was approved or rejected."""
+    status = "Aprovada" if approved else "Rejeitada"
+    bg = "#f0fdf4" if approved else "#fef2f2"
+    border = "#bbf7d0" if approved else "#fecaca"
+    text_color = "#166534" if approved else "#991b1b"
+    color = _brand_color(branding)
+    action_label = action_type.replace("_", " ").title()
+
+    notes_html = ""
+    if notes:
+        notes_html = f'<p style="color: {text_color}; font-size: 13px; margin-top: 8px;"><strong>Observação:</strong> {notes}</p>'
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: {text_color}; margin-bottom: 8px;">Solicitação {status}</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {requester_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        Sua solicitação foi <strong>{status.lower()}</strong> por <strong>{resolver_name}</strong>.
+      </p>
+      <div style="background: {bg}; border: 1px solid {border}; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="color: {text_color}; font-size: 14px; margin: 0;">
+          <strong>Ação:</strong> {action_label}<br/>
+          <strong>Recurso:</strong> {resource_name}
+        </p>
+        {notes_html}
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/approvals"
+           style="display: inline-block; padding: 12px 32px; background-color: {color};
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Ver aprovações
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{_brand_name(branding)} — Solicitação {status.lower()}: {resource_name}",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
+# ── Partner Org Created ──────────────────────────────────────────────────────
+
+
+def send_partner_org_created_email(
+    to_email: str,
+    user_name: str,
+    partner_org_name: str,
+    master_org_name: str,
+    branding: dict = None,
+) -> bool:
+    """Notify user that a new partner org was created under the master."""
+    color = _brand_color(branding)
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Nova Organização Parceira</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        A organização parceira <strong>{partner_org_name}</strong> foi criada
+        sob <strong>{master_org_name}</strong>.
+      </p>
+      <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="color: #1e40af; font-size: 14px; margin: 0;">
+          Você foi adicionado como <strong>Owner</strong> desta organização.
+          Um workspace padrão já foi criado.
+        </p>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/"
+           style="display: inline-block; padding: 12px 32px; background-color: {color};
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Acessar organização
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{_brand_name(branding)} — Organização '{partner_org_name}' criada",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
+# ── Account Disconnected ─────────────────────────────────────────────────────
+
+
+def send_account_disconnected_email(
+    to_email: str,
+    user_name: str,
+    provider: str,
+    account_label: str,
+    error_detail: str,
+    branding: dict = None,
+) -> bool:
+    """Notify user that a cloud account failed its health check."""
+    color = _brand_color(branding)
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #dc2626; margin-bottom: 8px;">Conta Cloud Desconectada</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        A conta <strong>{account_label}</strong> ({provider.upper()}) não está respondendo.
+      </p>
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="color: #991b1b; font-size: 13px; margin: 0;">
+          <strong>Erro:</strong> {error_detail[:200]}
+        </p>
+      </div>
+      <p style="color: #64748b; font-size: 13px;">
+        Enquanto a conexão estiver inativa, dados de custo, inventário e agendamentos desta conta
+        não serão atualizados. Verifique se as credenciais ainda são válidas.
+      </p>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/workspace"
+           style="display: inline-block; padding: 12px 32px; background-color: {color};
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Verificar contas cloud
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{_brand_name(branding)} — Conta {provider.upper()} desconectada: {account_label}",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
+# ── Test Branding Email ─────────────────────────────────────────────────────
+
+
+def send_test_branding_email(to_email: str, user_name: str, branding: dict = None) -> bool:
+    """Send a test email so the org owner can preview their white-label branding."""
+    color = _brand_color(branding)
+    name = _brand_name(branding)
+    accent = branding.get("color_accent", "#0EA5E9") if branding else "#0EA5E9"
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, {color}, {accent}); padding: 32px; border-radius: 12px 12px 0 0; text-align: center;">
+        <h1 style="color: #ffffff; margin: 0; font-size: 22px;">{name}</h1>
+        <p style="color: rgba(255,255,255,0.85); margin: 8px 0 0; font-size: 13px;">Teste de e-mail — White Label</p>
+      </div>
+      <div style="background: #ffffff; padding: 28px 24px; border: 1px solid #e2e8f0; border-top: none;">
+        <p style="color: #334155; font-size: 14px; margin: 0 0 12px;">Olá <strong>{user_name}</strong>,</p>
+        <p style="color: #64748b; font-size: 14px; line-height: 1.6;">
+          Este é um e-mail de teste para que você possa verificar como ficará a aparência
+          dos e-mails enviados pela plataforma <strong>{name}</strong> com a sua personalização White Label.
+        </p>
+        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 20px 0;">
+          <p style="color: #475569; font-size: 13px; margin: 0 0 8px; font-weight: 600;">O que está sendo testado:</p>
+          <ul style="color: #64748b; font-size: 13px; margin: 0; padding-left: 18px; line-height: 1.8;">
+            <li>Nome da plataforma: <strong style="color: {color};">{name}</strong></li>
+            <li>Cor primária: <span style="display: inline-block; width: 12px; height: 12px; background: {color}; border-radius: 3px; vertical-align: middle;"></span> <code style="font-size: 12px;">{color}</code></li>
+            <li>Cor accent: <span style="display: inline-block; width: 12px; height: 12px; background: {accent}; border-radius: 3px; vertical-align: middle;"></span> <code style="font-size: 12px;">{accent}</code></li>
+            <li>Nome do remetente: <strong>{_brand_sender(branding)}</strong></li>
+            <li>Powered by: <strong>{"Sim" if (branding or {{}}).get("powered_by", True) else "Não"}</strong></li>
+          </ul>
+        </div>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="{settings.FRONTEND_URL}/"
+             style="display: inline-block; padding: 12px 32px; background-color: {color};
+                    color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                    font-size: 14px;">
+            Acessar {name}
+          </a>
+        </div>
+        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 16px 0 0;">
+          Se você recebeu este e-mail, a configuração de envio está funcionando corretamente.
+        </p>
+      </div>
+      <div style="padding: 16px; text-align: center;">
+        {_branded_footer(branding)}
+      </div>
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{name} — E-mail de teste White Label",
+        html,
+        sender_name=_brand_sender(branding),
+    )

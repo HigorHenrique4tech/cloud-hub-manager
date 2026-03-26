@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text, Float, UniqueConstraint, Index
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text, Float, Numeric, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -221,7 +221,7 @@ class AlertEvent(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     alert_id = Column(UUID(as_uuid=True), ForeignKey("cost_alerts.id", ondelete="CASCADE"), nullable=True)
     workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
-    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     current_value = Column(Float, nullable=True)
     threshold_value = Column(Float, nullable=True)
     message = Column(String(500), nullable=True)
@@ -333,7 +333,7 @@ class FinOpsAction(Base):
     resource_type     = Column(String(100), nullable=False)
     estimated_saving  = Column(Float, nullable=False, default=0.0)
     status            = Column(String(30), nullable=False, default="executed", index=True)  # executed | failed | rolled_back
-    executed_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    executed_at       = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     executed_by       = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     rollback_data     = Column(JSONB, nullable=True)   # data to reverse the action
     error_message     = Column(Text, nullable=True)
@@ -353,7 +353,7 @@ class FinOpsAnomaly(Base):
     actual_cost    = Column(Float, nullable=False)
     deviation_pct  = Column(Float, nullable=False)
     status         = Column(String(20), nullable=False, default="open")  # open | acknowledged | resolved
-    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
 
 # ── Resource Templates ──────────────────────────────────────────────────────
@@ -396,7 +396,7 @@ class ScheduleRun(Base):
 
     id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     schedule_id   = Column(UUID(as_uuid=True), ForeignKey("scheduled_actions.id", ondelete="CASCADE"), nullable=False, index=True)
-    triggered_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+    triggered_at  = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     completed_at  = Column(DateTime, nullable=True)
     status        = Column(String(10), nullable=False)      # "success" | "failed" | "running"
     error         = Column(String(500), nullable=True)
@@ -480,7 +480,7 @@ class PolicyLog(Base):
 
     id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     policy_id          = Column(UUID(as_uuid=True), ForeignKey("policies.id", ondelete="CASCADE"), nullable=False, index=True)
-    triggered_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    triggered_at       = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
     condition_snapshot = Column(JSONB, nullable=True)   # actual values that triggered the rule
     action_taken       = Column(String(100), nullable=True)
     result             = Column(String(50), nullable=True)   # success | failed | skipped
@@ -597,7 +597,7 @@ class BillingRecord(Base):
     org_id              = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     client_name         = Column(String(255), nullable=False)           # e.g. "Advanced Informática LTDA"
     client_email        = Column(String(255), nullable=True)            # for invoice emails; fallback to org owner
-    amount              = Column(Float, nullable=False)                 # in BRL or configured currency
+    amount              = Column(Numeric(12, 2), nullable=False)         # in BRL or configured currency
     period_type         = Column(String(10), nullable=False, default="monthly")  # monthly | annual
     period_ref          = Column(String(20), nullable=False)            # e.g. "2026-03" or "2026"
     due_date            = Column(DateTime, nullable=True)
@@ -646,7 +646,7 @@ class BillingConfig(Base):
 
     id                    = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     auto_generate_enabled = Column(Boolean, nullable=False, default=False)
-    default_amount        = Column(Float, nullable=True)
+    default_amount        = Column(Numeric(12, 2), nullable=True)
     default_due_day       = Column(Integer, nullable=False, default=10)
     default_period_type   = Column(String(10), nullable=False, default="monthly")
     reminder_days_before  = Column(Integer, nullable=False, default=3)
@@ -689,7 +689,7 @@ class NotificationDelivery(Base):
     payload       = Column(JSONB, nullable=True)
     status        = Column(String(20), nullable=False, default="pending")  # pending | delivered | failed
     error_message = Column(Text, nullable=True)
-    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     channel = relationship("NotificationChannel", back_populates="deliveries")
 

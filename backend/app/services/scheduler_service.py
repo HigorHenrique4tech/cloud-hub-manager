@@ -125,6 +125,25 @@ def execute_scheduled_action(schedule_id: str, trigger_type: str = "scheduled") 
             _push(db, s.workspace_id, "schedule",
                   f"Falha no agendamento: {s.resource_name} — {str(exc)[:100]}",
                   "/schedules")
+            # Email the schedule creator about the failure
+            try:
+                from app.models.db_models import User
+                from app.services.email_service import send_schedule_failed_email
+                from app.services.branding_service import get_branding_for_workspace as _gbw
+                creator = db.query(User).filter(User.id == s.created_by).first() if s.created_by else None
+                if creator:
+                    _branding = _gbw(db, s.workspace_id)
+                    send_schedule_failed_email(
+                        to_email=creator.email,
+                        user_name=creator.name or creator.email,
+                        resource_name=s.resource_name,
+                        action=s.action,
+                        provider=s.provider,
+                        error_message=str(exc)[:200],
+                        branding=_branding,
+                    )
+            except Exception as email_exc:
+                logger.warning("Could not send schedule failure email: %s", email_exc)
 
     except Exception as exc:
         logger.exception(f"Unexpected error in scheduler job {schedule_id}: {exc}")
@@ -368,6 +387,28 @@ def execute_finops_scan(workspace_id: str) -> None:
             "findings_count": len(findings),
             "provider":       sched.provider,
         })
+
+        # Email scan results to the schedule creator
+        if findings:
+            try:
+                from app.models.db_models import User
+                from app.services.email_service import send_finops_scan_email
+                from app.services.branding_service import get_branding_for_workspace as _gbw2
+                creator = db.query(User).filter(User.id == sched.created_by).first() if sched.created_by else None
+                if creator:
+                    total_savings = sum(f.get("estimated_savings", 0) for f in findings)
+                    top_5 = sorted(findings, key=lambda f: f.get("estimated_savings", 0), reverse=True)[:5]
+                    _branding = _gbw2(db, workspace_id)
+                    send_finops_scan_email(
+                        to_email=creator.email,
+                        user_name=creator.name or creator.email,
+                        findings_count=len(findings),
+                        total_savings=total_savings,
+                        top_findings=top_5,
+                        branding=_branding,
+                    )
+            except Exception as email_exc:
+                logger.warning("Could not send FinOps scan email: %s", email_exc)
 
     except Exception as exc:
         logger.error(f"execute_finops_scan failed for workspace {workspace_id}: {exc}")

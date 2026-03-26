@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Palette, Upload, RotateCcw, Eye, Mail, Type, Image } from 'lucide-react';
+import { Palette, Upload, RotateCcw, Eye, Mail, Type, Image, Send } from 'lucide-react';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import { useBranding } from '../../contexts/BrandingContext';
 import orgService from '../../services/orgService';
@@ -26,6 +26,7 @@ export default function WhiteLabelSettings() {
   const [favicon, setFavicon] = useState(null);
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [sendingTest, setSendingTest] = useState(false);
 
   // Sync form from branding on load
   useEffect(() => {
@@ -118,6 +119,18 @@ export default function WhiteLabelSettings() {
       toast.error(err.response?.data?.detail || 'Erro ao resetar');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTestEmail = async () => {
+    setSendingTest(true);
+    try {
+      const res = await orgService.sendTestBrandingEmail(slug);
+      toast.success(res.detail || 'E-mail de teste enviado!');
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Erro ao enviar e-mail de teste');
+    } finally {
+      setSendingTest(false);
     }
   };
 
@@ -335,14 +348,22 @@ export default function WhiteLabelSettings() {
         </div>
       </div>
 
-      {/* Save button */}
-      <div className="flex items-center gap-3">
+      {/* Save + Test Email buttons */}
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={handleSave}
           disabled={saving}
           className="rounded-lg bg-primary px-6 py-2.5 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors"
         >
           {saving ? 'Salvando…' : 'Salvar Personalização'}
+        </button>
+        <button
+          onClick={handleTestEmail}
+          disabled={sendingTest || saving}
+          className="flex items-center gap-2 rounded-lg border border-gray-300 dark:border-slate-600 px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-60 transition-colors"
+        >
+          <Send size={14} />
+          {sendingTest ? 'Enviando…' : 'Testar E-mail'}
         </button>
         {success && (
           <span className="text-sm text-green-500 font-medium">Salvo com sucesso!</span>

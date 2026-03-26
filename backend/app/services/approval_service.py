@@ -66,6 +66,41 @@ def create_approval(
     except Exception as exc:
         logger.warning("Could not send approval notification: %s", exc)
 
+    # Email admins/owners of the workspace
+    try:
+        from app.services.email_service import send_approval_pending_email
+        from app.services.branding_service import get_branding_for_workspace
+
+        branding = get_branding_for_workspace(db, workspace_id)
+        resource_name = action_payload.get("resource_name", "recurso")
+        requester = db.query(User).filter(User.id == requester_id).first()
+        requester_name = requester.name or requester.email if requester else "Usuário"
+
+        # Find workspace admins/owners
+        ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+        if ws:
+            admins = (
+                db.query(OrganizationMember)
+                .filter(
+                    OrganizationMember.organization_id == ws.organization_id,
+                    OrganizationMember.role.in_(["owner", "admin"]),
+                )
+                .all()
+            )
+            for m in admins:
+                admin_user = db.query(User).filter(User.id == m.user_id).first()
+                if admin_user and admin_user.id != requester_id:
+                    send_approval_pending_email(
+                        to_email=admin_user.email,
+                        approver_name=admin_user.name or admin_user.email,
+                        requester_name=requester_name,
+                        action_type=action_type,
+                        resource_name=resource_name,
+                        branding=branding,
+                    )
+    except Exception as exc:
+        logger.warning("Could not send approval pending email: %s", exc)
+
     return approval
 
 
@@ -106,6 +141,29 @@ def resolve_approval(
         )
     except Exception as exc:
         logger.warning("Could not send resolution notification: %s", exc)
+
+    # Email requester about resolution
+    try:
+        from app.services.email_service import send_approval_resolved_email
+        from app.services.branding_service import get_branding_for_workspace
+
+        branding = get_branding_for_workspace(db, approval.workspace_id)
+        resource_name = approval.action_payload.get("resource_name", "recurso")
+        requester = db.query(User).filter(User.id == approval.requester_id).first()
+        resolver = db.query(User).filter(User.id == resolver_id).first()
+        if requester:
+            send_approval_resolved_email(
+                to_email=requester.email,
+                requester_name=requester.name or requester.email,
+                action_type=approval.action_type,
+                resource_name=resource_name,
+                approved=approved,
+                resolver_name=(resolver.name or resolver.email) if resolver else "Admin",
+                notes=notes,
+                branding=branding,
+            )
+    except Exception as exc:
+        logger.warning("Could not send approval resolved email: %s", exc)
 
     return approval
 

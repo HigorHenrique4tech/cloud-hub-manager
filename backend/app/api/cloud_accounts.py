@@ -295,6 +295,26 @@ async def health_check_all_accounts(
         })
 
     healthy = sum(1 for r in results if r["status"] == "healthy")
+    failed_accounts = [r for r in results if r["status"] == "failed"]
+
+    # Email the user about any failed accounts
+    if failed_accounts:
+        try:
+            from app.services.email_service import send_account_disconnected_email
+            from app.services.branding_service import get_branding_for_workspace
+            branding = get_branding_for_workspace(db, member.workspace_id)
+            for fa in failed_accounts:
+                send_account_disconnected_email(
+                    to_email=member.user.email,
+                    user_name=member.user.name or member.user.email,
+                    provider=fa["provider"],
+                    account_label=fa["label"],
+                    error_detail=fa.get("error", "Falha na conexão"),
+                    branding=branding,
+                )
+        except Exception:
+            pass  # Non-critical
+
     return {
         "accounts": results,
         "summary": {"total": len(results), "healthy": healthy, "failed": len(results) - healthy},

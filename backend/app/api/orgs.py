@@ -1112,6 +1112,21 @@ async def create_managed_org(
                  resource_id=str(partner_org.id), resource_name=partner_org.name,
                  detail=f"master={master_org.slug}")
 
+    # Email the creator about the new partner org
+    try:
+        from app.services.email_service import send_partner_org_created_email
+        from app.services.branding_service import get_branding
+        branding = get_branding(master_org, db)
+        send_partner_org_created_email(
+            to_email=member.user.email,
+            user_name=member.user.name or member.user.email,
+            partner_org_name=partner_org.name,
+            master_org_name=master_org.name,
+            branding=branding,
+        )
+    except Exception:
+        pass  # Non-critical
+
     return _managed_org_to_dict(partner_org, db)
 
 
@@ -1338,3 +1353,27 @@ async def serve_favicon(
         raise HTTPException(status_code=500, detail="Erro ao decodificar favicon")
     mime = org.wl_favicon_mime or "image/x-icon"
     return Response(content=data, media_type=mime, headers={"Cache-Control": "public, max-age=3600"})
+
+
+@router.post("/{org_slug}/branding/test-email")
+async def send_branding_test_email(
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Send a test email to the owner so they can preview white-label branding."""
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org or org.org_type not in ("master", "partner"):
+        raise HTTPException(status_code=403, detail="White label disponível apenas para organizações Enterprise.")
+
+    branding = get_branding(org, db)
+
+    from app.services.email_service import send_test_branding_email
+    sent = send_test_branding_email(
+        to_email=member.user.email,
+        user_name=member.user.name or member.user.email,
+        branding=branding,
+    )
+    if not sent:
+        raise HTTPException(status_code=500, detail="Falha ao enviar e-mail de teste. Verifique a configuração SMTP.")
+
+    return {"detail": f"E-mail de teste enviado para {member.user.email}"}

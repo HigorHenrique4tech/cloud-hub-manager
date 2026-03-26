@@ -406,6 +406,16 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     log_activity(db, user, "auth.email_verified", "User",
                  resource_id=str(user.id), resource_name=user.email, provider="system")
 
+    # Send welcome email after successful verification
+    try:
+        from app.services.email_service import send_welcome_email
+        send_welcome_email(
+            to_email=user.email,
+            user_name=user.name or user.email.split("@")[0],
+        )
+    except Exception:
+        pass  # Non-critical — don't break verification flow
+
     return {"detail": "Email verificado com sucesso", "already_verified": False}
 
 
