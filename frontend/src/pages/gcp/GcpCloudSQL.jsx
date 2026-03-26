@@ -39,6 +39,16 @@ const GcpCloudSQL = () => {
   if (error?.response?.status === 400) {
     return <Layout><NoCredentialsMessage provider="gcp" /></Layout>;
   }
+  if (error) {
+    return (
+      <Layout>
+        <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-700 dark:text-red-300">
+          <AlertCircle className="w-5 h-5 flex-shrink-0" />
+          <span>{error.message || 'Erro ao carregar dados'}</span>
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>

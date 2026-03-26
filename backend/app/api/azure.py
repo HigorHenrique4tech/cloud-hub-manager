@@ -45,9 +45,15 @@ def _build_azure_service_from_account(db: Session, account: CloudAccount) -> Azu
     )
 
 
-async def _run(fn, *args, **kwargs):
-    """Run a synchronous Azure SDK call in a thread pool, freeing the event loop."""
-    return await asyncio.to_thread(fn, *args, **kwargs)
+async def _run(fn, *args, _timeout=120, **kwargs):
+    """Run a synchronous Azure SDK call in a thread pool with timeout."""
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fn, *args, **kwargs),
+            timeout=_timeout,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail=f"Operação Azure expirou após {_timeout}s")
 
 
 def _get_single_azure_service(member: MemberContext, db: Session) -> AzureService:

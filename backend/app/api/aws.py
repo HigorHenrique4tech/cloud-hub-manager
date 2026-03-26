@@ -54,9 +54,15 @@ def _get_ws_aws_accounts(member: MemberContext, db: Session):
     )
 
 
-async def _run(fn, *args, **kwargs):
-    """Run a synchronous AWS SDK call in a thread pool, freeing the event loop."""
-    return await asyncio.to_thread(fn, *args, **kwargs)
+async def _run(fn, *args, _timeout=120, **kwargs):
+    """Run a synchronous AWS SDK call in a thread pool with timeout."""
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fn, *args, **kwargs),
+            timeout=_timeout,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail=f"Operação AWS expirou após {_timeout}s")
 
 
 def _get_single_aws_service(member: MemberContext, db: Session) -> AWSService:

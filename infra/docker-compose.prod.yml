@@ -142,6 +142,31 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Database Backup (daily to Azure Blob Storage) ───────────────────────────
+  backup:
+    build:
+      context: ..
+      dockerfile: infra/docker/backup.Dockerfile
+    container_name: cloudatlas-backup
+    environment:
+      - PGHOST=postgres
+      - PGUSER=${POSTGRES_USER:-cloudhub}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-cloudhub_pass}
+      - PGDATABASE=${POSTGRES_DB:-cloudhub_db}
+      - AZURE_STORAGE_ACCOUNT=${BACKUP_AZURE_STORAGE_ACCOUNT:-}
+      - AZURE_STORAGE_KEY=${BACKUP_AZURE_STORAGE_KEY:-}
+      - AZURE_STORAGE_CONTAINER=${BACKUP_AZURE_CONTAINER:-cloudatlas-backups}
+      - RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
+      - BACKUP_PREFIX=cloudatlas
+    networks:
+      - cloudatlas-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Runs daily at 03:00 UTC via entrypoint override
+    entrypoint: ["/bin/bash", "-c", "while true; do pg-backup; sleep 86400; done"]
+    restart: unless-stopped
+
   # ── Prometheus ───────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest

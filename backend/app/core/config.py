@@ -74,6 +74,18 @@ class Settings(BaseSettings):
     # Redis
     REDIS_URL: str = "redis://localhost:6379/0"
 
+    # Database pool
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 30
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+
+    # Azure Backup
+    BACKUP_AZURE_STORAGE_ACCOUNT: str = ""
+    BACKUP_AZURE_STORAGE_KEY: str = ""
+    BACKUP_AZURE_CONTAINER: str = "cloudatlas-backups"
+    BACKUP_RETENTION_DAYS: int = 30
+
     @model_validator(mode='after')
     def validate_production_secrets(self) -> 'Settings':
         """Prevent the app from starting with insecure defaults in production."""

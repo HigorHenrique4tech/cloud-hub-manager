@@ -234,6 +234,10 @@ class AlertEvent(Base):
 
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
+    __table_args__ = (
+        Index("ix_activity_ws_created", "workspace_id", "created_at"),
+        Index("ix_activity_user_created", "user_id", "created_at"),
+    )
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id         = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -592,6 +596,10 @@ class EnterpriseLead(Base):
 
 class BillingRecord(Base):
     __tablename__ = "billing_records"
+    __table_args__ = (
+        Index("ix_billing_status_created", "status", "created_at"),
+        Index("ix_billing_client_period", "client_name", "period_ref"),
+    )
 
     id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     org_id              = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)

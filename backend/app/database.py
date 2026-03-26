@@ -11,10 +11,12 @@ logger = logging.getLogger(__name__)
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=20,
-    max_overflow=30,
-    pool_timeout=30,
-    pool_recycle=1800,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_recycle=settings.DB_POOL_RECYCLE,
+    pool_reset_on_return="rollback",
+    echo_pool=settings.DEBUG,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

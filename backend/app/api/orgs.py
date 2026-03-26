@@ -112,6 +112,7 @@ async def list_orgs(
     rows = (
         db.query(OrganizationMember, Organization)
         .join(Organization, OrganizationMember.organization_id == Organization.id)
+        .options(joinedload(Organization.parent_org))
         .filter(
             OrganizationMember.user_id == current_user.id,
             OrganizationMember.is_active == True,

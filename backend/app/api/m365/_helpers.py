@@ -47,9 +47,16 @@ def _evict_service(acct) -> None:
         _svc_cache.pop(acct.id, None)
 
 
-async def _run(fn, *args, **kwargs):
-    """Run a synchronous function in a thread pool, freeing the asyncio event loop."""
-    return await asyncio.to_thread(fn, *args, **kwargs)
+async def _run(fn, *args, _timeout=120, **kwargs):
+    """Run a synchronous function in a thread pool with timeout."""
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fn, *args, **kwargs),
+            timeout=_timeout,
+        )
+    except asyncio.TimeoutError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=504, detail=f"Operação M365 expirou após {_timeout}s")
 
 
 def _get_org_plan(db: Session, organization_id) -> str:

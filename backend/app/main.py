@@ -156,7 +156,7 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Health check with DB connectivity verification"""
+    """Health check with DB, Redis, Scheduler and SMTP verification"""
     db_ok = False
     try:
         with engine.connect() as conn:
@@ -165,13 +165,53 @@ async def health_check():
     except Exception:
         logger.warning("Health check: database unreachable")
 
-    status = "healthy" if db_ok else "degraded"
+    # Redis check
+    redis_status = "not_configured"
+    try:
+        from app.core.cache import _get_client
+        rc = _get_client()
+        if rc:
+            rc.ping()
+            redis_status = "ok"
+    except Exception:
+        redis_status = "unreachable"
+
+    # Scheduler check
+    scheduler_status = "stopped"
+    try:
+        from app.services.scheduler_service import scheduler
+        scheduler_status = "running" if scheduler.running else "stopped"
+    except Exception:
+        scheduler_status = "unknown"
+
+    # SMTP check
+    smtp_status = "not_configured"
+    if settings.SMTP_HOST:
+        try:
+            import smtplib
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=3) as s:
+                s.noop()
+            smtp_status = "ok"
+        except Exception:
+            smtp_status = "unreachable"
+
+    # Overall status: unhealthy if DB down, degraded if non-critical down
+    if not db_ok:
+        status = "unhealthy"
+    elif redis_status == "unreachable" or smtp_status == "unreachable":
+        status = "degraded"
+    else:
+        status = "healthy"
+
     return {
         "status": status,
         "version": settings.APP_VERSION,
         "timestamp": datetime.now().isoformat(),
         "checks": {
             "database": "ok" if db_ok else "unreachable",
+            "redis": redis_status,
+            "scheduler": scheduler_status,
+            "smtp": smtp_status,
         },
     }
 

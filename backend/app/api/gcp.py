@@ -65,10 +65,15 @@ def _get_gcp_service(member: MemberContext, db: Session) -> GCPService:
     return _build_gcp_service(_get_gcp_account(member, db), db)
 
 
-async def _run(fn, *args, **kwargs):
-    """Run a synchronous GCP SDK call in a thread pool, freeing the event loop."""
+async def _run(fn, *args, _timeout=120, **kwargs):
+    """Run a synchronous GCP SDK call in a thread pool with timeout."""
     try:
-        return await asyncio.to_thread(fn, *args, **kwargs)
+        return await asyncio.wait_for(
+            asyncio.to_thread(fn, *args, **kwargs),
+            timeout=_timeout,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail=f"Operação GCP expirou após {_timeout}s")
     except HTTPException:
         raise
     except Exception as exc:

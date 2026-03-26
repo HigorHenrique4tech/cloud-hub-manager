@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, UploadFile, File, 
 from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import func, case
 from sqlalchemy.orm import Session, joinedload
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, model_validator
 
 from app.database import get_db
 from app.core.limiter import limiter
@@ -496,6 +496,12 @@ class BillingBatchStatus(BaseModel):
     status: str
     notes: Optional[str] = None
 
+    @model_validator(mode="after")
+    def limit_batch_size(self):
+        if len(self.ids) > 100:
+            raise ValueError("Máximo de 100 registros por operação em lote")
+        return self
+
 
 class BillingConfigUpdate(BaseModel):
     auto_generate_enabled: Optional[bool] = None
@@ -634,18 +640,27 @@ def _spawn_next_period(db: Session, record: BillingRecord, actor_id=None) -> Non
 def list_billing(
     status: Optional[str] = Query(None),
     search: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
     admin: User = Depends(get_current_admin),
     db: Session = Depends(get_db),
 ):
-    """List all billing records. Admin only."""
+    """List billing records with pagination. Admin only."""
     q = db.query(BillingRecord).options(joinedload(BillingRecord.org))
     if status:
         q = q.filter(BillingRecord.status == status)
     if search:
         term = f"%{search.lower()}%"
         q = q.filter(func.lower(BillingRecord.client_name).like(term))
-    records = q.order_by(BillingRecord.created_at.desc()).all()
-    return {"records": [_billing_to_dict(r) for r in records]}
+    total = q.count()
+    records = q.order_by(BillingRecord.created_at.desc()).offset((page - 1) * page_size).limit(page_size).all()
+    return {
+        "records": [_billing_to_dict(r) for r in records],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "pages": (total + page_size - 1) // page_size,
+    }
 
 
 @admin_router.post("/billing", status_code=201)
@@ -1116,6 +1131,7 @@ async def send_invoice_email(
 
     # Generate AbacatePay payment link (or reuse existing)
     payment_url = record.payment_url
+    payment_error = None
     if not payment_url:
         try:
             amount_cents = int(round(record.amount * 100))
@@ -1133,9 +1149,9 @@ async def send_invoice_email(
                 record.payment_url = payment_url
             if payment_id:
                 record.payment_id = payment_id
-        except Exception as e:
-            logger.warning("AbacatePay billing creation failed for record %s: %s", record_id, e)
-            # Continue sending email without payment link
+        except (ValueError, KeyError) as e:
+            logger.error("AbacatePay billing creation failed for record %s: %s", record_id, e)
+            payment_error = str(e)[:200]
 
     due_str = record.due_date.strftime("%d/%m/%Y") if record.due_date else None
     _brand = None
@@ -1160,7 +1176,7 @@ async def send_invoice_email(
     _record_status_change(db, record, record.status, admin.id, f"Cobrança enviada por email para {to_email}", old_status=record.status)
     db.commit()
 
-    return {"sent_to": to_email, "payment_url": payment_url, "success": True}
+    return {"sent_to": to_email, "payment_url": payment_url, "payment_error": payment_error, "success": True}
 
 
 @admin_router.post("/billing/send-reminder")
@@ -1481,8 +1497,9 @@ def reencrypt_org_credentials(
             # Re-encrypt with org key only
             account.encrypted_data = encrypt_credential(data, org_key=org_key)
             reencrypted += 1
-        except Exception as e:
-            errors.append({"account_id": str(account.id), "error": str(e)})
+        except (ValueError, KeyError, Exception) as e:
+            logger.error("Re-encryption failed for account %s: %s", account.id, e)
+            errors.append({"account_id": str(account.id), "error": str(e)[:200]})
 
     db.commit()
     log_activity(db, admin, "admin.reencrypt_credentials", "Organization",
@@ -1514,8 +1531,9 @@ def reencrypt_all_credentials(
                 data = decrypt_credential(account.encrypted_data, org_key=org_key)
                 account.encrypted_data = encrypt_credential(data, org_key=org_key)
                 total_reencrypted += 1
-            except Exception as e:
-                total_errors.append({"account_id": str(account.id), "org": org.name, "error": str(e)})
+            except (ValueError, KeyError, Exception) as e:
+                logger.error("Re-encryption failed for account %s (org %s): %s", account.id, org.name, e)
+                total_errors.append({"account_id": str(account.id), "org": org.name, "error": str(e)[:200]})
 
     db.commit()
     log_activity(db, admin, "admin.reencrypt_all_credentials", "System")
