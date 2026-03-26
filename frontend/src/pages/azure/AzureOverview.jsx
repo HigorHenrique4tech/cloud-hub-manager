@@ -53,7 +53,7 @@ const ResourceRow = ({ resource }) => {
   const { icon: Icon, color, bg } = getTypeInfo(resource.type);
   const typeName = resource.type?.split('/').pop() || '—';
   return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-white dark:hover:bg-gray-800/60 transition-colors">
+    <div className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-sky-50/50 dark:hover:bg-gray-800/60 transition-colors">
       <div className="flex items-center gap-3 min-w-0">
         <div className={`flex h-7 w-7 items-center justify-center rounded-lg flex-shrink-0 ${bg}`}>
           <Icon size={14} className={color} />
@@ -118,7 +118,7 @@ const ResourceGroupAccordion = ({ rg }) => {
     <div className="border border-gray-200 dark:border-gray-700 rounded-xl overflow-hidden">
       <button
         onClick={toggle}
-        className="w-full flex items-center justify-between px-4 py-3.5 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3.5 bg-sky-50/30 dark:bg-gray-800 hover:bg-sky-50/60 dark:hover:bg-gray-750 transition-colors text-left"
       >
         <div className="flex items-center gap-3 min-w-0">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sky-50 dark:bg-sky-900/20 flex-shrink-0">

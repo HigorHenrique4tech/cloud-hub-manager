@@ -6,10 +6,10 @@ const colorClasses = {
 };
 
 const bgClasses = {
-  primary: 'bg-primary/10 dark:bg-primary-900/30',
-  success: 'bg-success/10 dark:bg-green-900/30',
-  warning: 'bg-warning/10 dark:bg-yellow-900/30',
-  danger:  'bg-danger/10 dark:bg-red-900/30',
+  primary: 'bg-primary-50 dark:bg-primary-900/30',
+  success: 'bg-green-50 dark:bg-green-900/30',
+  warning: 'bg-amber-50 dark:bg-yellow-900/30',
+  danger:  'bg-red-50 dark:bg-red-900/30',
 };
 
 const borderClasses = {
@@ -19,9 +19,16 @@ const borderClasses = {
   danger:  'border-l-danger',
 };
 
+const tintClasses = {
+  primary: 'bg-primary-50/40 dark:bg-transparent',
+  success: 'bg-green-50/40 dark:bg-transparent',
+  warning: 'bg-amber-50/40 dark:bg-transparent',
+  danger:  'bg-red-50/40 dark:bg-transparent',
+};
+
 const StatsCard = ({ title, value, icon: Icon, color = 'primary' }) => {
   return (
-    <div className={`card-interactive group border-l-4 ${borderClasses[color]}`}>
+    <div className={`card-interactive group border-l-4 ${borderClasses[color]} ${tintClasses[color]}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-gray-500 dark:text-gray-400 text-sm font-medium mb-1

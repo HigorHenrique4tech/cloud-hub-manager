@@ -17,7 +17,7 @@ const Layout = ({ children }) => {
   const isM365Path = pathname.startsWith('/m365');
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col">
       <TrialBanner />
       <Header />
       <div className="flex flex-1 overflow-hidden">

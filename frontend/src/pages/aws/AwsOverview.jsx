@@ -64,7 +64,7 @@ const AwsOverview = () => {
             <Link
               key={key}
               to={to}
-              className="card hover:shadow-lg transition-shadow group"
+              className="card hover:shadow-lg hover:bg-orange-50/30 dark:hover:bg-gray-800 transition-all group"
             >
               <div className={`${bg} rounded-lg p-3 w-fit mb-3`}>
                 <Icon className={`w-6 h-6 ${color}`} />

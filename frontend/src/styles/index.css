@@ -4,7 +4,7 @@
 
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
+    @apply bg-gray-100 text-gray-900 dark:bg-gray-900 dark:text-gray-100;
   }
 }
 
@@ -43,13 +43,13 @@
   }
 
   .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-300 p-6 dark:bg-gray-800 dark:border-gray-700;
+    @apply bg-white rounded-lg shadow-md border border-gray-200/80 p-6 dark:bg-gray-800 dark:border-gray-700;
   }
 
   /* ── Card com hover premium ─────────────────────── */
   .card-interactive {
     @apply card transition-all duration-200 ease-out
-           hover:-translate-y-0.5 hover:shadow-card-hover hover:border-primary/20 cursor-pointer;
+           hover:-translate-y-0.5 hover:shadow-card-hover hover:border-primary/20 hover:bg-gray-50/50 cursor-pointer;
   }
 
   .badge {
@@ -87,7 +87,7 @@
   }
 
   .input {
-    @apply block w-full rounded-lg border border-gray-300 bg-white px-3 py-2
+    @apply block w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2
            text-sm text-gray-900 placeholder-gray-400
            focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary
            dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100
