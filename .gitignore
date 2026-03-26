@@ -47,8 +47,10 @@ build/
 .env.*.local
 *.key
 *.pem
-PROJETO.md
-tutorialgdap.md
+# Documentation / internal .md files (keep README.md tracked)
+*.md
+!README.md
+docs/
 
 # Docker
 .dockerignore
