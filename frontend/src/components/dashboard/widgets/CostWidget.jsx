@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, AlertCircle, RefreshCw } from 'lucide-react';
 import costService from '../../../services/costService';
 import { useOrgWorkspace } from '../../../contexts/OrgWorkspaceContext';
 import { useCurrency } from '../../../hooks/useCurrency';
@@ -16,7 +16,7 @@ const CostWidget = () => {
   const { fmtCost, currency, rate } = useCurrency();
   const wsReady = !!currentOrg && !!currentWorkspace;
 
-  const { data: rawData, isLoading } = useQuery({
+  const { data: rawData, isLoading, isError, refetch } = useQuery({
     queryKey: ['dashboard-costs', start30, end30],
     queryFn: () => costService.getCombinedCosts(start30, end30, 'DAILY'),
     enabled: wsReady,
@@ -55,6 +55,7 @@ const CostWidget = () => {
 
   const hasAws   = !!data?.aws;
   const hasAzure = !!data?.azure;
+  const hasGcp   = !!data?.gcp;
   const hasData  = (data?.combined?.length || 0) > 0;
 
   return (
@@ -77,10 +78,18 @@ const CostWidget = () => {
             <div className="h-7 w-24 bg-gray-200 dark:bg-gray-700 rounded-full" />
           </div>
         </div>
+      ) : isError ? (
+        <div className="flex-1 flex flex-col items-center justify-center py-10 gap-2">
+          <AlertCircle className="w-8 h-8 text-red-400 opacity-60" />
+          <p className="text-sm text-red-500 dark:text-red-400">Erro ao carregar custos</p>
+          <button onClick={() => refetch()} className="flex items-center gap-1 text-xs text-primary hover:underline">
+            <RefreshCw className="w-3 h-3" /> Tentar novamente
+          </button>
+        </div>
       ) : !hasData ? (
         <div className="flex-1 flex flex-col items-center justify-center py-10 text-gray-400 dark:text-gray-500 text-sm gap-2">
           <TrendingUp className="w-8 h-8 opacity-25" />
-          <p>Configure credenciais AWS/Azure para ver custos</p>
+          <p>Configure credenciais AWS/Azure/GCP para ver custos</p>
         </div>
       ) : (
         <div className="flex-1 flex flex-col">
@@ -115,6 +124,7 @@ const CostWidget = () => {
                 />
                 {hasAws   && <Line type="monotone" dataKey="aws"   name="AWS"   stroke="#f97316" strokeWidth={2} dot={false} />}
                 {hasAzure && <Line type="monotone" dataKey="azure" name="Azure" stroke="#0ea5e9" strokeWidth={2} dot={false} />}
+                {hasGcp   && <Line type="monotone" dataKey="gcp"   name="GCP"   stroke="#22c55e" strokeWidth={2} dot={false} />}
                 <Line type="monotone" dataKey="total" name="Total" stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="4 2" dot={false} />
               </LineChart>
             </ResponsiveContainer>
@@ -135,6 +145,12 @@ const CostWidget = () => {
               <span className="inline-flex items-center gap-1.5 text-xs bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300 px-3 py-1 rounded-full font-medium">
                 <span className="w-2 h-2 rounded-full bg-sky-500 flex-shrink-0" />
                 Azure {fmtCost(data?.azure?.total, currency)}
+              </span>
+            )}
+            {hasGcp && (
+              <span className="inline-flex items-center gap-1.5 text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-3 py-1 rounded-full font-medium">
+                <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
+                GCP {fmtCost(data?.gcp?.total, currency)}
               </span>
             )}
           </div>

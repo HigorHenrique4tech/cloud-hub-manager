@@ -1,15 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Bell, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Bell, ChevronRight, AlertTriangle, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import alertService from '../../../services/alertService';
 import { useOrgWorkspace } from '../../../contexts/OrgWorkspaceContext';
-
-const fmtUSD = (v) =>
-  v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+import { fmtUSD } from '../../../utils/formatters';
 
 const PROVIDER_COLORS = {
   aws:   'text-orange-400',
   azure: 'text-sky-400',
+  gcp:   'text-green-400',
 };
 
 const AlertsWidget = () => {
@@ -17,7 +16,7 @@ const AlertsWidget = () => {
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
   const wsReady = !!currentOrg && !!currentWorkspace;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['dashboard-alert-events', currentWorkspace?.id],
     queryFn: () => alertService.getEvents({ limit: 5 }),
     enabled: wsReady,
@@ -47,6 +46,14 @@ const AlertsWidget = () => {
           {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded-lg" />
           ))}
+        </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <AlertCircle className="w-7 h-7 text-red-400 opacity-60" />
+          <p className="text-sm text-red-500 dark:text-red-400">Erro ao carregar alertas</p>
+          <button onClick={() => refetch()} className="flex items-center gap-1 text-xs text-primary hover:underline">
+            <RefreshCw className="w-3 h-3" /> Tentar novamente
+          </button>
         </div>
       ) : events.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-6 text-center">

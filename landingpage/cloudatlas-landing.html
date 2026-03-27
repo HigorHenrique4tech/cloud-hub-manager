@@ -1029,7 +1029,7 @@
     text-decoration: underline;
   }
 
-  @média (max-width: 640px) {
+  @media (max-width: 640px) {
     .contact-row { flex-direction: column; }
   }
 
@@ -1119,7 +1119,7 @@
   }
 
   /* Responsive */
-  @média (max-width: 768px) {
+  @media (max-width: 768px) {
     nav { padding: 16px 20px; }
 
     .nav-links {
@@ -1158,6 +1158,30 @@
       padding: 40px 32px;
     }
   }
+
+  /* ── Scroll offset for fixed navbar ── */
+  section[id] {
+    scroll-margin-top: 80px;
+  }
+
+  /* ── Navbar scroll state ── */
+  nav.scrolled {
+    background: rgba(6,8,16,0.97);
+    box-shadow: 0 2px 24px rgba(0,0,0,0.3);
+  }
+
+  /* ── Mobile overlay ── */
+  .nav-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(4px);
+  }
+  .nav-overlay.active {
+    display: block;
+  }
 </style>
 </head>
 <body>
@@ -1173,7 +1197,8 @@
 
   <div class="nav-links" id="navLinks">
     <a href="#features" class="nav-link">Funcionalidades</a>
-    <a href="#pricing" class="nav-link">Precos</a>
+    <a href="#ecosystem" class="nav-link">Ecosistema</a>
+    <a href="#pricing" class="nav-link">Preços</a>
     <a href="#faq" class="nav-link">FAQ</a>
     <a href="#contato" class="nav-link">Contato</a>
     <a href="https://hub.cloudatlas.app.br" class="nav-cta">Acessar Plataforma &rarr;</a>
@@ -1185,13 +1210,14 @@
     <span></span>
   </button>
 </nav>
+<div class="nav-overlay" id="navOverlay"></div>
 
 <!-- HERO -->
 <section class="hero" id="main-content">
   <div class="hero-grid"></div>
   <div class="particles" id="particles"></div>
 
-  <div class="hero-badge">Gestao Multi-Cloud Unificada</div>
+  <div class="hero-badge">Novo: Microsoft 365 Admin integrado</div>
 
   <h1>
     Todas as suas clouds.<br>
@@ -1199,7 +1225,7 @@
   </h1>
 
   <p class="hero-sub">
-    Gerencie AWS, Azure, GCP e Microsoft 365 em uma unica plataforma. Controle custos, monitore segurança e automatize sua infraestrutura &mdash; sem alternar entre consoles.
+    Controle custos, monitore segurança e automatize operações de AWS, Azure, GCP e Microsoft 365 &mdash; tudo em um único painel, sem alternar entre consoles.
   </p>
 
   <div class="hero-actions">
@@ -1210,7 +1236,7 @@
   </div>
 
   <div class="cloud-strip">
-    <span>Compativel com</span>
+    <span>Compatível com</span>
     <div class="cloud-icons">
       <img src="assets/aws.png" alt="AWS">
       <img src="assets/azure.png" alt="Azure">
@@ -1224,19 +1250,19 @@
 <section class="problem">
   <span class="section-label reveal">O problema que resolvemos</span>
   <h2 class="section-title reveal reveal-delay-1">
-    Gerenciar multiplas clouds e caotico &mdash; e caro
+    Gerenciar múltiplas clouds é caótico &mdash; e caro
   </h2>
 
   <div class="problem-grid">
     <div class="pain-card reveal">
       <div class="pain-icon">&#x1F500;</div>
-      <h4>Multiplos consoles</h4>
+      <h4>Múltiplos consoles</h4>
       <p>Sua equipe perde horas alternando entre AWS Console, Azure Portal, GCP Cloud Console e admin do M365.</p>
     </div>
     <div class="pain-card reveal reveal-delay-1">
       <div class="pain-icon">&#x1F4B8;</div>
-      <h4>Custos invisiveis</h4>
-      <p>Recursos esquecidos, instancias ociosas e gastos não monitorados inflam a fatura no fim do mes.</p>
+      <h4>Custos invisíveis</h4>
+      <p>Recursos esquecidos, instâncias ociosas e gastos não monitorados inflam a fatura no fim do mês.</p>
     </div>
     <div class="pain-card reveal reveal-delay-2">
       <div class="pain-icon">&#x1F513;</div>
@@ -1245,8 +1271,8 @@
     </div>
     <div class="pain-card reveal reveal-delay-3">
       <div class="pain-icon">&#x1F3E2;</div>
-      <h4>Gestao de clientes manual</h4>
-      <p>MSPs e times de TI perdem tempo gerenciando organizacoes clientes de forma separada e sem padrao.</p>
+      <h4>Gestão de clientes manual</h4>
+      <p>MSPs e times de TI perdem tempo gerenciando organizações clientes de forma separada e sem padrão.</p>
     </div>
   </div>
 </section>
@@ -1254,7 +1280,7 @@
 <!-- FEATURES -->
 <section class="features" id="features">
   <div class="features-header">
-    <span class="section-label reveal">Solucao completa</span>
+    <span class="section-label reveal">Solução completa</span>
     <h2 class="section-title reveal reveal-delay-1">Tudo que você precisa para dominar sua infraestrutura cloud</h2>
   </div>
 
@@ -1262,37 +1288,37 @@
     <div class="feature-card reveal">
       <div class="feature-icon">&#x1F5FA;&#xFE0F;</div>
       <h3>Painel Unificado Multi-Cloud</h3>
-      <p>Visualize e gerencie todos os seus recursos de AWS, Azure, GCP e M365 em uma unica interface intuitiva. Fim da alternancia entre consoles.</p>
+      <p>Visualize e gerencie todos os seus recursos de AWS, Azure, GCP e M365 em uma única interface intuitiva. Fim da alternância entre consoles.</p>
     </div>
 
     <div class="feature-card reveal reveal-delay-1">
       <div class="feature-icon">&#x1F4B0;</div>
       <h3>FinOps &amp; Controle de Custos</h3>
-      <p>Monitore gastos em tempo real, identifique desperdicios, defina budgets e receba alertas antes que a fatura estoure. Reduza custos com dados concretos.</p>
+      <p>Monitore gastos em tempo real, identifique desperdícios, defina budgets e receba alertas antes que a fatura estoure. Reduza custos com dados concretos.</p>
     </div>
 
     <div class="feature-card reveal reveal-delay-2">
       <div class="feature-icon">&#x1F512;</div>
-      <h3>Monitoramento de Seguranca</h3>
-      <p>Acompanhe o posture de segurança de toda a sua infraestrutura cloud. Identifique riscos, gaps de compliance e responda a incidentes mais rapido.</p>
+      <h3>Monitoramento de Segurança</h3>
+      <p>Acompanhe a postura de segurança de toda a sua infraestrutura cloud. Identifique riscos, gaps de compliance e responda a incidentes mais rápido.</p>
     </div>
 
     <div class="feature-card reveal">
       <div class="feature-icon">&#x23F0;</div>
-      <h3>Automacao de Agendamentos</h3>
+      <h3>Automação de Agendamentos</h3>
       <p>Programe o start e stop automático de recursos. Elimine custos com máquinas rodando fora do horário de uso sem nenhum esforço operacional.</p>
     </div>
 
     <div class="feature-card reveal reveal-delay-1">
       <div class="feature-icon">&#x1F3E2;</div>
-      <h3>Gestao Multi-Organizacao</h3>
-      <p>Ideal para MSPs e times de TI internos. Administre multiplos clientes ou unidades de negocio com isolamento, controle e visibilidade total.</p>
+      <h3>Gestão Multi-Organização</h3>
+      <p>Ideal para MSPs e times de TI internos. Administre múltiplos clientes ou unidades de negócio com isolamento, controle e visibilidade total.</p>
     </div>
 
     <div class="feature-card reveal reveal-delay-2">
       <div class="feature-icon">&#x1F4CA;</div>
       <h3>Relatórios e Dashboards</h3>
-      <p>Gere relatórios executivos e tecnicos com um clique. Apresente valor para stakeholders com dados claros de custo, performance e segurança.</p>
+      <p>Gere relatórios executivos e técnicos com um clique. Apresente valor para stakeholders com dados claros de custo, performance e segurança.</p>
     </div>
   </div>
 </section>
@@ -1309,12 +1335,32 @@
       <div class="stat-label">Para conectar sua primeira cloud</div>
     </div>
     <div class="reveal reveal-delay-2">
-      <div class="stat-num">25%</div>
-      <div class="stat-label">Economia média em custos cloud</div>
+      <div class="stat-num">até 25%</div>
+      <div class="stat-label">Economia em custos cloud</div>
     </div>
     <div class="reveal reveal-delay-3">
-      <div class="stat-num">24/7</div>
-      <div class="stat-label">Monitoramento continuo</div>
+      <div class="stat-num">99.9%</div>
+      <div class="stat-label">Disponibilidade da plataforma</div>
+    </div>
+  </div>
+
+  <!-- Trust badges -->
+  <div class="trust-badges reveal" style="display:flex; justify-content:center; gap:32px; flex-wrap:wrap; margin-top:32px;">
+    <div style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--muted);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+      Criptografia AES-128
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--muted);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      100% SaaS
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--muted);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+      Dados no Brasil
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; font-size:0.82rem; color:var(--muted);">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      LGPD Compliant
     </div>
   </div>
 </section>
@@ -1323,7 +1369,7 @@
 <section class="audience">
   <div class="audience-inner">
     <div class="audience-header">
-      <span class="section-label reveal">Para quem e o CloudAtlas</span>
+      <span class="section-label reveal">Para quem é o CloudAtlas</span>
       <h2 class="section-title reveal reveal-delay-1">Feito para quem gerencia cloud de verdade</h2>
     </div>
 
@@ -1331,14 +1377,14 @@
       <div class="audience-card reveal">
         <div class="audience-avatar">&#x1F454;</div>
         <h3>CTOs &amp; CIOs</h3>
-        <p>Tenha visibilidade executiva real de custos, segurança e operacoes cloud. Tome decisoes estrategicas com dados consolidados em um único lugar.</p>
+        <p>Tenha visibilidade executiva real de custos, segurança e operações cloud. Tome decisões estratégicas com dados consolidados em um único lugar.</p>
         <a href="https://hub.cloudatlas.app.br" class="audience-cta">Ver dashboard executivo &rarr;</a>
       </div>
 
       <div class="audience-card reveal reveal-delay-1">
         <div class="audience-avatar">&#x2699;&#xFE0F;</div>
         <h3>Times de DevOps &amp; Cloud</h3>
-        <p>Automatize tarefas repetitivas, gerencie recursos com eficiencia e pare de perder tempo navegando em multiplos consoles durante o dia.</p>
+        <p>Automatize tarefas repetitivas, gerencie recursos com eficiência e pare de perder tempo navegando em múltiplos consoles durante o dia.</p>
         <a href="https://hub.cloudatlas.app.br" class="audience-cta">Começar a automatizar &rarr;</a>
       </div>
 
@@ -1362,14 +1408,14 @@
 <!-- HOW IT WORKS -->
 <section class="how">
   <span class="section-label reveal">Como funciona</span>
-  <h2 class="section-title reveal reveal-delay-1">Do onboarding a gestao completa em minutos</h2>
+  <h2 class="section-title reveal reveal-delay-1">Do onboarding à gestão completa em minutos</h2>
 
   <div class="steps">
     <div class="step reveal">
       <div class="step-num">01</div>
       <div>
         <h3>Conecte suas clouds</h3>
-        <p>Integre AWS, Azure, GCP ou M365 em menos de 2 minutos. Basta colar suas credenciais &mdash; usamos criptografia AES-128 e permissoes read-only por padrao.</p>
+        <p>Integre AWS, Azure, GCP ou M365 em menos de 2 minutos. Basta colar suas credenciais &mdash; usamos criptografia AES-128 e permissões read-only por padrão.</p>
       </div>
     </div>
 
@@ -1377,7 +1423,7 @@
       <div class="step-num">02</div>
       <div>
         <h3>Visualize tudo em um painel</h3>
-        <p>Vejá todos os recursos, custos diarios e alertas de segurança numa interface unificada. Sem alternar entre 4 consoles diferentes.</p>
+        <p>Veja todos os recursos, custos diários e alertas de segurança numa interface unificada. Sem alternar entre 4 consoles diferentes.</p>
       </div>
     </div>
 
@@ -1393,7 +1439,7 @@
       <div class="step-num">04</div>
       <div>
         <h3>Escale com confiança</h3>
-        <p>Adicione clouds, organizacoes e clientes conforme crescer. MSPs gerenciam dezenas de clientes de um único lugar.</p>
+        <p>Adicione clouds, organizações e clientes conforme crescer. MSPs gerenciam dezenas de clientes de um único lugar.</p>
       </div>
     </div>
   </div>
@@ -1401,11 +1447,11 @@
 
 
 <!-- CLOUD ECOSYSTEM SHOWCASE -->
-<section class="ecosystem">
+<section class="ecosystem" id="ecosystem">
   <div class="ecosystem-inner">
-    <span class="section-label reveal">Integracoes nativas</span>
+    <span class="section-label reveal">Integrações nativas</span>
     <h2 class="section-title reveal reveal-delay-1">Um hub para todas as suas plataformas</h2>
-    <p class="eco-sub reveal reveal-delay-2">Conecte-se diretamente as maiores plataformas de cloud do mundo e ao Microsoft 365, tudo autenticado de forma segura.</p>
+    <p class="eco-sub reveal reveal-delay-2">Conecte-se diretamente às maiores plataformas de cloud do mundo e ao Microsoft 365, tudo autenticado de forma segura.</p>
 
     <div class="eco-grid">
       <div class="eco-card reveal">
@@ -1414,7 +1460,7 @@
         </div>
         <h4>Amazon Web Services</h4>
         <p>EC2, S3, RDS, Lambda, CloudWatch e muito mais</p>
-        <div class="eco-tag">+200 servicos</div>
+        <div class="eco-tag">+200 serviços</div>
       </div>
 
       <div class="eco-card reveal reveal-delay-1">
@@ -1422,8 +1468,8 @@
           <img class="eco-logo" src="assets/azure.png" alt="Azure">
         </div>
         <h4>Microsoft Azure</h4>
-        <p>VMs, Storage, AKS, Azure Monitor e alem</p>
-        <div class="eco-tag">+100 servicos</div>
+        <p>VMs, Storage, AKS, Azure Monitor e além</p>
+        <div class="eco-tag">+100 serviços</div>
       </div>
 
       <div class="eco-card reveal reveal-delay-2">
@@ -1432,7 +1478,7 @@
         </div>
         <h4>Google Cloud</h4>
         <p>Compute Engine, BigQuery, GKE, Cloud Run</p>
-        <div class="eco-tag">+150 servicos</div>
+        <div class="eco-tag">+150 serviços</div>
       </div>
 
       <div class="eco-card reveal reveal-delay-3">
@@ -1440,8 +1486,8 @@
           <img class="eco-logo" src="assets/microsoft-365.png" alt="Microsoft 365">
         </div>
         <h4>Microsoft 365</h4>
-        <p>Usuários, licencas, Teams, SharePoint e segurança</p>
-        <div class="eco-tag">Gestao completa</div>
+        <p>Usuários, licenças, Teams, SharePoint e segurança</p>
+        <div class="eco-tag">Gestão completa</div>
       </div>
     </div>
   </div>
@@ -1500,11 +1546,18 @@
           <li>Membros ilimitados</li>
           <li>Gestão de clientes (MSP)</li>
           <li>Multi-organização</li>
-          <li>Suporte dedicado</li>
+          <li>Microsoft 365 Admin (Exchange, SharePoint, Teams)</li>
+          <li>White Label / marca personalizada</li>
+          <li>API &amp; Webhooks avançados</li>
+          <li>Suporte dedicado com SLA</li>
         </ul>
         <a href="#contato" class="pricing-cta pricing-cta-secondary">Falar com vendas</a>
       </div>
     </div>
+
+    <p class="reveal" style="text-align:center; margin-top:24px; font-size:0.88rem; color:var(--muted);">
+      &#127873; Todos os planos incluem <strong style="color:var(--blue-light)">30 dias de trial Pro</strong> gratuito &mdash; sem cartão de crédito.
+    </p>
   </div>
 </section>
 
@@ -1513,16 +1566,16 @@
 <section class="faq" id="faq">
   <div class="faq-inner">
     <span class="section-label reveal">Perguntas frequentes</span>
-    <h2 class="section-title reveal reveal-delay-1">Tire suas duvidas</h2>
+    <h2 class="section-title reveal reveal-delay-1">Tire suas dúvidas</h2>
 
     <div class="faq-list">
       <div class="faq-item reveal">
         <button class="faq-question" aria-expanded="false">
-          O CloudAtlas acessa meus dados sensiveis?
+          O CloudAtlas acessa meus dados sensíveis?
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>Não. O CloudAtlas utiliza credenciais read-only por padrao e nunca armazena dados de negocio. As credenciais sao criptografadas com Fernet (AES-128) e cada workspace tem isolamento total.</p>
+          <p>Não. O CloudAtlas utiliza credenciais read-only por padrão e nunca armazena dados de negócio. As credenciais são criptografadas com Fernet (AES-128) e cada workspace tem isolamento total.</p>
         </div>
       </div>
 
@@ -1538,11 +1591,11 @@
 
       <div class="faq-item reveal reveal-delay-2">
         <button class="faq-question" aria-expanded="false">
-          Quais clouds sao suportadas?
+          Quais clouds são suportadas?
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>AWS, Microsoft Azure, Google Cloud Platform e Microsoft 365. Novas integrações sao adicionadas regularmente.</p>
+          <p>AWS, Microsoft Azure, Google Cloud Platform e Microsoft 365. Novas integrações são adicionadas regularmente.</p>
         </div>
       </div>
 
@@ -1552,7 +1605,7 @@
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>Sim. O plano Gratuito inclui 2 workspaces, 3 contas cloud e 3 membros sem limite de tempo. Faça upgrade quando quiser.</p>
+          <p>Sim! Toda conta nova recebe <strong>30 dias grátis do plano Pro</strong>, com acesso completo a FinOps, agendamentos, webhooks e relatórios. Depois do trial, você pode continuar no plano Gratuito (2 workspaces, 3 contas cloud, 3 membros) ou fazer upgrade.</p>
         </div>
       </div>
 
@@ -1568,11 +1621,11 @@
 
       <div class="faq-item reveal reveal-delay-2">
         <button class="faq-question" aria-expanded="false">
-          O CloudAtlas e adequado para MSPs?
+          O CloudAtlas é adequado para MSPs?
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>Sim. Com o plano Enterprise, você pode gerenciar multiplas organizacoes de forma isolada, gerar relatórios por cliente e escalar sem limites.</p>
+          <p>Sim. Com o plano Enterprise, você pode gerenciar múltiplas organizações de forma isolada, gerar relatórios por cliente e escalar sem limites.</p>
         </div>
       </div>
     </div>
@@ -1582,18 +1635,18 @@
 <!-- CTA -->
 <section class="cta-section">
   <h2 class="reveal">
-    Pronto para simplificar sua gestao cloud?
+    Pronto para simplificar sua gestão cloud?
   </h2>
   <p class="reveal reveal-delay-1">
-    Acesse agora e vejá como o CloudAtlas transforma a complexidade multi-cloud em controle total.
+    Acesse agora e veja como o CloudAtlas transforma a complexidade multi-cloud em controle total.
   </p>
   <div class="reveal reveal-delay-2">
     <a href="https://hub.cloudatlas.app.br" class="btn-primary" style="display:inline-flex; font-size:1.1rem; padding: 18px 44px;">
-      Acessar o CloudAtlas &rarr;
+      Começar gratuitamente &rarr;
     </a>
   </div>
   <p class="reveal reveal-delay-3" style="margin-top:20px; font-size:0.82rem; color:var(--muted);">
-    cloudatlas.app.br
+    Sem cartão de crédito &bull; Setup em 2 minutos
   </p>
 </section>
 
@@ -1602,7 +1655,7 @@
   <div class="contact-container">
     <h2 class="reveal">Entre em <span style="color:var(--blue-light)">contato</span></h2>
     <p class="reveal reveal-delay-1">
-      Quer saber mais sobre o CloudAtlas? Preencha o formulario e nossa equipe entrara em contato.
+      Quer saber mais sobre o CloudAtlas? Preencha o formulário e nossa equipe entrará em contato.
     </p>
 
     <form class="contact-form reveal reveal-delay-2" id="contactForm" novalidate onsubmit="handleContactSubmit(event)">
@@ -1617,7 +1670,7 @@
         <div>
           <label for="contact-email">E-mail *</label>
           <input type="email" id="contact-email" name="email" placeholder="seu@email.com" required>
-          <div class="error-msg" id="error-email">Por favor, insira um e-mail valido.</div>
+          <div class="error-msg" id="error-email">Por favor, insira um e-mail válido.</div>
         </div>
       </div>
 
@@ -1662,35 +1715,48 @@
 
   <div class="footer-links">
     <a href="#features" class="footer-link">Funcionalidades</a>
-    <a href="#pricing" class="footer-link">Precos</a>
+    <a href="#pricing" class="footer-link">Preços</a>
     <a href="#faq" class="footer-link">FAQ</a>
     <a href="#contato" class="footer-link">Contato</a>
   </div>
 
   <div class="footer-right">
     <a href="https://hub.cloudatlas.app.br" class="footer-link">cloudatlas.app.br &rarr;</a>
-    <p>&copy; 2026 CloudAtlas &mdash; Gestao Multi-Cloud Centralizada</p>
+    <p>&copy; <script>document.write(new Date().getFullYear())</script> CloudAtlas &mdash; Gestão Multi-Cloud Centralizada</p>
     <span class="footer-made">Feito com &#9729;&#65039; no Brasil</span>
   </div>
 </footer>
 
 <script>
-  // ── Hamburger Menu ──
+  // ── Hamburger Menu + Overlay ──
   const hamburger = document.getElementById('navHamburger');
   const navLinks = document.getElementById('navLinks');
+  const navOverlay = document.getElementById('navOverlay');
+
+  function closeMenu() {
+    hamburger.classList.remove('active');
+    navLinks.classList.remove('open');
+    navOverlay.classList.remove('active');
+  }
 
   hamburger.addEventListener('click', function() {
+    var isOpen = navLinks.classList.toggle('open');
     hamburger.classList.toggle('active');
-    navLinks.classList.toggle('open');
+    navOverlay.classList.toggle('active', isOpen);
   });
+
+  navOverlay.addEventListener('click', closeMenu);
 
   // Close menu when clicking a nav link
   navLinks.querySelectorAll('.nav-link').forEach(function(link) {
-    link.addEventListener('click', function() {
-      hamburger.classList.remove('active');
-      navLinks.classList.remove('open');
-    });
+    link.addEventListener('click', closeMenu);
   });
+
+  // ── Navbar scroll effect ──
+  var navEl = document.querySelector('nav');
+  window.addEventListener('scroll', function() {
+    navEl.classList.toggle('scrolled', window.scrollY > 60);
+  }, { passive: true });
 
   // ── Particles ──
   const container = document.getElementById('particles');
@@ -1793,7 +1859,7 @@
     var emailValid = validateField(emailInput, 'error-email');
 
     if (!nameValid || !emailValid) {
-      showToast('Por favor, preencha todos os campos obrigatorios.');
+      showToast('Por favor, preencha todos os campos obrigatórios.');
       return;
     }
 

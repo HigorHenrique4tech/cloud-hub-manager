@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Building2, ExternalLink } from 'lucide-react';
+import { Building2, ExternalLink, AlertCircle, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useOrgWorkspace } from '../../../contexts/OrgWorkspaceContext';
 import { AwsIcon, AzureIcon, GcpIcon } from '../../common/CloudProviderIcons';
@@ -33,6 +33,7 @@ const MspHealthWidget = () => {
   });
 
   if (!isMaster || !isEnterprise) return null;
+
   if (summaryQ.isLoading) {
     return (
       <div className="card p-5 rounded-2xl">
@@ -49,7 +50,23 @@ const MspHealthWidget = () => {
     );
   }
 
-  if (summaryQ.isError) return null;
+  if (summaryQ.isError) {
+    return (
+      <div className="card p-5 rounded-2xl">
+        <div className="flex items-center gap-2 mb-4">
+          <Building2 className="w-5 h-5 text-primary" />
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Saúde dos Parceiros</h3>
+        </div>
+        <div className="flex flex-col items-center gap-2 py-4 text-center">
+          <AlertCircle className="w-7 h-7 text-red-400 opacity-60" />
+          <p className="text-sm text-red-500 dark:text-red-400">Erro ao carregar dados</p>
+          <button onClick={() => summaryQ.refetch()} className="flex items-center gap-1 text-xs text-primary hover:underline">
+            <RefreshCw className="w-3 h-3" /> Tentar novamente
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const data = summaryQ.data;
   if (!data || data.total_partners === 0) {

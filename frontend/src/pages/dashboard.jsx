@@ -26,6 +26,7 @@ import {
 } from '../contexts/DashboardConfigContext';
 import awsService from '../services/awsservices';
 import azureService from '../services/azureservices';
+import gcpService from '../services/gcpService';
 import orgService from '../services/orgService';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -99,6 +100,7 @@ const DashboardInner = () => {
   const uniqueProviders = [...new Set(accounts.map((a) => a.provider))];
   const hasAws   = uniqueProviders.includes('aws');
   const hasAzure = uniqueProviders.includes('azure');
+  const hasGcp   = uniqueProviders.includes('gcp');
 
   /* Loading indicator while cloud provider data arrives */
   const { isLoading: awsLoading }   = useQuery({
@@ -113,13 +115,19 @@ const DashboardInner = () => {
     enabled: wsReady && hasAzure,
     retry: false,
   });
+  const { isLoading: gcpLoading } = useQuery({
+    queryKey: ['dashboard-gcp'],
+    queryFn: () => gcpService.listInstances(),
+    enabled: wsReady && hasGcp,
+    retry: false,
+  });
 
   /* Empty workspace state */
   if (wsReady && accountsData && accounts.length === 0) {
     return <EmptyWorkspaceState />;
   }
 
-  if (accountsLoading || (awsLoading && hasAws) || (azureLoading && hasAzure)) {
+  if (accountsLoading || (awsLoading && hasAws) || (azureLoading && hasAzure) || (gcpLoading && hasGcp)) {
     return <Layout><LoadingSpinner text="Carregando recursos..." /></Layout>;
   }
 

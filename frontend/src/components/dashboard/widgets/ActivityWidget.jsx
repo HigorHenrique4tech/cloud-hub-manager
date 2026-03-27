@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Server, Cloud, Database, Box, Zap, ExternalLink, ChevronRight,
+  AlertCircle, RefreshCw, Clock,
 } from 'lucide-react';
 import logsService from '../../../services/logsService';
 import { useOrgWorkspace } from '../../../contexts/OrgWorkspaceContext';
@@ -11,6 +12,8 @@ const ACTION_LABELS = {
   'ec2.stop':          'EC2 Parada',
   'azurevm.start':     'VM Azure Iniciada',
   'azurevm.stop':      'VM Azure Parada',
+  'gcpvm.start':       'VM GCP Iniciada',
+  'gcpvm.stop':        'VM GCP Parada',
   'appservice.start':  'App Service Iniciado',
   'appservice.stop':   'App Service Parado',
   'credential.add':    'Credencial Adicionada',
@@ -26,6 +29,8 @@ const ACTION_ICONS = {
   'ec2.stop':          <Server   className="w-4 h-4 text-orange-400" />,
   'azurevm.start':     <Server   className="w-4 h-4 text-sky-500"    />,
   'azurevm.stop':      <Server   className="w-4 h-4 text-sky-400"    />,
+  'gcpvm.start':       <Server   className="w-4 h-4 text-green-500"  />,
+  'gcpvm.stop':        <Server   className="w-4 h-4 text-green-400"  />,
   'appservice.start':  <Zap      className="w-4 h-4 text-sky-500"    />,
   'appservice.stop':   <Zap      className="w-4 h-4 text-sky-400"    />,
   'credential.add':    <Database className="w-4 h-4 text-green-500"  />,
@@ -39,6 +44,7 @@ const ACTION_ICONS = {
 const PROVIDER_DOT = {
   aws:    <span className="w-2 h-2 rounded-full bg-orange-500 flex-shrink-0" />,
   azure:  <span className="w-2 h-2 rounded-full bg-sky-500 flex-shrink-0" />,
+  gcp:    <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />,
   system: <span className="w-2 h-2 rounded-full bg-gray-400 flex-shrink-0" />,
 };
 
@@ -59,7 +65,7 @@ const ActivityWidget = () => {
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
   const wsReady = !!currentOrg && !!currentWorkspace;
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ['dashboard-logs'],
     queryFn: () => logsService.getLogs({ limit: 8 }),
     enabled: wsReady,
@@ -68,8 +74,6 @@ const ActivityWidget = () => {
   });
 
   const logs = data?.logs || [];
-
-  if (!isLoading && logs.length === 0) return null;
 
   return (
     <div className="card">
@@ -92,6 +96,19 @@ const ActivityWidget = () => {
             <div key={i} className="h-14 bg-gray-100 dark:bg-gray-800 rounded-lg" />
           ))}
         </div>
+      ) : isError ? (
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <AlertCircle className="w-7 h-7 text-red-400 opacity-60" />
+          <p className="text-sm text-red-500 dark:text-red-400">Erro ao carregar atividades</p>
+          <button onClick={() => refetch()} className="flex items-center gap-1 text-xs text-primary hover:underline">
+            <RefreshCw className="w-3 h-3" /> Tentar novamente
+          </button>
+        </div>
+      ) : logs.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-6 text-center">
+          <Clock className="w-7 h-7 text-gray-300 dark:text-gray-600 opacity-60" />
+          <p className="text-sm text-gray-400">Nenhuma atividade recente</p>
+        </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {logs.map((log) => (
@@ -106,7 +123,7 @@ const ActivityWidget = () => {
                 <div className="flex items-center gap-1.5 mt-0.5">
                   {PROVIDER_DOT[log.provider] || PROVIDER_DOT.system}
                   <span className="text-xs text-gray-400 truncate">
-                    {log.provider.toUpperCase()}
+                    {(log.provider || 'system').toUpperCase()}
                     {log.resource_name ? ` · ${log.resource_name}` : ''}
                   </span>
                 </div>
