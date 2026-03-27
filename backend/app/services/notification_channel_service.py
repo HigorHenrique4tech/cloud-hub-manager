@@ -1,5 +1,5 @@
 """
-Notification Channel Service — delivers events to Teams and Telegram channels.
+Notification Channel Service — delivers events to Teams, Telegram, and Email channels.
 
 Drop-in replacement for webhook_service: fire_event() has the same signature.
 """
@@ -15,6 +15,8 @@ from sqlalchemy.orm import Session
 from app.models.db_models import NotificationChannel, NotificationDelivery
 
 logger = logging.getLogger(__name__)
+
+CHANNEL_TYPES = ("teams", "telegram", "email")
 
 SUPPORTED_EVENTS = [
     "alert.triggered",
@@ -112,6 +114,49 @@ def _deliver_telegram(bot_token: str, chat_id: str, event_type: str, payload: di
         return False, str(exc)
 
 
+def _email_html(event_type: str, payload: dict) -> str:
+    """Build an HTML email body from an event payload."""
+    label = _EVENT_LABELS.get(event_type, event_type)
+    rows = ""
+    for k, v in payload.items():
+        if k in ("workspace_id",):
+            continue
+        rows += f'<tr><td style="padding:4px 8px;font-weight:600;color:#64748b;font-size:13px;">{str(k).replace("_", " ").title()}</td><td style="padding:4px 8px;color:#334155;font-size:13px;">{v}</td></tr>'
+
+    return f"""
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;">
+      <div style="background:linear-gradient(135deg,#1E6FD9,#0ea5e9);padding:20px;border-radius:10px 10px 0 0;text-align:center;">
+        <h2 style="color:#fff;margin:0;font-size:16px;">☁️ Cloud Hub Manager</h2>
+        <p style="color:rgba(255,255,255,0.85);margin:4px 0 0;font-size:14px;">{label}</p>
+      </div>
+      <div style="background:#fff;padding:20px;border:1px solid #e2e8f0;border-top:none;">
+        <table style="width:100%;border-collapse:collapse;">{rows}</table>
+      </div>
+      <div style="padding:12px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 10px 10px;text-align:center;">
+        <p style="color:#94a3b8;font-size:11px;margin:0;">Notificação automática — Cloud Hub Manager</p>
+      </div>
+    </div>
+    """
+
+
+def _deliver_email(recipients: str, event_type: str, payload: dict) -> tuple[bool, str | None]:
+    """Send event notification via SMTP to one or more email addresses."""
+    try:
+        from app.services.email_service import _send_email
+        label = _EVENT_LABELS.get(event_type, event_type)
+        html = _email_html(event_type, payload)
+        emails = [e.strip() for e in recipients.split(",") if e.strip()]
+        if not emails:
+            return False, "Nenhum destinatário configurado"
+        for email in emails:
+            ok = _send_email(email, f"Cloud Hub Manager — {label}", html)
+            if not ok:
+                return False, f"Falha ao enviar para {email}"
+        return True, None
+    except Exception as exc:
+        return False, str(exc)
+
+
 def _send_to_channel(channel: NotificationChannel, event_type: str, payload: dict) -> tuple[bool, str | None]:
     cfg = channel.config or {}
     if channel.channel_type == "teams":
@@ -125,6 +170,11 @@ def _send_to_channel(channel: NotificationChannel, event_type: str, payload: dic
         if not bot_token or not chat_id:
             return False, "Bot token ou Chat ID não configurados"
         return _deliver_telegram(bot_token, chat_id, event_type, payload)
+    elif channel.channel_type == "email":
+        recipients = cfg.get("recipients", "")
+        if not recipients:
+            return False, "Destinatários de email não configurados"
+        return _deliver_email(recipients, event_type, payload)
     return False, f"Tipo de canal desconhecido: {channel.channel_type}"
 
 

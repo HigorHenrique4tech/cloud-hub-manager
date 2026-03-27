@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Clock, Plus, Zap, Shield, Power, PowerOff,
-  Trash2, ScrollText, X, Filter,
+  Trash2, ScrollText, X, Filter, Pencil,
+  DollarSign, TrendingUp, Activity, Cpu, MemoryStick, AlertTriangle,
+  Bell, ShieldCheck, Square, CalendarOff,
+  BarChart3, CheckCircle2, XCircle, History,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import PlanGate from '../components/common/PlanGate';
@@ -58,6 +61,38 @@ const ACTION_LABELS = {
   create_approval:  'Criar aprovação',
   stop_instance:    'Parar instância',
   disable_schedule: 'Desativar agendamento',
+};
+
+const METRIC_ICONS = {
+  cost_increase_pct: TrendingUp,
+  cost_absolute:     DollarSign,
+  instance_count:    BarChart3,
+  anomaly_detected:  AlertTriangle,
+  cpu_usage_pct:     Cpu,
+  memory_usage_pct:  MemoryStick,
+};
+
+const METRIC_COLORS = {
+  cost_increase_pct: 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20',
+  cost_absolute:     'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20',
+  instance_count:    'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20',
+  anomaly_detected:  'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20',
+  cpu_usage_pct:     'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20',
+  memory_usage_pct:  'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20',
+};
+
+const ACTION_COLORS = {
+  notify:           'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20',
+  create_approval:  'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20',
+  stop_instance:    'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20',
+  disable_schedule: 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-900/20',
+};
+
+const ACTION_ICONS = {
+  notify:           Bell,
+  create_approval:  ShieldCheck,
+  stop_instance:    Square,
+  disable_schedule: CalendarOff,
 };
 
 // ── Policy form modal ─────────────────────────────────────────────────────────
@@ -138,6 +173,13 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nome</label>
             <input value={form.name} onChange={e => set('name', e.target.value)}
               className={INPUT_CLS} placeholder="Ex: Alerta CPU alta — servidor web" />
+          </div>
+
+          {/* Description */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Descrição <span className="text-gray-400 font-normal">(opcional)</span></label>
+            <textarea value={form.description || ''} onChange={e => set('description', e.target.value)}
+              className={INPUT_CLS + ' resize-none'} rows={2} placeholder="Descreva o objetivo desta política..." />
           </div>
 
           {/* Provider */}
@@ -236,6 +278,16 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
                     className={INPUT_CLS} />
                 </div>
               </div>
+
+              {/* Window hours */}
+              <div>
+                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">Janela de análise (horas)</label>
+                <select value={form.conditions.window_hours || 24} onChange={e => set('conditions.window_hours', parseInt(e.target.value))} className={INPUT_CLS}>
+                  {[1, 6, 12, 24, 48, 72, 168].map(h => (
+                    <option key={h} value={h}>{h === 1 ? '1 hora' : h < 24 ? `${h} horas` : h === 24 ? '24 horas (1 dia)' : h === 48 ? '48 horas (2 dias)' : h === 72 ? '72 horas (3 dias)' : '168 horas (7 dias)'}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </fieldset>
 
@@ -327,59 +379,109 @@ function PolicyLogsDrawer({ policyId, policyName, onClose }) {
 
 // ── Policy card ───────────────────────────────────────────────────────────────
 
-function PolicyCard({ policy, onEdit, onDelete, onToggle }) {
+function PolicyCard({ policy, onEdit, onDelete, onToggle, onShowLogs }) {
   const cond = policy.conditions || {};
   const action = policy.action || {};
+  const MetricIcon = METRIC_ICONS[cond.metric] || Activity;
+  const metricColor = METRIC_COLORS[cond.metric] || 'text-gray-600 bg-gray-50 dark:text-gray-400 dark:bg-gray-700';
+  const ActionIcon = ACTION_ICONS[action.type] || Bell;
+  const actionColor = ACTION_COLORS[action.type] || 'text-gray-600 bg-gray-50 dark:text-gray-400 dark:bg-gray-700';
+
+  const providerBadge = {
+    all:   'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400',
+    aws:   'bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400',
+    azure: 'bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400',
+    gcp:   'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400',
+  };
 
   return (
-    <div className="card">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${policy.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">{policy.name}</span>
-            <span className="text-xs text-gray-500 dark:text-gray-400 uppercase font-mono">{policy.provider}</span>
-          </div>
-
-          <div className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 space-y-0.5">
-            {cond.resource_name && (
-              <p className="text-indigo-600 dark:text-primary-light font-medium">{cond.resource_name}</p>
-            )}
-            <p>
-              <span className="text-gray-400">Se</span>{' '}
-              <strong className="text-gray-700 dark:text-gray-300">{METRIC_LABELS[cond.metric] || cond.metric}</strong>{' '}
-              {OPERATOR_LABELS[cond.operator] || cond.operator}{' '}
-              <strong className="text-gray-700 dark:text-gray-300">{cond.threshold}{RESOURCE_METRICS.has(cond.metric) ? '%' : ''}</strong>
-            </p>
-            <p>
-              <span className="text-gray-400">→</span>{' '}
-              <strong className="text-gray-700 dark:text-gray-300">{ACTION_LABELS[action.type] || action.type}</strong>
-              {action.also_notify && action.type !== 'notify' && ' + notificar'}
-            </p>
-          </div>
-
-          {policy.last_triggered_at && (
-            <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
-              Último disparo: {new Date(policy.last_triggered_at).toLocaleString('pt-BR')}
-              {' '}· Total: {policy.trigger_count}x
-            </p>
-          )}
+    <div className={`card group transition-all ${policy.is_active ? '' : 'opacity-60'}`}>
+      <div className="flex items-start gap-3">
+        {/* Metric icon */}
+        <div className={`flex-shrink-0 p-2 rounded-lg ${metricColor}`}>
+          <MetricIcon className="w-5 h-5" />
         </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <button onClick={() => onToggle(policy.id)}
-            className={`p-1.5 rounded-md transition-colors ${policy.is_active ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
-            title={policy.is_active ? 'Desativar' : 'Ativar'}>
-            {policy.is_active ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
-          </button>
-          <button onClick={() => onEdit(policy)}
-            className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors">
-            <ScrollText className="w-4 h-4" />
-          </button>
-          <button onClick={() => onDelete(policy.id)}
-            className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors">
-            <Trash2 className="w-4 h-4" />
-          </button>
+        <div className="flex-1 min-w-0">
+          {/* Header row */}
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 flex-wrap min-w-0">
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${policy.is_active ? 'bg-green-500' : 'bg-gray-400'}`} />
+              <span className="text-sm font-semibold text-gray-900 dark:text-white truncate">{policy.name}</span>
+              <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${providerBadge[policy.provider] || providerBadge.all}`}>
+                {policy.provider === 'all' ? 'TODOS' : policy.provider.toUpperCase()}
+              </span>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onToggle(policy.id)}
+                className={`p-1.5 rounded-md transition-colors ${policy.is_active ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/20' : 'text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'}`}
+                title={policy.is_active ? 'Desativar' : 'Ativar'}>
+                {policy.is_active ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
+              </button>
+              <button onClick={() => onShowLogs(policy)}
+                className="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-md transition-colors"
+                title="Histórico de disparos">
+                <ScrollText className="w-4 h-4" />
+              </button>
+              <button onClick={() => onEdit(policy)}
+                className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-md transition-colors"
+                title="Editar">
+                <Pencil className="w-4 h-4" />
+              </button>
+              <button onClick={() => onDelete(policy.id)}
+                className="p-1.5 text-gray-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition-colors"
+                title="Excluir">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Description */}
+          {policy.description && (
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-1">{policy.description}</p>
+          )}
+
+          {/* Condition + Action row */}
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {cond.resource_name && (
+              <span className="text-xs text-indigo-600 dark:text-primary-light font-medium bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded">
+                {cond.resource_name}
+              </span>
+            )}
+            <span className="text-xs text-gray-500 dark:text-gray-400">
+              Se <strong className="text-gray-700 dark:text-gray-300">{METRIC_LABELS[cond.metric] || cond.metric}</strong>
+              {' '}{OPERATOR_LABELS[cond.operator] || cond.operator}{' '}
+              <strong className="text-gray-700 dark:text-gray-300">{cond.threshold}{RESOURCE_METRICS.has(cond.metric) ? '%' : ''}</strong>
+              {cond.window_hours && cond.window_hours !== 24 && <span className="text-gray-400"> (janela: {cond.window_hours}h)</span>}
+            </span>
+          </div>
+
+          {/* Action badge */}
+          <div className="mt-2 flex items-center gap-2">
+            <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${actionColor}`}>
+              <ActionIcon className="w-3 h-3" />
+              {ACTION_LABELS[action.type] || action.type}
+            </span>
+            {action.also_notify && action.type !== 'notify' && (
+              <span className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded">
+                <Bell className="w-3 h-3" /> Notificar
+              </span>
+            )}
+          </div>
+
+          {/* Trigger info */}
+          {policy.last_triggered_at && (
+            <div className="mt-2 flex items-center gap-3 text-xs text-gray-400 dark:text-gray-500">
+              <span className="flex items-center gap-1">
+                <History className="w-3 h-3" />
+                {new Date(policy.last_triggered_at).toLocaleString('pt-BR')}
+              </span>
+              <span>·</span>
+              <span>{policy.trigger_count}x disparos</span>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -429,6 +531,23 @@ function PoliciesTab({ isPro }) {
   };
 
   const policies = policiesQ.data?.policies || [];
+  const [providerFilter, setProviderFilter] = useState('all');
+
+  const filtered = useMemo(() =>
+    providerFilter === 'all' ? policies : policies.filter(p => p.provider === providerFilter),
+    [policies, providerFilter]
+  );
+
+  const stats = useMemo(() => ({
+    total: policies.length,
+    active: policies.filter(p => p.is_active).length,
+    triggers: policies.reduce((sum, p) => sum + (p.trigger_count || 0), 0),
+    recent: policies.filter(p => {
+      if (!p.last_triggered_at) return false;
+      const diff = Date.now() - new Date(p.last_triggered_at).getTime();
+      return diff < 24 * 60 * 60 * 1000;
+    }).length,
+  }), [policies]);
 
   if (!isPro) {
     return (
@@ -440,6 +559,48 @@ function PoliciesTab({ isPro }) {
 
   return (
     <div className="space-y-4">
+      {/* Stats cards */}
+      {policies.length > 0 && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="card flex items-center gap-3 p-3">
+            <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20">
+              <Shield className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">{stats.total}</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">Total</p>
+            </div>
+          </div>
+          <div className="card flex items-center gap-3 p-3">
+            <div className="p-2 rounded-lg bg-green-50 dark:bg-green-900/20">
+              <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">{stats.active}</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">Ativas</p>
+            </div>
+          </div>
+          <div className="card flex items-center gap-3 p-3">
+            <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+              <Zap className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">{stats.triggers}</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">Disparos</p>
+            </div>
+          </div>
+          <div className="card flex items-center gap-3 p-3">
+            <div className="p-2 rounded-lg bg-red-50 dark:bg-red-900/20">
+              <Activity className="w-4 h-4 text-red-600 dark:text-red-400" />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-gray-900 dark:text-white">{stats.recent}</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">Últimas 24h</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Políticas de automação avaliadas a cada 15 minutos.
@@ -451,6 +612,33 @@ function PoliciesTab({ isPro }) {
           </button>
         </PermissionGate>
       </div>
+
+      {/* Provider filter */}
+      {policies.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Filter className="w-3.5 h-3.5 text-gray-400" />
+          <div className="flex gap-1 p-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg">
+            {PROVIDER_FILTERS.map(f => {
+              const count = f.id === 'all' ? policies.length : policies.filter(p => p.provider === f.id).length;
+              if (f.id !== 'all' && count === 0) return null;
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setProviderFilter(f.id)}
+                  className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                    providerFilter === f.id
+                      ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                      : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                  }`}
+                >
+                  {f.label}
+                  <span className="ml-1 text-[10px] opacity-60">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {policiesQ.isLoading && <div className="flex justify-center py-8"><LoadingSpinner /></div>}
 
@@ -465,13 +653,14 @@ function PoliciesTab({ isPro }) {
       )}
 
       <div className="space-y-3">
-        {policies.map(p => (
+        {filtered.map(p => (
           <PolicyCard
             key={p.id}
             policy={p}
             onEdit={(pol) => { setEditTarget(pol); setShowModal(true); }}
             onDelete={(id) => { if (confirm('Deletar esta política?')) deleteMut.mutate(id); }}
             onToggle={(id) => toggleMut.mutate(id)}
+            onShowLogs={(pol) => setLogsFor(pol)}
           />
         ))}
       </div>

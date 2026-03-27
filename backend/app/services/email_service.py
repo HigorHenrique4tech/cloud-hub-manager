@@ -1231,3 +1231,71 @@ def send_test_branding_email(to_email: str, user_name: str, branding: dict = Non
         html,
         sender_name=_brand_sender(branding),
     )
+
+
+def send_guest_invite_email(
+    to_email: str,
+    guest_name: str,
+    redeem_url: str,
+    inviter_name: str = "",
+    custom_message: str = "",
+    tenant_name: str = "",
+    branding: dict = None,
+) -> bool:
+    """Send a guest invitation email with the Entra ID redeem link."""
+    name = _brand_name(branding)
+    color = _brand_color(branding)
+    inviter = inviter_name or name
+
+    message_block = ""
+    if custom_message:
+        message_block = f"""
+        <div style="background: #f8fafc; border-left: 3px solid {color}; padding: 12px 16px; margin: 16px 0; border-radius: 0 8px 8px 0;">
+          <p style="color: #64748b; font-size: 12px; margin: 0 0 4px;">Mensagem de {inviter}:</p>
+          <p style="color: #334155; font-size: 14px; margin: 0;">{custom_message}</p>
+        </div>
+        """
+
+    tenant_line = ""
+    if tenant_name:
+        tenant_line = f" do tenant <strong>{tenant_name}</strong>"
+
+    html = f"""
+    <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 520px; margin: 0 auto;">
+      <div style="background: linear-gradient(135deg, {color}, #0ea5e9); padding: 24px; border-radius: 12px 12px 0 0; text-align: center;">
+        <h1 style="color: #ffffff; font-size: 20px; margin: 0;">Convite de Colaboração</h1>
+      </div>
+      <div style="background: #ffffff; padding: 28px 24px; border: 1px solid #e2e8f0; border-top: none;">
+        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0 0 12px;">
+          Olá{(' ' + guest_name) if guest_name else ''},
+        </p>
+        <p style="color: #334155; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+          <strong>{inviter}</strong> convidou você para colaborar como usuário convidado{tenant_line}.
+        </p>
+        {message_block}
+        <p style="color: #334155; font-size: 14px; margin: 0 0 20px;">
+          Clique no botão abaixo para aceitar o convite e acessar os recursos compartilhados:
+        </p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="{redeem_url}" style="display: inline-block; background: {color}; color: #ffffff;
+             font-weight: 600; font-size: 15px; padding: 12px 32px; border-radius: 8px;
+             text-decoration: none;">
+            Aceitar Convite
+          </a>
+        </div>
+        <p style="color: #94a3b8; font-size: 12px; text-align: center; margin: 16px 0 0;">
+          Se o botão não funcionar, copie e cole este link no navegador:<br/>
+          <a href="{redeem_url}" style="color: {color}; word-break: break-all; font-size: 11px;">{redeem_url}</a>
+        </p>
+      </div>
+      <div style="border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px; padding: 12px;">
+        {_branded_footer(branding)}
+      </div>
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{name} — Convite de Colaboração",
+        html,
+        sender_name=_brand_sender(branding),
+    )

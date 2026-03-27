@@ -47,7 +47,27 @@ async def ws_m365_invite_guest(
     _require_enterprise(plan, "Guest Users")
     try:
         svc = _get_service_or_404(db, member.workspace_id)
-        return await _run(svc.invite_guest, body.email, body.display_name, body.redirect_url, body.message)
+        result = await _run(svc.invite_guest, body.email, body.display_name, body.redirect_url, body.message)
+        # Send invitation email via our own SMTP (Microsoft's built-in emails
+        # are frequently blocked by spam filters).
+        redeem_url = result.get("invite_redeem_url")
+        if redeem_url:
+            try:
+                from app.services.email_service import send_guest_invite_email
+                from app.services.branding_service import get_branding_for_workspace
+                branding = get_branding_for_workspace(db, member.workspace_id)
+                inviter_name = member.user.name or member.user.email
+                send_guest_invite_email(
+                    to_email=body.email,
+                    guest_name=body.display_name,
+                    redeem_url=redeem_url,
+                    inviter_name=inviter_name,
+                    custom_message=body.message,
+                    branding=branding,
+                )
+            except Exception as exc:
+                logger.warning("Could not send guest invite email: %s", exc)
+        return result
     except M365AuthError as exc:
         raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
     except Exception as e:

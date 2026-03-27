@@ -15,6 +15,7 @@ from app.core.auth_context import MemberContext
 from app.core.dependencies import get_db, get_workspace_member
 from app.models.db_models import NotificationChannel, NotificationDelivery
 from app.services.notification_channel_service import (
+    CHANNEL_TYPES as VALID_CHANNEL_TYPES,
     SUPPORTED_EVENTS,
     _send_to_channel,
 )
@@ -25,7 +26,6 @@ ws_router = APIRouter(
 )
 
 MAX_CHANNELS = 20
-CHANNEL_TYPES = ("teams", "telegram")
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -40,8 +40,8 @@ class ChannelCreate(BaseModel):
     @field_validator("channel_type")
     @classmethod
     def validate_type(cls, v: str) -> str:
-        if v not in CHANNEL_TYPES:
-            raise ValueError(f"channel_type deve ser: {', '.join(CHANNEL_TYPES)}")
+        if v not in VALID_CHANNEL_TYPES:
+            raise ValueError(f"channel_type deve ser: {', '.join(VALID_CHANNEL_TYPES)}")
         return v
 
     @field_validator("events")
@@ -80,8 +80,8 @@ def _mask_config(channel_type: str, config: dict) -> dict:
     return masked
 
 
-def _serialize(ch: NotificationChannel) -> dict:
-    return {
+def _serialize(ch: NotificationChannel, db: Session = None) -> dict:
+    base = {
         "id": str(ch.id),
         "name": ch.name,
         "channel_type": ch.channel_type,
@@ -91,6 +91,37 @@ def _serialize(ch: NotificationChannel) -> dict:
         "created_at": ch.created_at.isoformat() if ch.created_at else None,
         "updated_at": ch.updated_at.isoformat() if ch.updated_at else None,
     }
+    # Attach delivery stats when db session is available
+    if db is not None:
+        from sqlalchemy import func
+        last = (
+            db.query(NotificationDelivery)
+            .filter(NotificationDelivery.channel_id == ch.id)
+            .order_by(NotificationDelivery.created_at.desc())
+            .first()
+        )
+        fail_count = (
+            db.query(func.count(NotificationDelivery.id))
+            .filter(
+                NotificationDelivery.channel_id == ch.id,
+                NotificationDelivery.status == "failed",
+            )
+            .scalar()
+        ) or 0
+        total_deliveries = (
+            db.query(func.count(NotificationDelivery.id))
+            .filter(NotificationDelivery.channel_id == ch.id)
+            .scalar()
+        ) or 0
+        base["last_delivery"] = {
+            "status": last.status,
+            "event_type": last.event_type,
+            "created_at": last.created_at.isoformat() if last.created_at else None,
+            "error_message": last.error_message,
+        } if last else None
+        base["total_deliveries"] = total_deliveries
+        base["fail_count"] = fail_count
+    return base
 
 
 def _require_view(ctx: MemberContext) -> None:
@@ -122,6 +153,9 @@ def _validate_config(channel_type: str, config: dict) -> None:
             raise HTTPException(422, "config.bot_token é obrigatório para canais Telegram")
         if not config.get("chat_id"):
             raise HTTPException(422, "config.chat_id é obrigatório para canais Telegram")
+    elif channel_type == "email":
+        if not config.get("recipients"):
+            raise HTTPException(422, "config.recipients é obrigatório para canais Email")
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -139,7 +173,7 @@ def list_channels(
         .all()
     )
     return {
-        "channels": [_serialize(ch) for ch in channels],
+        "channels": [_serialize(ch, db) for ch in channels],
         "supported_events": SUPPORTED_EVENTS,
     }
 
@@ -202,6 +236,21 @@ def update_channel(
     db.commit()
     db.refresh(ch)
     return _serialize(ch)
+
+
+@ws_router.patch("/{channel_id}/toggle")
+def toggle_channel(
+    channel_id: UUID,
+    ctx: MemberContext = Depends(get_workspace_member),
+    db: Session = Depends(get_db),
+):
+    _require_manage(ctx)
+    ch = _get_channel(db, ctx.workspace_id, channel_id)
+    ch.is_active = not ch.is_active
+    ch.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(ch)
+    return _serialize(ch, db)
 
 
 @ws_router.delete("/{channel_id}", status_code=204)

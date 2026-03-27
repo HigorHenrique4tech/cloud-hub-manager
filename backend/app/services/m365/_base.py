@@ -5,6 +5,8 @@ Uses Client Credentials Flow (app-to-app), so no user sign-in is required.
 The caller must have an Azure AD App Registration with the following
 Application permissions (admin consent required):
   - User.Read.All
+  - User.ReadWrite.All          (delete guest users)
+  - User.Invite.All             (send guest invitations)
   - Organization.Read.All
   - Reports.Read.All
   - Team.ReadBasic.All

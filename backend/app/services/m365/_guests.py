@@ -43,22 +43,27 @@ class GuestsMixin:
     def invite_guest(self, email: str, display_name: str = "",
                      redirect_url: str = "https://myapps.microsoft.com",
                      message: str = "") -> dict:
-        """Send an invitation to an external guest user."""
+        """Send an invitation to an external guest user.
+
+        We set sendInvitationMessage=False because Microsoft's built-in
+        invitation emails are frequently blocked by spam filters.  Instead,
+        the API layer sends the invite via our own email service using the
+        returned inviteRedeemUrl.
+        """
         body: dict = {
             "invitedUserEmailAddress": email,
             "inviteRedirectUrl": redirect_url,
-            "sendInvitationMessage": True,
+            "sendInvitationMessage": False,
         }
         if display_name:
             body["invitedUserDisplayName"] = display_name
-        msg_info: dict = {"messageLanguage": "pt-BR"}
-        if message:
-            msg_info["customizedMessageBody"] = message
-        body["invitedUserMessageInfo"] = msg_info
         result = self._post("/invitations", body)
         return {
             "id": result.get("id"),
             "invite_redeem_url": result.get("inviteRedeemUrl"),
+            "invited_email": email,
+            "display_name": display_name,
+            "custom_message": message,
             "status": result.get("status", "PendingAcceptance"),
         }
 
