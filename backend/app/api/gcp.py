@@ -77,7 +77,34 @@ async def _run(fn, *args, _timeout=120, **kwargs):
     except HTTPException:
         raise
     except Exception as exc:
+        exc_str = str(exc)
         logger.error("GCP error in %s: %s", fn.__name__, exc)
+        # Google API 403 — API disabled or permission denied
+        if "403" in exc_str and ("has not been used" in exc_str or "is disabled" in exc_str):
+            # Extract the API name from the URL for a friendly message
+            api_name = "API"
+            if "compute.googleapis.com" in exc_str:
+                api_name = "Compute Engine API"
+            elif "storage.googleapis.com" in exc_str:
+                api_name = "Cloud Storage API"
+            elif "sqladmin.googleapis.com" in exc_str:
+                api_name = "Cloud SQL Admin API"
+            elif "cloudfunctions.googleapis.com" in exc_str:
+                api_name = "Cloud Functions API"
+            elif "compute" in exc_str:
+                api_name = "Compute Engine API"
+            raise HTTPException(
+                status_code=403,
+                detail=f"{api_name} não está habilitada no projeto GCP. "
+                       f"Ative a API no Google Cloud Console e aguarde alguns minutos.",
+            )
+        if "403" in exc_str or "Forbidden" in exc_str or "Permission" in exc_str:
+            raise HTTPException(
+                status_code=403,
+                detail="Permissão negada no GCP. Verifique se a conta de serviço tem as permissões necessárias.",
+            )
+        if "404" in exc_str and "not found" in exc_str.lower():
+            raise HTTPException(status_code=404, detail="Recurso GCP não encontrado.")
         raise HTTPException(status_code=500, detail=str(exc))
 
 

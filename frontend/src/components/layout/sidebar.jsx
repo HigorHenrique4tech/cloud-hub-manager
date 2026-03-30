@@ -178,7 +178,7 @@ const Sidebar = () => {
       </div>
 
       <div className="px-4 py-2">
-        <p className="text-xs text-gray-400 dark:text-gray-500">v0.3.0</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500">v1.0.0</p>
       </div>
     </aside>
   );

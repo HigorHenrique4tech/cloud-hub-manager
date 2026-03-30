@@ -109,6 +109,31 @@ async def inject_user_for_limiter(request: Request, call_next):
         response.headers["X-RateLimit-Policy"] = tier
     return response
 
+# ── CSRF protection (custom header check) ────────────────────────────────────
+# For JWT-based SPAs, browsers can't add custom headers in cross-origin requests
+# (form posts, image tags, etc.). Requiring X-Requested-With blocks CSRF attacks.
+_CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+_CSRF_EXEMPT_PATHS = {"/health", "/", "/metrics"}
+_CSRF_EXEMPT_PREFIXES = (
+    "/api/v1/billing/webhook",   # payment provider callbacks
+    "/api/v1/auth/",             # auth endpoints (login, register, OAuth callbacks)
+)
+
+@app.middleware("http")
+async def csrf_protection(request: Request, call_next):
+    if request.method.upper() not in _CSRF_SAFE_METHODS:
+        path = request.url.path
+        if path not in _CSRF_EXEMPT_PATHS and not any(path.startswith(p) for p in _CSRF_EXEMPT_PREFIXES):
+            has_custom_header = request.headers.get("X-Requested-With")
+            has_content_type_json = "application/json" in (request.headers.get("content-type") or "")
+            if not has_custom_header and not has_content_type_json:
+                return JSONResponse(
+                    status_code=403,
+                    content={"detail": "Requisição bloqueada: header de segurança ausente."},
+                )
+    return await call_next(request)
+
+
 # ── Security headers ──────────────────────────────────────────────────────────
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
@@ -127,7 +152,7 @@ app.add_middleware(
     allow_origins=settings.ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With", "X-CSRF-Token"],
     expose_headers=["X-RateLimit-Limit", "X-RateLimit-Policy", "Retry-After"],
 )
 

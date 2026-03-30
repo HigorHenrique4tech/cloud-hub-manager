@@ -108,18 +108,21 @@ const DashboardInner = () => {
     queryFn: () => awsService.listEC2Instances(),
     enabled: wsReady && hasAws,
     retry: false,
+    staleTime: 2 * 60 * 1000,
   });
   const { isLoading: azureLoading } = useQuery({
     queryKey: ['dashboard-azure'],
     queryFn: () => azureService.listVMs(),
     enabled: wsReady && hasAzure,
     retry: false,
+    staleTime: 2 * 60 * 1000,
   });
   const { isLoading: gcpLoading } = useQuery({
     queryKey: ['dashboard-gcp'],
     queryFn: () => gcpService.listInstances(),
     enabled: wsReady && hasGcp,
     retry: false,
+    staleTime: 2 * 60 * 1000,
   });
 
   /* Empty workspace state */

@@ -50,18 +50,21 @@ const StatsWidget = () => {
     queryFn: () => awsService.listEC2Instances(),
     enabled: wsReady && hasAws,
     retry: false,
+    staleTime: 2 * 60 * 1000,
   });
   const azureQ = useQuery({
     queryKey: ['dashboard-azure'],
     queryFn: () => azureService.listVMs(),
     enabled: wsReady && hasAzure,
     retry: false,
+    staleTime: 2 * 60 * 1000,
   });
   const gcpQ = useQuery({
     queryKey: ['dashboard-gcp'],
     queryFn: () => gcpService.listInstances(),
     enabled: wsReady && hasGcp,
     retry: false,
+    staleTime: 2 * 60 * 1000,
   });
 
   const awsInstances = awsQ.data?.instances || [];
@@ -148,16 +151,20 @@ const StatsWidget = () => {
 
       {/* Error state */}
       {hasError && (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 text-sm text-red-700 dark:text-red-300">
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40 text-sm text-amber-700 dark:text-amber-300">
           <AlertCircle className="w-4 h-4 flex-shrink-0" />
-          <span className="flex-1">Erro ao carregar dados de algumas clouds.</span>
+          <span className="flex-1">
+            {[awsQ, azureQ, gcpQ].some(q => q.error?.response?.status === 403)
+              ? 'Algumas APIs do cloud provider não estão habilitadas. Verifique o console do provedor.'
+              : 'Erro ao carregar dados de algumas clouds.'}
+          </span>
           <button
             onClick={() => {
               if (awsQ.isError) awsQ.refetch();
               if (azureQ.isError) azureQ.refetch();
               if (gcpQ.isError) gcpQ.refetch();
             }}
-            className="flex items-center gap-1 text-xs font-medium text-red-600 dark:text-red-400 hover:underline"
+            className="flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline"
           >
             <RefreshCw className="w-3 h-3" /> Tentar novamente
           </button>

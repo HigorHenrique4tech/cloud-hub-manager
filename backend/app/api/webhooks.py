@@ -54,16 +54,19 @@ class WebhookUpdate(BaseModel):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
-def _wh_dict(wh: WebhookEndpoint) -> dict:
-    return {
+def _wh_dict(wh: WebhookEndpoint, *, include_secret: bool = False) -> dict:
+    d = {
         "id":         str(wh.id),
         "name":       wh.name,
         "url":        wh.url,
         "events":     wh.events or [],
         "is_active":  wh.is_active,
-        "secret":     wh.secret,
+        "secret_last4": wh.secret[-4:] if wh.secret else None,
         "created_at": wh.created_at.isoformat() if wh.created_at else None,
     }
+    if include_secret:
+        d["secret"] = wh.secret
+    return d
 
 
 def _validate_events(events: List[str]) -> None:
@@ -137,7 +140,7 @@ def create_webhook(
     db.add(wh)
     db.commit()
     db.refresh(wh)
-    return _wh_dict(wh)
+    return _wh_dict(wh, include_secret=True)
 
 
 @ws_router.put("/{webhook_id}")

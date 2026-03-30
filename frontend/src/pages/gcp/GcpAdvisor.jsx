@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Shield, Zap, Heart, Settings2, RefreshCw, AlertTriangle,
-  ChevronDown, ChevronUp, DollarSign, Filter,
+  ChevronDown, ChevronUp, DollarSign, Filter, AlertCircle,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
@@ -145,6 +145,24 @@ const GcpAdvisor = () => {
 
   if (summaryQ.error?.response?.status === 400) {
     return <Layout><NoCredentialsMessage provider="gcp" /></Layout>;
+  }
+  if (summaryQ.error?.response?.status === 403) {
+    return (
+      <Layout>
+        <div className="flex flex-col items-center gap-3 py-16 text-center">
+          <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+            <AlertCircle className="w-7 h-7 text-amber-600 dark:text-amber-400" />
+          </div>
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">API não habilitada</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+            {summaryQ.error.response?.data?.detail || 'A API necessária não está habilitada no projeto GCP.'}
+          </p>
+          <button onClick={() => { summaryQ.refetch(); recsQ.refetch(); }} className="mt-2 flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-primary border border-primary/30 hover:bg-primary/5 transition-colors">
+            Tentar novamente
+          </button>
+        </div>
+      </Layout>
+    );
   }
 
   const summary = summaryQ.data;

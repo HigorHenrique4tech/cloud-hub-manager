@@ -1,10 +1,57 @@
 import smtplib
 import logging
+import time
+import threading
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+# ── Per-email cooldown (prevents email spam regardless of IP) ────────────────
+# Tracks last send time per (email, category) to enforce minimum intervals.
+
+_email_cooldowns: dict[str, float] = {}
+_cooldown_lock = threading.Lock()
+
+# Cooldown windows in seconds per email category
+_COOLDOWN_SECONDS = {
+    "otp": 60,              # 1 OTP per minute per email
+    "verification": 60,     # 1 verification per minute per email
+    "password_reset": 60,   # 1 reset per minute per email
+    "default": 10,          # General emails: 10s cooldown
+}
+
+# Maximum entries before cleanup (prevent unbounded memory growth)
+_MAX_COOLDOWN_ENTRIES = 10_000
+
+
+def _cleanup_cooldowns():
+    """Remove entries older than 5 minutes to prevent memory leak."""
+    cutoff = time.monotonic() - 300
+    expired = [k for k, v in _email_cooldowns.items() if v < cutoff]
+    for k in expired:
+        del _email_cooldowns[k]
+
+
+def check_email_cooldown(email: str, category: str = "default") -> bool:
+    """Check if we can send an email to this address in this category.
+    Returns True if allowed, False if rate-limited."""
+    key = f"{email.lower()}:{category}"
+    window = _COOLDOWN_SECONDS.get(category, _COOLDOWN_SECONDS["default"])
+    now = time.monotonic()
+
+    with _cooldown_lock:
+        if len(_email_cooldowns) > _MAX_COOLDOWN_ENTRIES:
+            _cleanup_cooldowns()
+
+        last_sent = _email_cooldowns.get(key)
+        if last_sent and (now - last_sent) < window:
+            logger.warning("Email cooldown active for %s (category=%s)", email, category)
+            return False
+        _email_cooldowns[key] = now
+        return True
 
 
 # ── Internal SMTP sender ────────────────────────────────────────────────────

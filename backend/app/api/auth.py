@@ -19,7 +19,7 @@ from app.services.auth_service import (
     generate_otp, hash_otp, verify_otp_hash, create_mfa_token, decode_mfa_token,
 )
 from app.services.oauth_service import google_get_user_info, github_get_user_info, microsoft_get_user_info
-from app.services.email_service import send_verification_email, send_otp_email
+from app.services.email_service import send_verification_email, send_otp_email, check_email_cooldown
 from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
 from app.core.limiter import limiter
@@ -177,6 +177,8 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
 
     # MFA check — if enabled, issue a short-lived mfa_token and send OTP
     if user.mfa_enabled:
+        if not check_email_cooldown(user.email, "otp"):
+            raise HTTPException(status_code=429, detail="Aguarde antes de solicitar outro código")
         otp = generate_otp()
         user.mfa_otp_hash = hash_otp(otp)
         user.mfa_otp_expires_at = datetime.utcnow() + timedelta(minutes=5)
@@ -346,6 +348,9 @@ def resend_mfa(payload: dict, request: Request, db: Session = Depends(get_db)):
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
 
+    if not check_email_cooldown(user.email, "otp"):
+        raise HTTPException(status_code=429, detail="Aguarde 60 segundos antes de solicitar outro código")
+
     otp = generate_otp()
     user.mfa_otp_hash = hash_otp(otp)
     user.mfa_otp_expires_at = datetime.utcnow() + timedelta(minutes=5)
@@ -429,6 +434,9 @@ def resend_verification(payload: ResendVerificationRequest, request: Request, db
         return {"detail": "Se o email estiver cadastrado, enviaremos o link de verificação"}
     if user.is_verified:
         return {"detail": "Email já verificado"}
+
+    if not check_email_cooldown(user.email, "verification"):
+        return {"detail": "Se o email estiver cadastrado, enviaremos o link de verificação"}
 
     # Generate new token
     new_token = secrets.token_urlsafe(32)
