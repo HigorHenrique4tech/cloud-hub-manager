@@ -534,120 +534,378 @@ const UserDetailDrawer = ({ user, onClose }) => {
 
 // ── Offboarding Modal ─────────────────────────────────────────────────────────
 
+const STEP_LABELS = {
+  disable_account:    { label: 'Desabilitar conta',              icon: Lock },
+  revoke_sessions:    { label: 'Revogar sessões ativas',         icon: LogOut },
+  reset_password:     { label: 'Redefinir senha',                icon: Key },
+  remove_from_groups: { label: 'Remover de grupos e times',      icon: Users },
+  remove_auth_methods:{ label: 'Remover métodos MFA',            icon: Smartphone },
+  remove_licenses:    { label: 'Remover licenças',               icon: Key },
+  auto_reply:         { label: 'Resposta automática de saída',   icon: Mail },
+};
+
 const OffboardingModal = ({ user, onClose }) => {
-  const [opts, setOpts] = useState({
-    disable_account: true,
-    revoke_sessions: true,
-    remove_licenses: false,
-    auto_reply: false,
-    auto_reply_message: '',
-  });
+  // step: 'loading' | 'options' | 'confirm' | 'results'
+  const [step, setStep]       = useState('loading');
+  const [context, setContext] = useState(null);
+  const [confirm, setConfirm] = useState('');
   const [results, setResults] = useState(null);
+  const [opts, setOpts]       = useState({
+    disable_account:     true,
+    revoke_sessions:     true,
+    reset_password:      false,
+    remove_from_groups:  false,
+    remove_auth_methods: false,
+    remove_licenses:     false,
+    auto_reply:          false,
+    auto_reply_message:  '',
+  });
   const toggle = (k) => setOpts((p) => ({ ...p, [k]: !p[k] }));
+
+  // Load context on mount
+  const { isLoading: ctxLoading } = useQuery({
+    queryKey: ['offboard-context', user.id],
+    queryFn: () => m365Service.getOffboardContext(user.id),
+    retry: false,
+    onSuccess: (data) => { setContext(data); setStep('options'); },
+    onError: () => setStep('options'),
+  });
 
   const offboardMut = useMutation({
     mutationFn: () => m365Service.offboardUser(user.id, {
-      disable_account: opts.disable_account,
-      revoke_sessions: opts.revoke_sessions,
-      remove_licenses: opts.remove_licenses,
-      auto_reply_message: opts.auto_reply && opts.auto_reply_message ? opts.auto_reply_message : null,
+      disable_account:     opts.disable_account,
+      revoke_sessions:     opts.revoke_sessions,
+      reset_password:      opts.reset_password,
+      remove_from_groups:  opts.remove_from_groups,
+      remove_auth_methods: opts.remove_auth_methods,
+      remove_licenses:     opts.remove_licenses,
+      auto_reply_message:  opts.auto_reply && opts.auto_reply_message ? opts.auto_reply_message : null,
     }),
-    onSuccess: (data) => setResults(data.results),
+    onSuccess: (data) => { setResults(data.results); setStep('results'); },
   });
 
-  const stepLabels = {
-    disable_account: 'Desabilitar conta',
-    revoke_sessions: 'Revogar sessões',
-    remove_licenses: 'Remover licenças',
-    auto_reply: 'Resposta automática',
-  };
+  const selectedActions = Object.entries(opts)
+    .filter(([k, v]) => v === true && k !== 'auto_reply_message')
+    .map(([k]) => k === 'auto_reply' ? 'auto_reply' : k);
+
+  const userName = user.displayName || user.userPrincipalName || '';
+  const canConfirm = confirm.trim().toLowerCase() === userName.trim().toLowerCase();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-red-500" />
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <LogOut className="w-4 h-4 text-red-600 dark:text-red-400" />
+            </div>
             <div>
-              <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Offboarding</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{user.displayName || user.userPrincipalName}</p>
+              <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Offboarding de Usuário</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{userName}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Step indicator */}
+            {step !== 'loading' && step !== 'results' && (
+              <div className="flex items-center gap-1.5">
+                {['options','confirm'].map((s, i) => (
+                  <div key={s} className={`h-1.5 rounded-full transition-all ${
+                    step === s ? 'w-6 bg-red-500' :
+                    (step === 'confirm' && s === 'options') ? 'w-3 bg-red-300 dark:bg-red-700' :
+                    'w-3 bg-gray-200 dark:bg-gray-700'
+                  }`} />
+                ))}
+              </div>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
         </div>
 
         {/* Body */}
-        <div className="p-5 space-y-4">
-          {!results ? (
-            <>
-              <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+
+          {/* STEP: loading */}
+          {step === 'loading' && (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">Carregando dados do usuário...</p>
+            </div>
+          )}
+
+          {/* STEP: options */}
+          {step === 'options' && (
+            <div className="space-y-5">
+              {/* User context card */}
+              {context && (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Estado atual</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${context.accountEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
+                        Conta {context.accountEnabled ? 'ativa' : 'desabilitada'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Key className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
+                        {context.licenseCount} licença(s)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
+                        {context.groupCount} grupo(s)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
+                        {context.authMethodCount} método(s) MFA
+                      </span>
+                    </div>
+                    {context.lastSignIn && (
+                      <div className="col-span-2 flex items-center gap-2">
+                        <Clock className="w-3 h-3 text-gray-400" />
+                        <span className="text-xs text-gray-600 dark:text-gray-300">
+                          Último login: {new Date(context.lastSignIn).toLocaleDateString('pt-BR', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {context.groups?.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Grupos:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {context.groups.slice(0, 6).map(g => (
+                          <span key={g.id} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            {g.displayName}
+                          </span>
+                        ))}
+                        {context.groups.length > 6 && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500">
+                            +{context.groups.length - 6} mais
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Warning */}
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
                 <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-                <p className="text-xs text-red-600 dark:text-red-400">Atenção: algumas ações podem ser irreversíveis. Revise antes de executar.</p>
+                <p className="text-xs text-red-600 dark:text-red-400">Atenção: algumas ações são irreversíveis. Revise com cuidado antes de continuar.</p>
               </div>
-              {[
-                { key: 'disable_account', label: 'Desabilitar conta' },
-                { key: 'revoke_sessions', label: 'Revogar todas as sessões' },
-                { key: 'remove_licenses', label: 'Remover todas as licenças' },
-                { key: 'auto_reply',      label: 'Ativar resposta automática de saída' },
-              ].map(({ key, label }) => (
-                <label key={key} className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={opts[key]}
-                    onChange={() => toggle(key)}
-                    className="w-4 h-4 rounded border-gray-300 text-blue-600"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">{label}</span>
-                </label>
-              ))}
+
+              {/* Actions */}
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Ações a executar</p>
+                {[
+                  { key: 'disable_account',     label: 'Desabilitar conta',             desc: 'Impede o login imediatamente',                  icon: Lock,        danger: true  },
+                  { key: 'revoke_sessions',      label: 'Revogar sessões ativas',        desc: 'Encerra todas as sessões abertas',               icon: LogOut,      danger: true  },
+                  { key: 'reset_password',       label: 'Redefinir senha',               desc: 'Gera senha aleatória segura (exibida no resultado)', icon: Key,     danger: false },
+                  { key: 'remove_from_groups',   label: 'Remover de grupos e times',     desc: `${context?.groupCount ?? '?'} grupo(s) encontrado(s)`, icon: Users, danger: false },
+                  { key: 'remove_auth_methods',  label: 'Remover métodos MFA',           desc: `${context?.authMethodCount ?? '?'} método(s) registrado(s)`, icon: Smartphone, danger: false },
+                  { key: 'remove_licenses',      label: 'Remover todas as licenças',     desc: `${context?.licenseCount ?? '?'} licença(s) atribuída(s)`, icon: Key,  danger: false },
+                  { key: 'auto_reply',           label: 'Resposta automática de saída',  desc: 'Configura mensagem no Exchange',                icon: Mail,        danger: false },
+                ].map(({ key, label, desc, icon: Icon, danger }) => (
+                  <label key={key} className={`flex items-start gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                    opts[key] ? 'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={opts[key]}
+                      onChange={() => toggle(key)}
+                      className="w-4 h-4 rounded mt-0.5 border-gray-300 text-red-600 focus:ring-red-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${opts[key] ? 'text-red-500' : 'text-gray-400'}`} />
+                        <span className={`text-sm font-medium ${opts[key] ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                          {label}
+                        </span>
+                        {danger && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium">irreversível</span>}
+                      </div>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {/* Auto-reply message textarea */}
               {opts.auto_reply && (
                 <textarea
                   rows={3}
-                  placeholder="Mensagem de resposta automática..."
+                  placeholder="Ex: Este usuário não faz mais parte da empresa. Para assuntos pendentes, contate rh@empresa.com."
                   value={opts.auto_reply_message}
                   onChange={(e) => setOpts((p) => ({ ...p, auto_reply_message: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
                 />
               )}
-              {offboardMut.isError && (
-                <p className="text-xs text-red-500">{offboardMut.error?.response?.data?.detail || 'Erro ao executar offboarding.'}</p>
-              )}
-            </>
-          ) : (
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Resultado do offboarding:</p>
-              {Object.entries(results).map(([step, val]) => (
-                <div key={step} className="flex items-center gap-2">
-                  {val === true
-                    ? <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
-                    : <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                  }
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    {stepLabels[step] || step}: {val === true ? 'Concluído' : <span className="text-red-500">{val}</span>}
-                  </span>
+            </div>
+          )}
+
+          {/* STEP: confirm */}
+          {step === 'confirm' && (
+            <div className="space-y-5">
+              {/* Summary of selected actions */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
+                    Resumo — {selectedActions.length} ação(ões) selecionada(s)
+                  </p>
                 </div>
-              ))}
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {selectedActions.map((k) => {
+                    const cfg = STEP_LABELS[k] || { label: k, icon: CheckCircle };
+                    const Icon = cfg.icon;
+                    return (
+                      <div key={k} className="flex items-center gap-3 px-4 py-2.5">
+                        <Icon className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{cfg.label}</span>
+                      </div>
+                    );
+                  })}
+                  {opts.auto_reply && opts.auto_reply_message && (
+                    <div className="px-4 py-2.5">
+                      <p className="text-xs text-gray-400 italic">"{opts.auto_reply_message.slice(0, 80)}{opts.auto_reply_message.length > 80 ? '…' : ''}"</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Confirmation input */}
+              <div className="space-y-2">
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  Para confirmar, digite o nome do usuário:
+                  <span className="ml-1 font-semibold text-gray-900 dark:text-gray-100">{userName}</span>
+                </p>
+                <input
+                  type="text"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  placeholder={userName}
+                  autoFocus
+                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              {offboardMut.isError && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                  <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    {offboardMut.error?.response?.data?.detail || 'Erro ao executar offboarding.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP: results */}
+          {step === 'results' && results && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                <p className="text-sm text-green-700 dark:text-green-300 font-medium">Offboarding executado com sucesso</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">Resultado por ação</p>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {Object.entries(results).map(([k, val]) => {
+                    const cfg = STEP_LABELS[k] || { label: k, icon: CheckCircle };
+                    const Icon = cfg.icon;
+                    const isSuccess = val === true || (typeof val === 'string' && !val.includes('erro') && !val.includes('Error') && !val.includes('Graph API'));
+                    return (
+                      <div key={k} className="flex items-start gap-3 px-4 py-3">
+                        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                          {isSuccess
+                            ? <CheckCircle className="w-4 h-4 text-green-500" />
+                            : <XCircle className="w-4 h-4 text-red-500" />
+                          }
+                          <Icon className="w-3.5 h-3.5 text-gray-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">{cfg.label}</p>
+                          {val !== true && (
+                            /* If it's a generated password, show it in a copyable box */
+                            k === 'reset_password' && isSuccess ? (
+                              <div className="mt-1 flex items-center gap-2 px-2 py-1 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                                <Lock className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                                <code className="text-xs font-mono text-amber-700 dark:text-amber-300 select-all">{val}</code>
+                                <span className="text-[10px] text-amber-500 ml-auto">copie agora</span>
+                              </div>
+                            ) : (
+                              <p className={`text-xs mt-0.5 ${isSuccess ? 'text-gray-500 dark:text-gray-400' : 'text-red-500 dark:text-red-400'}`}>
+                                {val}
+                              </p>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700">
-          {results ? (
-            <button onClick={onClose} className="w-full px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700">
-              Fechar
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 flex gap-3">
+          {step === 'loading' && (
+            <button onClick={onClose} className="flex-1 px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+              Cancelar
             </button>
-          ) : (
-            <button
-              onClick={() => offboardMut.mutate()}
-              disabled={offboardMut.isPending}
-              className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
-            >
-              {offboardMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <LogOut className="w-4 h-4" />}
-              Executar Offboarding
+          )}
+
+          {step === 'options' && (
+            <>
+              <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+                Cancelar
+              </button>
+              <button
+                onClick={() => setStep('confirm')}
+                disabled={selectedActions.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-40"
+              >
+                Continuar
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
+          {step === 'confirm' && (
+            <>
+              <button onClick={() => setStep('options')} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+                Voltar
+              </button>
+              <button
+                onClick={() => offboardMut.mutate()}
+                disabled={!canConfirm || offboardMut.isPending}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-40"
+              >
+                {offboardMut.isPending
+                  ? <><RefreshCw className="w-4 h-4 animate-spin" /> Executando...</>
+                  : <><LogOut className="w-4 h-4" /> Executar Offboarding</>
+                }
+              </button>
+            </>
+          )}
+
+          {step === 'results' && (
+            <button onClick={onClose} className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700">
+              Fechar
             </button>
           )}
         </div>

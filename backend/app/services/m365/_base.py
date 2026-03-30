@@ -108,6 +108,31 @@ class M365Base:
             raise Exception(f"Graph API {r.status_code}: {err_body}")
         return r.json() if r.content else {}
 
+    def _patch(self, path: str, body: dict) -> dict:
+        """PATCH to a Graph URL and return JSON response."""
+        full_url = path if path.startswith("https://") else f"{GRAPH_V1}{path}"
+        r = requests.patch(full_url, headers=self._headers(), json=body, timeout=30)
+        if not r.ok:
+            try:
+                err_body = r.json()
+            except Exception:
+                err_body = r.text
+            logger.error(f"Graph API PATCH {path} {r.status_code}: {err_body}")
+            raise Exception(f"Graph API {r.status_code}: {err_body}")
+        return r.json() if r.content else {}
+
+    def _delete(self, path: str) -> None:
+        """DELETE to a Graph URL (204 No Content expected)."""
+        full_url = path if path.startswith("https://") else f"{GRAPH_V1}{path}"
+        r = requests.delete(full_url, headers=self._headers(), timeout=30)
+        if not r.ok and r.status_code != 404:
+            try:
+                err_body = r.json()
+            except Exception:
+                err_body = r.text
+            logger.error(f"Graph API DELETE {path} {r.status_code}: {err_body}")
+            raise Exception(f"Graph API {r.status_code}: {err_body}")
+
     # ── Exchange Online Admin API helpers ─────────────────────────────────────
 
     def _get_exo_token(self) -> str:

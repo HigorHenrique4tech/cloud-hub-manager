@@ -14,6 +14,25 @@ from ._helpers import logger, _get_org_plan, _require_enterprise, _get_service_o
 from ._schemas import OffboardRequest
 
 
+@ws_router.get("/users/{user_id}/offboard-context")
+async def ws_m365_offboard_context(
+    user_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Return user's current state for pre-offboarding review."""
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan, "Offboarding")
+    try:
+        svc = _get_service_or_404(db, member.workspace_id)
+        return await _run(svc.get_offboard_context, user_id)
+    except M365AuthError as exc:
+        raise HTTPException(status_code=502, detail=f"M365 authentication failed: {exc}")
+    except Exception as exc:
+        logger.error("M365 offboard context error for %s: %s", user_id, exc)
+        raise HTTPException(status_code=502, detail=f"Falha ao carregar contexto do usuário: {exc}")
+
+
 @ws_router.post("/users/{user_id}/offboard")
 async def ws_m365_offboard_user(
     user_id: str,

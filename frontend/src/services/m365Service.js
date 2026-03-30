@@ -192,6 +192,7 @@ const m365Service = {
   getSecurityAlerts: (limit = 50, severity) => api.get(wsUrl('/m365/security/alerts'), { params: { limit, ...(severity ? { severity } : {}) } }).then(r => r.data),
 
   // ── Offboarding ──────────────────────────────────────────────────────────────
+  getOffboardContext: (userId) => api.get(wsUrl(`/m365/users/${userId}/offboard-context`)).then(r => r.data),
   offboardUser: (userId, data) => api.post(wsUrl(`/m365/users/${userId}/offboard`), data).then(r => r.data),
 
   // ── Shared Mailboxes & Distribution Lists ────────────────────────────────────

@@ -77,6 +77,9 @@ class InviteGuestRequest(BaseModel):
 class OffboardRequest(BaseModel):
     disable_account: bool = True
     revoke_sessions: bool = True
+    reset_password: bool = False
+    remove_from_groups: bool = False
+    remove_auth_methods: bool = False
     remove_licenses: bool = False
     auto_reply_message: Optional[str] = None
 
