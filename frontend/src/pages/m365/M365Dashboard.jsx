@@ -562,14 +562,18 @@ const OffboardingModal = ({ user, onClose }) => {
   });
   const toggle = (k) => setOpts((p) => ({ ...p, [k]: !p[k] }));
 
-  // Load context on mount
-  const { isLoading: ctxLoading } = useQuery({
+  // Load context on mount — onSuccess/onError removed in TanStack Query v5, use useEffect
+  const ctxQ = useQuery({
     queryKey: ['offboard-context', user.id],
     queryFn: () => m365Service.getOffboardContext(user.id),
     retry: false,
-    onSuccess: (data) => { setContext(data); setStep('options'); },
-    onError: () => setStep('options'),
+    staleTime: Infinity,
   });
+
+  useEffect(() => {
+    if (ctxQ.isSuccess) { setContext(ctxQ.data); setStep('options'); }
+    if (ctxQ.isError)   { setStep('options'); }
+  }, [ctxQ.isSuccess, ctxQ.isError, ctxQ.data]);
 
   const offboardMut = useMutation({
     mutationFn: () => m365Service.offboardUser(user.id, {

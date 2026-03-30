@@ -3,6 +3,7 @@
 import logging
 import secrets
 import string
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from ._base import GRAPH_V1
 
@@ -29,37 +30,49 @@ class OffboardingMixin:
     """Offboarding methods for M365Service."""
 
     def get_offboard_context(self, user_id: str) -> dict:
-        """Fetch user's current state for pre-offboarding review."""
-        # Basic user info — try with signInActivity first, fall back without it
-        try:
-            user = self._get(
-                f"{GRAPH_V1}/users/{user_id}"
-                "?$select=id,displayName,userPrincipalName,mail,accountEnabled,"
-                "assignedLicenses,jobTitle,department,signInActivity"
-            )
-        except Exception:
-            user = self._get(
-                f"{GRAPH_V1}/users/{user_id}"
-                "?$select=id,displayName,userPrincipalName,mail,accountEnabled,"
-                "assignedLicenses,jobTitle,department"
-            )
+        """Fetch user's current state for pre-offboarding review.
+        Runs all Graph API calls in parallel to minimize latency."""
+
+        def _fetch_user():
+            try:
+                return self._get(
+                    f"{GRAPH_V1}/users/{user_id}"
+                    "?$select=id,displayName,userPrincipalName,mail,accountEnabled,"
+                    "assignedLicenses,jobTitle,department,signInActivity"
+                )
+            except Exception:
+                return self._get(
+                    f"{GRAPH_V1}/users/{user_id}"
+                    "?$select=id,displayName,userPrincipalName,mail,accountEnabled,"
+                    "assignedLicenses,jobTitle,department"
+                )
+
+        def _fetch_groups():
+            try:
+                return self.get_user_groups(user_id)
+            except Exception as exc:
+                logger.warning("get_offboard_context: could not fetch groups: %s", exc)
+                return []
+
+        def _fetch_auth_methods():
+            try:
+                raw = self.get_user_auth_methods(user_id)
+                return [m for m in raw if m.get("methodType") != "password"]
+            except Exception as exc:
+                logger.warning("get_offboard_context: could not fetch auth methods: %s", exc)
+                return []
+
+        # Run all three calls in parallel — reduces wait from ~6-9s to ~2-3s
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            f_user    = pool.submit(_fetch_user)
+            f_groups  = pool.submit(_fetch_groups)
+            f_methods = pool.submit(_fetch_auth_methods)
+
+            user         = f_user.result()
+            groups       = f_groups.result()
+            auth_methods = f_methods.result()
 
         licenses = user.get("assignedLicenses") or []
-
-        # Groups membership
-        groups = []
-        try:
-            groups = self.get_user_groups(user_id)
-        except Exception as exc:
-            logger.warning("get_offboard_context: could not fetch groups: %s", exc)
-
-        # Auth methods (MFA)
-        auth_methods = []
-        try:
-            raw = self.get_user_auth_methods(user_id)
-            auth_methods = [m for m in raw if m.get("methodType") != "password"]
-        except Exception as exc:
-            logger.warning("get_offboard_context: could not fetch auth methods: %s", exc)
 
         return {
             "displayName": user.get("displayName"),
