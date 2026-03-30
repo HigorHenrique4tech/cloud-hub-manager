@@ -9,7 +9,10 @@ from sqlalchemy.orm import Session
 from cryptography.fernet import Fernet
 import json
 
-from app.models.db_models import MigrationProject, MigrationMailbox, MigrationLog
+from app.models.db_models import (
+    MigrationProject, MigrationMailbox, MigrationLog,
+    MigrationMessageLedger,
+)
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -166,6 +169,93 @@ def delete_mailbox(db: Session, workspace_id: str, project_id: str, mailbox_id: 
 
 # ── Logs ──────────────────────────────────────────────────────────────────────
 
+def get_project_stats(db: Session, workspace_id: str, project_id: str) -> dict:
+    """Retorna métricas detalhadas do projeto."""
+    p = _get_project_or_none(db, workspace_id, project_id)
+    if not p:
+        return {}
+
+    from sqlalchemy import func
+    counts = (
+        db.query(MigrationMailbox.status, func.count(MigrationMailbox.id))
+        .filter(MigrationMailbox.project_id == project_id)
+        .group_by(MigrationMailbox.status)
+        .all()
+    )
+    by_status = {status: count for status, count in counts}
+
+    phases = (
+        db.query(MigrationMailbox.phase, func.count(MigrationMailbox.id))
+        .filter(MigrationMailbox.project_id == project_id,
+                MigrationMailbox.phase.isnot(None))
+        .group_by(MigrationMailbox.phase)
+        .all()
+    )
+    by_phase = {phase: count for phase, count in phases}
+
+    total_messages = db.query(func.sum(MigrationMailbox.items_total)).filter(
+        MigrationMailbox.project_id == project_id
+    ).scalar() or 0
+    migrated_messages = db.query(func.sum(MigrationMailbox.items_migrated)).filter(
+        MigrationMailbox.project_id == project_id
+    ).scalar() or 0
+    total_size = db.query(func.sum(MigrationMailbox.size_bytes)).filter(
+        MigrationMailbox.project_id == project_id
+    ).scalar() or 0
+
+    ledger_count = db.query(MigrationMessageLedger).join(
+        MigrationMailbox,
+        MigrationMessageLedger.mailbox_id == MigrationMailbox.id
+    ).filter(
+        MigrationMailbox.project_id == project_id,
+        MigrationMessageLedger.status == "copied",
+    ).count()
+
+    return {
+        **_project_to_dict(p),
+        "by_status": by_status,
+        "by_phase": by_phase,
+        "total_messages": int(total_messages),
+        "migrated_messages": int(migrated_messages),
+        "total_size_bytes": int(total_size),
+        "ledger_count": ledger_count,
+    }
+
+
+def get_mailbox_ledger(db: Session, workspace_id: str, project_id: str,
+                       mailbox_id: str, limit: int = 200) -> list[dict]:
+    """Retorna entradas do ledger de mensagens de uma caixa."""
+    p = _get_project_or_none(db, workspace_id, project_id)
+    if not p:
+        return []
+    mb = db.query(MigrationMailbox).filter(
+        MigrationMailbox.id == mailbox_id,
+        MigrationMailbox.project_id == project_id,
+    ).first()
+    if not mb:
+        return []
+    entries = (
+        db.query(MigrationMessageLedger)
+        .filter(MigrationMessageLedger.mailbox_id == mailbox_id)
+        .order_by(MigrationMessageLedger.copied_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": str(e.id),
+            "source_folder": e.source_folder,
+            "source_uid": e.source_uid,
+            "message_id_header": e.message_id_header,
+            "status": e.status,
+            "size_bytes": e.size_bytes,
+            "copied_at": e.copied_at.isoformat() if e.copied_at else None,
+            "error": e.error,
+        }
+        for e in entries
+    ]
+
+
 def list_logs(db: Session, workspace_id: str, project_id: str, limit: int = 100) -> list[dict]:
     p = _get_project_or_none(db, workspace_id, project_id)
     if not p:
@@ -249,6 +339,7 @@ def _project_to_dict(p: MigrationProject) -> dict:
         "mailbox_count": total,
         "completed_count": done,
         "failed_count": p.failed_count or 0,
+        "verified_count": p.verified_count or 0,
         "progress": progress,
         "source_label": source.get("label") or source.get("host") or source.get("domain") or "",
         "started_at": p.started_at.isoformat() if p.started_at else None,
@@ -274,6 +365,9 @@ def _mailbox_to_dict(m: MigrationMailbox) -> dict:
         "items_migrated": done,
         "progress": progress,
         "size_mb": size_mb,
+        "phase": m.phase,
+        "verify_result": m.verify_result,
+        "verified_at": m.verified_at.isoformat() if m.verified_at else None,
         "started_at": m.started_at.isoformat() if m.started_at else None,
         "completed_at": m.completed_at.isoformat() if m.completed_at else None,
         "created_at": m.created_at.isoformat() if m.created_at else None,

@@ -75,6 +75,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  migration-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cloudhub-migration-worker
+    command: celery -A app.workers.celery_app worker -Q migration --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudhub}:${POSTGRES_PASSWORD:-cloudhub_pass}@postgres:5432/${POSTGRES_DB:-cloudhub_db}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - ./backend:/app
+    networks:
+      - cloudhub-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   frontend:
     build:
       context: ./frontend

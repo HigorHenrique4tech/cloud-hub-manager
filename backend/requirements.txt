@@ -65,6 +65,10 @@ slowapi==0.1.9
 # Task scheduling
 apscheduler==3.10.4
 
+# Migration worker
+celery==5.3.6
+exchangelib==5.2.0
+
 # Monitoring
 prometheus-fastapi-instrumentator==7.0.0
 

@@ -5,7 +5,7 @@ import {
   ArrowRightLeft, Plus, Trash2, Play, Pause, RefreshCw, X,
   CheckCircle, XCircle, Clock, AlertCircle, ChevronRight,
   Mail, Users, BarChart3, FileText, ArrowLeft, Upload,
-  Globe, Server, Building2, Wifi, Search,
+  Globe, Server, Building2, Wifi, Search, ShieldCheck, GitMerge,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
@@ -17,8 +17,11 @@ const migrationApi = {
   listProjects:    ()           => api.get(wsUrl('/migration/projects')).then(r => r.data),
   createProject:   (data)       => api.post(wsUrl('/migration/projects'), data).then(r => r.data),
   getProject:      (id)         => api.get(wsUrl(`/migration/projects/${id}`)).then(r => r.data),
+  getStats:        (id)         => api.get(wsUrl(`/migration/projects/${id}/stats`)).then(r => r.data),
   deleteProject:   (id)         => api.delete(wsUrl(`/migration/projects/${id}`)),
   setStatus:       (id, status) => api.post(wsUrl(`/migration/projects/${id}/status`), { status }).then(r => r.data),
+  verify:          (id)         => api.post(wsUrl(`/migration/projects/${id}/verify`)).then(r => r.data),
+  deltaSync:       (id)         => api.post(wsUrl(`/migration/projects/${id}/delta`)).then(r => r.data),
   listMailboxes:   (id)         => api.get(wsUrl(`/migration/projects/${id}/mailboxes`)).then(r => r.data),
   addMailboxes:    (id, data)   => api.post(wsUrl(`/migration/projects/${id}/mailboxes`), data).then(r => r.data),
   deleteMailbox:   (pid, mid)   => api.delete(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}`)),
@@ -496,6 +499,16 @@ const ProjectDetail = ({ projectId, onBack }) => {
     },
   });
 
+  const verifyMut = useMutation({
+    mutationFn: () => migrationApi.verify(projectId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] }),
+  });
+
+  const deltaMut = useMutation({
+    mutationFn: () => migrationApi.deltaSync(projectId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['migration-project', projectId] }),
+  });
+
   const deleteMbMut = useMutation({
     mutationFn: (mbId) => migrationApi.deleteMailbox(projectId, mbId),
     onSuccess: () => {
@@ -507,9 +520,32 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const MAILBOX_STATUS = {
     pending:   { label: 'Aguardando', color: 'text-gray-500' },
     running:   { label: 'Migrando',   color: 'text-blue-500' },
+    paused:    { label: 'Pausado',    color: 'text-yellow-500' },
     completed: { label: 'Concluído',  color: 'text-green-600' },
     failed:    { label: 'Falha',      color: 'text-red-500' },
     skipped:   { label: 'Ignorado',   color: 'text-yellow-500' },
+  };
+
+  const PHASE_CONFIG = {
+    initial: { label: 'Migrando',   color: 'text-blue-500',   icon: RefreshCw,   spin: true  },
+    delta:   { label: 'Delta sync', color: 'text-purple-500', icon: GitMerge,    spin: false },
+    verify:  { label: 'Verificando',color: 'text-cyan-500',   icon: ShieldCheck, spin: true  },
+    done:    { label: null, color: null, icon: null, spin: false },
+  };
+
+  const VerifyBadge = ({ mb }) => {
+    if (!mb.verify_result) return null;
+    const { ok, missing_count } = mb.verify_result;
+    if (ok) return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+        <ShieldCheck className="w-3 h-3" /> Verificado
+      </span>
+    );
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+        <AlertCircle className="w-3 h-3" /> {missing_count} faltando
+      </span>
+    );
   };
 
   const filteredMailboxes = mailboxes.filter(m =>
@@ -537,6 +573,8 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const canStart   = ['draft', 'ready', 'paused'].includes(project.status);
   const canPause   = project.status === 'running';
   const canDelete  = project.status !== 'running';
+  const canVerify  = ['completed', 'failed'].includes(project.status);
+  const canDelta   = project.status === 'completed';
 
   return (
     <Layout>
@@ -567,16 +605,33 @@ const ProjectDetail = ({ projectId, onBack }) => {
               <Pause className="w-3.5 h-3.5" /> Pausar
             </button>
           )}
+          {canDelta && (
+            <button onClick={() => deltaMut.mutate()} disabled={deltaMut.isPending}
+              title="Sincroniza emails novos chegados durante a migração"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-purple-600 hover:bg-purple-700 text-white disabled:opacity-50">
+              {deltaMut.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <GitMerge className="w-3.5 h-3.5" />}
+              Delta Sync
+            </button>
+          )}
+          {canVerify && (
+            <button onClick={() => verifyMut.mutate()} disabled={verifyMut.isPending}
+              title="Verifica se todas as mensagens foram copiadas corretamente"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white disabled:opacity-50">
+              {verifyMut.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+              Verificar
+            </button>
+          )}
         </div>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
         {[
-          { label: 'Total', value: project.mailbox_count, icon: Mail, color: 'text-blue-500' },
-          { label: 'Concluídos', value: project.completed_count, icon: CheckCircle, color: 'text-green-500' },
-          { label: 'Com falha', value: project.failed_count, icon: XCircle, color: 'text-red-500' },
-          { label: 'Progresso', value: `${project.progress}%`, icon: BarChart3, color: 'text-purple-500' },
+          { label: 'Total',       value: project.mailbox_count,   icon: Mail,        color: 'text-blue-500'    },
+          { label: 'Concluídos',  value: project.completed_count, icon: CheckCircle, color: 'text-green-500'   },
+          { label: 'Verificadas', value: project.verified_count || 0, icon: ShieldCheck, color: 'text-cyan-500' },
+          { label: 'Com falha',   value: project.failed_count,    icon: XCircle,     color: 'text-red-500'     },
+          { label: 'Progresso',   value: `${project.progress}%`,  icon: BarChart3,   color: 'text-purple-500'  },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="card p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -647,8 +702,9 @@ const ProjectDetail = ({ projectId, onBack }) => {
                   <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
                     <th className="px-4 py-3 font-medium">Origem</th>
                     <th className="px-4 py-3 font-medium">Destino</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
+                    <th className="px-4 py-3 font-medium">Status / Fase</th>
                     <th className="px-4 py-3 font-medium">Progresso</th>
+                    <th className="px-4 py-3 font-medium">Verificação</th>
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
@@ -664,6 +720,18 @@ const ProjectDetail = ({ projectId, onBack }) => {
                         <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{mb.destination_email || '—'}</td>
                         <td className="px-4 py-3">
                           <span className={`text-xs font-medium ${mbCfg.color}`}>{mbCfg.label}</span>
+                          {/* Fase atual (quando running) */}
+                          {mb.status === 'running' && mb.phase && mb.phase !== 'done' && (() => {
+                            const ph = PHASE_CONFIG[mb.phase];
+                            if (!ph || !ph.label) return null;
+                            const PhIcon = ph.icon;
+                            return (
+                              <span className={`flex items-center gap-1 text-[10px] mt-0.5 ${ph.color}`}>
+                                {PhIcon && <PhIcon className={`w-3 h-3 ${ph.spin ? 'animate-spin' : ''}`} />}
+                                {ph.label}
+                              </span>
+                            );
+                          })()}
                           {mb.error_message && (
                             <p className="text-xs text-red-400 mt-0.5 max-w-xs truncate" title={mb.error_message}>{mb.error_message}</p>
                           )}
@@ -673,8 +741,15 @@ const ProjectDetail = ({ projectId, onBack }) => {
                             <div className="w-24">
                               <ProgressBar value={mb.progress} />
                               <p className="text-xs text-gray-400 mt-1">{mb.items_migrated}/{mb.items_total}</p>
+                              {mb.size_mb && <p className="text-[10px] text-gray-400">{mb.size_mb} MB</p>}
                             </div>
                           ) : <span className="text-xs text-gray-400">—</span>}
+                        </td>
+                        <td className="px-4 py-3">
+                          <VerifyBadge mb={mb} />
+                          {!mb.verify_result && mb.status === 'completed' && (
+                            <span className="text-[10px] text-gray-400">Pendente</span>
+                          )}
                         </td>
                         <td className="px-4 py-3 text-right">
                           {canDelete && (

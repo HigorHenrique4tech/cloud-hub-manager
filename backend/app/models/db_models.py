@@ -840,6 +840,7 @@ class MigrationProject(Base):
     mailbox_count      = Column(Integer, nullable=False, default=0)
     completed_count    = Column(Integer, nullable=False, default=0)
     failed_count       = Column(Integer, nullable=False, default=0)
+    verified_count     = Column(Integer, nullable=False, default=0)
     started_at         = Column(DateTime, nullable=True)
     completed_at       = Column(DateTime, nullable=True)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -858,15 +859,20 @@ class MigrationMailbox(Base):
     destination_email = Column(String(255), nullable=True)
     display_name      = Column(String(255), nullable=True)
     status            = Column(String(30), nullable=False, default="pending")  # pending | running | completed | failed | skipped
+    phase             = Column(String(20), nullable=True)  # initial | delta | verify | done
     error_message     = Column(Text, nullable=True)
     items_total       = Column(Integer, nullable=True)
     items_migrated    = Column(Integer, nullable=False, default=0)
     size_bytes        = Column(Integer, nullable=True)
     started_at        = Column(DateTime, nullable=True)
     completed_at      = Column(DateTime, nullable=True)
+    verified_at       = Column(DateTime, nullable=True)
+    verify_result     = Column(JSONB, nullable=True)  # {ok, missing_count, missing[]}
     created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
 
-    project = relationship("MigrationProject", back_populates="mailboxes")
+    project     = relationship("MigrationProject", back_populates="mailboxes")
+    ledger      = relationship("MigrationMessageLedger", back_populates="mailbox", cascade="all, delete-orphan")
+    checkpoints = relationship("MigrationFolderCheckpoint", back_populates="mailbox", cascade="all, delete-orphan")
 
 
 class MigrationLog(Base):
@@ -881,3 +887,50 @@ class MigrationLog(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     project = relationship("MigrationProject", back_populates="logs")
+
+
+class MigrationMessageLedger(Base):
+    """Registro imutável de cada mensagem processada — append-only."""
+    __tablename__ = "migration_message_ledger"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mailbox_id        = Column(UUID(as_uuid=True), ForeignKey("migration_mailboxes.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_uid        = Column(String(500), nullable=False)     # IMAP UID / Graph Message ID / Gmail ID
+    source_folder     = Column(String(500), nullable=False)
+    message_id_header = Column(String(500), nullable=True)      # cabeçalho Message-ID do RFC 2822
+    content_hash      = Column(String(64), nullable=True)       # SHA-256 dos primeiros 4KB do MIME
+    dest_message_id   = Column(String(500), nullable=True)      # ID no Exchange Online após copiar
+    size_bytes        = Column(Integer, nullable=True)
+    status            = Column(String(20), nullable=False, default="copied")  # copied | verified | failed
+    error             = Column(Text, nullable=True)
+    copied_at         = Column(DateTime, nullable=True)
+    verified_at       = Column(DateTime, nullable=True)
+
+    mailbox = relationship("MigrationMailbox", back_populates="ledger")
+
+    __table_args__ = (
+        UniqueConstraint("mailbox_id", "source_folder", "source_uid", name="uq_ledger_uid"),
+        Index("ix_ledger_mailbox_status", "mailbox_id", "status"),
+        Index("ix_ledger_msg_id", "message_id_header"),
+    )
+
+
+class MigrationFolderCheckpoint(Base):
+    """Checkpoint por pasta — permite retomada sem reiniciar do zero."""
+    __tablename__ = "migration_folder_checkpoints"
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mailbox_id       = Column(UUID(as_uuid=True), ForeignKey("migration_mailboxes.id", ondelete="CASCADE"), nullable=False, index=True)
+    folder_path      = Column(String(500), nullable=False)
+    last_uid         = Column(String(500), nullable=True)       # último UID processado nesta pasta
+    total_in_folder  = Column(Integer, nullable=True)
+    copied_count     = Column(Integer, nullable=False, default=0)
+    phase            = Column(String(20), nullable=False, default="initial")  # initial | delta | verify
+    completed        = Column(Boolean, nullable=False, default=False)
+    updated_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    mailbox = relationship("MigrationMailbox", back_populates="checkpoints")
+
+    __table_args__ = (
+        UniqueConstraint("mailbox_id", "folder_path", name="uq_checkpoint_folder"),
+    )
