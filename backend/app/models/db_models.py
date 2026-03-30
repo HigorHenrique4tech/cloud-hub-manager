@@ -821,3 +821,63 @@ class WebhookDelivery(Base):
     created_at     = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     endpoint = relationship("WebhookEndpoint", back_populates="deliveries")
+
+
+# ── Migration365 ─────────────────────────────────────────────────────────────
+
+class MigrationProject(Base):
+    __tablename__ = "migration_projects"
+
+    id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id       = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by         = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name               = Column(String(255), nullable=False)
+    description        = Column(Text, nullable=True)
+    migration_type     = Column(String(50), nullable=False)  # google_workspace | exchange_onprem | tenant_to_tenant | imap
+    status             = Column(String(30), nullable=False, default="draft", index=True)  # draft | ready | running | paused | completed | failed
+    source_config      = Column(Text, nullable=True)   # Fernet-encrypted JSON
+    destination_config = Column(Text, nullable=True)   # Fernet-encrypted JSON
+    mailbox_count      = Column(Integer, nullable=False, default=0)
+    completed_count    = Column(Integer, nullable=False, default=0)
+    failed_count       = Column(Integer, nullable=False, default=0)
+    started_at         = Column(DateTime, nullable=True)
+    completed_at       = Column(DateTime, nullable=True)
+    created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    mailboxes = relationship("MigrationMailbox", back_populates="project", cascade="all, delete-orphan")
+    logs      = relationship("MigrationLog",     back_populates="project", cascade="all, delete-orphan")
+
+
+class MigrationMailbox(Base):
+    __tablename__ = "migration_mailboxes"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id        = Column(UUID(as_uuid=True), ForeignKey("migration_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_email      = Column(String(255), nullable=False)
+    destination_email = Column(String(255), nullable=True)
+    display_name      = Column(String(255), nullable=True)
+    status            = Column(String(30), nullable=False, default="pending")  # pending | running | completed | failed | skipped
+    error_message     = Column(Text, nullable=True)
+    items_total       = Column(Integer, nullable=True)
+    items_migrated    = Column(Integer, nullable=False, default=0)
+    size_bytes        = Column(Integer, nullable=True)
+    started_at        = Column(DateTime, nullable=True)
+    completed_at      = Column(DateTime, nullable=True)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project = relationship("MigrationProject", back_populates="mailboxes")
+
+
+class MigrationLog(Base):
+    __tablename__ = "migration_logs"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("migration_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    mailbox_id = Column(UUID(as_uuid=True), ForeignKey("migration_mailboxes.id", ondelete="SET NULL"), nullable=True)
+    level      = Column(String(20), nullable=False, default="info")  # info | warning | error
+    message    = Column(Text, nullable=False)
+    details    = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    project = relationship("MigrationProject", back_populates="logs")

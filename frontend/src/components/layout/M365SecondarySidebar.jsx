@@ -1,14 +1,15 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Grid3x3, Globe, Mail, MonitorPlay, BookOpen, Link2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Grid3x3, Globe, Mail, MonitorPlay, BookOpen, Link2, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 
 const BASE_NAV_ITEMS = [
-  { to: '/m365',            label: 'Visão Geral',  icon: Grid3x3,    end: true },
+  { to: '/m365',            label: 'Visão Geral',  icon: Grid3x3,         end: true },
   { to: '/m365/sharepoint', label: 'SharePoint',   icon: Globe },
   { to: '/m365/exchange',   label: 'Exchange',     icon: Mail },
   { to: '/m365/teams',      label: 'Teams Admin',  icon: MonitorPlay },
   { to: '/m365/audit',      label: 'Auditoria',    icon: BookOpen },
+  { to: '/m365/migration',  label: 'Migração 365', icon: ArrowRightLeft },
 ];
 
 const M365SecondarySidebar = () => {

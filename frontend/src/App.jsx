@@ -70,6 +70,7 @@ const M365Exchange = lazy(() => import('./pages/m365/Exchange'));
 const M365TeamsAdmin = lazy(() => import('./pages/m365/TeamsAdmin'));
 const M365Audit = lazy(() => import('./pages/m365/Audit'));
 const GdapManager = lazy(() => import('./pages/m365/GdapManager'));
+const Migration365 = lazy(() => import('./pages/m365/Migration365'));
 
 // Multi-tenant & Admin
 const OrgSettings = lazy(() => import('./pages/OrgSettings'));
@@ -175,6 +176,8 @@ function App() {
                 <Route path="/m365/teams" element={<PR><M365TeamsAdmin /></PR>} />
                 <Route path="/m365/audit" element={<PR><M365Audit /></PR>} />
                 <Route path="/m365/gdap" element={<PR><GdapManager /></PR>} />
+                <Route path="/m365/migration" element={<PR><Migration365 /></PR>} />
+                <Route path="/m365/migration/:projectId" element={<PR><Migration365 /></PR>} />
                 <Route path="/inventory" element={<PR><Inventory /></PR>} />
                 <Route path="/approvals" element={<PR><ApprovalsPage /></PR>} />
                 <Route path="/logs" element={<PR><Logs /></PR>} />
