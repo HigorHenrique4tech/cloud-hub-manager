@@ -1,95 +1,32 @@
-import { Download, Printer, FileText } from 'lucide-react';
+import { useState } from 'react';
+import { Download, FileText, Loader2 } from 'lucide-react';
 import { useBranding } from '../../contexts/BrandingContext';
-
-const fmt2 = (v) => (v == null ? '0.00' : Number(v).toFixed(2));
-const fmtVal = (v) => (v == null || v === 0 ? '—' : Number(v).toFixed(2));
+import api, { wsUrl } from '../../services/api';
 
 const CostExport = ({ data, startDate, endDate, hasAny, onShowReport }) => {
   const branding = useBranding();
-  const exportCSV = () => {
-    if (!data) return;
+  const [exporting, setExporting] = useState(null); // 'pdf' | 'csv' | null
 
-    const genDate = new Date().toLocaleDateString('pt-BR');
-    const daily = data.combined || [];
-    const services = data.by_service || [];
-
-    // ── Aggregate totals ────────────────────────────────────────────────────
-    const totals = daily.reduce(
-      (acc, d) => ({
-        aws:   acc.aws   + (d.aws   ?? 0),
-        azure: acc.azure + (d.azure ?? 0),
-        gcp:   acc.gcp   + (d.gcp   ?? 0),
-        total: acc.total + (d.total ?? 0),
-      }),
-      { aws: 0, azure: 0, gcp: 0, total: 0 }
-    );
-    const days = daily.length || 1;
-    const avgDaily = totals.total / days;
-    const projected = avgDaily * 30;
-    const serviceTotal = services.reduce((s, sv) => s + (sv.amount ?? 0), 0);
-
-    // ── Build rows ──────────────────────────────────────────────────────────
-    const rows = [
-      // Header metadata
-      [`Relatório de Custos ${branding.platform_name}`, '', '', '', ''],
-      [`Período: ${startDate} a ${endDate}`, '', '', '', ''],
-      [`Gerado em: ${genDate}`, '', '', '', ''],
-      ['', '', '', '', ''],
-
-      // Summary block
-      ['=== RESUMO ===', '', '', '', ''],
-      [`Custo Total (USD)`, fmt2(totals.total), '', '', ''],
-      [`Média Diária (USD)`, fmt2(avgDaily), '', '', ''],
-      [`Projeção 30 dias (USD)`, fmt2(projected), '', '', ''],
-      [`Total de dias no período`, String(days), '', '', ''],
-      ['', '', '', '', ''],
-
-      // Daily costs table
-      ['=== CUSTOS DIÁRIOS ===', '', '', '', ''],
-      ['Data', 'AWS (USD)', 'Azure (USD)', 'GCP (USD)', 'Total (USD)'],
-      ...daily.map((d) => [
-        d.date,
-        fmtVal(d.aws),
-        fmtVal(d.azure),
-        fmtVal(d.gcp),
-        fmt2(d.total),
-      ]),
-      // Totals row
-      [
-        'TOTAL',
-        fmtVal(totals.aws),
-        fmtVal(totals.azure),
-        fmtVal(totals.gcp),
-        fmt2(totals.total),
-      ],
-      ['', '', '', '', ''],
-
-      // Services breakdown table
-      ['=== CUSTOS POR SERVIÇO ===', '', '', '', ''],
-      ['Serviço', 'Valor (USD)', '% do Total', '', ''],
-      ...services.map((s) => {
-        const pct = serviceTotal > 0
-          ? ((s.amount ?? 0) / serviceTotal * 100).toFixed(1) + '%'
-          : '—';
-        return [s.name, fmt2(s.amount), pct, '', ''];
-      }),
-      // Services total row
-      ['TOTAL', fmt2(serviceTotal), '100.0%', '', ''],
-    ];
-
-    const csv = rows.map((r) => r.map((cell) => {
-      // Wrap cells containing commas or quotes in double quotes
-      const str = String(cell ?? '');
-      return str.includes(',') || str.includes('"') ? `"${str.replace(/"/g, '""')}"` : str;
-    }).join(',')).join('\n');
-
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `custos-cloud-${genDate.replace(/\//g, '-')}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const downloadReport = async (format) => {
+    if (exporting) return;
+    setExporting(format);
+    try {
+      const url = wsUrl(`/costs/report?start_date=${startDate}&end_date=${endDate}&format=${format}`);
+      const response = await api.get(url, { responseType: 'blob' });
+      const blob = new Blob([response.data], {
+        type: format === 'pdf' ? 'application/pdf' : 'text/csv;charset=utf-8;',
+      });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+      link.download = `custos-cloud-${dateStr}.${format}`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      console.error(`Erro ao exportar ${format}:`, err);
+    } finally {
+      setExporting(null);
+    }
   };
 
   return (
@@ -99,20 +36,21 @@ const CostExport = ({ data, startDate, endDate, hasAny, onShowReport }) => {
         disabled={!hasAny}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-40 transition-colors"
       >
-        <FileText className="w-4 h-4" /> Relatório Detalhado
+        <FileText className="w-4 h-4" /> Relatorio
       </button>
       <button
-        onClick={exportCSV}
-        disabled={!hasAny}
+        onClick={() => downloadReport('pdf')}
+        disabled={!hasAny || exporting === 'pdf'}
         className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors"
       >
-        <Download className="w-4 h-4" /> CSV
+        {exporting === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} PDF
       </button>
       <button
-        onClick={() => window.print()}
-        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+        onClick={() => downloadReport('csv')}
+        disabled={!hasAny || exporting === 'csv'}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors"
       >
-        <Printer className="w-4 h-4" /> PDF
+        {exporting === 'csv' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} CSV
       </button>
     </>
   );

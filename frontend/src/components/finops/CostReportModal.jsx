@@ -1,11 +1,12 @@
-import { useEffect, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from 'recharts';
-import { X, Printer, TrendingUp, DollarSign, FileText } from 'lucide-react';
+import { X, Download, TrendingUp, DollarSign, FileText, Loader2 } from 'lucide-react';
 import ReportSuggestions, { generateSuggestions } from './ReportSuggestions';
 import { useBranding } from '../../contexts/BrandingContext';
+import api, { wsUrl } from '../../services/api';
 
 /* ── helpers ─────────────────────────────────────────────── */
 const fmtUSD = (v) =>
@@ -31,6 +32,7 @@ const ChartTooltip = ({ active, payload, label }) => {
 /* ── Main component ──────────────────────────────────────── */
 const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days, onClose }) => {
   const branding = useBranding();
+  const [exporting, setExporting] = useState(false);
   const hasAws   = !!data?.aws;
   const hasAzure = !!data?.azure;
   const hasGcp   = !!data?.gcp;
@@ -52,37 +54,25 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
       hasGcp   && { name: 'GCP',   value: data.gcp?.total   || 0, color: PROVIDER_COLORS.gcp   },
     ].filter(Boolean).filter((d) => d.value > 0), [data, hasAws, hasAzure, hasGcp]);
 
-  // Inject print CSS — hide everything except the report modal
-  useEffect(() => {
-    const style = document.createElement('style');
-    style.id = 'cost-report-print-style';
-    style.textContent = `
-      @media print {
-        body * { visibility: hidden !important; }
-        .cost-report-overlay {
-          position: static !important;
-          background: transparent !important;
-          overflow: visible !important;
-        }
-        #cost-report-print, #cost-report-print * { visibility: visible !important; }
-        #cost-report-print {
-          position: absolute !important;
-          top: 0 !important; left: 0 !important;
-          width: 100% !important; max-width: 100% !important;
-          overflow: visible !important;
-          box-shadow: none !important;
-          border-radius: 0 !important;
-          background: white !important;
-          margin: 0 !important;
-          min-height: auto !important;
-        }
-        .no-print { display: none !important; }
-        @page { margin: 1.5cm; size: A4 portrait; }
-      }
-    `;
-    document.head.appendChild(style);
-    return () => { document.head.removeChild(style); };
-  }, []);
+  const downloadPdf = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const url = wsUrl(`/costs/report?start_date=${startDate}&end_date=${endDate}&format=pdf`);
+      const response = await api.get(url, { responseType: 'blob' });
+      const blob = new Blob([response.data], { type: 'application/pdf' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      const dateStr = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+      link.download = `custos-cloud-${dateStr}.pdf`;
+      link.click();
+      URL.revokeObjectURL(link.href);
+    } catch (err) {
+      console.error('Erro ao exportar PDF:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   return (
     <div className="cost-report-overlay fixed inset-0 z-50 bg-black/60 overflow-y-auto">
@@ -98,10 +88,11 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           </h2>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors"
+              onClick={downloadPdf}
+              disabled={exporting}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-60 transition-colors"
             >
-              <Printer className="w-4 h-4" /> Imprimir / PDF
+              {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Baixar PDF
             </button>
             <button
               onClick={onClose}

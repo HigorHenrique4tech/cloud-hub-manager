@@ -24,6 +24,7 @@ from .executive_reports import ws_router as executive_reports_ws_router
 from .support import org_router as support_org_router, admin_support_router
 from .background_tasks import ws_router as background_tasks_ws_router
 from .migration import ws_router as migration_ws_router
+from .cost_report import ws_router as cost_report_ws_router
 
 api_router = APIRouter()
 
@@ -66,5 +67,6 @@ api_router.include_router(support_org_router)
 api_router.include_router(admin_support_router)
 api_router.include_router(background_tasks_ws_router)
 api_router.include_router(migration_ws_router)
+api_router.include_router(cost_report_ws_router)
 
 __all__ = ["api_router"]
