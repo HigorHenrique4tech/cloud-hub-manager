@@ -262,30 +262,24 @@ async def worker_health(
     except Exception:
         pass
 
-    # 2. Celery workers
+    # 2. Celery workers — usa ping() que é mais confiável que active_queues()
     worker_status = "unknown"
     queued_tasks = 0
     if redis_status == "ok":
         try:
             from app.workers.celery_app import celery_app
-            inspect = celery_app.control.inspect(timeout=2)
-            active_queues = inspect.active_queues()
-            if active_queues:
-                # Verifica se algum worker escuta a fila "migration"
-                migration_workers = [
-                    w for w, queues in active_queues.items()
-                    if any(q.get("name") == "migration" for q in queues)
-                ]
-                worker_status = "ok" if migration_workers else "offline"
-            else:
-                worker_status = "offline"
+            inspect = celery_app.control.inspect(timeout=3)
+            ping_result = inspect.ping()
+            # ping_result é None ou {} se nenhum worker responder
+            worker_status = "ok" if ping_result else "offline"
 
             # Conta tasks enfileiradas (best-effort)
-            try:
-                reserved = inspect.reserved() or {}
-                queued_tasks = sum(len(v) for v in reserved.values())
-            except Exception:
-                pass
+            if worker_status == "ok":
+                try:
+                    reserved = inspect.reserved() or {}
+                    queued_tasks = sum(len(v) for v in reserved.values())
+                except Exception:
+                    pass
         except Exception:
             worker_status = "unknown"
 
