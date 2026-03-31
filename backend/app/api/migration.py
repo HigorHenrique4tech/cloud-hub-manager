@@ -45,6 +45,10 @@ class SetStatusRequest(BaseModel):
     status: str   # draft | ready | running | paused | completed | failed
 
 
+class ScheduleRequest(BaseModel):
+    scheduled_at: str  # ISO 8601 datetime string
+
+
 # ── Projects ──────────────────────────────────────────────────────────────────
 
 @ws_router.get("/projects")
@@ -613,10 +617,6 @@ async def worker_health(
         "worker": worker_status,
         "queued_tasks": queued_tasks,
     }
-
-
-class ScheduleRequest(BaseModel):
-    scheduled_at: str  # ISO 8601 datetime string
 
 
 class TestConnectionRequest(BaseModel):
