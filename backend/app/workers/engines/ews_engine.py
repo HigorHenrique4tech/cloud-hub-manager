@@ -74,6 +74,34 @@ class EwsEngine(MigrationEngine):
 
         return self.retry_on_throttle(do_import)
 
+    # ── Teste de conexão ──────────────────────────────────────────────────────
+
+    def test_connection(self) -> dict:
+        try:
+            from exchangelib import Credentials, Configuration, Account, DELEGATE
+            host = self.source_cfg["host"]
+            username = self.source_cfg["username"]
+            password = self.source_cfg["password"]
+            ews_url = self.source_cfg.get("ews_url") or f"https://{host}/EWS/Exchange.asmx"
+            credentials = Credentials(username=username, password=password)
+            config = Configuration(service_endpoint=ews_url, credentials=credentials)
+            test_email = self.source_cfg.get("test_email") or username
+            account = Account(
+                primary_smtp_address=test_email,
+                config=config,
+                autodiscover=False,
+                access_type=DELEGATE,
+            )
+            count = account.inbox.total_count
+            return {
+                "ok": True,
+                "message": f"Conectado ao Exchange via EWS. Inbox com {count} mensagem(s).",
+            }
+        except ImportError:
+            return {"ok": False, "message": "exchangelib não instalado no servidor."}
+        except Exception as exc:
+            return {"ok": False, "message": f"Falha ao conectar: {exc}"}
+
     # ── Fase 1: Assessment ────────────────────────────────────────────────────
 
     def assess(self) -> dict:

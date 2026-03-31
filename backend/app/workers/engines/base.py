@@ -35,6 +35,14 @@ class MigrationEngine(ABC):
 
     # ── Interface pública ─────────────────────────────────────────────────────
 
+    def test_connection(self) -> dict:
+        """
+        Teste de conexão stateless — chamado antes de criar o projeto.
+        Deve retornar {ok: bool, message: str}.
+        Subclasses devem sobrescrever; padrão lança NotImplementedError.
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def assess(self) -> dict:
         """

@@ -14,18 +14,22 @@ import api, { wsUrl } from '../../services/api';
 // ── Service helpers ───────────────────────────────────────────────────────────
 
 const migrationApi = {
-  listProjects:    ()           => api.get(wsUrl('/migration/projects')).then(r => r.data),
-  createProject:   (data)       => api.post(wsUrl('/migration/projects'), data).then(r => r.data),
-  getProject:      (id)         => api.get(wsUrl(`/migration/projects/${id}`)).then(r => r.data),
-  getStats:        (id)         => api.get(wsUrl(`/migration/projects/${id}/stats`)).then(r => r.data),
-  deleteProject:   (id)         => api.delete(wsUrl(`/migration/projects/${id}`)),
-  setStatus:       (id, status) => api.post(wsUrl(`/migration/projects/${id}/status`), { status }).then(r => r.data),
-  verify:          (id)         => api.post(wsUrl(`/migration/projects/${id}/verify`)).then(r => r.data),
-  deltaSync:       (id)         => api.post(wsUrl(`/migration/projects/${id}/delta`)).then(r => r.data),
-  listMailboxes:   (id)         => api.get(wsUrl(`/migration/projects/${id}/mailboxes`)).then(r => r.data),
-  addMailboxes:    (id, data)   => api.post(wsUrl(`/migration/projects/${id}/mailboxes`), data).then(r => r.data),
-  deleteMailbox:   (pid, mid)   => api.delete(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}`)),
-  listLogs:        (id)         => api.get(wsUrl(`/migration/projects/${id}/logs`)).then(r => r.data),
+  listProjects:     ()                 => api.get(wsUrl('/migration/projects')).then(r => r.data),
+  createProject:    (data)             => api.post(wsUrl('/migration/projects'), data).then(r => r.data),
+  getProject:       (id)               => api.get(wsUrl(`/migration/projects/${id}`)).then(r => r.data),
+  getStats:         (id)               => api.get(wsUrl(`/migration/projects/${id}/stats`)).then(r => r.data),
+  deleteProject:    (id)               => api.delete(wsUrl(`/migration/projects/${id}`)),
+  setStatus:        (id, status)       => api.post(wsUrl(`/migration/projects/${id}/status`), { status }).then(r => r.data),
+  verify:           (id)               => api.post(wsUrl(`/migration/projects/${id}/verify`)).then(r => r.data),
+  deltaSync:        (id)               => api.post(wsUrl(`/migration/projects/${id}/delta`)).then(r => r.data),
+  retryFailed:      (id)               => api.post(wsUrl(`/migration/projects/${id}/retry-failed`)).then(r => r.data),
+  listMailboxes:    (id)               => api.get(wsUrl(`/migration/projects/${id}/mailboxes`)).then(r => r.data),
+  addMailboxes:     (id, data)         => api.post(wsUrl(`/migration/projects/${id}/mailboxes`), data).then(r => r.data),
+  deleteMailbox:    (pid, mid)         => api.delete(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}`)),
+  listLogs:         (id)               => api.get(wsUrl(`/migration/projects/${id}/logs`)).then(r => r.data),
+  getWorkerHealth:  ()                 => api.get(wsUrl('/migration/worker-health')).then(r => r.data),
+  testConnection:   (migration_type, source_config) =>
+                      api.post(wsUrl('/migration/test-connection'), { migration_type, source_config }).then(r => r.data),
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -106,6 +110,39 @@ const ProgressBar = ({ value, className = '' }) => (
   </div>
 );
 
+// ── Worker Health Banner ──────────────────────────────────────────────────────
+
+const WorkerHealthBanner = () => {
+  const { data } = useQuery({
+    queryKey: ['migration-worker-health'],
+    queryFn: migrationApi.getWorkerHealth,
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+    retry: false,
+  });
+
+  if (!data) return null;
+  if (data.worker === 'ok' && data.redis === 'ok') return null;
+
+  if (data.redis === 'unreachable') return (
+    <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+      <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+      <p className="text-sm text-red-700 dark:text-red-300">
+        <strong>Redis inacessível</strong> — migrações não podem ser iniciadas. Verifique a conexão com o Redis.
+      </p>
+    </div>
+  );
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+      <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
+      <p className="text-sm text-amber-700 dark:text-amber-300">
+        <strong>Worker de migração offline</strong> — verifique se o container <code className="px-1 bg-amber-100 dark:bg-amber-900/40 rounded text-xs">migration-worker</code> está rodando.
+      </p>
+    </div>
+  );
+};
+
 // ── Wizard ────────────────────────────────────────────────────────────────────
 
 const WIZARD_STEPS = ['Tipo', 'Origem', 'Destino', 'Revisão'];
@@ -122,6 +159,16 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
   });
   const [srcFields, setSrcFields] = useState({});
   const [dstFields, setDstFields] = useState({});
+  const [testResult, setTestResult] = useState(null);
+
+  const testMut = useMutation({
+    mutationFn: () => migrationApi.testConnection(form.migration_type, {
+      ...srcFields,
+      label: srcFields.domain || srcFields.host || srcFields.tenant_id || '',
+    }),
+    onSuccess: (data) => setTestResult(data),
+    onError: (err) => setTestResult({ ok: false, message: err?.response?.data?.detail || 'Erro ao testar conexão.' }),
+  });
 
   const createMut = useMutation({
     mutationFn: () => migrationApi.createProject({
@@ -234,7 +281,7 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                       <input
                         type="checkbox"
                         checked={!!srcFields[field.key]}
-                        onChange={e => setSrcFields(p => ({ ...p, [field.key]: e.target.checked }))}
+                        onChange={e => { setSrcFields(p => ({ ...p, [field.key]: e.target.checked })); setTestResult(null); }}
                         className="w-4 h-4 rounded border-gray-300 text-blue-500"
                       />
                       <span className="text-sm text-gray-700 dark:text-gray-300">Ativado</span>
@@ -243,7 +290,7 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                     <textarea
                       rows={5}
                       value={srcFields[field.key] || ''}
-                      onChange={e => setSrcFields(p => ({ ...p, [field.key]: e.target.value }))}
+                      onChange={e => { setSrcFields(p => ({ ...p, [field.key]: e.target.value })); setTestResult(null); }}
                       placeholder={field.placeholder}
                       className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono resize-none"
                     />
@@ -251,14 +298,41 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                     <input
                       type={field.type || 'text'}
                       value={srcFields[field.key] || ''}
-                      onChange={e => setSrcFields(p => ({ ...p, [field.key]: e.target.value }))}
+                      onChange={e => { setSrcFields(p => ({ ...p, [field.key]: e.target.value })); setTestResult(null); }}
                       placeholder={field.placeholder}
                       className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   )}
                 </div>
               ))}
-              <div className="mt-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+
+              {/* Test connection */}
+              <div className="mt-1">
+                <button
+                  type="button"
+                  onClick={() => testMut.mutate()}
+                  disabled={!canNext() || testMut.isPending}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40"
+                >
+                  {testMut.isPending
+                    ? <><RefreshCw className="w-4 h-4 animate-spin" /> Testando...</>
+                    : <><Wifi className="w-4 h-4" /> Testar conexão</>}
+                </button>
+                {testResult && (
+                  <div className={`mt-2 flex items-start gap-2 p-3 rounded-lg border text-xs ${
+                    testResult.ok
+                      ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 text-green-700 dark:text-green-300'
+                      : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800 text-red-700 dark:text-red-300'
+                  }`}>
+                    {testResult.ok
+                      ? <CheckCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      : <XCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />}
+                    {testResult.message}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                 <p className="text-xs text-amber-700 dark:text-amber-300">
                   As credenciais são armazenadas de forma segura e usadas apenas durante a migração.
                 </p>
@@ -517,6 +591,15 @@ const ProjectDetail = ({ projectId, onBack }) => {
     },
   });
 
+  const retryMut = useMutation({
+    mutationFn: () => migrationApi.retryFailed(projectId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['migration-project', projectId] });
+      qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
+      qc.invalidateQueries({ queryKey: ['migration-projects'] });
+    },
+  });
+
   const MAILBOX_STATUS = {
     pending:   { label: 'Aguardando', color: 'text-gray-500' },
     running:   { label: 'Migrando',   color: 'text-blue-500' },
@@ -575,9 +658,13 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const canDelete  = project.status !== 'running';
   const canVerify  = ['completed', 'failed'].includes(project.status);
   const canDelta   = project.status === 'completed';
+  const failedCount = mailboxes.filter(m => m.status === 'failed').length;
+  const canRetry   = failedCount > 0 && project.status !== 'running';
 
   return (
     <Layout>
+      <WorkerHealthBanner />
+
       {/* Back + header */}
       <div className="flex items-start gap-4 mb-6">
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 mt-0.5">
@@ -619,6 +706,14 @@ const ProjectDetail = ({ projectId, onBack }) => {
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white disabled:opacity-50">
               {verifyMut.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
               Verificar
+            </button>
+          )}
+          {canRetry && (
+            <button onClick={() => retryMut.mutate()} disabled={retryMut.isPending}
+              title={`Retentar ${failedCount} caixa(s) com falha`}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50">
+              {retryMut.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              Retentar {failedCount} falha{failedCount > 1 ? 's' : ''}
             </button>
           )}
         </div>
@@ -858,6 +953,8 @@ const Migration365 = () => {
 
   return (
     <Layout>
+      <WorkerHealthBanner />
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>

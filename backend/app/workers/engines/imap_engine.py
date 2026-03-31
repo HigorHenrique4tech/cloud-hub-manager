@@ -40,6 +40,24 @@ class ImapEngine(MigrationEngine):
         imap.login(self.dest_cfg["admin_upn"], self.dest_cfg["admin_password"])
         return imap
 
+    # ── Teste de conexão ──────────────────────────────────────────────────────
+
+    def test_connection(self) -> dict:
+        try:
+            src = self._connect_src()
+            folders = self._list_folders(src)
+            src.logout()
+            return {
+                "ok": True,
+                "message": f"Conectado com sucesso. {len(folders)} pasta(s) encontrada(s).",
+            }
+        except imaplib.IMAP4.error as exc:
+            return {"ok": False, "message": f"Erro de autenticação IMAP: {exc}"}
+        except OSError as exc:
+            return {"ok": False, "message": f"Não foi possível conectar ao servidor: {exc}"}
+        except Exception as exc:
+            return {"ok": False, "message": str(exc)}
+
     # ── Fase 1: Assessment ────────────────────────────────────────────────────
 
     def assess(self) -> dict:

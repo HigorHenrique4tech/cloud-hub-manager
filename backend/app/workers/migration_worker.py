@@ -1,5 +1,4 @@
 """Celery task — orquestra a migração completa de um projeto."""
-import json
 import logging
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -11,6 +10,7 @@ from app.database import SessionLocal
 from app.models.db_models import (
     MigrationProject, MigrationMailbox, MigrationLog,
 )
+from app.services.migration_service import decrypt_project_configs
 from app.workers.engines import get_engine
 
 logger = logging.getLogger(__name__)
@@ -187,14 +187,15 @@ def run_migration_project(self, project_id: str,
             logger.info(f"Projeto {project_id} não está em 'running' (status={project.status}), abortando.")
             return
 
-        # Lê configurações de forma segura
+        # Descriptografa configs usando a chave per-org do workspace
         try:
-            source_cfg = json.loads(project.source_config or "{}")
-            dest_cfg   = json.loads(project.destination_config or "{}")
+            source_cfg, dest_cfg = decrypt_project_configs(db, project)
+            if not source_cfg:
+                raise ValueError("source_config vazio ou inválido após descriptografia.")
         except Exception as e:
             project.status = "failed"
             db.commit()
-            _add_project_log(db, project_id, f"Configuração inválida: {e}", "error")
+            _add_project_log(db, project_id, f"Configuração inválida ou não foi possível descriptografar: {e}", "error")
             return
 
         migration_type = project.migration_type

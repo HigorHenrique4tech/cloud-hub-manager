@@ -75,6 +75,24 @@ class GoogleWorkspaceEngine(MigrationEngine):
             return r.json().get("id", "")
         return self.retry_on_throttle(do)
 
+    # ── Teste de conexão ──────────────────────────────────────────────────────
+
+    def test_connection(self) -> dict:
+        try:
+            admin_email = self.source_cfg.get("admin_email")
+            if not admin_email:
+                return {"ok": False, "message": "admin_email não informado na configuração de origem."}
+            service = self._get_gmail_service(admin_email)
+            profile = service.users().getProfile(userId="me").execute()
+            return {
+                "ok": True,
+                "message": f"Conectado ao Google Workspace. Conta: {profile.get('emailAddress')}.",
+            }
+        except ImportError:
+            return {"ok": False, "message": "google-auth / google-api-python-client não instalados."}
+        except Exception as exc:
+            return {"ok": False, "message": f"Falha ao conectar ao Google Workspace: {exc}"}
+
     # ── Fase 1: Assessment ────────────────────────────────────────────────────
 
     def assess(self) -> dict:

@@ -83,6 +83,28 @@ class TenantToTenantEngine(MigrationEngine):
             url = data.get("@odata.nextLink")
         return folders
 
+    # ── Teste de conexão ──────────────────────────────────────────────────────
+
+    def test_connection(self) -> dict:
+        try:
+            headers = self._src_headers()
+            resp = requests.get(
+                f"{GRAPH_V1}/organization",
+                headers=headers, timeout=15,
+            )
+            resp.raise_for_status()
+            orgs = resp.json().get("value", [])
+            display_name = orgs[0].get("displayName", "") if orgs else ""
+            return {
+                "ok": True,
+                "message": f"Conectado ao tenant de origem via Graph API. Organização: {display_name}.",
+            }
+        except Exception as exc:
+            err = str(exc)
+            if "401" in err or "403" in err:
+                return {"ok": False, "message": f"Autenticação negada: {err}"}
+            return {"ok": False, "message": f"Falha ao conectar ao tenant de origem: {err}"}
+
     # ── Fase 1: Assessment ────────────────────────────────────────────────────
 
     def assess(self) -> dict:

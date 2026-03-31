@@ -239,6 +239,113 @@ async def list_logs(
     return svc.list_logs(db, str(member.workspace_id), project_id, limit=limit)
 
 
+# ── Worker health & test connection ──────────────────────────────────────────
+
+@ws_router.get("/worker-health")
+async def worker_health(
+    member: MemberContext = Depends(require_permission("m365.view")),
+):
+    """
+    Verifica se Redis e o worker Celery de migração estão acessíveis.
+    Retorna em até ~2s (timeout interno do inspect).
+    """
+    import redis as redis_lib
+    from app.core.config import settings
+
+    # 1. Redis
+    redis_status = "unreachable"
+    try:
+        r = redis_lib.from_url(settings.REDIS_URL,
+                               socket_connect_timeout=2, socket_timeout=2)
+        r.ping()
+        redis_status = "ok"
+    except Exception:
+        pass
+
+    # 2. Celery workers
+    worker_status = "unknown"
+    queued_tasks = 0
+    if redis_status == "ok":
+        try:
+            from app.workers.celery_app import celery_app
+            inspect = celery_app.control.inspect(timeout=2)
+            active_queues = inspect.active_queues()
+            if active_queues:
+                # Verifica se algum worker escuta a fila "migration"
+                migration_workers = [
+                    w for w, queues in active_queues.items()
+                    if any(q.get("name") == "migration" for q in queues)
+                ]
+                worker_status = "ok" if migration_workers else "offline"
+            else:
+                worker_status = "offline"
+
+            # Conta tasks enfileiradas (best-effort)
+            try:
+                reserved = inspect.reserved() or {}
+                queued_tasks = sum(len(v) for v in reserved.values())
+            except Exception:
+                pass
+        except Exception:
+            worker_status = "unknown"
+
+    return {
+        "redis": redis_status,
+        "worker": worker_status,
+        "queued_tasks": queued_tasks,
+    }
+
+
+class TestConnectionRequest(BaseModel):
+    migration_type: str
+    source_config: dict
+
+
+@ws_router.post("/test-connection")
+async def test_connection(
+    body: TestConnectionRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+):
+    """
+    Testa a conexão com a origem sem persistir nada.
+    As credenciais ficam apenas em memória durante o request.
+    """
+    try:
+        from app.workers.engines import get_engine
+        engine = get_engine(body.migration_type, body.source_config, {})
+        result = engine.test_connection()
+        return result
+    except NotImplementedError:
+        return {"ok": True, "message": "Tipo de conexão não requer teste prévio."}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+# ── Retry failed mailboxes ────────────────────────────────────────────────────
+
+@ws_router.post("/projects/{project_id}/retry-failed")
+async def retry_failed(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Reseta mailboxes com status=failed → pending e redispara o worker."""
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    if project["status"] == "running":
+        raise HTTPException(status_code=400,
+                            detail="Projeto já está em execução.")
+
+    result = svc.retry_failed_mailboxes(db, str(member.workspace_id), project_id)
+    if result.get("reset_count", 0) == 0:
+        raise HTTPException(status_code=400,
+                            detail="Nenhuma caixa com falha encontrada.")
+
+    _dispatch_migration_worker(project_id)
+    return result
+
+
 # ── Helper: dispatch Celery ───────────────────────────────────────────────────
 
 def _dispatch_migration_worker(project_id: str, verify_only: bool = False,

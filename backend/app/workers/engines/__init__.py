@@ -4,7 +4,8 @@ from .google_engine import GoogleWorkspaceEngine
 from .t2t_engine import TenantToTenantEngine
 
 
-def get_engine(migration_type: str, source_cfg: dict, dest_cfg: dict, db, mailbox):
+def get_engine(migration_type: str, source_cfg: dict, dest_cfg: dict,
+               db=None, mailbox=None):
     """Factory — retorna a engine correta para o tipo de migração."""
     engines = {
         "imap":              ImapEngine,

@@ -6,29 +6,44 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy.orm import Session
-from cryptography.fernet import Fernet
 import json
 
 from app.models.db_models import (
     MigrationProject, MigrationMailbox, MigrationLog,
     MigrationMessageLedger,
 )
-from app.core.config import settings
+from app.services.auth_service import (
+    encrypt_for_org,
+    get_org_fernet,
+    _get_org_id_for_workspace,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _encrypt(data: dict) -> str:
-    f = Fernet(settings.SECRET_KEY.encode() if len(settings.SECRET_KEY) == 44 else Fernet.generate_key())
-    return f.encrypt(json.dumps(data).encode()).decode()
+def _encrypt_config(db: Session, workspace_id: str, data: dict) -> str:
+    """Criptografa config de migração usando a chave per-org do workspace."""
+    org_id = _get_org_id_for_workspace(db, workspace_id)
+    return encrypt_for_org(db, org_id, data)
 
 
-def _decrypt(token: str) -> dict:
+def _decrypt_config(db: Session, workspace_id: str, encrypted: str) -> dict:
+    """Descriptografa config de migração usando a chave per-org do workspace."""
     try:
-        f = Fernet(settings.SECRET_KEY.encode() if len(settings.SECRET_KEY) == 44 else b"")
-        return json.loads(f.decrypt(token.encode()).decode())
+        org_id = _get_org_id_for_workspace(db, workspace_id)
+        f = get_org_fernet(db, org_id)
+        return json.loads(f.decrypt(encrypted.encode()).decode())
     except Exception:
+        logger.warning("Falha ao descriptografar config de migração — retornando vazio.")
         return {}
+
+
+def decrypt_project_configs(db: Session, project: MigrationProject) -> tuple[dict, dict]:
+    """Retorna (source_cfg, dest_cfg) descriptografados para uso no worker."""
+    ws_id = str(project.workspace_id)
+    source_cfg = _decrypt_config(db, ws_id, project.source_config) if project.source_config else {}
+    dest_cfg   = _decrypt_config(db, ws_id, project.destination_config) if project.destination_config else {}
+    return source_cfg, dest_cfg
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────
@@ -40,7 +55,7 @@ def list_projects(db: Session, workspace_id: str) -> list[dict]:
         .order_by(MigrationProject.created_at.desc())
         .all()
     )
-    return [_project_to_dict(p) for p in projects]
+    return [_project_to_dict(p, _get_source_label(db, workspace_id, p)) for p in projects]
 
 
 def create_project(
@@ -60,8 +75,8 @@ def create_project(
         name=name,
         description=description,
         migration_type=migration_type,
-        source_config=json.dumps(source_config),       # stored as plain JSON for now
-        destination_config=json.dumps(destination_config),
+        source_config=_encrypt_config(db, workspace_id, source_config),
+        destination_config=_encrypt_config(db, workspace_id, destination_config),
         status="draft",
     )
     db.add(project)
@@ -73,7 +88,7 @@ def create_project(
 
 def get_project(db: Session, workspace_id: str, project_id: str) -> Optional[dict]:
     p = _get_project_or_none(db, workspace_id, project_id)
-    return _project_to_dict(p) if p else None
+    return _project_to_dict(p, _get_source_label(db, workspace_id, p)) if p else None
 
 
 def update_project(db: Session, workspace_id: str, project_id: str, **kwargs) -> Optional[dict]:
@@ -81,7 +96,14 @@ def update_project(db: Session, workspace_id: str, project_id: str, **kwargs) ->
     if not p:
         return None
     for k, v in kwargs.items():
-        if hasattr(p, k) and v is not None:
+        if not hasattr(p, k) or v is None:
+            continue
+        # Criptografar configs antes de persistir
+        if k == "source_config" and isinstance(v, dict):
+            setattr(p, k, _encrypt_config(db, workspace_id, v))
+        elif k == "destination_config" and isinstance(v, dict):
+            setattr(p, k, _encrypt_config(db, workspace_id, v))
+        else:
             setattr(p, k, v)
     p.updated_at = datetime.utcnow()
     db.commit()
@@ -222,6 +244,35 @@ def get_project_stats(db: Session, workspace_id: str, project_id: str) -> dict:
     }
 
 
+def retry_failed_mailboxes(db: Session, workspace_id: str, project_id: str) -> dict:
+    """Reseta mailboxes failed → pending e reativa o projeto para nova execução."""
+    p = _get_project_or_none(db, workspace_id, project_id)
+    if not p:
+        return {"reset_count": 0}
+
+    failed_mbs = db.query(MigrationMailbox).filter(
+        MigrationMailbox.project_id == project_id,
+        MigrationMailbox.status == "failed",
+    ).all()
+
+    for mb in failed_mbs:
+        mb.status = "pending"
+        mb.error_message = None
+        mb.phase = None
+
+    p.status = "running"
+    p.failed_count = 0
+    if not p.started_at:
+        p.started_at = datetime.utcnow()
+    p.updated_at = datetime.utcnow()
+    db.commit()
+
+    _add_log(db, project_id, "info",
+             f"{len(failed_mbs)} caixa(s) com falha resetada(s) para retry.")
+    return {"reset_count": len(failed_mbs),
+            "message": f"{len(failed_mbs)} caixa(s) serão retentadas."}
+
+
 def get_mailbox_ledger(db: Session, workspace_id: str, project_id: str,
                        mailbox_id: str, limit: int = 200) -> list[dict]:
     """Retorna entradas do ledger de mensagens de uma caixa."""
@@ -302,6 +353,17 @@ def set_project_status(
 
 # ── Internals ─────────────────────────────────────────────────────────────────
 
+def _get_source_label(db: Session, workspace_id: str, p: MigrationProject) -> str:
+    """Descriptografa apenas para extrair o label de exibição da origem."""
+    if not p or not p.source_config:
+        return ""
+    try:
+        source = _decrypt_config(db, workspace_id, p.source_config)
+        return source.get("label") or source.get("host") or source.get("domain") or source.get("tenant_id") or ""
+    except Exception:
+        return ""
+
+
 def _get_project_or_none(db: Session, workspace_id: str, project_id: str):
     return db.query(MigrationProject).filter(
         MigrationProject.id == project_id,
@@ -321,15 +383,10 @@ def _add_log(db: Session, project_id: str, level: str, message: str, details: di
     db.commit()
 
 
-def _project_to_dict(p: MigrationProject) -> dict:
+def _project_to_dict(p: MigrationProject, source_label: str = "") -> dict:
     total = p.mailbox_count or 0
     done = p.completed_count or 0
     progress = round((done / total * 100) if total > 0 else 0)
-    source = {}
-    try:
-        source = json.loads(p.source_config) if p.source_config else {}
-    except Exception:
-        pass
     return {
         "id": str(p.id),
         "name": p.name,
@@ -341,7 +398,7 @@ def _project_to_dict(p: MigrationProject) -> dict:
         "failed_count": p.failed_count or 0,
         "verified_count": p.verified_count or 0,
         "progress": progress,
-        "source_label": source.get("label") or source.get("host") or source.get("domain") or "",
+        "source_label": source_label,
         "started_at": p.started_at.isoformat() if p.started_at else None,
         "completed_at": p.completed_at.isoformat() if p.completed_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
