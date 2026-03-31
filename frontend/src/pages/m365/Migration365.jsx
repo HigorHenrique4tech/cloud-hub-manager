@@ -110,38 +110,6 @@ const ProgressBar = ({ value, className = '' }) => (
   </div>
 );
 
-// ── Worker Health Banner ──────────────────────────────────────────────────────
-
-const WorkerHealthBanner = () => {
-  const { data } = useQuery({
-    queryKey: ['migration-worker-health'],
-    queryFn: migrationApi.getWorkerHealth,
-    refetchInterval: 30_000,
-    staleTime: 25_000,
-    retry: false,
-  });
-
-  if (!data) return null;
-  if (data.worker === 'ok' && data.redis === 'ok') return null;
-
-  if (data.redis === 'unreachable') return (
-    <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-      <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-      <p className="text-sm text-red-700 dark:text-red-300">
-        <strong>Redis inacessível</strong> — migrações não podem ser iniciadas. Verifique a conexão com o Redis.
-      </p>
-    </div>
-  );
-
-  return (
-    <div className="flex items-center gap-3 px-4 py-3 mb-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-      <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0" />
-      <p className="text-sm text-amber-700 dark:text-amber-300">
-        <strong>Worker de migração offline</strong> — verifique se o container <code className="px-1 bg-amber-100 dark:bg-amber-900/40 rounded text-xs">migration-worker</code> está rodando.
-      </p>
-    </div>
-  );
-};
 
 // ── Wizard ────────────────────────────────────────────────────────────────────
 
@@ -663,9 +631,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
 
   return (
     <Layout>
-      <WorkerHealthBanner />
-
-      {/* Back + header */}
+      {/*Back + header */}
       <div className="flex items-start gap-4 mb-6">
         <button onClick={onBack} className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 mt-0.5">
           <ArrowLeft className="w-4 h-4" /> Voltar
@@ -953,9 +919,7 @@ const Migration365 = () => {
 
   return (
     <Layout>
-      <WorkerHealthBanner />
-
-      {/* Header */}
+      {/*Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Migração 365</h1>
