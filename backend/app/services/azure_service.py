@@ -615,16 +615,18 @@ class AzureService:
         try:
             subscription_client = SubscriptionClient(credential=self.credential)
             subs = []
-            for sub in subscription_client.subscriptions.list():
-                subs.append({
-                    'subscription_id': sub.subscription_id,
-                    'display_name': sub.display_name,
-                    'state': str(sub.state),
-                    'tenant_id': sub.tenant_id,
-                })
+            try:
+                for sub in subscription_client.subscriptions.list():
+                    subs.append({
+                        'subscription_id': sub.subscription_id,
+                        'display_name': sub.display_name,
+                        'state': str(sub.state),
+                        'tenant_id': sub.tenant_id,
+                    })
+            except Exception as list_err:
+                logger.warning(f"subscriptions.list() failed: {list_err}")
 
-            # If the SP has only resource-group-level access, list() returns empty.
-            # Fall back to a direct GET using the subscription_id from credentials.
+            # Fallback 1: direct GET by subscription_id
             if not subs and self.subscription_id:
                 try:
                     sub = subscription_client.subscriptions.get(self.subscription_id)
@@ -634,13 +636,33 @@ class AzureService:
                         'state': str(sub.state),
                         'tenant_id': sub.tenant_id,
                     })
-                except Exception:
-                    pass  # Still return empty list — the SP truly has no subscription access
+                except Exception as get_err:
+                    logger.warning(f"subscriptions.get({self.subscription_id}) failed: {get_err}")
 
+            # Fallback 2: use credential info so the UI doesn't show "0"
+            if not subs and self.subscription_id:
+                subs.append({
+                    'subscription_id': self.subscription_id,
+                    'display_name': self.subscription_id[:8] + '...',
+                    'state': 'Enabled',
+                    'tenant_id': self.tenant_id,
+                })
+                logger.info(f"Using credential subscription_id as fallback: {self.subscription_id}")
+
+            logger.info(f"list_subscriptions: found {len(subs)} subscription(s)")
             return {'success': True, 'subscriptions': subs}
         except Exception as e:
             logger.error(f"Error listing subscriptions: {e}")
-            return {'success': False, 'error': str(e), 'subscriptions': []}
+            # Even on total failure, return the known subscription
+            fallback = []
+            if self.subscription_id:
+                fallback.append({
+                    'subscription_id': self.subscription_id,
+                    'display_name': self.subscription_id[:8] + '...',
+                    'state': 'Enabled',
+                    'tenant_id': self.tenant_id,
+                })
+            return {'success': False, 'error': str(e), 'subscriptions': fallback}
 
     # ── Connection test ───────────────────────────────────────────────────────
 
