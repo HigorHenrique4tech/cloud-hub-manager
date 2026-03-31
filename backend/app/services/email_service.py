@@ -959,6 +959,65 @@ def send_schedule_failed_email(
     )
 
 
+# ── Migration365 ─────────────────────────────────────────────────────────────
+
+
+def send_migration_completed_email(
+    to_email: str,
+    user_name: str,
+    project_name: str,
+    completed_count: int,
+    failed_count: int,
+    project_id: str,
+    branding: dict = None,
+) -> bool:
+    """Notifica o responsável quando um projeto de migração é concluído."""
+    color = _brand_color(branding)
+    has_failures = failed_count > 0
+    status_color = "#f59e0b" if has_failures else "#10b981"
+    status_label = "Concluído com falhas" if has_failures else "Concluído com sucesso"
+    status_icon = "⚠️" if has_failures else "✅"
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: {status_color}; margin-bottom: 8px;">{status_icon} Migração {status_label}</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        O projeto <strong>{project_name}</strong> finalizou o processo de migração.
+      </p>
+      <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <table style="width: 100%; font-size: 14px; color: #374151;">
+          <tr>
+            <td style="padding: 4px 0; color: #64748b;">Caixas migradas</td>
+            <td style="text-align: right; font-weight: 600; color: #10b981;">{completed_count}</td>
+          </tr>
+          <tr>
+            <td style="padding: 4px 0; color: #64748b;">Caixas com falha</td>
+            <td style="text-align: right; font-weight: 600; color: {'#ef4444' if failed_count > 0 else '#10b981'};">{failed_count}</td>
+          </tr>
+        </table>
+      </div>
+      {"<p style='color: #92400e; font-size: 13px; background: #fef3c7; border-radius: 6px; padding: 10px;'>Algumas caixas falharam. Acesse o projeto para retentar ou verificar os erros.</p>" if has_failures else ""}
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/m365/migration/{project_id}"
+           style="display: inline-block; padding: 12px 32px; background-color: {color};
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Ver projeto
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    subject_status = "com falhas" if has_failures else "com sucesso"
+    return _send_email(
+        to_email,
+        f"{_brand_name(branding)} — Migração concluída {subject_status}: {project_name}",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
 # ── FinOps Scan Results ──────────────────────────────────────────────────────
 
 

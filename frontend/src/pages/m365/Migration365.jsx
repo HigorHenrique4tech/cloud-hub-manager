@@ -6,6 +6,7 @@ import {
   CheckCircle, XCircle, Clock, AlertCircle, ChevronRight,
   Mail, Users, BarChart3, FileText, ArrowLeft, Upload,
   Globe, Server, Building2, Wifi, Search, ShieldCheck, GitMerge,
+  MoreVertical, Download, CalendarClock,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
@@ -23,11 +24,16 @@ const migrationApi = {
   verify:           (id)               => api.post(wsUrl(`/migration/projects/${id}/verify`)).then(r => r.data),
   deltaSync:        (id)               => api.post(wsUrl(`/migration/projects/${id}/delta`)).then(r => r.data),
   retryFailed:      (id)               => api.post(wsUrl(`/migration/projects/${id}/retry-failed`)).then(r => r.data),
+  pauseMailbox:     (pid, mid)         => api.post(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}/pause`)).then(r => r.data),
+  retryMailbox:     (pid, mid)         => api.post(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}/retry`)).then(r => r.data),
   listMailboxes:    (id)               => api.get(wsUrl(`/migration/projects/${id}/mailboxes`)).then(r => r.data),
   addMailboxes:     (id, data)         => api.post(wsUrl(`/migration/projects/${id}/mailboxes`), data).then(r => r.data),
   deleteMailbox:    (pid, mid)         => api.delete(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}`)),
   listLogs:         (id)               => api.get(wsUrl(`/migration/projects/${id}/logs`)).then(r => r.data),
   getWorkerHealth:  ()                 => api.get(wsUrl('/migration/worker-health')).then(r => r.data),
+  exportReport:     (id, format)       => wsUrl(`/migration/projects/${id}/report?format=${format}`),
+  scheduleProject:  (id, scheduled_at) => api.post(wsUrl(`/migration/projects/${id}/schedule`), { scheduled_at }).then(r => r.data),
+  cancelSchedule:   (id)               => api.delete(wsUrl(`/migration/projects/${id}/schedule`)),
   testConnection:   (migration_type, source_config) =>
                       api.post(wsUrl('/migration/test-connection'), { migration_type, source_config }).then(r => r.data),
 };
@@ -100,6 +106,15 @@ const StatusBadge = ({ status }) => {
 };
 
 // ── Progress bar ──────────────────────────────────────────────────────────────
+
+const fmtEta = (seconds) => {
+  if (!seconds || seconds <= 0) return null;
+  if (seconds < 60) return '< 1 min';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `~${h}h ${m > 0 ? `${m}min` : ''}`.trim();
+  return `~${m}min`;
+};
 
 const ProgressBar = ({ value, className = '' }) => (
   <div className={`h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${className}`}>
@@ -428,23 +443,50 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
 
 const AddMailboxesModal = ({ projectId, onClose }) => {
   const qc = useQueryClient();
+  const [tab, setTab] = useState('text');  // 'text' | 'csv'
+
+  // ── Aba texto ─────────────────────────────────────────────────────────────
   const [input, setInput] = useState('');
   const [parsed, setParsed] = useState([]);
-  const [error, setError] = useState('');
+  const [parseError, setParseError] = useState('');
 
-  const parse = () => {
-    setError('');
+  const parseText = () => {
+    setParseError('');
     const lines = input.trim().split('\n').filter(l => l.trim());
     const entries = lines.map(line => {
       const parts = line.split(',').map(p => p.trim());
       return { source_email: parts[0], destination_email: parts[1] || '', display_name: parts[2] || '' };
     }).filter(e => e.source_email.includes('@'));
-    if (!entries.length) { setError('Nenhum e-mail válido encontrado.'); return; }
+    if (!entries.length) { setParseError('Nenhum e-mail válido encontrado.'); return; }
     setParsed(entries);
   };
 
+  // ── Aba CSV ───────────────────────────────────────────────────────────────
+  const [csvPreview, setCsvPreview] = useState(null);  // {valid, invalid, total_rows}
+  const [csvDragging, setCsvDragging] = useState(false);
+
+  const csvMut = useMutation({
+    mutationFn: (file) => {
+      const fd = new FormData();
+      fd.append('file', file);
+      return api.post(wsUrl(`/migration/projects/${projectId}/mailboxes/import-csv`), fd, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data);
+    },
+    onSuccess: (data) => setCsvPreview(data),
+  });
+
+  const handleCsvFile = (file) => {
+    if (!file || !file.name.endsWith('.csv')) return;
+    setCsvPreview(null);
+    csvMut.mutate(file);
+  };
+
+  // ── Adicionar (comum às duas abas) ────────────────────────────────────────
+  const entries = tab === 'text' ? parsed : (csvPreview?.valid || []);
+
   const addMut = useMutation({
-    mutationFn: () => migrationApi.addMailboxes(projectId, { mailboxes: parsed }),
+    mutationFn: () => migrationApi.addMailboxes(projectId, { mailboxes: entries }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
       qc.invalidateQueries({ queryKey: ['migration-project', projectId] });
@@ -455,46 +497,155 @@ const AddMailboxesModal = ({ projectId, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col max-h-[80vh]"
+      <div className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col max-h-[85vh]"
            onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <div>
-            <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Adicionar Caixas de Correio</p>
-            <p className="text-xs text-gray-500">Uma por linha: email_origem, email_destino, nome (opcional)</p>
-          </div>
+          <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Adicionar Caixas de Correio</p>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
             <X className="w-4 h-4 text-gray-500" />
           </button>
         </div>
+
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200 dark:border-gray-700 px-5">
+          {[{ id: 'text', label: 'Colar texto' }, { id: 'csv', label: 'Upload CSV' }].map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                tab === t.id ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          <textarea
-            rows={8}
-            value={input}
-            onChange={e => { setInput(e.target.value); setParsed([]); }}
-            placeholder={"joao@origem.com, joao@empresa.com, João Silva\nmaria@origem.com, maria@empresa.com\npedro@origem.com"}
-            className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-          />
-          {error && <p className="text-xs text-red-500">{error}</p>}
-          {parsed.length > 0 && (
-            <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-              <p className="text-xs text-green-700 dark:text-green-300 font-medium">{parsed.length} caixa(s) prontas para adicionar</p>
-            </div>
+
+          {/* Aba: Colar texto */}
+          {tab === 'text' && (
+            <>
+              <p className="text-xs text-gray-500">Uma por linha: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">email_origem, email_destino, nome</code></p>
+              <textarea
+                rows={8}
+                value={input}
+                onChange={e => { setInput(e.target.value); setParsed([]); }}
+                placeholder={"joao@origem.com, joao@empresa.com, João Silva\nmaria@origem.com, maria@empresa.com\npedro@origem.com"}
+                className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
+              {parseError && <p className="text-xs text-red-500">{parseError}</p>}
+              {parsed.length > 0 && (
+                <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                  <p className="text-xs text-green-700 dark:text-green-300 font-medium">{parsed.length} caixa(s) prontas para adicionar</p>
+                </div>
+              )}
+            </>
           )}
+
+          {/* Aba: Upload CSV */}
+          {tab === 'csv' && (
+            <>
+              <p className="text-xs text-gray-500">
+                Colunas aceitas: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">source_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">destination_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">display_name</code>
+              </p>
+
+              {/* Dropzone */}
+              <label
+                className={`flex flex-col items-center justify-center gap-3 h-36 rounded-xl border-2 border-dashed cursor-pointer transition-colors ${
+                  csvDragging
+                    ? 'border-blue-400 bg-blue-50 dark:bg-blue-900/10'
+                    : 'border-gray-300 dark:border-gray-600 hover:border-blue-400 hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                }`}
+                onDragOver={e => { e.preventDefault(); setCsvDragging(true); }}
+                onDragLeave={() => setCsvDragging(false)}
+                onDrop={e => { e.preventDefault(); setCsvDragging(false); handleCsvFile(e.dataTransfer.files[0]); }}
+              >
+                <input type="file" accept=".csv" className="hidden"
+                  onChange={e => handleCsvFile(e.target.files[0])} />
+                {csvMut.isPending
+                  ? <RefreshCw className="w-6 h-6 text-blue-400 animate-spin" />
+                  : <Upload className="w-6 h-6 text-gray-400" />
+                }
+                <p className="text-sm text-gray-500">
+                  {csvMut.isPending ? 'Analisando...' : 'Arraste um .csv ou clique para selecionar'}
+                </p>
+              </label>
+
+              {/* Preview */}
+              {csvPreview && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400 font-medium">
+                      <CheckCircle className="w-3.5 h-3.5" /> {csvPreview.valid.length} válidos
+                    </span>
+                    {csvPreview.invalid.length > 0 && (
+                      <span className="flex items-center gap-1 text-xs text-red-500 font-medium">
+                        <XCircle className="w-3.5 h-3.5" /> {csvPreview.invalid.length} ignorados
+                      </span>
+                    )}
+                  </div>
+
+                  {csvPreview.valid.length > 0 && (
+                    <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-gray-50 dark:bg-gray-800 text-gray-500 text-left">
+                            <th className="px-3 py-2 font-medium">Origem</th>
+                            <th className="px-3 py-2 font-medium">Destino</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                          {csvPreview.valid.slice(0, 50).map((e, i) => (
+                            <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                              <td className="px-3 py-1.5 text-gray-700 dark:text-gray-300">{e.source_email}</td>
+                              <td className="px-3 py-1.5 text-gray-500">{e.destination_email || '—'}</td>
+                            </tr>
+                          ))}
+                          {csvPreview.valid.length > 50 && (
+                            <tr><td colSpan={2} className="px-3 py-2 text-gray-400 text-center">+{csvPreview.valid.length - 50} mais...</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {csvPreview.invalid.length > 0 && (
+                    <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                      <p className="text-xs text-red-600 dark:text-red-400 font-medium mb-1">Linhas ignoradas:</p>
+                      {csvPreview.invalid.slice(0, 5).map((e, i) => (
+                        <p key={i} className="text-xs text-red-500">Linha {e.line}: {e.reason} {e.value ? `(${e.value})` : ''}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {csvMut.isError && (
+                <p className="text-xs text-red-500">{csvMut.error?.response?.data?.detail || 'Erro ao analisar CSV.'}</p>
+              )}
+            </>
+          )}
+
           {addMut.isError && (
             <p className="text-xs text-red-500">{addMut.error?.response?.data?.detail || 'Erro ao adicionar.'}</p>
           )}
         </div>
+
+        {/* Footer */}
         <div className="flex gap-3 px-5 py-4 border-t border-gray-200 dark:border-gray-700">
-          <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">Cancelar</button>
-          {!parsed.length ? (
-            <button onClick={parse} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium rounded-lg">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+            Cancelar
+          </button>
+          {tab === 'text' && !parsed.length && (
+            <button onClick={parseText} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium rounded-lg">
               <Search className="w-4 h-4" /> Analisar
             </button>
-          ) : (
+          )}
+          {entries.length > 0 && (
             <button onClick={() => addMut.mutate()} disabled={addMut.isPending}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40">
               {addMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Adicionar {parsed.length} caixa(s)
+              Importar {entries.length} caixa(s)
             </button>
           )}
         </div>
@@ -511,6 +662,10 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const [showAddMailboxes, setShowAddMailboxes] = useState(false);
   const [mbSearch, setMbSearch] = useState('');
   const [toDeleteMb, setToDeleteMb] = useState(null);
+  const [mbMenuOpen, setMbMenuOpen] = useState(null); // mailbox_id
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const [showSchedule, setShowSchedule] = useState(false);
+  const [scheduleDateTime, setScheduleDateTime] = useState('');
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['migration-project', projectId],
@@ -565,6 +720,36 @@ const ProjectDetail = ({ projectId, onBack }) => {
       qc.invalidateQueries({ queryKey: ['migration-project', projectId] });
       qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
       qc.invalidateQueries({ queryKey: ['migration-projects'] });
+    },
+  });
+
+  const scheduleMut = useMutation({
+    mutationFn: (dt) => migrationApi.scheduleProject(projectId, dt),
+    onSuccess: () => {
+      setShowSchedule(false);
+      qc.invalidateQueries({ queryKey: ['migration-project', projectId] });
+    },
+  });
+
+  const cancelScheduleMut = useMutation({
+    mutationFn: () => migrationApi.cancelSchedule(projectId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['migration-project', projectId] }),
+  });
+
+  const pauseMbMut = useMutation({
+    mutationFn: (mbId) => migrationApi.pauseMailbox(projectId, mbId),
+    onSuccess: () => {
+      setMbMenuOpen(null);
+      qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
+    },
+  });
+
+  const retryMbMut = useMutation({
+    mutationFn: (mbId) => migrationApi.retryMailbox(projectId, mbId),
+    onSuccess: () => {
+      setMbMenuOpen(null);
+      qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
+      qc.invalidateQueries({ queryKey: ['migration-project', projectId] });
     },
   });
 
@@ -628,6 +813,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const canDelta   = project.status === 'completed';
   const failedCount = mailboxes.filter(m => m.status === 'failed').length;
   const canRetry   = failedCount > 0 && project.status !== 'running';
+  const canSchedule = canStart && !project.scheduled_at;
 
   return (
     <Layout>
@@ -640,6 +826,20 @@ const ProjectDetail = ({ projectId, onBack }) => {
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{project.name}</h1>
             <StatusBadge status={project.status} />
+            {project.scheduled_at && project.status !== 'running' && (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                <CalendarClock className="w-3 h-3" />
+                {new Date(project.scheduled_at).toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' })}
+                <button
+                  onClick={() => cancelScheduleMut.mutate()}
+                  disabled={cancelScheduleMut.isPending}
+                  className="ml-0.5 hover:text-red-500"
+                  title="Cancelar agendamento"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            )}
           </div>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {TYPE_LABELS[project.migration_type]} {project.source_label ? `· ${project.source_label}` : ''}
@@ -650,6 +850,12 @@ const ProjectDetail = ({ projectId, onBack }) => {
             <button onClick={() => statusMut.mutate('running')} disabled={statusMut.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-50">
               <Play className="w-3.5 h-3.5" /> Iniciar
+            </button>
+          )}
+          {canSchedule && (
+            <button onClick={() => setShowSchedule(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+              <CalendarClock className="w-3.5 h-3.5" /> Agendar
             </button>
           )}
           {canPause && (
@@ -682,6 +888,32 @@ const ProjectDetail = ({ projectId, onBack }) => {
               Retentar {failedCount} falha{failedCount > 1 ? 's' : ''}
             </button>
           )}
+
+          {/* Exportar relatório */}
+          <div className="relative">
+            <button
+              onClick={() => setExportMenuOpen(v => !v)}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
+            >
+              <Download className="w-3.5 h-3.5" /> Exportar
+            </button>
+            {exportMenuOpen && (
+              <div className="absolute right-0 top-8 z-20 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1">
+                {[{ fmt: 'csv', label: 'CSV' }, { fmt: 'pdf', label: 'PDF' }].map(({ fmt, label }) => (
+                  <a
+                    key={fmt}
+                    href={migrationApi.exportReport(projectId, fmt)}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={() => setExportMenuOpen(false)}
+                    className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-gray-400" /> {label}
+                  </a>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -709,7 +941,14 @@ const ProjectDetail = ({ projectId, onBack }) => {
         <div className="card p-4 mb-5">
           <div className="flex justify-between text-xs text-gray-500 mb-2">
             <span>Progresso geral</span>
-            <span>{project.completed_count}/{project.mailbox_count} caixas</span>
+            <div className="flex items-center gap-3">
+              {project.status === 'running' && project.eta_seconds && (
+                <span className="flex items-center gap-1 text-blue-500 font-medium">
+                  <Clock className="w-3 h-3" /> {fmtEta(project.eta_seconds)} restantes
+                </span>
+              )}
+              <span>{project.completed_count}/{project.mailbox_count} caixas</span>
+            </div>
           </div>
           <ProgressBar value={project.progress} />
         </div>
@@ -757,7 +996,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
               </button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto" onClick={() => setMbMenuOpen(null)}>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
@@ -799,9 +1038,14 @@ const ProjectDetail = ({ projectId, onBack }) => {
                         </td>
                         <td className="px-4 py-3">
                           {mb.items_total ? (
-                            <div className="w-24">
+                            <div className="w-28">
                               <ProgressBar value={mb.progress} />
                               <p className="text-xs text-gray-400 mt-1">{mb.items_migrated}/{mb.items_total}</p>
+                              {mb.eta_seconds && (
+                                <p className="text-[10px] text-blue-400 flex items-center gap-0.5 mt-0.5">
+                                  <Clock className="w-2.5 h-2.5" /> {fmtEta(mb.eta_seconds)}
+                                </p>
+                              )}
                               {mb.size_mb && <p className="text-[10px] text-gray-400">{mb.size_mb} MB</p>}
                             </div>
                           ) : <span className="text-xs text-gray-400">—</span>}
@@ -812,12 +1056,45 @@ const ProjectDetail = ({ projectId, onBack }) => {
                             <span className="text-[10px] text-gray-400">Pendente</span>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-right">
-                          {canDelete && (
-                            <button onClick={() => setToDeleteMb(mb)}
-                              className="p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500">
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                        <td className="px-4 py-3 text-right relative">
+                          <button
+                            onClick={() => setMbMenuOpen(mbMenuOpen === mb.id ? null : mb.id)}
+                            className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                          >
+                            <MoreVertical className="w-3.5 h-3.5" />
+                          </button>
+                          {mbMenuOpen === mb.id && (
+                            <div
+                              className="absolute right-4 top-8 z-20 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              {mb.status === 'running' && (
+                                <button
+                                  onClick={() => pauseMbMut.mutate(mb.id)}
+                                  disabled={pauseMbMut.isPending}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-yellow-600 dark:text-yellow-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  <Pause className="w-3.5 h-3.5" /> Pausar
+                                </button>
+                              )}
+                              {(mb.status === 'failed' || mb.status === 'paused') && (
+                                <button
+                                  onClick={() => retryMbMut.mutate(mb.id)}
+                                  disabled={retryMbMut.isPending}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-blue-600 dark:text-blue-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  <RefreshCw className="w-3.5 h-3.5" /> Retentar
+                                </button>
+                              )}
+                              {project.status !== 'running' && (
+                                <button
+                                  onClick={() => { setToDeleteMb(mb); setMbMenuOpen(null); }}
+                                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-red-500 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Remover
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
@@ -858,6 +1135,46 @@ const ProjectDetail = ({ projectId, onBack }) => {
       )}
 
       {showAddMailboxes && <AddMailboxesModal projectId={projectId} onClose={() => setShowAddMailboxes(false)} />}
+
+      {/* Schedule modal */}
+      {showSchedule && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowSchedule(false)}>
+          <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
+                <CalendarClock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Agendar início</p>
+                <p className="text-xs text-gray-500">A migração iniciará automaticamente no horário escolhido.</p>
+              </div>
+            </div>
+            <input
+              type="datetime-local"
+              value={scheduleDateTime}
+              onChange={e => setScheduleDateTime(e.target.value)}
+              min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
+            />
+            {scheduleMut.isError && (
+              <p className="text-xs text-red-500 mb-3">{scheduleMut.error?.response?.data?.detail || 'Erro ao agendar.'}</p>
+            )}
+            <div className="flex gap-3">
+              <button onClick={() => setShowSchedule(false)}
+                className="flex-1 px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+                Cancelar
+              </button>
+              <button
+                onClick={() => scheduleMut.mutate(new Date(scheduleDateTime).toISOString())}
+                disabled={!scheduleDateTime || scheduleMut.isPending}
+                className="flex-1 px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium disabled:opacity-40"
+              >
+                {scheduleMut.isPending ? 'Agendando...' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete mailbox confirm */}
       {toDeleteMb && (

@@ -843,6 +843,7 @@ class MigrationProject(Base):
     verified_count     = Column(Integer, nullable=False, default=0)
     started_at         = Column(DateTime, nullable=True)
     completed_at       = Column(DateTime, nullable=True)
+    scheduled_at       = Column(DateTime, nullable=True)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

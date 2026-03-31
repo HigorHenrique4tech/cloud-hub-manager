@@ -2,7 +2,8 @@
 
 import logging
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -168,6 +169,62 @@ async def add_mailboxes(
     )
 
 
+@ws_router.post("/projects/{project_id}/mailboxes/import-csv")
+async def import_csv_preview(
+    project_id: str,
+    file: UploadFile = File(...),
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Faz parse do CSV enviado e retorna preview sem persistir nada.
+    Colunas aceitas (case-insensitive): source_email, destination_email, display_name.
+    Primeira coluna é sempre tratada como source_email se o header não for reconhecido.
+    """
+    import csv, io
+
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")  # remove BOM se presente
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    # Normaliza headers
+    if reader.fieldnames:
+        reader.fieldnames = [f.strip().lower().replace(" ", "_") for f in reader.fieldnames]
+
+    valid, invalid = [], []
+    EMAIL_RE = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    import re
+
+    for i, row in enumerate(reader, start=2):  # linha 1 = header
+        # Tenta encontrar source_email por nome ou primeira coluna
+        src = (row.get("source_email") or row.get("email") or
+               row.get("origem") or next(iter(row.values()), "")).strip().lower()
+        dst = (row.get("destination_email") or row.get("destino") or "").strip().lower() or None
+        name = (row.get("display_name") or row.get("nome") or row.get("name") or "").strip() or None
+
+        if not src:
+            invalid.append({"line": i, "reason": "source_email vazio"})
+            continue
+        if not re.match(EMAIL_RE, src):
+            invalid.append({"line": i, "value": src, "reason": "e-mail inválido"})
+            continue
+
+        valid.append({"source_email": src, "destination_email": dst, "display_name": name})
+
+    return {
+        "valid": valid,
+        "invalid": invalid,
+        "total_rows": len(valid) + len(invalid),
+    }
+
+
 @ws_router.delete("/projects/{project_id}/mailboxes/{mailbox_id}", status_code=204)
 async def delete_mailbox(
     project_id: str,
@@ -177,6 +234,41 @@ async def delete_mailbox(
 ):
     if not svc.delete_mailbox(db, str(member.workspace_id), project_id, mailbox_id):
         raise HTTPException(status_code=404, detail="Caixa de correio não encontrada.")
+
+
+@ws_router.post("/projects/{project_id}/mailboxes/{mailbox_id}/pause")
+async def pause_mailbox(
+    project_id: str,
+    mailbox_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Pausa uma caixa individual em execução."""
+    mb = svc.pause_mailbox(db, str(member.workspace_id), project_id, mailbox_id)
+    if not mb:
+        raise HTTPException(status_code=404, detail="Caixa não encontrada ou não está em execução.")
+    return mb
+
+
+@ws_router.post("/projects/{project_id}/mailboxes/{mailbox_id}/retry")
+async def retry_mailbox(
+    project_id: str,
+    mailbox_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Reseta uma caixa individual (failed/paused) para pending e redispara o worker se necessário."""
+    mb = svc.retry_mailbox(db, str(member.workspace_id), project_id, mailbox_id)
+    if not mb:
+        raise HTTPException(status_code=404, detail="Caixa não encontrada ou não está em estado de falha/pausa.")
+
+    # Se projeto não está rodando, dispara worker para pegar a caixa resetada
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if project and project["status"] not in ("running",):
+        svc.set_project_status(db, str(member.workspace_id), project_id, "running")
+        _dispatch_migration_worker(project_id)
+
+    return mb
 
 
 @ws_router.get("/projects/{project_id}/mailboxes/{mailbox_id}/ledger")
@@ -227,6 +319,159 @@ async def delta_sync_project(
     return {"message": "Delta sync iniciado.", "project_id": project_id}
 
 
+# ── Relatório exportável ──────────────────────────────────────────────────────
+
+@ws_router.get("/projects/{project_id}/report")
+async def export_report(
+    project_id: str,
+    format: str = "csv",   # csv | pdf
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Exporta relatório do projeto em CSV ou PDF."""
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    mailboxes = svc.list_mailboxes(db, str(member.workspace_id), project_id)
+    logs_errors = svc.list_logs(db, str(member.workspace_id), project_id, limit=500)
+
+    if format == "csv":
+        import csv, io
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            "source_email", "destination_email", "display_name",
+            "status", "phase", "items_total", "items_migrated",
+            "size_mb", "verify_ok", "error_message",
+            "started_at", "completed_at",
+        ])
+        for mb in mailboxes:
+            verify_ok = (
+                mb.get("verify_result", {}) or {}
+            ).get("ok", "") if mb.get("verify_result") else ""
+            writer.writerow([
+                mb.get("source_email", ""),
+                mb.get("destination_email", "") or "",
+                mb.get("display_name", "") or "",
+                mb.get("status", ""),
+                mb.get("phase", "") or "",
+                mb.get("items_total", "") or "",
+                mb.get("items_migrated", ""),
+                mb.get("size_mb", "") or "",
+                verify_ok,
+                mb.get("error_message", "") or "",
+                mb.get("started_at", "") or "",
+                mb.get("completed_at", "") or "",
+            ])
+        buf.seek(0)
+        filename = f"migration_{project_id[:8]}.csv"
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    elif format == "pdf":
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors
+            from reportlab.lib.units import cm
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            import io as _io
+
+            buf = _io.BytesIO()
+            doc = SimpleDocTemplate(buf, pagesize=A4,
+                                    leftMargin=2*cm, rightMargin=2*cm,
+                                    topMargin=2*cm, bottomMargin=2*cm)
+            styles = getSampleStyleSheet()
+            story = []
+
+            # Título
+            title_style = ParagraphStyle("title", parent=styles["Heading1"],
+                                         fontSize=16, textColor=colors.HexColor("#1e3a5f"))
+            story.append(Paragraph(f"Relatório de Migração", title_style))
+            story.append(Paragraph(project["name"], styles["Heading2"]))
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e2e8f0")))
+            story.append(Spacer(1, 0.3*cm))
+
+            # Resumo
+            from datetime import datetime as _dt
+            now_str = _dt.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+            summary_data = [
+                ["Tipo", project.get("migration_type", ""), "Gerado em", now_str],
+                ["Status", project.get("status", ""), "Origem", project.get("source_label", "") or "—"],
+                ["Total de caixas", str(project.get("mailbox_count", 0)),
+                 "Concluídas", str(project.get("completed_count", 0))],
+                ["Com falha", str(project.get("failed_count", 0)),
+                 "Verificadas", str(project.get("verified_count", 0))],
+            ]
+            summary_table = Table(summary_data, colWidths=[4*cm, 5.5*cm, 4*cm, 5.5*cm])
+            summary_table.setStyle(TableStyle([
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")),
+                ("TEXTCOLOR", (2, 0), (2, -1), colors.HexColor("#64748b")),
+                ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+                ("FONTNAME", (3, 0), (3, -1), "Helvetica-Bold"),
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f8fafc"), colors.white]),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(summary_table)
+            story.append(Spacer(1, 0.5*cm))
+
+            # Tabela de caixas
+            story.append(Paragraph("Caixas de Correio", styles["Heading3"]))
+            story.append(Spacer(1, 0.2*cm))
+
+            STATUS_PT = {
+                "completed": "Concluído", "failed": "Falha",
+                "pending": "Aguardando", "running": "Em execução",
+                "paused": "Pausado", "skipped": "Ignorado",
+            }
+            mb_headers = ["Origem", "Destino", "Status", "Progresso", "Verificado", "Erro"]
+            mb_rows = [mb_headers]
+            for mb in mailboxes:
+                progress_str = f"{mb.get('items_migrated', 0)}/{mb.get('items_total', 0) or '?'}"
+                verify_str = "✓" if (mb.get("verify_result") or {}).get("ok") else ("✗" if mb.get("verify_result") else "—")
+                error_str = (mb.get("error_message") or "")[:40]
+                mb_rows.append([
+                    mb.get("source_email", "")[:30],
+                    (mb.get("destination_email") or "—")[:30],
+                    STATUS_PT.get(mb.get("status", ""), mb.get("status", "")),
+                    progress_str,
+                    verify_str,
+                    error_str,
+                ])
+
+            mb_table = Table(mb_rows, colWidths=[4.5*cm, 4.5*cm, 2.5*cm, 2.5*cm, 2*cm, 3*cm])
+            mb_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            story.append(mb_table)
+
+            doc.build(story)
+            buf.seek(0)
+            filename = f"migration_{project_id[:8]}.pdf"
+            return StreamingResponse(
+                buf,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        except ImportError:
+            raise HTTPException(status_code=500, detail="reportlab não instalado.")
+    else:
+        raise HTTPException(status_code=400, detail="Formato inválido. Use 'csv' ou 'pdf'.")
+
+
 # ── Logs ──────────────────────────────────────────────────────────────────────
 
 @ws_router.get("/projects/{project_id}/logs")
@@ -237,6 +482,86 @@ async def list_logs(
     db: Session = Depends(get_db),
 ):
     return svc.list_logs(db, str(member.workspace_id), project_id, limit=limit)
+
+
+# ── Agendamento ──────────────────────────────────────────────────────────────
+
+@ws_router.post("/projects/{project_id}/schedule")
+async def schedule_project(
+    project_id: str,
+    body: ScheduleRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Agenda o início automático da migração para uma data/hora futura."""
+    from datetime import datetime, timezone
+    try:
+        scheduled_at = datetime.fromisoformat(body.scheduled_at.replace("Z", "+00:00"))
+        scheduled_at_utc = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="scheduled_at inválido. Use formato ISO 8601.")
+
+    if scheduled_at_utc <= datetime.utcnow():
+        raise HTTPException(status_code=400, detail="scheduled_at deve ser uma data/hora futura.")
+
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    if project["status"] not in ("draft", "ready", "paused"):
+        raise HTTPException(status_code=400, detail="Projeto não pode ser agendado no status atual.")
+
+    # Persiste scheduled_at no projeto
+    updated = svc.update_project(db, str(member.workspace_id), project_id,
+                                  scheduled_at=scheduled_at_utc)
+
+    # Cria job APScheduler
+    try:
+        from apscheduler.triggers.date import DateTrigger
+        from app.services.scheduler_service import scheduler
+
+        def _run_scheduled_migration():
+            _dispatch_migration_worker(project_id)
+            notify_db = None
+            try:
+                from app.database import SessionLocal as _SL
+                notify_db = _SL()
+                svc.set_project_status(notify_db, str(member.workspace_id), project_id, "running")
+            except Exception:
+                pass
+            finally:
+                if notify_db:
+                    notify_db.close()
+
+        scheduler.add_job(
+            _run_scheduled_migration,
+            trigger=DateTrigger(run_date=scheduled_at_utc),
+            id=f"migration-schedule-{project_id}",
+            replace_existing=True,
+        )
+    except Exception as exc:
+        logger.warning(f"APScheduler não disponível para agendamento: {exc}")
+
+    return updated
+
+
+@ws_router.delete("/projects/{project_id}/schedule", status_code=204)
+async def cancel_schedule(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Cancela o agendamento de início automático."""
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    svc.update_project(db, str(member.workspace_id), project_id, scheduled_at=None)
+
+    try:
+        from app.services.scheduler_service import scheduler
+        scheduler.remove_job(f"migration-schedule-{project_id}")
+    except Exception:
+        pass  # job pode já não existir
 
 
 # ── Worker health & test connection ──────────────────────────────────────────
@@ -288,6 +613,10 @@ async def worker_health(
         "worker": worker_status,
         "queued_tasks": queued_tasks,
     }
+
+
+class ScheduleRequest(BaseModel):
+    scheduled_at: str  # ISO 8601 datetime string
 
 
 class TestConnectionRequest(BaseModel):

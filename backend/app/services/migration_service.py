@@ -88,15 +88,21 @@ def create_project(
 
 def get_project(db: Session, workspace_id: str, project_id: str) -> Optional[dict]:
     p = _get_project_or_none(db, workspace_id, project_id)
-    return _project_to_dict(p, _get_source_label(db, workspace_id, p)) if p else None
+    if not p:
+        return None
+    eta = _calc_project_eta(db, project_id) if p.status == "running" else None
+    return _project_to_dict(p, _get_source_label(db, workspace_id, p), eta_seconds=eta)
 
 
 def update_project(db: Session, workspace_id: str, project_id: str, **kwargs) -> Optional[dict]:
     p = _get_project_or_none(db, workspace_id, project_id)
     if not p:
         return None
+    NULLABLE_FIELDS = {"scheduled_at"}  # campos que aceitam None explícito
     for k, v in kwargs.items():
-        if not hasattr(p, k) or v is None:
+        if not hasattr(p, k):
+            continue
+        if v is None and k not in NULLABLE_FIELDS:
             continue
         # Criptografar configs antes de persistir
         if k == "source_config" and isinstance(v, dict):
@@ -244,6 +250,42 @@ def get_project_stats(db: Session, workspace_id: str, project_id: str) -> dict:
     }
 
 
+def pause_mailbox(db: Session, workspace_id: str, project_id: str, mailbox_id: str) -> Optional[dict]:
+    """Pausa uma caixa individualmente — o worker respeita status=paused no próximo callback."""
+    p = _get_project_or_none(db, workspace_id, project_id)
+    if not p:
+        return None
+    mb = db.query(MigrationMailbox).filter(
+        MigrationMailbox.id == mailbox_id,
+        MigrationMailbox.project_id == project_id,
+        MigrationMailbox.status == "running",
+    ).first()
+    if not mb:
+        return None
+    mb.status = "paused"
+    db.commit()
+    return _mailbox_to_dict(mb)
+
+
+def retry_mailbox(db: Session, workspace_id: str, project_id: str, mailbox_id: str) -> Optional[dict]:
+    """Reseta uma caixa individual para pending — permite retentar sem afetar as outras."""
+    p = _get_project_or_none(db, workspace_id, project_id)
+    if not p:
+        return None
+    mb = db.query(MigrationMailbox).filter(
+        MigrationMailbox.id == mailbox_id,
+        MigrationMailbox.project_id == project_id,
+        MigrationMailbox.status.in_(["failed", "paused"]),
+    ).first()
+    if not mb:
+        return None
+    mb.status = "pending"
+    mb.error_message = None
+    mb.phase = None
+    db.commit()
+    return _mailbox_to_dict(mb)
+
+
 def retry_failed_mailboxes(db: Session, workspace_id: str, project_id: str) -> dict:
     """Reseta mailboxes failed → pending e reativa o projeto para nova execução."""
     p = _get_project_or_none(db, workspace_id, project_id)
@@ -353,6 +395,27 @@ def set_project_status(
 
 # ── Internals ─────────────────────────────────────────────────────────────────
 
+def _calc_project_eta(db: Session, project_id: str) -> int | None:
+    """Soma os ETAs individuais das mailboxes em execução para estimar o tempo restante do projeto."""
+    running = db.query(MigrationMailbox).filter(
+        MigrationMailbox.project_id == project_id,
+        MigrationMailbox.status == "running",
+        MigrationMailbox.started_at.isnot(None),
+        MigrationMailbox.items_migrated > 0,
+        MigrationMailbox.items_total > MigrationMailbox.items_migrated,
+    ).all()
+    if not running:
+        return None
+    max_eta = 0
+    for mb in running:
+        elapsed = (datetime.utcnow() - mb.started_at).total_seconds()
+        if elapsed > 0 and mb.items_migrated:
+            rate = mb.items_migrated / elapsed
+            eta = int(((mb.items_total or 0) - mb.items_migrated) / rate)
+            max_eta = max(max_eta, eta)
+    return max_eta if max_eta > 0 else None
+
+
 def _get_source_label(db: Session, workspace_id: str, p: MigrationProject) -> str:
     """Descriptografa apenas para extrair o label de exibição da origem."""
     if not p or not p.source_config:
@@ -383,7 +446,8 @@ def _add_log(db: Session, project_id: str, level: str, message: str, details: di
     db.commit()
 
 
-def _project_to_dict(p: MigrationProject, source_label: str = "") -> dict:
+def _project_to_dict(p: MigrationProject, source_label: str = "",
+                     eta_seconds: int = None) -> dict:
     total = p.mailbox_count or 0
     done = p.completed_count or 0
     progress = round((done / total * 100) if total > 0 else 0)
@@ -399,6 +463,8 @@ def _project_to_dict(p: MigrationProject, source_label: str = "") -> dict:
         "verified_count": p.verified_count or 0,
         "progress": progress,
         "source_label": source_label,
+        "eta_seconds": eta_seconds,
+        "scheduled_at": p.scheduled_at.isoformat() if p.scheduled_at else None,
         "started_at": p.started_at.isoformat() if p.started_at else None,
         "completed_at": p.completed_at.isoformat() if p.completed_at else None,
         "created_at": p.created_at.isoformat() if p.created_at else None,
@@ -411,6 +477,15 @@ def _mailbox_to_dict(m: MigrationMailbox) -> dict:
     done = m.items_migrated or 0
     progress = round((done / total * 100) if total > 0 else 0)
     size_mb = round(m.size_bytes / 1_048_576, 1) if m.size_bytes else None
+
+    # ETA por caixa: baseado na velocidade atual (itens/seg)
+    eta_seconds = None
+    if m.status == "running" and m.started_at and done > 0 and total > done:
+        elapsed = (datetime.utcnow() - m.started_at).total_seconds()
+        if elapsed > 0:
+            rate = done / elapsed  # itens/segundo
+            eta_seconds = int((total - done) / rate)
+
     return {
         "id": str(m.id),
         "source_email": m.source_email,
@@ -422,6 +497,7 @@ def _mailbox_to_dict(m: MigrationMailbox) -> dict:
         "items_migrated": done,
         "progress": progress,
         "size_mb": size_mb,
+        "eta_seconds": eta_seconds,
         "phase": m.phase,
         "verify_result": m.verify_result,
         "verified_at": m.verified_at.isoformat() if m.verified_at else None,

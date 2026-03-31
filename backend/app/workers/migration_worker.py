@@ -36,6 +36,55 @@ def _refresh_project(db, project_id: str) -> Optional[MigrationProject]:
     return db.query(MigrationProject).filter(MigrationProject.id == project_id).first()
 
 
+# ── Notificações ──────────────────────────────────────────────────────────────
+
+def _notify_migration_completed(db, project, completed_count: int, failed_count: int):
+    """Dispara email + push notification ao responsável pelo projeto."""
+    try:
+        from app.models.db_models import User, Workspace
+        from app.services.email_service import send_migration_completed_email
+        from app.services.notification_service import push_notification
+        from app.services.branding_service import get_branding_for_workspace
+
+        workspace = db.query(Workspace).filter(Workspace.id == project.workspace_id).first()
+        user = db.query(User).filter(User.id == project.created_by).first()
+        if not user:
+            return
+
+        branding = None
+        try:
+            branding = get_branding_for_workspace(db, str(project.workspace_id))
+        except Exception:
+            pass
+
+        # Email
+        send_migration_completed_email(
+            to_email=user.email,
+            user_name=user.name or user.email,
+            project_name=project.name,
+            completed_count=completed_count,
+            failed_count=failed_count,
+            project_id=str(project.id),
+            branding=branding,
+        )
+
+        # Push (in-app)
+        status_msg = (
+            f"Migração '{project.name}' concluída: {completed_count} caixas migradas, {failed_count} falhas."
+            if failed_count > 0
+            else f"Migração '{project.name}' concluída com sucesso: {completed_count} caixas migradas."
+        )
+        push_notification(
+            db,
+            workspace_id=str(project.workspace_id),
+            notification_type="migration",
+            message=status_msg,
+            link_to=f"/m365/migration/{project.id}",
+        )
+    except Exception as exc:
+        logger.warning(f"Falha ao enviar notificação de conclusão de migração: {exc}")
+
+
 # ── Migração de uma caixa individual ─────────────────────────────────────────
 
 def _migrate_one_mailbox(project_id: str, mailbox_id: str,
@@ -282,6 +331,8 @@ def run_migration_project(self, project_id: str,
                     f"Migração concluída. Completadas: {completed}, Falhas: {failed}.",
                     level="info" if failed == 0 else "warning",
                 )
+                # Notificações de conclusão
+                _notify_migration_completed(final_db, project, completed, failed)
         finally:
             final_db.close()
 
