@@ -126,9 +126,9 @@ async def _fetch_costs(db: Session, workspace_id, start_date: str, end_date: str
 
 def _combine_costs(raw: dict) -> dict:
     """Combine raw provider results into a merged dataset."""
-    aws = raw.get("aws") if raw.get("aws", {}).get("success") else None
-    azure = raw.get("azure") if raw.get("azure", {}).get("success") else None
-    gcp = raw.get("gcp") if raw.get("gcp", {}).get("success") else None
+    aws = raw.get("aws") if (raw.get("aws") or {}).get("success") else None
+    azure = raw.get("azure") if (raw.get("azure") or {}).get("success") else None
+    gcp = raw.get("gcp") if (raw.get("gcp") or {}).get("success") else None
 
     # Daily timeline
     daily_map = {}

@@ -593,6 +593,7 @@ def send_billing_invoice_email(
     period_ref: str,
     due_date: str | None,
     notes: str | None = None,
+    description: str | None = None,
     payment_url: str | None = None,
     branding: dict = None,
 ) -> bool:
@@ -601,11 +602,12 @@ def send_billing_invoice_email(
     due_str = due_date if due_date else "Não definido"
 
     notes_html = ""
-    if notes:
-        notes_html = f"""
-        <div style="background:#f1f5f9;border-radius:8px;padding:16px;margin-top:20px;">
-          <p style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;">Observações</p>
-          <p style="color:#334155;font-size:14px;margin:0;white-space:pre-wrap;">{notes}</p>
+    # description is client-facing — shown prominently in the invoice
+    if description:
+        notes_html += f"""
+        <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;padding:16px;margin-top:20px;">
+          <p style="color:#1e40af;font-size:12px;text-transform:uppercase;letter-spacing:0.5px;margin:0 0 6px;font-weight:600;">Detalhes</p>
+          <p style="color:#1e3a5f;font-size:14px;margin:0;white-space:pre-wrap;line-height:1.6;">{description}</p>
         </div>
         """
 

@@ -521,6 +521,7 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
     paid_at:           existing?.paid_at           ? existing.paid_at.slice(0, 10) : '',
     status:            existing?.status            || 'pending',
     notes:             existing?.notes             || '',
+    description:       existing?.description       || '',
     is_recurring:      existing?.is_recurring      ?? false,
     recurrence_months: existing?.recurrence_months ?? 1,
   });
@@ -659,11 +660,25 @@ const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
             )}
           </div>
 
-          {/* Notes */}
+          {/* Description — client-facing */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Observações</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Descricao para o Cliente
+              <span className="ml-1.5 text-xs font-normal text-blue-500">(aparece no email)</span>
+            </label>
+            <textarea value={form.description} onChange={(e) => set('description', e.target.value)} rows={3}
+              placeholder="Ex: Gestao de infraestrutura cloud (AWS + Azure). Inclui monitoramento 24/7, FinOps e suporte dedicado."
+              className={`${inputCls} resize-none`} />
+          </div>
+
+          {/* Notes — internal */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+              Notas Internas
+              <span className="ml-1.5 text-xs font-normal text-gray-400">(nao aparece no email)</span>
+            </label>
             <textarea value={form.notes} onChange={(e) => set('notes', e.target.value)} rows={2}
-              placeholder="Notas internas sobre esta cobrança..."
+              placeholder="Notas internas sobre esta cobranca..."
               className={`${inputCls} resize-none`} />
           </div>
 

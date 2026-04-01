@@ -79,6 +79,7 @@ const ManagedOrgsPage = lazy(() => import('./pages/ManagedOrgsPage'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const Billing = lazy(() => import('./pages/Billing'));
 const BillingSuccess = lazy(() => import('./pages/BillingSuccess'));
+const PaymentConfirmation = lazy(() => import('./pages/PaymentConfirmation'));
 const PlanSelection = lazy(() => import('./pages/PlanSelection'));
 
 // One-time pages
@@ -132,6 +133,7 @@ function App() {
                 <Route path="/invite/:token" element={<InviteAccept />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/verify/:token" element={<VerifyCallback />} />
+                <Route path="/payment/confirmed" element={<PaymentConfirmation />} />
                 <Route path="/select-plan" element={<PR><PlanSelection /></PR>} />
                 <Route path="/onboarding" element={<PR><Onboarding /></PR>} />
                 <Route path="/" element={<PR><Dashboard /></PR>} />

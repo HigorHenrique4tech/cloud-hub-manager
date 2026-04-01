@@ -612,6 +612,7 @@ class BillingRecord(Base):
     paid_at             = Column(DateTime, nullable=True)
     status              = Column(String(20), nullable=False, default="pending")  # pending | paid | overdue | cancelled
     notes               = Column(Text, nullable=True)
+    description         = Column(Text, nullable=True)                   # client-facing details shown in invoice email
     attachment_filename = Column(String(255), nullable=True)            # original uploaded filename
     attachment_path     = Column(String(512), nullable=True)            # path on disk
     created_by          = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

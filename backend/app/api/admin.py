@@ -467,6 +467,7 @@ class BillingCreate(BaseModel):
     due_date: Optional[str] = None      # ISO date string
     status: str = "pending"
     notes: Optional[str] = None
+    description: Optional[str] = None   # client-facing details shown in invoice email
     is_recurring: bool = False
     recurrence_months: Optional[int] = None  # 1 | 3 | 6 | 12
 
@@ -482,6 +483,7 @@ class BillingUpdate(BaseModel):
     paid_at: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+    description: Optional[str] = None
     is_recurring: Optional[bool] = None
     recurrence_months: Optional[int] = None
 
@@ -531,6 +533,7 @@ def _billing_to_dict(r: BillingRecord) -> dict:
         "paid_at": r.paid_at.isoformat() if r.paid_at else None,
         "status": r.status,
         "notes": r.notes,
+        "description": r.description,
         "is_recurring": r.is_recurring,
         "recurrence_months": r.recurrence_months,
         "attachment_filename": r.attachment_filename,
@@ -700,6 +703,7 @@ def create_billing(
         due_date=due_date,
         status=payload.status,
         notes=payload.notes,
+        description=payload.description,
         is_recurring=payload.is_recurring,
         recurrence_months=payload.recurrence_months if payload.is_recurring else None,
         created_by=admin.id,
@@ -768,6 +772,8 @@ def update_billing(
         record.status = payload.status
     if payload.notes is not None:
         record.notes = payload.notes
+    if payload.description is not None:
+        record.description = payload.description
 
     if record.status != old_status:
         _record_status_change(db, record, record.status, admin.id, None, old_status=old_status)
@@ -1140,8 +1146,8 @@ async def send_invoice_email(
                 customer_name=record.client_name,
                 plan_tier="billing",
                 amount_cents=amount_cents,
-                return_url=f"{settings.FRONTEND_URL}/billing/success",
-                completion_url=f"{settings.FRONTEND_URL}/billing/success",
+                return_url=f"{settings.FRONTEND_URL}/payment/confirmed",
+                completion_url=f"{settings.FRONTEND_URL}/payment/confirmed",
             )
             payment_url = abacate_data.get("url")
             payment_id = abacate_data.get("id")
@@ -1166,6 +1172,7 @@ async def send_invoice_email(
         period_ref=record.period_ref,
         due_date=due_str,
         notes=record.notes,
+        description=record.description,
         payment_url=payment_url,
         branding=_brand,
     )
