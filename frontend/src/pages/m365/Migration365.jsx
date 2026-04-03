@@ -6,7 +6,7 @@ import {
   CheckCircle, XCircle, Clock, AlertCircle, ChevronRight,
   Mail, Users, BarChart3, FileText, ArrowLeft, Upload,
   Globe, Server, Building2, Wifi, Search, ShieldCheck, GitMerge,
-  MoreVertical, Download, CalendarClock,
+  MoreVertical, Download, CalendarClock, HardDrive, FolderOpen,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
@@ -41,10 +41,12 @@ const migrationApi = {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const MIGRATION_TYPES = [
-  { id: 'google_workspace',  label: 'Google Workspace',     icon: Globe,     desc: 'Gmail, Google Calendar, Contatos → M365', color: 'text-blue-500' },
-  { id: 'exchange_onprem',   label: 'Exchange On-Premises', icon: Server,    desc: 'Exchange 2013/2016/2019 → Exchange Online', color: 'text-orange-500' },
-  { id: 'tenant_to_tenant',  label: 'M365 Tenant → Tenant', icon: Building2, desc: 'De um tenant M365 para outro', color: 'text-purple-500' },
-  { id: 'imap',              label: 'IMAP Genérico',        icon: Wifi,      desc: 'Yahoo, Outlook.com, Zoho e outros servidores IMAP', color: 'text-green-500' },
+  { id: 'google_workspace',  label: 'Google Workspace',       icon: Globe,      desc: 'Gmail, Google Calendar, Contatos → M365', color: 'text-blue-500',   category: 'email' },
+  { id: 'exchange_onprem',   label: 'Exchange On-Premises',   icon: Server,     desc: 'Exchange 2013/2016/2019 → Exchange Online', color: 'text-orange-500', category: 'email' },
+  { id: 'tenant_to_tenant',  label: 'M365 Tenant → Tenant',   icon: Building2,  desc: 'De um tenant M365 para outro', color: 'text-purple-500',            category: 'email' },
+  { id: 'imap',              label: 'IMAP Genérico',          icon: Wifi,       desc: 'Yahoo, Outlook.com, Zoho e outros servidores IMAP', color: 'text-green-500', category: 'email' },
+  { id: 'onedrive_to_onedrive',     label: 'OneDrive → OneDrive',       icon: HardDrive,  desc: 'Migrar arquivos entre OneDrives de tenants diferentes', color: 'text-sky-500',   category: 'files' },
+  { id: 'sharepoint_to_sharepoint', label: 'SharePoint → SharePoint',   icon: FolderOpen, desc: 'Migrar bibliotecas de documentos entre sites SharePoint', color: 'text-teal-500', category: 'files' },
 ];
 
 const SOURCE_FIELDS = {
@@ -69,6 +71,16 @@ const SOURCE_FIELDS = {
     { key: 'port',              label: 'Porta',                     placeholder: '993' },
     { key: 'use_ssl',           label: 'Usar SSL',                  type: 'checkbox' },
   ],
+  onedrive_to_onedrive: [
+    { key: 'tenant_id',         label: 'Tenant ID de origem',       placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+    { key: 'client_id',         label: 'Client ID (App Registration)', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+    { key: 'client_secret',     label: 'Client Secret',             placeholder: '••••••••', type: 'password' },
+  ],
+  sharepoint_to_sharepoint: [
+    { key: 'tenant_id',         label: 'Tenant ID de origem',       placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+    { key: 'client_id',         label: 'Client ID (App Registration)', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+    { key: 'client_secret',     label: 'Client Secret',             placeholder: '••••••••', type: 'password' },
+  ],
 };
 
 const STATUS_CONFIG = {
@@ -81,11 +93,16 @@ const STATUS_CONFIG = {
 };
 
 const TYPE_LABELS = {
-  google_workspace: 'Google Workspace',
-  exchange_onprem:  'Exchange On-Premises',
-  tenant_to_tenant: 'M365 Tenant → Tenant',
-  imap:             'IMAP Genérico',
+  google_workspace:          'Google Workspace',
+  exchange_onprem:           'Exchange On-Premises',
+  tenant_to_tenant:          'M365 Tenant → Tenant',
+  imap:                      'IMAP Genérico',
+  onedrive_to_onedrive:      'OneDrive → OneDrive',
+  sharepoint_to_sharepoint:  'SharePoint → SharePoint',
 };
+
+const FILE_MIGRATION_TYPES = ['onedrive_to_onedrive', 'sharepoint_to_sharepoint'];
+const isFileMigration = (type) => FILE_MIGRATION_TYPES.includes(type);
 
 const LOG_LEVEL_CONFIG = {
   info:    { color: 'text-blue-600 dark:text-blue-400',   bg: 'bg-blue-50 dark:bg-blue-900/20' },
@@ -225,28 +242,60 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
 
           {/* Step 0: Type */}
           {step === 0 && (
-            <div className="space-y-3">
-              <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Selecione o tipo de migração para este projeto.</p>
-              {MIGRATION_TYPES.map(({ id, label, icon: Icon, desc, color }) => (
-                <button
-                  key={id}
-                  onClick={() => setForm(p => ({ ...p, migration_type: id }))}
-                  className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
-                    form.migration_type === id
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10'
-                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
-                  }`}
-                >
-                  <div className={`w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0`}>
-                    <Icon className={`w-5 h-5 ${color}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{label}</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">{desc}</p>
-                  </div>
-                  {form.migration_type === id && <CheckCircle className="w-5 h-5 text-blue-500 ml-auto flex-shrink-0" />}
-                </button>
-              ))}
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">Selecione o tipo de migração para este projeto.</p>
+
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide flex items-center gap-2">
+                <Mail className="w-3.5 h-3.5" /> E-mail
+              </p>
+              <div className="space-y-2">
+                {MIGRATION_TYPES.filter(t => t.category === 'email').map(({ id, label, icon: Icon, desc, color }) => (
+                  <button
+                    key={id}
+                    onClick={() => setForm(p => ({ ...p, migration_type: id }))}
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                      form.migration_type === id
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+                      <Icon className={`w-5 h-5 ${color}`} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{label}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{desc}</p>
+                    </div>
+                    {form.migration_type === id && <CheckCircle className="w-5 h-5 text-blue-500 ml-auto flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide flex items-center gap-2 mt-4">
+                <HardDrive className="w-3.5 h-3.5" /> Arquivos
+              </p>
+              <div className="space-y-2">
+                {MIGRATION_TYPES.filter(t => t.category === 'files').map(({ id, label, icon: Icon, desc, color }) => (
+                  <button
+                    key={id}
+                    onClick={() => setForm(p => ({ ...p, migration_type: id }))}
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                      form.migration_type === id
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+                      <Icon className={`w-5 h-5 ${color}`} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{label}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{desc}</p>
+                    </div>
+                    {form.migration_type === id && <CheckCircle className="w-5 h-5 text-blue-500 ml-auto flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 
@@ -391,7 +440,11 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
               </div>
               <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
                 <p className="text-xs text-blue-700 dark:text-blue-300">
-                  O projeto será criado em status <strong>Rascunho</strong>. Você poderá adicionar caixas de correio e iniciar a migração quando estiver pronto.
+                  O projeto será criado em status <strong>Rascunho</strong>. Você poderá adicionar {
+                    isFileMigration(form.migration_type)
+                      ? (form.migration_type === 'onedrive_to_onedrive' ? 'usuários (UPN) para migrar seus OneDrives' : 'sites SharePoint para migrar')
+                      : 'caixas de correio'
+                  } e iniciar a migração quando estiver pronto.
                 </p>
               </div>
               {createMut.isError && (
@@ -441,7 +494,12 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
 
 // ── Add Mailboxes Modal ───────────────────────────────────────────────────────
 
-const AddMailboxesModal = ({ projectId, onClose }) => {
+const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
+  const isFile = isFileMigration(migrationType);
+  const srcLabel = migrationType === 'onedrive_to_onedrive' ? 'UPN do usuário' : migrationType === 'sharepoint_to_sharepoint' ? 'Site ID' : 'E-mail de origem';
+  const dstLabel = migrationType === 'onedrive_to_onedrive' ? 'UPN de destino' : migrationType === 'sharepoint_to_sharepoint' ? 'Site ID de destino' : 'E-mail de destino';
+  const srcPlaceholder = migrationType === 'onedrive_to_onedrive' ? 'user@source.com' : migrationType === 'sharepoint_to_sharepoint' ? 'contoso.sharepoint.com,site-id-aqui' : 'email_origem';
+  const modalTitle = isFile ? (migrationType === 'onedrive_to_onedrive' ? 'Adicionar Usuários (OneDrive)' : 'Adicionar Sites (SharePoint)') : 'Adicionar Caixas de Correio';
   const qc = useQueryClient();
   const [tab, setTab] = useState('text');  // 'text' | 'csv'
 
@@ -456,8 +514,8 @@ const AddMailboxesModal = ({ projectId, onClose }) => {
     const entries = lines.map(line => {
       const parts = line.split(',').map(p => p.trim());
       return { source_email: parts[0], destination_email: parts[1] || '', display_name: parts[2] || '' };
-    }).filter(e => e.source_email.includes('@'));
-    if (!entries.length) { setParseError('Nenhum e-mail válido encontrado.'); return; }
+    }).filter(e => isFile ? e.source_email.length > 0 : e.source_email.includes('@'));
+    if (!entries.length) { setParseError(isFile ? 'Nenhum identificador válido encontrado.' : 'Nenhum e-mail válido encontrado.'); return; }
     setParsed(entries);
   };
 
@@ -502,7 +560,7 @@ const AddMailboxesModal = ({ projectId, onClose }) => {
 
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
-          <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Adicionar Caixas de Correio</p>
+          <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{modalTitle}</p>
           <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
             <X className="w-4 h-4 text-gray-500" />
           </button>
@@ -525,7 +583,7 @@ const AddMailboxesModal = ({ projectId, onClose }) => {
           {/* Aba: Colar texto */}
           {tab === 'text' && (
             <>
-              <p className="text-xs text-gray-500">Uma por linha: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">email_origem, email_destino, nome</code></p>
+              <p className="text-xs text-gray-500">Uma por linha: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{srcPlaceholder}, {dstLabel.toLowerCase()}, nome</code></p>
               <textarea
                 rows={8}
                 value={input}
@@ -806,6 +864,9 @@ const ProjectDetail = ({ projectId, onBack }) => {
     </Layout>
   );
 
+  const isFileType  = isFileMigration(project.migration_type);
+  const itemLabel   = isFileType ? 'itens' : 'caixas';
+  const itemLabelSg = isFileType ? 'item' : 'caixa';
   const canStart   = ['draft', 'ready', 'paused'].includes(project.status);
   const canPause   = project.status === 'running';
   const canDelete  = project.status !== 'running';
@@ -947,7 +1008,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
                   <Clock className="w-3 h-3" /> {fmtEta(project.eta_seconds)} restantes
                 </span>
               )}
-              <span>{project.completed_count}/{project.mailbox_count} caixas</span>
+              <span>{project.completed_count}/{project.mailbox_count} {itemLabel}</span>
             </div>
           </div>
           <ProgressBar value={project.progress} />
@@ -957,7 +1018,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700">
         {[
-          { id: 'mailboxes', label: 'Caixas de Correio', icon: Mail },
+          { id: 'mailboxes', label: isFileType ? 'Itens' : 'Caixas de Correio', icon: isFileType ? HardDrive : Mail },
           { id: 'logs',      label: 'Logs',              icon: FileText },
         ].map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setTab(id)}
@@ -977,7 +1038,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text" value={mbSearch} onChange={e => setMbSearch(e.target.value)}
-                placeholder="Buscar por e-mail ou nome..."
+                placeholder={isFileType ? "Buscar por identificador ou nome..." : "Buscar por e-mail ou nome..."}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -988,11 +1049,11 @@ const ProjectDetail = ({ projectId, onBack }) => {
           </div>
           {filteredMailboxes.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <Mail className="w-10 h-10 text-gray-300 dark:text-gray-600" />
-              <p className="text-sm text-gray-500">Nenhuma caixa de correio adicionada ainda.</p>
+              {isFileType ? <HardDrive className="w-10 h-10 text-gray-300 dark:text-gray-600" /> : <Mail className="w-10 h-10 text-gray-300 dark:text-gray-600" />}
+              <p className="text-sm text-gray-500">{isFileType ? 'Nenhum item adicionado ainda.' : 'Nenhuma caixa de correio adicionada ainda.'}</p>
               <button onClick={() => setShowAddMailboxes(true)}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 hover:border-blue-400 hover:text-blue-500">
-                <Plus className="w-4 h-4" /> Adicionar caixas
+                <Plus className="w-4 h-4" /> Adicionar {isFileType ? 'itens' : 'caixas'}
               </button>
             </div>
           ) : (
@@ -1000,8 +1061,8 @@ const ProjectDetail = ({ projectId, onBack }) => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
-                    <th className="px-4 py-3 font-medium">Origem</th>
-                    <th className="px-4 py-3 font-medium">Destino</th>
+                    <th className="px-4 py-3 font-medium">{isFileType ? (project.migration_type === 'onedrive_to_onedrive' ? 'Usuário (UPN)' : 'Site ID') : 'Origem'}</th>
+                    <th className="px-4 py-3 font-medium">{isFileType ? 'Destino' : 'Destino'}</th>
                     <th className="px-4 py-3 font-medium">Status / Fase</th>
                     <th className="px-4 py-3 font-medium">Progresso</th>
                     <th className="px-4 py-3 font-medium">Verificação</th>
@@ -1134,7 +1195,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
         </div>
       )}
 
-      {showAddMailboxes && <AddMailboxesModal projectId={projectId} onClose={() => setShowAddMailboxes(false)} />}
+      {showAddMailboxes && <AddMailboxesModal projectId={projectId} migrationType={project.migration_type} onClose={() => setShowAddMailboxes(false)} />}
 
       {/* Schedule modal */}
       {showSchedule && (
@@ -1214,6 +1275,15 @@ const Migration365 = () => {
     staleTime: 30_000,
   });
 
+  const { data: workerHealth } = useQuery({
+    queryKey: ['migration-worker-health'],
+    queryFn: migrationApi.getWorkerHealth,
+    enabled: !!currentOrg && !!currentWorkspace,
+    refetchInterval: 30_000,
+    staleTime: 25_000,
+    retry: false,
+  });
+
   const deleteMut = useMutation({
     mutationFn: (id) => migrationApi.deleteProject(id),
     onSuccess: () => {
@@ -1241,7 +1311,7 @@ const Migration365 = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Migração 365</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Migre caixas de correio e dados para o Microsoft 365
+            Migre caixas de correio, OneDrive e SharePoint para o Microsoft 365
           </p>
         </div>
         <button onClick={() => setShowWizard(true)}
@@ -1249,6 +1319,20 @@ const Migration365 = () => {
           <Plus className="w-4 h-4" /> Novo Projeto
         </button>
       </div>
+
+      {/* Worker health banner */}
+      {workerHealth?.redis === 'unreachable' && (
+        <div className="flex items-center gap-3 p-3 mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+          <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
+          <p className="text-sm text-red-700 dark:text-red-300">Redis inacessível — migrações não podem ser iniciadas.</p>
+        </div>
+      )}
+      {workerHealth && workerHealth.redis === 'ok' && workerHealth.worker !== 'ok' && (
+        <div className="flex items-center gap-3 p-3 mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+          <p className="text-sm text-amber-700 dark:text-amber-300">Worker de migração offline — verifique se o container migration-worker está rodando.</p>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
@@ -1315,7 +1399,7 @@ const Migration365 = () => {
                   <div className="flex items-center gap-3">
                     <p className="text-xs text-gray-400">{TYPE_LABELS[project.migration_type]}</p>
                     {project.source_label && <p className="text-xs text-gray-400">· {project.source_label}</p>}
-                    <p className="text-xs text-gray-400">· {project.mailbox_count} caixas</p>
+                    <p className="text-xs text-gray-400">· {project.mailbox_count} {isFileMigration(project.migration_type) ? 'itens' : 'caixas'}</p>
                   </div>
                   {project.mailbox_count > 0 && project.status !== 'draft' && (
                     <ProgressBar value={project.progress} className="mt-2 max-w-xs" />

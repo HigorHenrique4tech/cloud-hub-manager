@@ -175,7 +175,7 @@ def bulk_add_mailboxes(
         p.updated_at = datetime.utcnow()
 
     db.commit()
-    _add_log(db, project_id, "info", f"{added} caixa(s) de correio adicionada(s).")
+    _add_log(db, project_id, "info", f"{added} item(ns) adicionado(s).")
     return {"added": added, "skipped": len(entries) - added}
 
 

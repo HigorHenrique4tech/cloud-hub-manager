@@ -206,17 +206,26 @@ async def import_csv_preview(
     EMAIL_RE = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
     import re
 
+    # Para migrações de arquivo, não exigir formato de e-mail
+    is_file_migration = project.get("migration_type", "") in (
+        "onedrive_to_onedrive", "sharepoint_to_sharepoint",
+    )
+
     for i, row in enumerate(reader, start=2):  # linha 1 = header
         # Tenta encontrar source_email por nome ou primeira coluna
         src = (row.get("source_email") or row.get("email") or
-               row.get("origem") or next(iter(row.values()), "")).strip().lower()
-        dst = (row.get("destination_email") or row.get("destino") or "").strip().lower() or None
+               row.get("origem") or next(iter(row.values()), "")).strip()
+        if not is_file_migration:
+            src = src.lower()
+        dst = (row.get("destination_email") or row.get("destino") or "").strip() or None
+        if dst and not is_file_migration:
+            dst = dst.lower()
         name = (row.get("display_name") or row.get("nome") or row.get("name") or "").strip() or None
 
         if not src:
-            invalid.append({"line": i, "reason": "source_email vazio"})
+            invalid.append({"line": i, "reason": "identificador vazio"})
             continue
-        if not re.match(EMAIL_RE, src):
+        if not is_file_migration and not re.match(EMAIL_RE, src):
             invalid.append({"line": i, "value": src, "reason": "e-mail inválido"})
             continue
 
