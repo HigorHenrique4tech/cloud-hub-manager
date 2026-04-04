@@ -96,7 +96,10 @@ def _org_to_dict(org: Organization, role: str = None, db: Session = None):
     if org.org_type in ("master", "partner"):
         d["branding"] = get_branding(org, db)
     if db:
-        d["migration_licenses"] = get_migration_license_summary(db, org.id)
+        try:
+            d["migration_licenses"] = get_migration_license_summary(db, org.id)
+        except Exception:
+            d["migration_licenses"] = {"has_access": False, "mode": None}
     if role:
         d["role"] = role
     return d
