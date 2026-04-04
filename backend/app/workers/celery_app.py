@@ -19,6 +19,8 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,   # 1 task por worker (são pesadas)
     task_acks_late=True,            # só confirma após concluir — evita perda em crash
     task_reject_on_worker_lost=True,
+    worker_send_task_events=True,   # habilita events para health check
+    task_send_sent_event=True,      # evento quando task é enviada
     task_routes={
         "app.workers.migration_worker.*": {"queue": "migration"},
     },

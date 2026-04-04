@@ -1542,27 +1542,19 @@ const Migration365 = () => {
   const effectivePlan = currentOrg?.effective_plan || 'free';
   const planLevel = { free: 0, pro: 1, enterprise: 2, enterprise_migration: 3 }[effectivePlan] || 0;
 
+  const hasEnterprise = planLevel >= 2;
+
   const { data: licenseSummary } = useQuery({
     queryKey: ['migration-license-summary'],
     queryFn: migrationApi.getLicenseSummary,
-    enabled: !!currentOrg && !!currentWorkspace && planLevel >= 2,
+    enabled: !!currentOrg && !!currentWorkspace && hasEnterprise,
     staleTime: 30_000,
   });
-
-  // Gate: requires at least Enterprise
-  if (planLevel < 2) {
-    return <MigrationUpsell effectivePlan={effectivePlan} />;
-  }
-
-  // Gate: Enterprise without licenses and not bundle
-  const hasAccess = effectivePlan === 'enterprise_migration' ||
-    (licenseSummary?.has_access) ||
-    (licenseSummary?.licenses_purchased > 0);
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['migration-projects'],
     queryFn: migrationApi.listProjects,
-    enabled: !!currentOrg && !!currentWorkspace && planLevel >= 2,
+    enabled: !!currentOrg && !!currentWorkspace && hasEnterprise,
     retry: false,
     staleTime: 30_000,
   });
@@ -1570,7 +1562,7 @@ const Migration365 = () => {
   const { data: workerHealth } = useQuery({
     queryKey: ['migration-worker-health'],
     queryFn: migrationApi.getWorkerHealth,
-    enabled: !!currentOrg && !!currentWorkspace && planLevel >= 2,
+    enabled: !!currentOrg && !!currentWorkspace && hasEnterprise,
     refetchInterval: 30_000,
     staleTime: 25_000,
     retry: false,
@@ -1583,6 +1575,11 @@ const Migration365 = () => {
       qc.invalidateQueries({ queryKey: ['migration-projects'] });
     },
   });
+
+  // Gate: requires at least Enterprise
+  if (!hasEnterprise) {
+    return <MigrationUpsell effectivePlan={effectivePlan} />;
+  }
 
   // If projectId in URL, show detail
   if (projectId) {
@@ -1612,17 +1609,11 @@ const Migration365 = () => {
         </button>
       </div>
 
-      {/* Worker health banner */}
+      {/* Worker health banner — só mostra se Redis estiver down */}
       {workerHealth?.redis === 'unreachable' && (
         <div className="flex items-center gap-3 p-3 mb-4 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
           <XCircle className="w-5 h-5 text-red-500 flex-shrink-0" />
           <p className="text-sm text-red-700 dark:text-red-300">Redis inacessível — migrações não podem ser iniciadas.</p>
-        </div>
-      )}
-      {workerHealth && workerHealth.redis === 'ok' && workerHealth.worker !== 'ok' && (
-        <div className="flex items-center gap-3 p-3 mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-          <AlertCircle className="w-5 h-5 text-amber-500 flex-shrink-0" />
-          <p className="text-sm text-amber-700 dark:text-amber-300">Worker de migração offline — verifique se o container migration-worker está rodando.</p>
         </div>
       )}
 

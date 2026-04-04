@@ -735,57 +735,65 @@ async def worker_health(
     except Exception:
         pass
 
-    # 2. Celery workers — tenta ping com timeout mais generoso,
-    #    e fallback para checagem de heartbeat keys no Redis.
+    # 2. Celery worker
     worker_status = "unknown"
     queued_tasks = 0
+    debug_info = {}
     if redis_status == "ok":
         try:
             from app.workers.celery_app import celery_app
 
-            # Abordagem 1: inspect.ping() com timeout maior
+            # inspect.ping() — broadcast para todos os workers
             try:
-                inspect = celery_app.control.inspect(timeout=5)
-                ping_result = inspect.ping()
+                insp = celery_app.control.inspect(timeout=5)
+                ping_result = insp.ping()
+                debug_info["ping"] = str(ping_result)[:200] if ping_result else "empty"
                 if ping_result:
                     worker_status = "ok"
-                    # Conta tasks enfileiradas (best-effort)
                     try:
-                        reserved = inspect.reserved() or {}
+                        reserved = insp.reserved() or {}
                         queued_tasks = sum(len(v) for v in reserved.values())
                     except Exception:
                         pass
-            except Exception:
-                pass
+            except Exception as e:
+                debug_info["ping_error"] = str(e)[:100]
 
-            # Abordagem 2 (fallback): verificar heartbeat keys no Redis
+            # Fallback: checar Redis keys diretamente
             if worker_status != "ok":
                 try:
                     r = redis_lib.from_url(settings.REDIS_URL,
                                            socket_connect_timeout=2, socket_timeout=2)
-                    # Celery registra heartbeat em _kombu.binding.celeryev
-                    # e workers ativos em _kombu.binding.migration (nossa queue)
-                    bindings = r.smembers("_kombu.binding.migration") or set()
-                    if bindings:
+                    # Listar todas as _kombu.binding.* keys para diagnóstico
+                    all_bindings = {}
+                    for key in r.scan_iter("_kombu.binding.*", count=100):
+                        key_str = key.decode() if isinstance(key, bytes) else key
+                        members = r.smembers(key)
+                        all_bindings[key_str] = len(members)
+
+                    debug_info["redis_bindings"] = all_bindings
+
+                    if "_kombu.binding.migration" in all_bindings:
+                        worker_status = "ok"
+                    elif any("celery" in k for k in all_bindings):
                         worker_status = "ok"
                     else:
-                        # Checa se há algum worker registrado no default
-                        bindings_default = r.smembers("_kombu.binding.celery") or set()
-                        if bindings_default:
-                            worker_status = "ok"
-                        else:
-                            worker_status = "offline"
-                except Exception:
-                    if worker_status == "unknown":
                         worker_status = "offline"
+                except Exception as e:
+                    debug_info["redis_fallback_error"] = str(e)[:100]
+                    worker_status = "offline"
 
-        except Exception:
+        except Exception as e:
+            debug_info["celery_import_error"] = str(e)[:100]
             worker_status = "unknown"
+
+    logger.info("worker-health: redis=%s worker=%s debug=%s",
+                redis_status, worker_status, debug_info)
 
     return {
         "redis": redis_status,
         "worker": worker_status,
         "queued_tasks": queued_tasks,
+        "debug": debug_info,
     }
 
 
