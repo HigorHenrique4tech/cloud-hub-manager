@@ -10,6 +10,7 @@ const PLAN_INFO = {
   free: { name: 'Free', price: 'R$ 0', color: 'gray' },
   pro: { name: 'Pro', price: 'R$ 497/mês', color: 'primary' },
   enterprise: { name: 'Enterprise', price: 'R$ 2.497/mês + add-ons', color: 'amber' },
+  enterprise_migration: { name: 'Enterprise + Migration', price: 'R$ 4.747/mês', color: 'purple' },
 };
 
 const STATUS_BADGE = {

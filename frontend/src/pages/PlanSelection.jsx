@@ -56,10 +56,29 @@ const plans = [
       'Orgs gerenciadas (MSP)',
       '5 orgs parceiras inclusas (+R$ 397/org)',
       '10 workspaces por org parceira (+R$ 290/ws)',
+      'Migration365 disponível como add-on (R$ 70/lic)',
       'Suporte dedicado',
     ],
     cta: 'Falar com vendas',
     highlight: false,
+  },
+  {
+    id: 'enterprise_migration',
+    name: 'Enterprise + Migration',
+    price: 'R$ 4.747',
+    period: '/mês',
+    description: 'Tudo do Enterprise + migrações ilimitadas.',
+    features: [
+      'Tudo do plano Enterprise',
+      'Migration365 ilimitado',
+      'E-mail + OneDrive + SharePoint + Teams',
+      'Ideal para MSPs com 50+ migrações/mês',
+      'Economia vs licenças avulsas',
+      'Suporte dedicado + migração',
+    ],
+    cta: 'Falar com vendas',
+    highlight: false,
+    badge: 'Melhor para MSPs',
   },
 ];
 
@@ -228,7 +247,7 @@ const PlanSelection = () => {
   const inviteToken = searchParams.get('invite');
 
   const handleSelect = async (planId) => {
-    if (planId === 'enterprise') {
+    if (planId === 'enterprise' || planId === 'enterprise_migration') {
       setShowSalesModal(true);
       return;
     }
@@ -316,7 +335,7 @@ const PlanSelection = () => {
 
       {/* Plan cards */}
       <div className="flex-1 flex items-start justify-center px-4 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl w-full">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl w-full">
           {plans.map((plan) => (
             <div
               key={plan.id}

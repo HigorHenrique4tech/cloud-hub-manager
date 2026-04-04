@@ -76,7 +76,7 @@ def _slugify(text: str) -> str:
 
 
 def _org_to_dict(org: Organization, role: str = None, db: Session = None):
-    from app.services.plan_service import get_trial_info
+    from app.services.plan_service import get_trial_info, get_migration_license_summary
     trial = get_trial_info(org)
     d = {
         "id": str(org.id),
@@ -95,6 +95,8 @@ def _org_to_dict(org: Organization, role: str = None, db: Session = None):
     }
     if org.org_type in ("master", "partner"):
         d["branding"] = get_branding(org, db)
+    if db:
+        d["migration_licenses"] = get_migration_license_summary(db, org.id)
     if role:
         d["role"] = role
     return d
@@ -232,9 +234,9 @@ async def update_plan(
     db: Session = Depends(get_db),
 ):
     """Update the organization's plan tier (owner/admin only)."""
-    valid_tiers = {"free", "pro", "enterprise"}
+    valid_tiers = {"free", "pro", "enterprise", "enterprise_migration"}
     if payload.plan_tier not in valid_tiers:
-        raise HTTPException(status_code=400, detail=f"Plano inválido. Opções: {', '.join(valid_tiers)}")
+        raise HTTPException(status_code=400, detail=f"Plano inválido. Opções: {', '.join(sorted(valid_tiers))}")
 
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     org.plan_tier = payload.plan_tier

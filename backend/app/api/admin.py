@@ -248,9 +248,9 @@ def admin_set_org_plan(
     db: Session = Depends(get_db),
 ):
     """Set plan for any org. Admin only — bypasses all plan limits."""
-    valid_tiers = {"free", "pro", "enterprise"}
+    valid_tiers = {"free", "pro", "enterprise", "enterprise_migration"}
     if payload.plan_tier not in valid_tiers:
-        raise HTTPException(status_code=400, detail=f"Plano inválido. Use: {', '.join(valid_tiers)}")
+        raise HTTPException(status_code=400, detail=f"Plano inválido. Use: {', '.join(sorted(valid_tiers))}")
 
     org = db.query(Organization).filter(Organization.slug == org_slug).first()
     if not org:

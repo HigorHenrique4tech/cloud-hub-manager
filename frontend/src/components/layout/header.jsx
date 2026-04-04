@@ -264,7 +264,7 @@ const Header = () => {
                 className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                   (currentOrg.effective_plan || currentOrg.plan_tier) === 'pro'
                     ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary hover:bg-primary/20 dark:hover:bg-primary/30'
-                    : (currentOrg.effective_plan || currentOrg.plan_tier) === 'enterprise'
+                    : ['enterprise', 'enterprise_migration'].includes(currentOrg.effective_plan || currentOrg.plan_tier)
                       ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'
                       : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                 }`}
@@ -272,13 +272,14 @@ const Header = () => {
                 <Crown className={`w-3.5 h-3.5 ${
                   (currentOrg.effective_plan || currentOrg.plan_tier) === 'pro'
                     ? 'text-primary'
-                    : (currentOrg.effective_plan || currentOrg.plan_tier) === 'enterprise'
+                    : ['enterprise', 'enterprise_migration'].includes(currentOrg.effective_plan || currentOrg.plan_tier)
                       ? 'text-amber-500'
                       : 'text-gray-400 dark:text-gray-500'
                 }`} />
                 {(() => {
                   const ep = currentOrg.effective_plan || currentOrg.plan_tier;
                   const isTrial = currentOrg.trial?.trial_active && currentOrg.plan_tier === 'free';
+                  if (ep === 'enterprise_migration') return 'Enterprise + Migration';
                   if (ep === 'enterprise') return 'Enterprise';
                   if (ep === 'pro') return isTrial ? 'Trial Pro' : 'Pro';
                   return 'Free';

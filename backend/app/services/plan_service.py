@@ -4,25 +4,38 @@ from sqlalchemy.orm import Session
 
 from app.models.db_models import (
     Organization, OrganizationMember, Workspace, CloudAccount,
+    MigrationLicense,
 )
+
+# ── Plan hierarchy (higher = more features) ─────────────────────────────────
+
+PLAN_HIERARCHY = {
+    "free": 0,
+    "pro": 1,
+    "enterprise": 2,
+    "enterprise_migration": 3,
+}
 
 # ── Plan limits ──────────────────────────────────────────────────────────────
 
 PLAN_LIMITS = {
-    "free":       {"workspaces": 2,    "cloud_accounts": 3,    "members": 3,    "managed_orgs": 0},
-    "pro":        {"workspaces": 10,   "cloud_accounts": 20,   "members": 20,   "managed_orgs": 0},
-    "enterprise": {"workspaces": 20,   "cloud_accounts": None, "members": None, "managed_orgs": None},
+    "free":                 {"workspaces": 2,    "cloud_accounts": 3,    "members": 3,    "managed_orgs": 0},
+    "pro":                  {"workspaces": 10,   "cloud_accounts": 20,   "members": 20,   "managed_orgs": 0},
+    "enterprise":           {"workspaces": 20,   "cloud_accounts": None, "members": None, "managed_orgs": None},
+    "enterprise_migration": {"workspaces": 20,   "cloud_accounts": None, "members": None, "managed_orgs": None},
 }
 
 PLAN_PRICES = {
-    "pro":                      49700,   # R$ 497,00 em centavos
-    "enterprise":               249700,  # R$ 2.497,00 (base, sob consulta — apenas exibição)
-    "enterprise_extra_org":     39700,   # R$ 397,00 por org parceira adicional
-    "enterprise_base_orgs":     5,       # orgs parceiras incluídas no base Enterprise
-    "enterprise_base_workspaces": 20,     # workspaces incluídos na org master Enterprise
-    "enterprise_extra_workspace": 29000, # R$ 290,00 por workspace extra/mês (master)
-    "partner_base_workspaces":  10,      # workspaces incluídos em cada org parceira
-    "partner_extra_workspace":  29000,   # R$ 290,00 por workspace extra/mês
+    "pro":                        49700,   # R$ 497,00 em centavos
+    "enterprise":                 249700,  # R$ 2.497,00 (base, sob consulta — apenas exibição)
+    "enterprise_migration":       474700,  # R$ 4.747,00 (Enterprise R$2.497 + Migration R$2.250)
+    "migration_license_unit":     7000,    # R$ 70,00 por licença avulsa
+    "enterprise_extra_org":       39700,   # R$ 397,00 por org parceira adicional
+    "enterprise_base_orgs":       5,       # orgs parceiras incluídas no base Enterprise
+    "enterprise_base_workspaces": 20,      # workspaces incluídos na org master Enterprise
+    "enterprise_extra_workspace": 29000,   # R$ 290,00 por workspace extra/mês (master)
+    "partner_base_workspaces":    10,      # workspaces incluídos em cada org parceira
+    "partner_extra_workspace":    29000,   # R$ 290,00 por workspace extra/mês
 }
 
 
@@ -166,3 +179,143 @@ def get_org_usage(db: Session, org_id, plan_tier: str, org_type: str = "standalo
             "managed_orgs": managed_orgs_count,
         },
     }
+
+
+# ── Migration365 access ────────────────────────────────────────────────────
+
+
+def check_migration_access(db: Session, org_id) -> tuple:
+    """Check if an org can use Migration365.
+
+    Returns (allowed, remaining_licenses_or_none, message).
+    - enterprise_migration: unlimited (remaining=None)
+    - enterprise with active licenses: remaining count
+    - anything else: denied
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        return False, 0, "Organização não encontrada"
+
+    effective = get_effective_plan(org)
+    level = PLAN_HIERARCHY.get(effective, 0)
+
+    # Bundle: unlimited
+    if effective == "enterprise_migration":
+        return True, None, "Migration365 ilimitado (bundle)"
+
+    # Enterprise: check for purchased licenses
+    if level >= PLAN_HIERARCHY["enterprise"]:
+        licenses = (
+            db.query(MigrationLicense)
+            .filter(
+                MigrationLicense.organization_id == org_id,
+                MigrationLicense.is_active == True,
+            )
+            .all()
+        )
+        total_purchased = sum(l.licenses_purchased for l in licenses)
+        total_used = sum(l.licenses_used for l in licenses)
+        remaining = total_purchased - total_used
+
+        if total_purchased == 0:
+            return False, 0, "Nenhuma licença Migration365 adquirida. Compre licenças avulsas (R$ 70/usuário) ou faça upgrade para Enterprise + Migration."
+
+        if remaining <= 0:
+            return False, 0, f"Todas as {total_purchased} licenças foram utilizadas. Compre mais licenças para continuar."
+
+        return True, remaining, f"{remaining} licença(s) restante(s)"
+
+    # Pro or below
+    return False, 0, "Migration365 requer plano Enterprise ou superior."
+
+
+def get_migration_license_summary(db: Session, org_id) -> dict:
+    """Return license summary for an organization."""
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        return {"has_access": False}
+
+    effective = get_effective_plan(org)
+
+    if effective == "enterprise_migration":
+        return {
+            "has_access": True,
+            "mode": "bundle",
+            "licenses_purchased": None,
+            "licenses_used": None,
+            "licenses_remaining": None,
+            "unit_price_cents": PLAN_PRICES.get("migration_license_unit", 7000),
+        }
+
+    level = PLAN_HIERARCHY.get(effective, 0)
+    if level >= PLAN_HIERARCHY["enterprise"]:
+        licenses = (
+            db.query(MigrationLicense)
+            .filter(
+                MigrationLicense.organization_id == org_id,
+                MigrationLicense.is_active == True,
+            )
+            .all()
+        )
+        total_purchased = sum(l.licenses_purchased for l in licenses)
+        total_used = sum(l.licenses_used for l in licenses)
+        return {
+            "has_access": total_purchased > total_used,
+            "mode": "per_license",
+            "licenses_purchased": total_purchased,
+            "licenses_used": total_used,
+            "licenses_remaining": total_purchased - total_used,
+            "unit_price_cents": PLAN_PRICES.get("migration_license_unit", 7000),
+        }
+
+    return {
+        "has_access": False,
+        "mode": None,
+        "required_plan": "enterprise",
+        "unit_price_cents": PLAN_PRICES.get("migration_license_unit", 7000),
+    }
+
+
+def consume_migration_license(db: Session, org_id, count: int = 1) -> bool:
+    """Consume N licenses from the oldest active license batch.
+
+    For enterprise_migration (bundle), always returns True without consuming.
+    Returns True if licenses were consumed, False if insufficient.
+    """
+    org = db.query(Organization).filter(Organization.id == org_id).first()
+    if not org:
+        return False
+
+    effective = get_effective_plan(org)
+
+    # Bundle: unlimited, no consumption needed
+    if effective == "enterprise_migration":
+        return True
+
+    # Enterprise: consume from license batches (FIFO)
+    licenses = (
+        db.query(MigrationLicense)
+        .filter(
+            MigrationLicense.organization_id == org_id,
+            MigrationLicense.is_active == True,
+        )
+        .order_by(MigrationLicense.created_at.asc())
+        .all()
+    )
+
+    remaining_to_consume = count
+    for lic in licenses:
+        available = lic.licenses_purchased - lic.licenses_used
+        if available <= 0:
+            continue
+        take = min(available, remaining_to_consume)
+        lic.licenses_used += take
+        remaining_to_consume -= take
+        if remaining_to_consume <= 0:
+            break
+
+    if remaining_to_consume > 0:
+        return False
+
+    db.flush()
+    return True

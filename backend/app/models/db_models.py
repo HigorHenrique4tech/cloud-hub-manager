@@ -936,3 +936,20 @@ class MigrationFolderCheckpoint(Base):
     __table_args__ = (
         UniqueConstraint("mailbox_id", "folder_path", name="uq_checkpoint_folder"),
     )
+
+
+class MigrationLicense(Base):
+    """Licenças avulsas de Migration365 compradas por organizações Enterprise."""
+    __tablename__ = "migration_licenses"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    purchased_by        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    licenses_purchased  = Column(Integer, nullable=False, default=0)
+    licenses_used       = Column(Integer, nullable=False, default=0)
+    amount_cents        = Column(Integer, nullable=False, default=0)   # valor total pago em centavos
+    unit_price_cents    = Column(Integer, nullable=False, default=7000)  # R$ 70,00 por licença
+    is_active           = Column(Boolean, default=True, nullable=False)
+    notes               = Column(Text, nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

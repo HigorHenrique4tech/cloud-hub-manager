@@ -11,6 +11,10 @@ from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
 from app.database import get_db
 from app.services import migration_service as svc
+from app.services.plan_service import (
+    check_migration_access, get_migration_license_summary,
+    consume_migration_license,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +53,122 @@ class ScheduleRequest(BaseModel):
     scheduled_at: str  # ISO 8601 datetime string
 
 
+# ── License purchase schemas ─────────────────────────────────────────────────
+
+class PurchaseLicensesRequest(BaseModel):
+    quantity: int   # number of licenses to purchase
+    notes: Optional[str] = None
+
+
+# ── Migration access helper ──────────────────────────────────────────────────
+
+def _require_migration_plan(db: Session, org_id):
+    """Raise 403 if the org cannot use Migration365."""
+    allowed, remaining, message = check_migration_access(db, org_id)
+    if not allowed:
+        raise HTTPException(status_code=403, detail=message)
+    return allowed, remaining, message
+
+
+# ── License info ─────────────────────────────────────────────────────────────
+
+@ws_router.get("/license-summary")
+async def license_summary(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return migration license summary for the current org."""
+    return get_migration_license_summary(db, member.organization_id)
+
+
+@ws_router.post("/licenses/purchase", status_code=201)
+async def purchase_licenses(
+    body: PurchaseLicensesRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Purchase migration licenses (Enterprise only, per-user licensing)."""
+    from app.models.db_models import Organization, MigrationLicense
+    from app.services.plan_service import get_effective_plan, PLAN_HIERARCHY, PLAN_PRICES
+
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    effective = get_effective_plan(org)
+
+    if effective == "enterprise_migration":
+        raise HTTPException(status_code=400,
+                            detail="Seu plano já inclui migrações ilimitadas. Não é necessário comprar licenças.")
+
+    if PLAN_HIERARCHY.get(effective, 0) < PLAN_HIERARCHY["enterprise"]:
+        raise HTTPException(status_code=403,
+                            detail="Licenças Migration365 requerem plano Enterprise ou superior.")
+
+    if body.quantity < 1 or body.quantity > 10000:
+        raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 10.000.")
+
+    unit_price = PLAN_PRICES.get("migration_license_unit", 7000)
+    total = unit_price * body.quantity
+
+    import uuid
+    license_record = MigrationLicense(
+        id=uuid.uuid4(),
+        organization_id=member.organization_id,
+        purchased_by=member.user.id,
+        licenses_purchased=body.quantity,
+        licenses_used=0,
+        amount_cents=total,
+        unit_price_cents=unit_price,
+        is_active=True,
+        notes=body.notes,
+    )
+    db.add(license_record)
+    db.commit()
+    db.refresh(license_record)
+
+    return {
+        "id": str(license_record.id),
+        "licenses_purchased": license_record.licenses_purchased,
+        "unit_price_cents": license_record.unit_price_cents,
+        "amount_cents": license_record.amount_cents,
+        "notes": license_record.notes,
+        "created_at": license_record.created_at.isoformat() if license_record.created_at else None,
+    }
+
+
+@ws_router.get("/licenses/history")
+async def license_history(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return all license purchase records for the current org."""
+    from app.models.db_models import MigrationLicense
+
+    records = (
+        db.query(MigrationLicense)
+        .filter(MigrationLicense.organization_id == member.organization_id)
+        .order_by(MigrationLicense.created_at.desc())
+        .all()
+    )
+    return {
+        "licenses": [
+            {
+                "id": str(r.id),
+                "licenses_purchased": r.licenses_purchased,
+                "licenses_used": r.licenses_used,
+                "licenses_remaining": r.licenses_purchased - r.licenses_used,
+                "unit_price_cents": r.unit_price_cents,
+                "amount_cents": r.amount_cents,
+                "is_active": r.is_active,
+                "notes": r.notes,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in records
+        ]
+    }
+
+
 # ── Projects ──────────────────────────────────────────────────────────────────
 
 @ws_router.get("/projects")
@@ -65,6 +185,7 @@ async def create_project(
     member: MemberContext = Depends(require_permission("m365.manage")),
     db: Session = Depends(get_db),
 ):
+    _require_migration_plan(db, member.organization_id)
     return svc.create_project(
         db,
         workspace_id=str(member.workspace_id),
@@ -125,6 +246,20 @@ async def set_project_status(
     valid = {"draft", "ready", "running", "paused", "completed", "failed"}
     if body.status not in valid:
         raise HTTPException(status_code=400, detail=f"Status inválido. Use: {', '.join(valid)}")
+
+    # Ao iniciar migração, verificar acesso e consumir licenças
+    if body.status == "running":
+        allowed, remaining, msg = _require_migration_plan(db, member.organization_id)
+        # Consumir licenças (para plano enterprise com licenças avulsas)
+        project_data = svc.get_project(db, str(member.workspace_id), project_id)
+        if project_data:
+            pending_count = project_data.get("mailbox_count", 0) - project_data.get("completed_count", 0) - project_data.get("failed_count", 0)
+            if pending_count > 0 and remaining is not None:
+                if not consume_migration_license(db, member.organization_id, pending_count):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Licenças insuficientes. Necessário: {pending_count}, disponível: {remaining}. Compre mais licenças."
+                    )
 
     project = svc.set_project_status(db, str(member.workspace_id), project_id, body.status)
     if not project:
@@ -208,7 +343,7 @@ async def import_csv_preview(
 
     # Para migrações de arquivo, não exigir formato de e-mail
     is_file_migration = project.get("migration_type", "") in (
-        "onedrive_to_onedrive", "sharepoint_to_sharepoint",
+        "onedrive_to_onedrive", "sharepoint_to_sharepoint", "teams_chat",
     )
 
     for i, row in enumerate(reader, start=2):  # linha 1 = header

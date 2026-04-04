@@ -7,6 +7,7 @@ import {
   Mail, Users, BarChart3, FileText, ArrowLeft, Upload,
   Globe, Server, Building2, Wifi, Search, ShieldCheck, GitMerge,
   MoreVertical, Download, CalendarClock, HardDrive, FolderOpen,
+  MessageSquare, Lock, ShoppingCart, CreditCard, Package, Infinity,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
@@ -36,6 +37,9 @@ const migrationApi = {
   cancelSchedule:   (id)               => api.delete(wsUrl(`/migration/projects/${id}/schedule`)),
   testConnection:   (migration_type, source_config) =>
                       api.post(wsUrl('/migration/test-connection'), { migration_type, source_config }).then(r => r.data),
+  getLicenseSummary: ()             => api.get(wsUrl('/migration/license-summary')).then(r => r.data),
+  purchaseLicenses: (data)         => api.post(wsUrl('/migration/licenses/purchase'), data).then(r => r.data),
+  getLicenseHistory: ()             => api.get(wsUrl('/migration/licenses/history')).then(r => r.data),
 };
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -45,8 +49,9 @@ const MIGRATION_TYPES = [
   { id: 'exchange_onprem',   label: 'Exchange On-Premises',   icon: Server,     desc: 'Exchange 2013/2016/2019 → Exchange Online', color: 'text-orange-500', category: 'email' },
   { id: 'tenant_to_tenant',  label: 'M365 Tenant → Tenant',   icon: Building2,  desc: 'De um tenant M365 para outro', color: 'text-purple-500',            category: 'email' },
   { id: 'imap',              label: 'IMAP Genérico',          icon: Wifi,       desc: 'Yahoo, Outlook.com, Zoho e outros servidores IMAP', color: 'text-green-500', category: 'email' },
-  { id: 'onedrive_to_onedrive',     label: 'OneDrive → OneDrive',       icon: HardDrive,  desc: 'Migrar arquivos entre OneDrives de tenants diferentes', color: 'text-sky-500',   category: 'files' },
-  { id: 'sharepoint_to_sharepoint', label: 'SharePoint → SharePoint',   icon: FolderOpen, desc: 'Migrar bibliotecas de documentos entre sites SharePoint', color: 'text-teal-500', category: 'files' },
+  { id: 'onedrive_to_onedrive',     label: 'OneDrive → OneDrive',       icon: HardDrive,     desc: 'Migrar arquivos entre OneDrives de tenants diferentes', color: 'text-sky-500',    category: 'files' },
+  { id: 'sharepoint_to_sharepoint', label: 'SharePoint → SharePoint',   icon: FolderOpen,    desc: 'Migrar bibliotecas de documentos entre sites SharePoint', color: 'text-teal-500', category: 'files' },
+  { id: 'teams_chat',               label: 'Teams Chat → Teams',        icon: MessageSquare, desc: 'Migrar conversas de chat e mensagens de canais do Teams', color: 'text-violet-500', category: 'teams' },
 ];
 
 const SOURCE_FIELDS = {
@@ -81,6 +86,11 @@ const SOURCE_FIELDS = {
     { key: 'client_id',         label: 'Client ID (App Registration)', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
     { key: 'client_secret',     label: 'Client Secret',             placeholder: '••••••••', type: 'password' },
   ],
+  teams_chat: [
+    { key: 'tenant_id',         label: 'Tenant ID de origem',       placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+    { key: 'client_id',         label: 'Client ID (App Registration)', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
+    { key: 'client_secret',     label: 'Client Secret',             placeholder: '••••••••', type: 'password' },
+  ],
 };
 
 const STATUS_CONFIG = {
@@ -99,9 +109,10 @@ const TYPE_LABELS = {
   imap:                      'IMAP Genérico',
   onedrive_to_onedrive:      'OneDrive → OneDrive',
   sharepoint_to_sharepoint:  'SharePoint → SharePoint',
+  teams_chat:                'Teams Chat → Teams',
 };
 
-const FILE_MIGRATION_TYPES = ['onedrive_to_onedrive', 'sharepoint_to_sharepoint'];
+const FILE_MIGRATION_TYPES = ['onedrive_to_onedrive', 'sharepoint_to_sharepoint', 'teams_chat'];
 const isFileMigration = (type) => FILE_MIGRATION_TYPES.includes(type);
 
 const LOG_LEVEL_CONFIG = {
@@ -276,6 +287,32 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
               </p>
               <div className="space-y-2">
                 {MIGRATION_TYPES.filter(t => t.category === 'files').map(({ id, label, icon: Icon, desc, color }) => (
+                  <button
+                    key={id}
+                    onClick={() => setForm(p => ({ ...p, migration_type: id }))}
+                    className={`w-full flex items-center gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                      form.migration_type === id
+                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/10'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    }`}
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0">
+                      <Icon className={`w-5 h-5 ${color}`} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">{label}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{desc}</p>
+                    </div>
+                    {form.migration_type === id && <CheckCircle className="w-5 h-5 text-blue-500 ml-auto flex-shrink-0" />}
+                  </button>
+                ))}
+              </div>
+
+              <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wide flex items-center gap-2 mt-4">
+                <MessageSquare className="w-3.5 h-3.5" /> Teams
+              </p>
+              <div className="space-y-2">
+                {MIGRATION_TYPES.filter(t => t.category === 'teams').map(({ id, label, icon: Icon, desc, color }) => (
                   <button
                     key={id}
                     onClick={() => setForm(p => ({ ...p, migration_type: id }))}
@@ -1257,6 +1294,241 @@ const ProjectDetail = ({ projectId, onBack }) => {
   );
 };
 
+// ── Migration Upsell (plan gate) ─────────────────────────────────────────────
+
+const MigrationUpsell = ({ effectivePlan }) => {
+  const isEnterprise = effectivePlan === 'enterprise';
+  return (
+    <Layout>
+      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+        <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-6">
+          <Lock className="w-10 h-10 text-blue-400" />
+        </div>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Migration365</h2>
+        <p className="text-gray-500 dark:text-gray-400 max-w-md mb-8">
+          {isEnterprise
+            ? 'Seu plano Enterprise permite adquirir licenças avulsas de migração a R$ 70,00 por usuário. Cada licença inclui e-mail, OneDrive, SharePoint e Teams.'
+            : 'Migre caixas de e-mail, OneDrive, SharePoint e Teams para o Microsoft 365. Disponível para planos Enterprise e Enterprise + Migration.'}
+        </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
+          {/* Enterprise + Migration bundle */}
+          <div className="card p-6 border-2 border-blue-500 dark:border-blue-400 relative">
+            <div className="absolute -top-3 left-4 px-2 bg-blue-500 text-white text-xs font-bold rounded-full py-0.5">
+              RECOMENDADO
+            </div>
+            <div className="flex items-center gap-2 mb-3">
+              <Infinity className="w-5 h-5 text-blue-500" />
+              <h3 className="font-bold text-gray-900 dark:text-gray-100">Enterprise + Migration</h3>
+            </div>
+            <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
+              R$ 4.747<span className="text-base font-normal text-gray-400">/mês</span>
+            </p>
+            <p className="text-xs text-gray-400 mb-4">R$ 2.497 (Enterprise) + R$ 2.250 (Migration)</p>
+            <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-2 mb-6">
+              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Migrações ilimitadas</li>
+              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> E-mail + OneDrive + SharePoint + Teams</li>
+              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Ideal para MSPs (50+ usuários/mês)</li>
+              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Tudo do plano Enterprise incluso</li>
+            </ul>
+            <a href="/billing" className="block w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg text-center">
+              Fazer upgrade
+            </a>
+          </div>
+
+          {/* Per-license */}
+          <div className="card p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Package className="w-5 h-5 text-purple-500" />
+              <h3 className="font-bold text-gray-900 dark:text-gray-100">Licenças Avulsas</h3>
+            </div>
+            <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
+              R$ 70<span className="text-base font-normal text-gray-400">/usuário</span>
+            </p>
+            <p className="text-xs text-gray-400 mb-4">Requer plano Enterprise ativo</p>
+            <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-2 mb-6">
+              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Pague por usuário migrado</li>
+              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Escopo completo por licença</li>
+              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Ideal para migrações pontuais</li>
+              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Compre sob demanda</li>
+            </ul>
+            {isEnterprise ? (
+              <p className="text-xs text-center text-gray-400">Compre licenças na página de migração após ativar o acesso</p>
+            ) : (
+              <a href="/billing" className="block w-full px-4 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg text-center">
+                Upgrade para Enterprise
+              </a>
+            )}
+          </div>
+        </div>
+
+        <p className="text-xs text-gray-400 mt-6">
+          Break-even: ~32 usuários/mês. Acima disso, o bundle compensa.
+        </p>
+      </div>
+    </Layout>
+  );
+};
+
+// ── License Dashboard Panel ──────────────────────────────────────────────────
+
+const LicenseDashboard = ({ licenseSummary, onPurchase }) => {
+  const qc = useQueryClient();
+  const [showPurchase, setShowPurchase] = useState(false);
+  const [quantity, setQuantity] = useState(10);
+
+  const purchaseMut = useMutation({
+    mutationFn: (data) => migrationApi.purchaseLicenses(data),
+    onSuccess: () => {
+      setShowPurchase(false);
+      qc.invalidateQueries({ queryKey: ['migration-license-summary'] });
+      qc.invalidateQueries({ queryKey: ['migration-license-history'] });
+    },
+  });
+
+  const { data: history } = useQuery({
+    queryKey: ['migration-license-history'],
+    queryFn: migrationApi.getLicenseHistory,
+    staleTime: 60_000,
+  });
+
+  if (!licenseSummary) return null;
+
+  const isBundle = licenseSummary.mode === 'bundle';
+  const unitPrice = (licenseSummary.unit_price_cents || 7000) / 100;
+
+  return (
+    <div className="card p-5 mb-6">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-purple-50 dark:bg-purple-900/20 flex items-center justify-center">
+            <CreditCard className="w-4 h-4 text-purple-500" />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Licenças Migration365</h3>
+            <p className="text-xs text-gray-400">
+              {isBundle ? 'Migrações ilimitadas (bundle ativo)' : 'Licenças avulsas por usuário'}
+            </p>
+          </div>
+        </div>
+        {!isBundle && (
+          <button
+            onClick={() => setShowPurchase(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg"
+          >
+            <ShoppingCart className="w-3.5 h-3.5" /> Comprar licenças
+          </button>
+        )}
+      </div>
+
+      {isBundle ? (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+          <Infinity className="w-5 h-5 text-green-500" />
+          <p className="text-sm text-green-700 dark:text-green-300">
+            Plano Enterprise + Migration ativo — migrações ilimitadas para todos os tipos.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-4">
+          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{licenseSummary.licenses_purchased || 0}</p>
+            <p className="text-xs text-gray-400">Compradas</p>
+          </div>
+          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
+            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{licenseSummary.licenses_used || 0}</p>
+            <p className="text-xs text-gray-400">Utilizadas</p>
+          </div>
+          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
+            <p className={`text-2xl font-bold ${(licenseSummary.licenses_remaining || 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+              {licenseSummary.licenses_remaining || 0}
+            </p>
+            <p className="text-xs text-gray-400">Restantes</p>
+          </div>
+        </div>
+      )}
+
+      {/* Purchase history */}
+      {!isBundle && history?.licenses?.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Histórico de compras</p>
+          <div className="space-y-1.5 max-h-32 overflow-y-auto">
+            {history.licenses.map((lic) => (
+              <div key={lic.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50 dark:bg-gray-800/50">
+                <span className="text-gray-600 dark:text-gray-300">
+                  {lic.licenses_purchased} licenças — R$ {(lic.amount_cents / 100).toFixed(2)}
+                </span>
+                <span className="text-gray-400">
+                  {lic.created_at ? new Date(lic.created_at).toLocaleDateString('pt-BR') : ''}
+                  {' · '}{lic.licenses_used}/{lic.licenses_purchased} usadas
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Purchase modal */}
+      {showPurchase && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowPurchase(false)}>
+          <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Comprar Licenças</h3>
+              <button onClick={() => setShowPurchase(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+                <X className="w-5 h-5 text-gray-400" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              Cada licença permite a migração completa de 1 usuário (e-mail + OneDrive + SharePoint + Teams).
+            </p>
+
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5">Quantidade de licenças</label>
+              <input
+                type="number"
+                min={1}
+                max={10000}
+                value={quantity}
+                onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value) || 1))}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+              />
+            </div>
+
+            <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 mb-5">
+              <div className="flex items-center justify-between text-sm mb-2">
+                <span className="text-gray-500">{quantity} licenças × R$ {unitPrice.toFixed(2)}</span>
+                <span className="font-bold text-gray-900 dark:text-gray-100">R$ {(quantity * unitPrice).toFixed(2)}</span>
+              </div>
+              {quantity >= 32 && (
+                <p className="text-xs text-amber-600 dark:text-amber-400">
+                  Dica: com {quantity} licenças, o plano Enterprise + Migration (R$ 2.250/mês ilimitado) pode ser mais vantajoso.
+                </p>
+              )}
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setShowPurchase(false)} className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+                Cancelar
+              </button>
+              <button
+                onClick={() => purchaseMut.mutate({ quantity })}
+                disabled={purchaseMut.isPending}
+                className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium disabled:opacity-50"
+              >
+                {purchaseMut.isPending ? 'Processando...' : `Comprar ${quantity} licenças`}
+              </button>
+            </div>
+
+            {purchaseMut.isError && (
+              <p className="mt-3 text-xs text-red-500 text-center">{purchaseMut.error?.response?.data?.detail || 'Erro ao processar compra.'}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 const Migration365 = () => {
@@ -1267,10 +1539,30 @@ const Migration365 = () => {
   const [showWizard, setShowWizard] = useState(false);
   const [toDelete, setToDelete]     = useState(null);
 
+  const effectivePlan = currentOrg?.effective_plan || 'free';
+  const planLevel = { free: 0, pro: 1, enterprise: 2, enterprise_migration: 3 }[effectivePlan] || 0;
+
+  const { data: licenseSummary } = useQuery({
+    queryKey: ['migration-license-summary'],
+    queryFn: migrationApi.getLicenseSummary,
+    enabled: !!currentOrg && !!currentWorkspace && planLevel >= 2,
+    staleTime: 30_000,
+  });
+
+  // Gate: requires at least Enterprise
+  if (planLevel < 2) {
+    return <MigrationUpsell effectivePlan={effectivePlan} />;
+  }
+
+  // Gate: Enterprise without licenses and not bundle
+  const hasAccess = effectivePlan === 'enterprise_migration' ||
+    (licenseSummary?.has_access) ||
+    (licenseSummary?.licenses_purchased > 0);
+
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['migration-projects'],
     queryFn: migrationApi.listProjects,
-    enabled: !!currentOrg && !!currentWorkspace,
+    enabled: !!currentOrg && !!currentWorkspace && planLevel >= 2,
     retry: false,
     staleTime: 30_000,
   });
@@ -1278,7 +1570,7 @@ const Migration365 = () => {
   const { data: workerHealth } = useQuery({
     queryKey: ['migration-worker-health'],
     queryFn: migrationApi.getWorkerHealth,
-    enabled: !!currentOrg && !!currentWorkspace,
+    enabled: !!currentOrg && !!currentWorkspace && planLevel >= 2,
     refetchInterval: 30_000,
     staleTime: 25_000,
     retry: false,
@@ -1333,6 +1625,9 @@ const Migration365 = () => {
           <p className="text-sm text-amber-700 dark:text-amber-300">Worker de migração offline — verifique se o container migration-worker está rodando.</p>
         </div>
       )}
+
+      {/* License dashboard */}
+      <LicenseDashboard licenseSummary={licenseSummary} />
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
