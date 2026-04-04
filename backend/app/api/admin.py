@@ -1545,3 +1545,148 @@ def reencrypt_all_credentials(
     db.commit()
     log_activity(db, admin, "admin.reencrypt_all_credentials", "System")
     return {"reencrypted": total_reencrypted, "errors": total_errors, "orgs_processed": len(orgs)}
+
+
+# ── Migration365 License Requests ────────────────────────────────────────────
+
+
+class LicenseReviewPayload(BaseModel):
+    action: str          # approve | reject
+    admin_notes: Optional[str] = None
+
+
+@admin_router.get("/migration-licenses")
+def admin_list_license_requests(
+    status: Optional[str] = Query(None),
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """List all migration license requests. Filter by status (pending/approved/rejected)."""
+    from app.models.db_models import MigrationLicense
+
+    q = db.query(MigrationLicense).join(
+        Organization, MigrationLicense.organization_id == Organization.id
+    )
+    if status:
+        q = q.filter(MigrationLicense.status == status)
+
+    records = q.order_by(MigrationLicense.created_at.desc()).limit(200).all()
+
+    result = []
+    for r in records:
+        org = db.query(Organization).filter(Organization.id == r.organization_id).first()
+        requester = db.query(User).filter(User.id == r.purchased_by).first() if r.purchased_by else None
+        reviewer = db.query(User).filter(User.id == r.reviewed_by).first() if r.reviewed_by else None
+        result.append({
+            "id": str(r.id),
+            "organization_id": str(r.organization_id),
+            "org_name": org.name if org else "—",
+            "org_slug": org.slug if org else "—",
+            "requested_by": requester.email if requester else "—",
+            "status": r.status,
+            "licenses_purchased": r.licenses_purchased,
+            "licenses_used": r.licenses_used,
+            "amount_cents": r.amount_cents,
+            "unit_price_cents": r.unit_price_cents,
+            "notes": r.notes,
+            "admin_notes": r.admin_notes,
+            "reviewed_by": reviewer.email if reviewer else None,
+            "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+
+    return {"licenses": result, "total": len(result)}
+
+
+@admin_router.put("/migration-licenses/{license_id}")
+def admin_review_license(
+    license_id: str,
+    payload: LicenseReviewPayload,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Approve or reject a migration license request."""
+    from app.models.db_models import MigrationLicense
+
+    if payload.action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="Ação inválida. Use 'approve' ou 'reject'.")
+
+    lic = db.query(MigrationLicense).filter(MigrationLicense.id == license_id).first()
+    if not lic:
+        raise HTTPException(status_code=404, detail="Solicitação de licença não encontrada.")
+    if lic.status != "pending":
+        raise HTTPException(status_code=400, detail=f"Solicitação já foi {lic.status}.")
+
+    org = db.query(Organization).filter(Organization.id == lic.organization_id).first()
+
+    if payload.action == "approve":
+        lic.status = "approved"
+        lic.is_active = True
+        lic.reviewed_by = admin.id
+        lic.reviewed_at = datetime.utcnow()
+        lic.admin_notes = payload.admin_notes
+
+        # Gerar cobrança automática no billing
+        try:
+            billing = BillingRecord(
+                id=_uuid_lib.uuid4(),
+                organization_id=lic.organization_id,
+                description=f"Migration365 — {lic.licenses_purchased} licenças",
+                amount=lic.amount_cents / 100,
+                status="PENDING",
+                due_date=datetime.utcnow() + timedelta(days=7),
+                client_email=None,
+                is_recurring=False,
+            )
+            db.add(billing)
+        except Exception as e:
+            logger.warning("Failed to create billing for license %s: %s", license_id, e)
+
+        # Notificar org
+        workspaces = db.query(Workspace).filter(
+            Workspace.organization_id == lic.organization_id,
+            Workspace.is_active == True,
+        ).all()
+        for ws in workspaces:
+            push_notification(
+                db, ws.id, "migration",
+                f"{lic.licenses_purchased} licenças Migration365 aprovadas e disponíveis para uso.",
+                "/m365/migration",
+            )
+
+    else:  # reject
+        lic.status = "rejected"
+        lic.is_active = False
+        lic.reviewed_by = admin.id
+        lic.reviewed_at = datetime.utcnow()
+        lic.admin_notes = payload.admin_notes
+
+        workspaces = db.query(Workspace).filter(
+            Workspace.organization_id == lic.organization_id,
+            Workspace.is_active == True,
+        ).all()
+        for ws in workspaces:
+            push_notification(
+                db, ws.id, "migration",
+                f"Solicitação de {lic.licenses_purchased} licenças Migration365 foi recusada."
+                + (f" Motivo: {payload.admin_notes}" if payload.admin_notes else ""),
+                "/m365/migration",
+            )
+
+    db.commit()
+
+    log_activity(
+        db, admin, f"admin.migration_license.{payload.action}", "MigrationLicense",
+        resource_id=str(lic.id),
+        resource_name=org.name if org else "—",
+        detail=f"{lic.licenses_purchased} licenças — {payload.action}",
+        provider="system",
+    )
+
+    return {
+        "id": str(lic.id),
+        "status": lic.status,
+        "licenses_purchased": lic.licenses_purchased,
+        "admin_notes": lic.admin_notes,
+        "reviewed_at": lic.reviewed_at.isoformat() if lic.reviewed_at else None,
+    }

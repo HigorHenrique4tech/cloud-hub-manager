@@ -203,13 +203,14 @@ def check_migration_access(db: Session, org_id) -> tuple:
     if effective == "enterprise_migration":
         return True, None, "Migration365 ilimitado (bundle)"
 
-    # Enterprise: check for purchased licenses
+    # Enterprise: check for approved licenses
     if level >= PLAN_HIERARCHY["enterprise"]:
         licenses = (
             db.query(MigrationLicense)
             .filter(
                 MigrationLicense.organization_id == org_id,
                 MigrationLicense.is_active == True,
+                MigrationLicense.status == "approved",
             )
             .all()
         )
@@ -218,10 +219,10 @@ def check_migration_access(db: Session, org_id) -> tuple:
         remaining = total_purchased - total_used
 
         if total_purchased == 0:
-            return False, 0, "Nenhuma licença Migration365 adquirida. Compre licenças avulsas (R$ 70/usuário) ou faça upgrade para Enterprise + Migration."
+            return False, 0, "Nenhuma licença Migration365 aprovada. Solicite licenças avulsas (R$ 70/usuário) ou faça upgrade para Enterprise + Migration."
 
         if remaining <= 0:
-            return False, 0, f"Todas as {total_purchased} licenças foram utilizadas. Compre mais licenças para continuar."
+            return False, 0, f"Todas as {total_purchased} licenças foram utilizadas. Solicite mais licenças para continuar."
 
         return True, remaining, f"{remaining} licença(s) restante(s)"
 
@@ -249,22 +250,32 @@ def get_migration_license_summary(db: Session, org_id) -> dict:
 
     level = PLAN_HIERARCHY.get(effective, 0)
     if level >= PLAN_HIERARCHY["enterprise"]:
-        licenses = (
+        approved = (
             db.query(MigrationLicense)
             .filter(
                 MigrationLicense.organization_id == org_id,
                 MigrationLicense.is_active == True,
+                MigrationLicense.status == "approved",
             )
             .all()
         )
-        total_purchased = sum(l.licenses_purchased for l in licenses)
-        total_used = sum(l.licenses_used for l in licenses)
+        pending = (
+            db.query(MigrationLicense)
+            .filter(
+                MigrationLicense.organization_id == org_id,
+                MigrationLicense.status == "pending",
+            )
+            .count()
+        )
+        total_purchased = sum(l.licenses_purchased for l in approved)
+        total_used = sum(l.licenses_used for l in approved)
         return {
             "has_access": total_purchased > total_used,
             "mode": "per_license",
             "licenses_purchased": total_purchased,
             "licenses_used": total_used,
             "licenses_remaining": total_purchased - total_used,
+            "pending_requests": pending,
             "unit_price_cents": PLAN_PRICES.get("migration_license_unit", 7000),
         }
 
@@ -292,12 +303,13 @@ def consume_migration_license(db: Session, org_id, count: int = 1) -> bool:
     if effective == "enterprise_migration":
         return True
 
-    # Enterprise: consume from license batches (FIFO)
+    # Enterprise: consume from approved license batches (FIFO)
     licenses = (
         db.query(MigrationLicense)
         .filter(
             MigrationLicense.organization_id == org_id,
             MigrationLicense.is_active == True,
+            MigrationLicense.status == "approved",
         )
         .order_by(MigrationLicense.created_at.asc())
         .all()

@@ -38,7 +38,7 @@ const migrationApi = {
   testConnection:   (migration_type, source_config) =>
                       api.post(wsUrl('/migration/test-connection'), { migration_type, source_config }).then(r => r.data),
   getLicenseSummary: ()             => api.get(wsUrl('/migration/license-summary')).then(r => r.data),
-  purchaseLicenses: (data)         => api.post(wsUrl('/migration/licenses/purchase'), data).then(r => r.data),
+  requestLicenses:  (data)         => api.post(wsUrl('/migration/licenses/request'), data).then(r => r.data),
   getLicenseHistory: ()             => api.get(wsUrl('/migration/licenses/history')).then(r => r.data),
 };
 
@@ -1372,15 +1372,17 @@ const MigrationUpsell = ({ effectivePlan }) => {
 
 // ── License Dashboard Panel ──────────────────────────────────────────────────
 
-const LicenseDashboard = ({ licenseSummary, onPurchase }) => {
+const LicenseDashboard = ({ licenseSummary }) => {
   const qc = useQueryClient();
-  const [showPurchase, setShowPurchase] = useState(false);
+  const [showRequest, setShowRequest] = useState(false);
   const [quantity, setQuantity] = useState(10);
+  const [notes, setNotes] = useState('');
 
-  const purchaseMut = useMutation({
-    mutationFn: (data) => migrationApi.purchaseLicenses(data),
+  const requestMut = useMutation({
+    mutationFn: (data) => migrationApi.requestLicenses(data),
     onSuccess: () => {
-      setShowPurchase(false);
+      setShowRequest(false);
+      setNotes('');
       qc.invalidateQueries({ queryKey: ['migration-license-summary'] });
       qc.invalidateQueries({ queryKey: ['migration-license-history'] });
     },
@@ -1394,8 +1396,14 @@ const LicenseDashboard = ({ licenseSummary, onPurchase }) => {
 
   if (!licenseSummary) return null;
 
-  const isBundle = licenseSummary.mode === 'bundle';
   const unitPrice = (licenseSummary.unit_price_cents || 7000) / 100;
+  const pendingCount = licenseSummary.pending_requests || 0;
+
+  const STATUS_LABEL = {
+    pending:  { text: 'Aguardando aprovação', cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+    approved: { text: 'Aprovada',             cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+    rejected: { text: 'Recusada',             cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  };
 
   return (
     <div className="card p-5 mb-6">
@@ -1406,80 +1414,87 @@ const LicenseDashboard = ({ licenseSummary, onPurchase }) => {
           </div>
           <div>
             <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Licenças Migration365</h3>
-            <p className="text-xs text-gray-400">
-              {isBundle ? 'Migrações ilimitadas (bundle ativo)' : 'Licenças avulsas por usuário'}
-            </p>
+            <p className="text-xs text-gray-400">Licenças avulsas — R$ {unitPrice.toFixed(2)}/usuário</p>
           </div>
         </div>
-        {!isBundle && (
-          <button
-            onClick={() => setShowPurchase(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg"
-          >
-            <ShoppingCart className="w-3.5 h-3.5" /> Comprar licenças
-          </button>
-        )}
+        <button
+          onClick={() => setShowRequest(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded-lg"
+        >
+          <ShoppingCart className="w-3.5 h-3.5" /> Solicitar licenças
+        </button>
       </div>
 
-      {isBundle ? (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-          <Infinity className="w-5 h-5 text-green-500" />
-          <p className="text-sm text-green-700 dark:text-green-300">
-            Plano Enterprise + Migration ativo — migrações ilimitadas para todos os tipos.
+      {/* Counters */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{licenseSummary.licenses_purchased || 0}</p>
+          <p className="text-xs text-gray-400">Aprovadas</p>
+        </div>
+        <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
+          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{licenseSummary.licenses_used || 0}</p>
+          <p className="text-xs text-gray-400">Utilizadas</p>
+        </div>
+        <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
+          <p className={`text-2xl font-bold ${(licenseSummary.licenses_remaining || 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+            {licenseSummary.licenses_remaining || 0}
+          </p>
+          <p className="text-xs text-gray-400">Restantes</p>
+        </div>
+      </div>
+
+      {/* Pending requests banner */}
+      {pendingCount > 0 && (
+        <div className="flex items-center gap-2 mt-4 p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800">
+          <Clock className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+          <p className="text-sm text-yellow-700 dark:text-yellow-300">
+            {pendingCount} solicitação(ões) aguardando aprovação do administrador.
           </p>
         </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-4">
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{licenseSummary.licenses_purchased || 0}</p>
-            <p className="text-xs text-gray-400">Compradas</p>
-          </div>
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
-            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{licenseSummary.licenses_used || 0}</p>
-            <p className="text-xs text-gray-400">Utilizadas</p>
-          </div>
-          <div className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-center">
-            <p className={`text-2xl font-bold ${(licenseSummary.licenses_remaining || 0) > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {licenseSummary.licenses_remaining || 0}
-            </p>
-            <p className="text-xs text-gray-400">Restantes</p>
-          </div>
-        </div>
       )}
 
-      {/* Purchase history */}
-      {!isBundle && history?.licenses?.length > 0 && (
+      {/* History */}
+      {history?.licenses?.length > 0 && (
         <div className="mt-4">
-          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Histórico de compras</p>
-          <div className="space-y-1.5 max-h-32 overflow-y-auto">
-            {history.licenses.map((lic) => (
-              <div key={lic.id} className="flex items-center justify-between text-xs py-1.5 px-2 rounded bg-gray-50 dark:bg-gray-800/50">
-                <span className="text-gray-600 dark:text-gray-300">
-                  {lic.licenses_purchased} licenças — R$ {(lic.amount_cents / 100).toFixed(2)}
-                </span>
-                <span className="text-gray-400">
-                  {lic.created_at ? new Date(lic.created_at).toLocaleDateString('pt-BR') : ''}
-                  {' · '}{lic.licenses_used}/{lic.licenses_purchased} usadas
-                </span>
-              </div>
-            ))}
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Histórico de solicitações</p>
+          <div className="space-y-1.5 max-h-40 overflow-y-auto">
+            {history.licenses.map((lic) => {
+              const st = STATUS_LABEL[lic.status] || STATUS_LABEL.pending;
+              return (
+                <div key={lic.id} className="flex items-center justify-between text-xs py-2 px-3 rounded bg-gray-50 dark:bg-gray-800/50">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${st.cls}`}>{st.text}</span>
+                    <span className="text-gray-600 dark:text-gray-300">
+                      {lic.licenses_purchased} licenças — R$ {(lic.amount_cents / 100).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="text-gray-400 text-right">
+                    <span>{lic.created_at ? new Date(lic.created_at).toLocaleDateString('pt-BR') : ''}</span>
+                    {lic.status === 'approved' && (
+                      <span> · {lic.licenses_used}/{lic.licenses_purchased} usadas</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Purchase modal */}
-      {showPurchase && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowPurchase(false)}>
+      {/* Request modal */}
+      {showRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowRequest(false)}>
           <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Comprar Licenças</h3>
-              <button onClick={() => setShowPurchase(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Solicitar Licenças</h3>
+              <button onClick={() => setShowRequest(false)} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
                 <X className="w-5 h-5 text-gray-400" />
               </button>
             </div>
 
             <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              Cada licença permite a migração completa de 1 usuário (e-mail + OneDrive + SharePoint + Teams).
+              Cada licença cobre a migração completa de 1 usuário (e-mail + OneDrive + SharePoint + Teams).
+              Sua solicitação será analisada e, após aprovação, uma cobrança será gerada.
             </p>
 
             <div className="mb-4">
@@ -1494,33 +1509,48 @@ const LicenseDashboard = ({ licenseSummary, onPurchase }) => {
               />
             </div>
 
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5">Observação (opcional)</label>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Ex: Migração do cliente XPTO, previsão de 50 usuários"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+              />
+            </div>
+
             <div className="p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 mb-5">
-              <div className="flex items-center justify-between text-sm mb-2">
+              <div className="flex items-center justify-between text-sm mb-1">
                 <span className="text-gray-500">{quantity} licenças × R$ {unitPrice.toFixed(2)}</span>
                 <span className="font-bold text-gray-900 dark:text-gray-100">R$ {(quantity * unitPrice).toFixed(2)}</span>
               </div>
+              <p className="text-xs text-gray-400">A cobrança será gerada após aprovação do administrador.</p>
               {quantity >= 32 && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
+                <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
                   Dica: com {quantity} licenças, o plano Enterprise + Migration (R$ 2.250/mês ilimitado) pode ser mais vantajoso.
                 </p>
               )}
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setShowPurchase(false)} className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+              <button onClick={() => setShowRequest(false)} className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
                 Cancelar
               </button>
               <button
-                onClick={() => purchaseMut.mutate({ quantity })}
-                disabled={purchaseMut.isPending}
+                onClick={() => requestMut.mutate({ quantity, notes: notes || undefined })}
+                disabled={requestMut.isPending}
                 className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-medium disabled:opacity-50"
               >
-                {purchaseMut.isPending ? 'Processando...' : `Comprar ${quantity} licenças`}
+                {requestMut.isPending ? 'Enviando...' : `Solicitar ${quantity} licenças`}
               </button>
             </div>
 
-            {purchaseMut.isError && (
-              <p className="mt-3 text-xs text-red-500 text-center">{purchaseMut.error?.response?.data?.detail || 'Erro ao processar compra.'}</p>
+            {requestMut.isError && (
+              <p className="mt-3 text-xs text-red-500 text-center">{requestMut.error?.response?.data?.detail || 'Erro ao enviar solicitação.'}</p>
+            )}
+            {requestMut.isSuccess && (
+              <p className="mt-3 text-xs text-green-500 text-center">Solicitação enviada! Aguarde aprovação do administrador.</p>
             )}
           </div>
         </div>
@@ -1617,8 +1647,10 @@ const Migration365 = () => {
         </div>
       )}
 
-      {/* License dashboard */}
-      <LicenseDashboard licenseSummary={licenseSummary} />
+      {/* License dashboard — só para enterprise com licenças avulsas (não bundle) */}
+      {licenseSummary && licenseSummary.mode === 'per_license' && (
+        <LicenseDashboard licenseSummary={licenseSummary} />
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">

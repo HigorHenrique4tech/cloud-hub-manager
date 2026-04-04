@@ -7,7 +7,7 @@ import {
   ChevronRight, AlertCircle, CheckCircle2, Clock, Ban, CreditCard,
   History, FileDown, RefreshCw, Power, PowerOff, StickyNote, Save,
   Server, Cloud, Activity, BarChart2, LayoutGrid, Settings, Zap,
-  TrendingUp, ChevronLeft, CheckSquare, Square, Bell,
+  TrendingUp, ChevronLeft, CheckSquare, Square, Bell, ArrowRightLeft,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import adminService from '../services/adminService';
@@ -24,9 +24,10 @@ const LEAD_STATUS = {
 };
 
 const PLAN_BADGE = {
-  free:       'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
-  pro:        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  enterprise: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500',
+  free:                 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+  pro:                  'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  enterprise:           'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500',
+  enterprise_migration: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
 const BILLING_STATUS = {
@@ -1256,6 +1257,199 @@ const BillingTab = ({ orgs }) => {
 };
 
 
+/* ── Migration Licenses Tab ──────────────────────────────────────────────── */
+
+const LICENSE_STATUS = {
+  pending:  { label: 'Pendente',  icon: Clock,        cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  approved: { label: 'Aprovada',  icon: CheckCircle2, cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  rejected: { label: 'Recusada',  icon: Ban,          cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+};
+
+const MigrationLicensesTab = () => {
+  const qc = useQueryClient();
+  const [filter, setFilter] = useState('pending');
+  const [reviewing, setReviewing] = useState(null);
+  const [adminNotes, setAdminNotes] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-migration-licenses', filter],
+    queryFn: () => adminService.listMigrationLicenses(filter || undefined),
+    staleTime: 30_000,
+  });
+
+  const reviewMut = useMutation({
+    mutationFn: ({ id, action, admin_notes }) =>
+      adminService.reviewMigrationLicense(id, action, admin_notes),
+    onSuccess: () => {
+      setReviewing(null);
+      setAdminNotes('');
+      qc.invalidateQueries({ queryKey: ['admin-migration-licenses'] });
+    },
+  });
+
+  const licenses = data?.licenses || [];
+
+  const handleReview = (action) => {
+    if (!reviewing) return;
+    reviewMut.mutate({ id: reviewing.id, action, admin_notes: adminNotes || undefined });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Filter */}
+      <div className="flex gap-2">
+        {[
+          { id: 'pending',  label: 'Pendentes' },
+          { id: 'approved', label: 'Aprovadas' },
+          { id: 'rejected', label: 'Recusadas' },
+          { id: '',         label: 'Todas' },
+        ].map(({ id, label }) => (
+          <button key={id} onClick={() => setFilter(id)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              filter === id
+                ? 'bg-primary text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        </div>
+      ) : licenses.length === 0 ? (
+        <div className="card flex flex-col items-center gap-3 py-12 text-center">
+          <ArrowRightLeft className="w-8 h-8 text-gray-300 dark:text-gray-600" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {filter === 'pending' ? 'Nenhuma solicitação pendente.' : 'Nenhuma solicitação encontrada.'}
+          </p>
+        </div>
+      ) : (
+        <div className="card divide-y divide-gray-100 dark:divide-gray-800">
+          {licenses.map((lic) => {
+            const st = LICENSE_STATUS[lic.status] || LICENSE_STATUS.pending;
+            const StIcon = st.icon;
+            return (
+              <div key={lic.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>
+                        <StIcon size={12} /> {st.label}
+                      </span>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {lic.licenses_purchased} licenças
+                      </span>
+                      <span className="text-sm text-gray-400">
+                        — {fmtBRL(lic.amount_cents / 100)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                      <span>{lic.org_name} ({lic.org_slug})</span>
+                      <span>·</span>
+                      <span>Solicitado por {lic.requested_by}</span>
+                      <span>·</span>
+                      <span>{fmtDate(lic.created_at)}</span>
+                    </div>
+                    {lic.notes && (
+                      <p className="text-xs text-gray-400 mt-1 italic">"{lic.notes}"</p>
+                    )}
+                    {lic.admin_notes && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Admin: {lic.admin_notes}
+                        {lic.reviewed_by && <span className="text-gray-400"> — {lic.reviewed_by}, {fmtDate(lic.reviewed_at)}</span>}
+                      </p>
+                    )}
+                    {lic.status === 'approved' && (
+                      <p className="text-xs text-gray-400 mt-1">
+                        {lic.licenses_used}/{lic.licenses_purchased} usadas
+                      </p>
+                    )}
+                  </div>
+
+                  {lic.status === 'pending' && (
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => { setReviewing(lic); setAdminNotes(''); }}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        Aprovar
+                      </button>
+                      <button
+                        onClick={() => { setReviewing({ ...lic, _reject: true }); setAdminNotes(''); }}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        Recusar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Review modal */}
+      {reviewing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setReviewing(null)}>
+          <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
+              {reviewing._reject ? 'Recusar' : 'Aprovar'} solicitação
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              {reviewing.org_name} — {reviewing.licenses_purchased} licenças ({fmtBRL(reviewing.amount_cents / 100)})
+            </p>
+
+            {!reviewing._reject && (
+              <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 mb-4 text-sm text-green-700 dark:text-green-300">
+                Ao aprovar, uma cobrança de {fmtBRL(reviewing.amount_cents / 100)} será gerada automaticamente
+                e as licenças ficarão disponíveis para uso imediato.
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5">
+                Observação do admin (opcional)
+              </label>
+              <input
+                type="text"
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                placeholder={reviewing._reject ? 'Motivo da recusa...' : 'Observação interna...'}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setReviewing(null)}
+                className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleReview(reviewing._reject ? 'reject' : 'approve')}
+                disabled={reviewMut.isPending}
+                className={`flex-1 px-4 py-2.5 text-sm rounded-lg text-white font-medium disabled:opacity-50 ${
+                  reviewing._reject ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {reviewMut.isPending ? 'Processando...' : reviewing._reject ? 'Recusar' : 'Aprovar e gerar cobrança'}
+              </button>
+            </div>
+
+            {reviewMut.isError && (
+              <p className="mt-3 text-xs text-red-500 text-center">{reviewMut.error?.response?.data?.detail || 'Erro ao processar.'}</p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 
 const AdminPanel = () => {
@@ -1286,9 +1480,10 @@ const AdminPanel = () => {
         {/* Tabs */}
         <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
           {[
-            { id: 'leads',   label: 'Leads Enterprise', icon: Users },
-            { id: 'orgs',    label: 'Organizações',      icon: Building2 },
-            { id: 'billing', label: 'Faturamento',        icon: CreditCard },
+            { id: 'leads',      label: 'Leads Enterprise',     icon: Users },
+            { id: 'orgs',       label: 'Organizações',         icon: Building2 },
+            { id: 'billing',    label: 'Faturamento',           icon: CreditCard },
+            { id: 'licenses',   label: 'Licenças Migration',   icon: ArrowRightLeft },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -1302,9 +1497,10 @@ const AdminPanel = () => {
         </div>
 
         {/* Tab content */}
-        {tab === 'leads'   && <LeadsTab />}
-        {tab === 'orgs'    && <OrgsTab />}
-        {tab === 'billing' && <BillingTab orgs={allOrgs} />}
+        {tab === 'leads'    && <LeadsTab />}
+        {tab === 'orgs'     && <OrgsTab />}
+        {tab === 'billing'  && <BillingTab orgs={allOrgs} />}
+        {tab === 'licenses' && <MigrationLicensesTab />}
       </div>
     </Layout>
   );

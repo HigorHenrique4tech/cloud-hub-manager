@@ -81,13 +81,13 @@ async def license_summary(
     return get_migration_license_summary(db, member.organization_id)
 
 
-@ws_router.post("/licenses/purchase", status_code=201)
-async def purchase_licenses(
+@ws_router.post("/licenses/request", status_code=201)
+async def request_licenses(
     body: PurchaseLicensesRequest,
     member: MemberContext = Depends(require_permission("m365.manage")),
     db: Session = Depends(get_db),
 ):
-    """Purchase migration licenses (Enterprise only, per-user licensing)."""
+    """Request migration licenses (Enterprise only). Requires admin approval."""
     from app.models.db_models import Organization, MigrationLicense
     from app.services.plan_service import get_effective_plan, PLAN_HIERARCHY, PLAN_PRICES
 
@@ -99,7 +99,7 @@ async def purchase_licenses(
 
     if effective == "enterprise_migration":
         raise HTTPException(status_code=400,
-                            detail="Seu plano já inclui migrações ilimitadas. Não é necessário comprar licenças.")
+                            detail="Seu plano já inclui migrações ilimitadas. Não é necessário solicitar licenças.")
 
     if PLAN_HIERARCHY.get(effective, 0) < PLAN_HIERARCHY["enterprise"]:
         raise HTTPException(status_code=403,
@@ -116,11 +116,12 @@ async def purchase_licenses(
         id=uuid.uuid4(),
         organization_id=member.organization_id,
         purchased_by=member.user.id,
+        status="pending",
         licenses_purchased=body.quantity,
         licenses_used=0,
         amount_cents=total,
         unit_price_cents=unit_price,
-        is_active=True,
+        is_active=False,
         notes=body.notes,
     )
     db.add(license_record)
@@ -129,6 +130,7 @@ async def purchase_licenses(
 
     return {
         "id": str(license_record.id),
+        "status": license_record.status,
         "licenses_purchased": license_record.licenses_purchased,
         "unit_price_cents": license_record.unit_price_cents,
         "amount_cents": license_record.amount_cents,
@@ -155,13 +157,16 @@ async def license_history(
         "licenses": [
             {
                 "id": str(r.id),
+                "status": r.status,
                 "licenses_purchased": r.licenses_purchased,
                 "licenses_used": r.licenses_used,
-                "licenses_remaining": r.licenses_purchased - r.licenses_used,
+                "licenses_remaining": r.licenses_purchased - r.licenses_used if r.status == "approved" else 0,
                 "unit_price_cents": r.unit_price_cents,
                 "amount_cents": r.amount_cents,
                 "is_active": r.is_active,
                 "notes": r.notes,
+                "admin_notes": r.admin_notes,
+                "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
             }
             for r in records

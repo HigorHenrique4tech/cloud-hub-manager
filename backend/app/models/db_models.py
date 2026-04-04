@@ -939,17 +939,21 @@ class MigrationFolderCheckpoint(Base):
 
 
 class MigrationLicense(Base):
-    """Licenças avulsas de Migration365 compradas por organizações Enterprise."""
+    """Licenças avulsas de Migration365 — fluxo: pending → approved/rejected."""
     __tablename__ = "migration_licenses"
 
     id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     purchased_by        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status              = Column(String(20), nullable=False, default="pending")  # pending | approved | rejected
     licenses_purchased  = Column(Integer, nullable=False, default=0)
     licenses_used       = Column(Integer, nullable=False, default=0)
-    amount_cents        = Column(Integer, nullable=False, default=0)   # valor total pago em centavos
+    amount_cents        = Column(Integer, nullable=False, default=0)   # valor total em centavos
     unit_price_cents    = Column(Integer, nullable=False, default=7000)  # R$ 70,00 por licença
     is_active           = Column(Boolean, default=True, nullable=False)
-    notes               = Column(Text, nullable=True)
+    notes               = Column(Text, nullable=True)                  # nota do solicitante
+    admin_notes         = Column(Text, nullable=True)                  # nota do admin ao aprovar/rejeitar
+    reviewed_by         = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at         = Column(DateTime, nullable=True)
     created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

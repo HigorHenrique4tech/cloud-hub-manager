@@ -89,6 +89,11 @@ const adminService = {
     a.click();
     URL.revokeObjectURL(url);
   },
+  // Admin only — migration licenses
+  listMigrationLicenses: (status) =>
+    api.get('/admin/migration-licenses', { params: status ? { status } : {} }).then((r) => r.data),
+  reviewMigrationLicense: (id, action, admin_notes) =>
+    api.put(`/admin/migration-licenses/${id}`, { action, admin_notes }).then((r) => r.data),
 };
 
 export default adminService;
