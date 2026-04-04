@@ -735,24 +735,50 @@ async def worker_health(
     except Exception:
         pass
 
-    # 2. Celery workers — usa ping() que é mais confiável que active_queues()
+    # 2. Celery workers — tenta ping com timeout mais generoso,
+    #    e fallback para checagem de heartbeat keys no Redis.
     worker_status = "unknown"
     queued_tasks = 0
     if redis_status == "ok":
         try:
             from app.workers.celery_app import celery_app
-            inspect = celery_app.control.inspect(timeout=3)
-            ping_result = inspect.ping()
-            # ping_result é None ou {} se nenhum worker responder
-            worker_status = "ok" if ping_result else "offline"
 
-            # Conta tasks enfileiradas (best-effort)
-            if worker_status == "ok":
+            # Abordagem 1: inspect.ping() com timeout maior
+            try:
+                inspect = celery_app.control.inspect(timeout=5)
+                ping_result = inspect.ping()
+                if ping_result:
+                    worker_status = "ok"
+                    # Conta tasks enfileiradas (best-effort)
+                    try:
+                        reserved = inspect.reserved() or {}
+                        queued_tasks = sum(len(v) for v in reserved.values())
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+            # Abordagem 2 (fallback): verificar heartbeat keys no Redis
+            if worker_status != "ok":
                 try:
-                    reserved = inspect.reserved() or {}
-                    queued_tasks = sum(len(v) for v in reserved.values())
+                    r = redis_lib.from_url(settings.REDIS_URL,
+                                           socket_connect_timeout=2, socket_timeout=2)
+                    # Celery registra heartbeat em _kombu.binding.celeryev
+                    # e workers ativos em _kombu.binding.migration (nossa queue)
+                    bindings = r.smembers("_kombu.binding.migration") or set()
+                    if bindings:
+                        worker_status = "ok"
+                    else:
+                        # Checa se há algum worker registrado no default
+                        bindings_default = r.smembers("_kombu.binding.celery") or set()
+                        if bindings_default:
+                            worker_status = "ok"
+                        else:
+                            worker_status = "offline"
                 except Exception:
-                    pass
+                    if worker_status == "unknown":
+                        worker_status = "offline"
+
         except Exception:
             worker_status = "unknown"
 
