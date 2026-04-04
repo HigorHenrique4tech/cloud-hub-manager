@@ -1626,21 +1626,55 @@ def admin_review_license(
         lic.reviewed_at = datetime.utcnow()
         lic.admin_notes = payload.admin_notes
 
+        # Descobrir o e-mail do owner/admin da org para enviar fatura
+        org_owner = (
+            db.query(User)
+            .join(OrganizationMember, OrganizationMember.user_id == User.id)
+            .filter(
+                OrganizationMember.organization_id == lic.organization_id,
+                OrganizationMember.role == "owner",
+                OrganizationMember.is_active == True,
+            )
+            .first()
+        )
+        owner_email = org_owner.email if org_owner else None
+        owner_name = org_owner.name if org_owner else (org.name if org else "Cliente")
+
         # Gerar cobrança automática no billing
+        due = datetime.utcnow() + timedelta(days=7)
+        billing_description = f"Migration365 — {lic.licenses_purchased} licenças"
         try:
             billing = BillingRecord(
                 id=_uuid_lib.uuid4(),
                 organization_id=lic.organization_id,
-                description=f"Migration365 — {lic.licenses_purchased} licenças",
+                description=billing_description,
                 amount=lic.amount_cents / 100,
                 status="PENDING",
-                due_date=datetime.utcnow() + timedelta(days=7),
-                client_email=None,
+                due_date=due,
+                client_email=owner_email,
                 is_recurring=False,
             )
             db.add(billing)
+            db.flush()  # para ter o ID disponível para o e-mail
         except Exception as e:
             logger.warning("Failed to create billing for license %s: %s", license_id, e)
+
+        # Enviar e-mail de fatura para o owner da org
+        if owner_email:
+            try:
+                send_billing_invoice_email(
+                    to_email=owner_email,
+                    client_name=owner_name,
+                    amount=lic.amount_cents / 100,
+                    period_type="monthly",
+                    period_ref=datetime.utcnow().strftime("%m/%Y"),
+                    due_date=due.strftime("%d/%m/%Y"),
+                    description=billing_description,
+                    notes=f"Solicitação aprovada — {lic.licenses_purchased} licenças de migração ativas para uso imediato.",
+                )
+                logger.info("Invoice email sent to %s for license %s", owner_email, license_id)
+            except Exception as e:
+                logger.warning("Failed to send invoice email for license %s: %s", license_id, e)
 
         # Notificar org
         workspaces = db.query(Workspace).filter(
