@@ -31,6 +31,10 @@ const PLAN_BADGE = {
   enterprise_migration: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
+const PLAN_LABEL = {
+  free: 'Free', pro: 'Pro', enterprise: 'Enterprise', enterprise_migration: 'Enterprise + Migration',
+};
+
 const BILLING_STATUS = {
   pending:   { label: 'Pendente',   icon: Clock,         cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
   paid:      { label: 'Pago',       icon: CheckCircle2,  cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
@@ -340,8 +344,8 @@ const OrgsTab = () => {
           </td>
           <td className="py-3 px-4 font-mono text-xs text-gray-500 dark:text-gray-400">{org.slug}</td>
           <td className="py-3 px-4">
-            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium capitalize ${PLAN_BADGE[org.plan_tier] || PLAN_BADGE.free}`}>
-              {org.plan_tier}
+            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${PLAN_BADGE[org.plan_tier] || PLAN_BADGE.free}`}>
+              {PLAN_LABEL[org.plan_tier] || org.plan_tier}
             </span>
           </td>
           <td className="py-3 px-4 text-gray-600 dark:text-gray-400 text-xs capitalize">{org.org_type}</td>
@@ -357,11 +361,16 @@ const OrgsTab = () => {
                 </button>
                 {openMenu === org.id && (
                   <div className="absolute right-0 top-8 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg min-w-[130px]">
-                    {['free', 'pro', 'enterprise'].map((tier) => (
-                      <button key={tier} onClick={() => { setOpenMenu(null); setConfirmChange({ slug: org.slug, name: org.name, plan: tier, current: org.plan_tier }); }}
-                        disabled={org.plan_tier === tier}
-                        className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 capitalize first:rounded-t-lg last:rounded-b-lg flex items-center gap-2">
-                        {org.plan_tier === tier && <Check size={11} />}{tier}
+                    {[
+                      { value: 'free', label: 'Free' },
+                      { value: 'pro', label: 'Pro' },
+                      { value: 'enterprise', label: 'Enterprise' },
+                      { value: 'enterprise_migration', label: 'Enterprise + Migration' },
+                    ].map(({ value, label }) => (
+                      <button key={value} onClick={() => { setOpenMenu(null); setConfirmChange({ slug: org.slug, name: org.name, plan: value, current: org.plan_tier }); }}
+                        disabled={org.plan_tier === value}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 first:rounded-t-lg last:rounded-b-lg flex items-center gap-2">
+                        {org.plan_tier === value && <Check size={11} />}{label}
                       </button>
                     ))}
                   </div>
@@ -459,7 +468,7 @@ const OrgsTab = () => {
           <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl p-6 space-y-4">
             <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Confirmar alteração de plano</h3>
             <p className="text-sm text-gray-600 dark:text-gray-400">
-              Alterar <strong>{confirmChange.name}</strong> de <span className="capitalize font-medium">{confirmChange.current}</span> para <span className="capitalize font-medium">{confirmChange.plan}</span>?
+              Alterar <strong>{confirmChange.name}</strong> de <span className="font-medium">{PLAN_LABEL[confirmChange.current] || confirmChange.current}</span> para <span className="font-medium">{PLAN_LABEL[confirmChange.plan] || confirmChange.plan}</span>?
             </p>
             <div className="flex justify-end gap-2">
               <button onClick={() => setConfirmChange(null)} className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
