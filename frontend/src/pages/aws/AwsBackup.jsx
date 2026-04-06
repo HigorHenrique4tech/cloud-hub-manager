@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, HardDriveDownload, RefreshCw, Camera, Image, Loader2 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
@@ -33,6 +34,7 @@ const INP = 'w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-wh
 // ── Snapshot Create Modal ──────────────────────────────────────────────────────
 
 function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error, instances, instancesLoading }) {
+  useEscapeKey(isOpen, onClose);
   const [selectedInstance, setSelectedInstance] = useState('');
   const [selectedVolume, setSelectedVolume] = useState('');
   const [description, setDescription] = useState('');
@@ -168,6 +170,7 @@ function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error, instan
 // ── AMI Create Modal ───────────────────────────────────────────────────────────
 
 function CreateAMIModal({ isOpen, onClose, onSubmit, loading, error, instances, instancesLoading }) {
+  useEscapeKey(isOpen, onClose);
   const [selectedInstance, setSelectedInstance] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');

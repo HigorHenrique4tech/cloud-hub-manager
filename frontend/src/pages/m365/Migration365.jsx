@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowRightLeft, Plus, Trash2, Play, Pause, RefreshCw, X,
@@ -145,7 +145,7 @@ const fmtEta = (seconds) => {
 };
 
 const ProgressBar = ({ value, className = '' }) => (
-  <div className={`h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${className}`}>
+  <div className={`h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${className}`}>
     <div
       className="h-full bg-blue-500 rounded-full transition-all duration-500"
       style={{ width: `${Math.min(100, value || 0)}%` }}
@@ -156,7 +156,7 @@ const ProgressBar = ({ value, className = '' }) => (
 
 // ── Wizard ────────────────────────────────────────────────────────────────────
 
-const WIZARD_STEPS = ['Tipo', 'Origem', 'Destino', 'Revisão'];
+const WIZARD_STEPS = ['Tipo', 'Origem', 'Destino', 'Detalhes', 'Revisão'];
 
 const CreateProjectWizard = ({ onClose, onCreated }) => {
   const qc = useQueryClient();
@@ -202,7 +202,8 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
       return fields.filter(f => f.type !== 'checkbox' && !f.placeholder?.includes('opcional'))
                    .every(f => srcFields[f.key]);
     }
-    if (step === 2) return !!form.name;
+    if (step === 2) return true; // destination is optional
+    if (step === 3) return !!form.name;
     return true;
   };
 
@@ -409,11 +410,41 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
             </div>
           )}
 
-          {/* Step 2: Destination + name */}
+          {/* Step 2: Destination */}
           {step === 2 && (
             <div className="space-y-4">
               <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
-                Configure o <strong>destino Microsoft 365</strong> e dê um nome ao projeto.
+                Configure o <strong>destino Microsoft 365</strong>. Deixe vazio para usar as credenciais do workspace.
+              </p>
+              {[
+                { key: 'tenant_id',    label: 'Tenant ID de destino',     placeholder: 'Deixe vazio para usar o tenant do workspace' },
+                { key: 'client_id',    label: 'Client ID (opcional)',      placeholder: 'Deixe vazio para usar as credenciais do workspace' },
+                { key: 'client_secret',label: 'Client Secret (opcional)',  placeholder: '••••••••', type: 'password' },
+              ].map(field => (
+                <div key={field.key}>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{field.label}</label>
+                  <input
+                    type={field.type || 'text'}
+                    value={dstFields[field.key] || ''}
+                    onChange={e => setDstFields(p => ({ ...p, [field.key]: e.target.value }))}
+                    placeholder={field.placeholder}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800">
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Se os campos acima ficarem vazios, a migração usará as credenciais M365 já configuradas no workspace.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3: Project details */}
+          {step === 3 && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+                Dê um nome e uma descrição ao projeto de migração.
               </p>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nome do projeto <span className="text-red-500">*</span></label>
@@ -428,37 +459,18 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Descrição (opcional)</label>
                 <textarea
-                  rows={2}
+                  rows={3}
                   value={form.description}
                   onChange={e => setForm(p => ({ ...p, description: e.target.value }))}
                   placeholder="Contexto, prazo, departamentos envolvidos..."
                   className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
               </div>
-              <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-                <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-3">Destino M365 (opcional — usa as credenciais do workspace)</p>
-                {[
-                  { key: 'tenant_id',    label: 'Tenant ID de destino',     placeholder: 'Deixe vazio para usar o tenant do workspace' },
-                  { key: 'client_id',    label: 'Client ID (opcional)',      placeholder: 'Deixe vazio para usar as credenciais do workspace' },
-                  { key: 'client_secret',label: 'Client Secret (opcional)',  placeholder: '••••••••', type: 'password' },
-                ].map(field => (
-                  <div key={field.key} className="mb-3">
-                    <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">{field.label}</label>
-                    <input
-                      type={field.type || 'text'}
-                      value={dstFields[field.key] || ''}
-                      onChange={e => setDstFields(p => ({ ...p, [field.key]: e.target.value }))}
-                      placeholder={field.placeholder}
-                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                ))}
-              </div>
             </div>
           )}
 
-          {/* Step 3: Review */}
-          {step === 3 && (
+          {/* Step 4: Review */}
+          {step === 4 && (
             <div className="space-y-4">
               <p className="text-sm text-gray-500 dark:text-gray-400">Revise as informações antes de criar o projeto.</p>
               <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -761,6 +773,9 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [showSchedule, setShowSchedule] = useState(false);
   const [scheduleDateTime, setScheduleDateTime] = useState('');
+  const [showConfirmStart, setShowConfirmStart] = useState(false);
+  const [mbPage, setMbPage] = useState(1);
+  const [logFilter, setLogFilter] = useState('all');
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['migration-project', projectId],
@@ -879,9 +894,12 @@ const ProjectDetail = ({ projectId, onBack }) => {
     );
   };
 
+  const MB_PER_PAGE = 50;
   const filteredMailboxes = mailboxes.filter(m =>
     !mbSearch || m.source_email.includes(mbSearch) || (m.display_name || '').toLowerCase().includes(mbSearch.toLowerCase())
   );
+  const totalMbPages = Math.max(1, Math.ceil(filteredMailboxes.length / MB_PER_PAGE));
+  const paginatedMailboxes = filteredMailboxes.slice((mbPage - 1) * MB_PER_PAGE, mbPage * MB_PER_PAGE);
 
   if (isLoading) return (
     <Layout>
@@ -943,9 +961,9 @@ const ProjectDetail = ({ projectId, onBack }) => {
             {TYPE_LABELS[project.migration_type]} {project.source_label ? `· ${project.source_label}` : ''}
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
           {canStart && (
-            <button onClick={() => statusMut.mutate('running')} disabled={statusMut.isPending}
+            <button onClick={() => setShowConfirmStart(true)} disabled={statusMut.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-50">
               <Play className="w-3.5 h-3.5" /> Iniciar
             </button>
@@ -1107,7 +1125,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-                  {filteredMailboxes.map(mb => {
+                  {paginatedMailboxes.map(mb => {
                     const mbCfg = MAILBOX_STATUS[mb.status] || MAILBOX_STATUS.pending;
                     return (
                       <tr key={mb.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
@@ -1202,18 +1220,69 @@ const ProjectDetail = ({ projectId, onBack }) => {
               </table>
             </div>
           )}
+
+          {/* Pagination */}
+          {filteredMailboxes.length > MB_PER_PAGE && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500">
+                {(mbPage - 1) * MB_PER_PAGE + 1}–{Math.min(mbPage * MB_PER_PAGE, filteredMailboxes.length)} de {filteredMailboxes.length}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setMbPage(p => Math.max(1, p - 1))}
+                  disabled={mbPage === 1}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40"
+                >
+                  Anterior
+                </button>
+                <span className="px-3 py-1 text-xs text-gray-500">{mbPage}/{totalMbPages}</span>
+                <button
+                  onClick={() => setMbPage(p => Math.min(totalMbPages, p + 1))}
+                  disabled={mbPage === totalMbPages}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40"
+                >
+                  Próximo
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* Logs tab */}
-      {tab === 'logs' && (
-        <div className="card divide-y divide-gray-50 dark:divide-gray-800">
-          {logs.length === 0 ? (
+      {tab === 'logs' && (() => {
+        const filteredLogs = logFilter === 'all' ? logs : logs.filter(l => l.level === logFilter);
+        return (
+        <div className="card">
+          {/* Log filter bar */}
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+            {[
+              { id: 'all',     label: 'Todos' },
+              { id: 'info',    label: 'Info' },
+              { id: 'warning', label: 'Avisos' },
+              { id: 'error',   label: 'Erros' },
+            ].map(f => (
+              <button key={f.id} onClick={() => setLogFilter(f.id)}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${
+                  logFilter === f.id
+                    ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                    : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}>
+                {f.label}
+                {f.id !== 'all' && (() => {
+                  const count = logs.filter(l => l.level === f.id).length;
+                  return count > 0 ? <span className="ml-1 opacity-60">({count})</span> : null;
+                })()}
+              </button>
+            ))}
+          </div>
+          <div className="divide-y divide-gray-50 dark:divide-gray-800">
+          {filteredLogs.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
               <FileText className="w-10 h-10 text-gray-300 dark:text-gray-600" />
-              <p className="text-sm text-gray-500">Nenhum log registrado ainda.</p>
+              <p className="text-sm text-gray-500">{logFilter === 'all' ? 'Nenhum log registrado ainda.' : `Nenhum log do tipo "${logFilter}".`}</p>
             </div>
-          ) : logs.map(log => {
+          ) : filteredLogs.map(log => {
             const lcfg = LOG_LEVEL_CONFIG[log.level] || LOG_LEVEL_CONFIG.info;
             return (
               <div key={log.id} className="flex items-start gap-3 px-4 py-3">
@@ -1229,6 +1298,44 @@ const ProjectDetail = ({ projectId, onBack }) => {
               </div>
             );
           })}
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* Confirm start modal */}
+      {showConfirmStart && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowConfirmStart(false)}>
+          <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <Play className="w-5 h-5 text-green-600 dark:text-green-400" />
+              </div>
+              <div>
+                <p className="font-semibold text-gray-900 dark:text-gray-100">Iniciar migração?</p>
+                <p className="text-xs text-gray-500">Esta ação não pode ser desfeita.</p>
+              </div>
+            </div>
+            <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-4">
+              <p className="text-xs text-amber-700 dark:text-amber-300">
+                {mailboxes.length > 0
+                  ? `Serão processadas ${mailboxes.filter(m => m.status === 'pending').length} ${isFileType ? 'itens' : 'caixas'}. Licenças de migração serão consumidas ao iniciar.`
+                  : 'Nenhuma caixa adicionada. Adicione caixas de correio antes de iniciar.'}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <button onClick={() => setShowConfirmStart(false)}
+                className="flex-1 px-4 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+                Cancelar
+              </button>
+              <button
+                onClick={() => { setShowConfirmStart(false); statusMut.mutate('running'); }}
+                disabled={statusMut.isPending || mailboxes.filter(m => m.status === 'pending').length === 0}
+                className="flex-1 px-4 py-2 text-sm rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium disabled:opacity-50">
+                {statusMut.isPending ? 'Iniciando...' : 'Confirmar e iniciar'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1331,9 +1438,9 @@ const MigrationUpsell = ({ effectivePlan }) => {
               <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Ideal para MSPs (50+ usuários/mês)</li>
               <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Tudo do plano Enterprise incluso</li>
             </ul>
-            <a href="/billing" className="block w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg text-center">
+            <Link to="/billing" className="block w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg text-center">
               Fazer upgrade
-            </a>
+            </Link>
           </div>
 
           {/* Per-license */}
@@ -1355,9 +1462,9 @@ const MigrationUpsell = ({ effectivePlan }) => {
             {isEnterprise ? (
               <p className="text-xs text-center text-gray-400">Compre licenças na página de migração após ativar o acesso</p>
             ) : (
-              <a href="/billing" className="block w-full px-4 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg text-center">
+              <Link to="/billing" className="block w-full px-4 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg text-center">
                 Upgrade para Enterprise
-              </a>
+              </Link>
             )}
           </div>
         </div>
@@ -1381,10 +1488,12 @@ const LicenseDashboard = ({ licenseSummary }) => {
   const requestMut = useMutation({
     mutationFn: (data) => migrationApi.requestLicenses(data),
     onSuccess: () => {
-      setShowRequest(false);
-      setNotes('');
       qc.invalidateQueries({ queryKey: ['migration-license-summary'] });
       qc.invalidateQueries({ queryKey: ['migration-license-history'] });
+      setTimeout(() => {
+        setShowRequest(false);
+        setNotes('');
+      }, 2000);
     },
   });
 

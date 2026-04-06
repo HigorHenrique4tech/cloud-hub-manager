@@ -279,14 +279,12 @@ const Register = () => {
 
         {/* ── LEFT PANEL ── */}
         <div
-          className="relative flex flex-col z-10 overflow-y-auto"
+          className="relative flex flex-col z-10 overflow-y-auto w-full lg:w-[420px] lg:min-w-[420px]"
           style={{
-            width: 420,
-            minWidth: 420,
             background: 'rgba(13,17,23,0.93)',
             borderRight: '1px solid rgba(255,255,255,0.07)',
             backdropFilter: 'blur(24px)',
-            padding: '48px 44px',
+            padding: 'clamp(24px, 5vw, 48px) clamp(20px, 5vw, 44px)',
           }}
         >
           {/* Decorative glows */}
@@ -402,7 +400,7 @@ const Register = () => {
                   <button
                     type="button"
                     onClick={() => setShowPassword((v) => !v)}
-                    tabIndex={-1}
+                    aria-label={showPassword ? 'Ocultar senha' : 'Mostrar senha'}
                     style={{
                       position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
                       background: 'none', border: 'none', color: '#64748b', cursor: 'pointer',
@@ -436,7 +434,7 @@ const Register = () => {
                   <button
                     type="button"
                     onClick={() => setShowConfirm((v) => !v)}
-                    tabIndex={-1}
+                    aria-label={showConfirm ? 'Ocultar senha' : 'Mostrar senha'}
                     style={{
                       position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
                       background: 'none', border: 'none', color: '#64748b', cursor: 'pointer',

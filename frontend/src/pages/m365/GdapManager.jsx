@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -161,6 +162,7 @@ function RelationshipCard({ rel, onTerminate, onInvite, onRenew }) {
 // ── Create Modal ───────────────────────────────────────────────────────────────
 
 function CreateModal({ onClose, onCreated, preCustomer = null }) {
+  useEscapeKey(true, onClose);
   const [form, setForm] = useState({
     display_name: preCustomer ? `${preCustomer.displayName} - GDAP` : '',
     duration_days: 365,
@@ -331,6 +333,7 @@ function CreateModal({ onClose, onCreated, preCustomer = null }) {
 // ── Invite Modal ───────────────────────────────────────────────────────────────
 
 function InviteModal({ rel, onClose }) {
+  useEscapeKey(true, onClose);
   const [emails, setEmails] = useState([]);
   const [inputVal, setInputVal] = useState('');
   const [copied, setCopied] = useState(false);
@@ -488,6 +491,7 @@ function InviteModal({ rel, onClose }) {
 // ── Terminate Confirm ──────────────────────────────────────────────────────────
 
 function TerminateModal({ rel, onClose, onConfirmed }) {
+  useEscapeKey(true, onClose);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 

@@ -342,10 +342,12 @@ const FinOps = () => {
 
         {/* Tabs */}
         <div className="border-b border-gray-200 dark:border-slate-700">
-          <nav className="flex gap-1 -mb-px">
+          <nav className="flex gap-1 -mb-px" role="tablist">
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
+                role="tab"
+                aria-selected={activeTab === id}
                 onClick={() => setActiveTab(id)}
                 className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === id

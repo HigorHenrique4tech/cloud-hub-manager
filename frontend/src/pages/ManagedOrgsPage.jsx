@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Building2, Plus, ExternalLink, Trash2, X, Users, Layers, Cloud,
@@ -40,6 +41,7 @@ const PROVIDER_ICONS = {
 /* ── Add Partner Modal ───────────────────────────────────────────────────── */
 
 const AddPartnerModal = ({ onClose, onSave, saving }) => {
+  useEscapeKey(true, onClose);
   const [name, setName] = useState('');
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -80,7 +82,9 @@ const AddPartnerModal = ({ onClose, onSave, saving }) => {
 
 /* ── Remove Confirm Modal ───────────────────────────────────────────────── */
 
-const RemoveConfirmModal = ({ org, onClose, onConfirm, removing }) => (
+const RemoveConfirmModal = ({ org, onClose, onConfirm, removing }) => {
+  useEscapeKey(true, onClose);
+  return (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
     <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl p-6 space-y-4">
       <div className="flex items-center gap-3">
@@ -105,10 +109,12 @@ const RemoveConfirmModal = ({ org, onClose, onConfirm, removing }) => (
     </div>
   </div>
 );
+};
 
 /* ── Edit Partner Modal ──────────────────────────────────────────────────── */
 
 const EditPartnerModal = ({ org, onClose, onSave, saving }) => {
+  useEscapeKey(true, onClose);
   const [name, setName] = useState(org.name);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -141,6 +147,7 @@ const EditPartnerModal = ({ org, onClose, onSave, saving }) => {
 /* ── Notes Modal ─────────────────────────────────────────────────────────── */
 
 const NotesModal = ({ org, onClose, onSave, saving }) => {
+  useEscapeKey(true, onClose);
   const [notes, setNotes] = useState(org.notes || '');
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
@@ -169,6 +176,7 @@ const NotesModal = ({ org, onClose, onSave, saving }) => {
 /* ── Branding Partner Modal ──────────────────────────────────────────────── */
 
 const BrandingPartnerModal = ({ org, onClose, onSave, saving }) => {
+  useEscapeKey(true, onClose);
   const [form, setForm] = useState({
     platform_name: org.branding?.platform_name === 'CloudAtlas' ? '' : (org.branding?.platform_name || ''),
     color_primary: org.branding?.color_primary || '#1E6FD9',

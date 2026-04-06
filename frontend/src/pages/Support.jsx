@@ -314,8 +314,11 @@ const Support = () => {
                   return (
                     <tr
                       key={t.id}
+                      tabIndex={0}
+                      role="button"
                       onClick={() => navigate(`/support/${t.id}`)}
-                      className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer"
+                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/support/${t.id}`); } }}
+                      className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-primary/50"
                     >
                       <td className="py-3 px-4 font-mono text-xs font-semibold text-primary">
                         {fmtTicketId(t)}

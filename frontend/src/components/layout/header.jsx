@@ -1,4 +1,4 @@
-import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Clock, Zap, Headphones, Shield, Hourglass, CloudCog, Users, CreditCard, Wallet } from 'lucide-react';
+import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Clock, Zap, Headphones, Shield, Hourglass, CloudCog, Users, CreditCard, Wallet, Menu } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -13,7 +13,7 @@ import Logo from '../common/Logo';
 import alertService from '../../services/alertService';
 import authService from '../../services/authService';
 
-const Header = () => {
+const Header = ({ onMenuToggle }) => {
   const { isDark, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const { currentOrg, refreshOrgs } = useOrgWorkspace();
@@ -92,6 +92,15 @@ const Header = () => {
     <header className="header-bar z-40 relative">
       <div className="px-5 sm:px-8 py-3.5">
         <div className="flex items-center gap-4">
+          {/* Mobile menu toggle */}
+          <button
+            onClick={onMenuToggle}
+            className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+            aria-label="Abrir menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
           {/* Logo */}
           <Logo size="md" />
 
@@ -137,7 +146,7 @@ const Header = () => {
                             <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
                               {inv.organization_name}
                             </p>
-                            <p className="text-xs text-gray-400">
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
                               Role: {inv.role}
                             </p>
                           </div>
@@ -188,7 +197,7 @@ const Header = () => {
 
               {/* Dropdown */}
               {bellOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-xl
+                <div role="menu" aria-label="Alertas" className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-xl
                                 border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700">
                     <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">

@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Bell, Plus, Trash2, Play, ChevronDown, ChevronUp, Pencil,
@@ -59,6 +60,7 @@ const EMPTY_FORM = {
 // ── ChannelModal ──────────────────────────────────────────────────────────────
 
 function ChannelModal({ initial = null, supportedEvents = [], onSave, onClose, isPending }) {
+  useEscapeKey(true, onClose);
   const branding = useBranding();
   const isEdit = !!initial;
   const [form, setForm] = useState(initial ? {

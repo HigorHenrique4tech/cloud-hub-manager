@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ShieldCheck, Users, Building2, ChevronDown, ChevronUp, Search, Check,
@@ -10,6 +10,7 @@ import {
   TrendingUp, ChevronLeft, CheckSquare, Square, Bell, ArrowRightLeft,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import adminService from '../services/adminService';
 import BillingAnalytics from '../components/admin/BillingAnalytics';
 import BillingConfigModal from '../components/admin/BillingConfigModal';
@@ -48,11 +49,14 @@ const fmtBRL = (v) =>
 
 /* ── Leads Tab ───────────────────────────────────────────────────────────── */
 
+const LEADS_PER_PAGE = 25;
+
 const LeadsTab = () => {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [openMenu, setOpenMenu] = useState(null);
   const [expandedLead, setExpandedLead] = useState(null);
+  const [leadsPage, setLeadsPage] = useState(1);
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-leads', statusFilter],
@@ -65,6 +69,8 @@ const LeadsTab = () => {
   });
 
   const leads = data?.leads || [];
+  const totalLeadPages = Math.max(1, Math.ceil(leads.length / LEADS_PER_PAGE));
+  const paginatedLeads = leads.slice((leadsPage - 1) * LEADS_PER_PAGE, leadsPage * LEADS_PER_PAGE);
 
   return (
     <div className="space-y-4">
@@ -102,7 +108,7 @@ const LeadsTab = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100 dark:divide-gray-700/50">
-              {leads.map((lead) => {
+              {paginatedLeads.map((lead) => {
                 const badge = LEAD_STATUS[lead.status] || LEAD_STATUS.new;
                 const isExpanded = expandedLead === lead.id;
                 return (
@@ -164,6 +170,31 @@ const LeadsTab = () => {
               })}
             </tbody>
           </table>
+          {/* Pagination */}
+          {leads.length > LEADS_PER_PAGE && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                {(leadsPage - 1) * LEADS_PER_PAGE + 1}–{Math.min(leadsPage * LEADS_PER_PAGE, leads.length)} de {leads.length}
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setLeadsPage(p => Math.max(1, p - 1))}
+                  disabled={leadsPage === 1}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40"
+                >
+                  Anterior
+                </button>
+                <span className="px-3 py-1 text-xs text-gray-500">{leadsPage}/{totalLeadPages}</span>
+                <button
+                  onClick={() => setLeadsPage(p => Math.min(totalLeadPages, p + 1))}
+                  disabled={leadsPage === totalLeadPages}
+                  className="px-2.5 py-1 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40"
+                >
+                  Próximo
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -228,6 +259,10 @@ const OrgsTab = () => {
   const [expandedOrg, setExpandedOrg] = useState(null);
   const [editingNotes, setEditingNotes] = useState(null); // org.slug
   const [notesValue, setNotesValue] = useState('');
+
+  useEscapeKey(!!confirmChange, useCallback(() => setConfirmChange(null), []));
+  useEscapeKey(!!confirmSuspend, useCallback(() => { setConfirmSuspend(null); setSuspendReason(''); }, []));
+  useEscapeKey(!!editingNotes, useCallback(() => setEditingNotes(null), []));
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-orgs'],
@@ -510,6 +545,7 @@ const OrgsTab = () => {
 const inputCls = 'w-full px-3 py-2 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40';
 
 const BillingModal = ({ existing, orgs, onClose, onSave, isSaving }) => {
+  useEscapeKey(true, onClose);
   const isEdit = !!existing;
   const [form, setForm] = useState({
     client_name:       existing?.client_name       || '',
@@ -708,6 +744,7 @@ const STATUS_LABELS = {
 };
 
 const BillingHistoryModal = ({ recordId, clientName, onClose }) => {
+  useEscapeKey(true, onClose);
   const { data, isLoading } = useQuery({
     queryKey: ['billing-history', recordId],
     queryFn: () => adminService.getBillingHistory(recordId),
@@ -1270,6 +1307,8 @@ const MigrationLicensesTab = () => {
   const [filter, setFilter] = useState('pending');
   const [reviewing, setReviewing] = useState(null);
   const [adminNotes, setAdminNotes] = useState('');
+
+  useEscapeKey(!!reviewing, useCallback(() => setReviewing(null), []));
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin-migration-licenses', filter],

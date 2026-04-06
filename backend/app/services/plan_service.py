@@ -89,8 +89,8 @@ def check_workspace_limit(db: Session, org_id, plan_tier: str, org_type: str = "
     if org_type == "partner":
         base = PLAN_PRICES.get("partner_base_workspaces", 10)
         return (True, current, base)
-    if org_type == "master" and plan_tier == "enterprise":
-        base = get_plan_limits("enterprise")["workspaces"] or 20
+    if org_type == "master" and plan_tier in ("enterprise", "enterprise_migration"):
+        base = get_plan_limits(plan_tier)["workspaces"] or 20
         return (True, current, base)
     limits = get_plan_limits(plan_tier)
     max_ws = limits["workspaces"]
@@ -145,7 +145,7 @@ def check_managed_org_limit(db: Session, org_id, plan_tier: str) -> tuple:
 def get_org_usage(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> dict:
     """Return usage and limits for an organization."""
     limits = dict(get_plan_limits(plan_tier))
-    if org_type == "master" and plan_tier == "enterprise":
+    if org_type == "master" and plan_tier in ("enterprise", "enterprise_migration"):
         limits["workspaces"] = PLAN_PRICES.get("enterprise_base_workspaces", 20)
     elif org_type == "partner":
         limits["workspaces"] = PLAN_PRICES.get("partner_base_workspaces", 10)
@@ -304,6 +304,7 @@ def consume_migration_license(db: Session, org_id, count: int = 1) -> bool:
         return True
 
     # Enterprise: consume from approved license batches (FIFO)
+    # with_for_update() locks rows to prevent race conditions
     licenses = (
         db.query(MigrationLicense)
         .filter(
@@ -312,6 +313,7 @@ def consume_migration_license(db: Session, org_id, count: int = 1) -> bool:
             MigrationLicense.status == "approved",
         )
         .order_by(MigrationLicense.created_at.asc())
+        .with_for_update()
         .all()
     )
 

@@ -64,7 +64,7 @@ const NavItem = ({ to, label, icon: Icon, end, activeColor, badge }) => (
     <Icon className="w-5 h-5 flex-shrink-0" />
     <span className="flex-1">{label}</span>
     {badge > 0 && (
-      <span className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-yellow-500 text-white text-[10px] font-bold">
+      <span aria-label={`${badge} pendentes`} className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-amber-500 dark:bg-amber-600 text-white text-[10px] font-bold">
         {badge > 99 ? '99+' : badge}
       </span>
     )}
@@ -73,7 +73,7 @@ const NavItem = ({ to, label, icon: Icon, end, activeColor, badge }) => (
 
 /** Subtle uppercase section label between nav groups. */
 const SectionLabel = ({ children }) => (
-  <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-slate-600 select-none">
+  <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 select-none">
     {children}
   </p>
 );
@@ -89,7 +89,7 @@ const CLOUD_ACTIVE = {
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
 
-const Sidebar = () => {
+const Sidebar = ({ mobileOpen, onClose }) => {
   const { isMasterOrg, currentOrg } = useOrgWorkspace();
   const { user } = useAuth();
   const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
@@ -105,12 +105,12 @@ const Sidebar = () => {
   const pendingCount = pendingCountQ.data ?? 0;
 
   return (
-    <aside className="w-56 min-h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4 flex-shrink-0">
+    <aside aria-label="Menu principal" className={`w-56 min-h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4 flex-shrink-0 transition-transform duration-200 ease-in-out fixed lg:static z-40 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
       {/* Workspace switcher */}
       <WorkspaceSwitcher />
 
       {/* Main navigation — scrollable */}
-      <nav className="flex-1 px-2 overflow-y-auto">
+      <nav className="flex-1 px-2 overflow-y-auto" aria-label="Navegação principal">
 
         {/* Dashboard */}
         <NavItem to="/" label="Dashboard" icon={LayoutDashboard} end />

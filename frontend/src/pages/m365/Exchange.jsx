@@ -4,6 +4,7 @@ import { Mail, X, Check, RefreshCw, Save, Inbox, Plus, Trash2, UserPlus, Shield 
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
 import { useToast } from '../../contexts/ToastContext';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 // ─ Helpers ──────────────────────────────────────────────────────────────────
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
@@ -145,6 +146,7 @@ function DelegationSection({ mailbox }) {
 }
 
 function MailboxDrawer({ mailbox, onClose, allUsers }) {
+  useEscapeKey(!!mailbox, onClose);
   const { toast } = useToast();
   const qc = useQueryClient();
   const [drawerTab, setDrawerTab] = useState('settings');
@@ -348,6 +350,7 @@ function MailboxesTab({ onSelectMailbox }) {
 // ─ Shared Mailboxes Tab ───────────────────────────────────────────────────────
 // ─ Create Shared Mailbox Modal ────────────────────────────────────────────────
 function CreateSharedMailboxModal({ onClose }) {
+  useEscapeKey(true, onClose);
   const qc = useQueryClient();
   const [form, setForm] = useState({ display_name: '', alias: '', domain: '', description: '' });
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }));

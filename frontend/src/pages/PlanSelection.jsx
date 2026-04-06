@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Check, ArrowRight, Sparkles, ChevronRight, X, Phone, Building2, MessageSquare } from 'lucide-react';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
@@ -85,6 +86,7 @@ const plans = [
 /* ── Sales Contact Modal ──────────────────────────────────────────────────── */
 
 const SalesModal = ({ onClose, userEmail, orgSlug }) => {
+  useEscapeKey(true, onClose);
   const [form, setForm] = useState({
     name: '',
     email: userEmail || '',

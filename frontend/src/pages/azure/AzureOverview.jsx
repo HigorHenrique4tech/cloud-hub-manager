@@ -233,6 +233,7 @@ const AzureOverview = () => {
   const [subscriptions, setSubscriptions] = useState([]);
   const [resourceGroups, setResourceGroups] = useState([]);
   const [rgSearch, setRgSearch]         = useState('');
+  const [fetchError, setFetchError]     = useState(null);
 
   const metricsQ = useQuery({
     queryKey: ['azure-metrics'],
@@ -254,6 +255,7 @@ const AzureOverview = () => {
       setResourceGroups(rgsData.resource_groups || []);
     } catch (err) {
       if (err.response?.status === 400) setNoCredentials(true);
+      else setFetchError(err.response?.data?.detail || err.message || 'Erro ao carregar dados Azure');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -274,6 +276,14 @@ const AzureOverview = () => {
 
   if (loading) return <Layout><LoadingSpinner text="Carregando Azure..." /></Layout>;
   if (noCredentials) return <Layout><NoCredentialsMessage provider="azure" /></Layout>;
+  if (fetchError) return (
+    <Layout>
+      <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-700 dark:text-red-300">
+        <span className="text-sm">{fetchError}</span>
+        <button onClick={() => { setFetchError(null); fetchData(); }} className="text-sm underline hover:no-underline ml-auto flex-shrink-0">Tentar novamente</button>
+      </div>
+    </Layout>
+  );
 
   return (
     <Layout>
@@ -296,7 +306,7 @@ const AzureOverview = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
         <StatCard label="Assinaturas"       value={subscriptions.length}  icon={CreditCard}  color="sky" />
         <StatCard label="Grupos de Recursos" value={resourceGroups.length} icon={Layers}      color="purple" />
         <StatCard label="Regiões"            value={uniqueRegions}          icon={MapPin}      color="green" />

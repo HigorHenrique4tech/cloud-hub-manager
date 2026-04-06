@@ -255,15 +255,16 @@ async def set_project_status(
     # Ao iniciar migração, verificar acesso e consumir licenças
     if body.status == "running":
         allowed, remaining, msg = _require_migration_plan(db, member.organization_id)
-        # Consumir licenças (para plano enterprise com licenças avulsas)
+        # Consumir licenças apenas na primeira execução (draft/ready → running)
+        # Retomar de pausa (paused → running) NÃO consome licenças novamente
         project_data = svc.get_project(db, str(member.workspace_id), project_id)
-        if project_data:
-            pending_count = project_data.get("mailbox_count", 0) - project_data.get("completed_count", 0) - project_data.get("failed_count", 0)
+        if project_data and project_data.get("status") in ("draft", "ready"):
+            pending_count = project_data.get("mailbox_count", 0)
             if pending_count > 0 and remaining is not None:
                 if not consume_migration_license(db, member.organization_id, pending_count):
                     raise HTTPException(
                         status_code=403,
-                        detail=f"Licenças insuficientes. Necessário: {pending_count}, disponível: {remaining}. Compre mais licenças."
+                        detail=f"Licenças insuficientes. Necessário: {pending_count}, disponível: {remaining}. Solicite mais licenças."
                     )
 
     project = svc.set_project_status(db, str(member.workspace_id), project_id, body.status)
@@ -798,7 +799,6 @@ async def worker_health(
         "redis": redis_status,
         "worker": worker_status,
         "queued_tasks": queued_tasks,
-        "debug": debug_info,
     }
 
 

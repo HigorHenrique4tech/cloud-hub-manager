@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Globe, HardDrive, BarChart2, Search, ChevronRight, X, FileText, Folder, RefreshCw, ExternalLink, Cloud } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 
 // ─ Helpers ─────────────────────────────────────────────────────────────────
 const fmtBytes = (bytes) => {
@@ -38,6 +39,8 @@ function SkeletonRow({ cols = 4 }) {
 
 // ─ Site Detail Drawer ────────────────────────────────────────────────────────
 function SiteDrawer({ site, onClose, onBrowse }) {
+  useEscapeKey(!!site, onClose);
+
   const drivesQ = useQuery({
     queryKey: ['m365-sp-drives', site?.id],
     queryFn: () => m365Service.getSiteDrives(site.id),
@@ -110,6 +113,7 @@ function SiteDrawer({ site, onClose, onBrowse }) {
 // ─ Overview Tab ─────────────────────────────────────────────────────────────
 function OverviewTab({ onSelectSite }) {
   const sitesQ = useQuery({ queryKey: ['m365-sp-sites'], queryFn: () => m365Service.getSites(), retry: false, staleTime: 120_000 });
+  const [visibleCount, setVisibleCount] = useState(20);
 
   const sites = sitesQ.data?.sites || [];
   const total = sitesQ.data?.total || 0;
@@ -149,7 +153,7 @@ function OverviewTab({ onSelectSite }) {
           <p className="p-4 text-sm text-gray-400">Nenhum site encontrado. Verifique a permissão <code>Sites.Read.All</code>.</p>
         ) : (
           <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {sorted.slice(0, 8).map((s) => (
+            {sorted.slice(0, visibleCount).map((s) => (
               <button
                 key={s.id}
                 onClick={() => onSelectSite(s)}
@@ -169,6 +173,14 @@ function OverviewTab({ onSelectSite }) {
                 </div>
               </button>
             ))}
+            {sorted.length > visibleCount && (
+              <button
+                onClick={() => setVisibleCount(v => v + 20)}
+                className="w-full py-3 text-sm text-blue-500 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+              >
+                Carregar mais ({sorted.length - visibleCount} restantes)
+              </button>
+            )}
           </div>
         )}
       </div>

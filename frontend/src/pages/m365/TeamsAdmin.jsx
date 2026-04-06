@@ -7,6 +7,7 @@ import {
 import Layout from '../../components/layout/layout';
 import m365Service from '../../services/m365Service';
 import { useToast } from '../../contexts/ToastContext';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 
 // ─ Helpers ──────────────────────────────────────────────────────────────────
@@ -53,6 +54,7 @@ function VisibilityBadge({ visibility }) {
 
 // ─ Create/Edit Team Modal ────────────────────────────────────────────────────
 function TeamModal({ team, onClose }) {
+  useEscapeKey(true, onClose);
   const qc = useQueryClient();
   const isEdit = !!team;
   // team uses camelCase: displayName, description, visibility
@@ -219,6 +221,7 @@ function TeamsTab() {
 
 // ─ Create Channel Modal ──────────────────────────────────────────────────────
 function ChannelModal({ teamId, onClose }) {
+  useEscapeKey(true, onClose);
   const qc = useQueryClient();
   const [form, setForm] = useState({ display_name: '', description: '', channel_type: 'standard' });
 
@@ -398,6 +401,7 @@ function ChannelsTab({ teams }) {
 
 // ─ Add Member Modal ──────────────────────────────────────────────────────────
 function AddMemberModal({ teamId, onClose }) {
+  useEscapeKey(true, onClose);
   const qc = useQueryClient();
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('member');

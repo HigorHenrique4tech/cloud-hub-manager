@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, HardDriveDownload, RefreshCw, HardDrive,
@@ -46,6 +47,7 @@ function SnapStatusBadge({ status }) {
 }
 
 function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
+  useEscapeKey(isOpen, onClose);
   const [form, setForm] = useState({ resource_group: '', source_resource_id: '', snapshot_name: '', location: '' });
 
   const disksQ = useQuery({
@@ -271,6 +273,7 @@ function ProtectionBadge({ state }) {
 
 // ─ Create Archive Modal
 function CreateArchiveModal({ isOpen, onClose, onSubmit, loading, error }) {
+  useEscapeKey(isOpen, onClose);
   const [form, setForm] = useState({ vault_name: '', resource_group: '', location: '' });
 
   const rgsQ = useQuery({ queryKey: ['azure-rgs-picker'], queryFn: () => azureService.listResourceGroups(), enabled: isOpen, staleTime: 120_000, retry: false });
@@ -334,6 +337,7 @@ function CreateArchiveModal({ isOpen, onClose, onSubmit, loading, error }) {
 
 // ─ Enable VM Backup Modal
 function EnableBackupModal({ isOpen, onClose, onSubmit, loading, error, vaultRg, vaultName }) {
+  useEscapeKey(isOpen, onClose);
   const [form, setForm] = useState({ vm_id: '', vm_rg: '', vm_name: '', policy_name: '' });
 
   const vmsQ = useQuery({ queryKey: ['azure-vms'], queryFn: () => azureService.listVMs(), enabled: isOpen, staleTime: 120_000, retry: false });
@@ -410,6 +414,7 @@ function EnableBackupModal({ isOpen, onClose, onSubmit, loading, error, vaultRg,
 
 // ─ Create Policy Modal
 function CreatePolicyModal({ isOpen, onClose, onSubmit, loading, error }) {
+  useEscapeKey(isOpen, onClose);
   const [form, setForm] = useState({
     policy_name: '',
     schedule_run_frequency: 'Daily',

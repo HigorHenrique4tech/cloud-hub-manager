@@ -137,7 +137,7 @@ const GcpComputeEngine = () => {
         <button
           onClick={() => refetch()}
           disabled={isLoading}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary/90 disabled:opacity-50"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-dark disabled:opacity-50"
         >
           <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
           Atualizar
@@ -153,7 +153,7 @@ const GcpComputeEngine = () => {
 
       <div className="card overflow-hidden">
         {isLoading ? (
-          <SkeletonTable rows={5} cols={5} />
+          <SkeletonTable rows={5} columns={5} />
         ) : instances.length === 0 ? (
           <EmptyState
             icon={MonitorPlay}
@@ -179,7 +179,7 @@ const GcpComputeEngine = () => {
                   const loading = actionLoading[key];
                   const externalIp = inst.network_interfaces?.[0]?.external_ip || '—';
                   return (
-                    <tr key={inst.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" onClick={() => setDetailTarget(inst)}>
+                    <tr key={inst.id} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30 cursor-pointer" tabIndex={0} role="button" onClick={() => setDetailTarget(inst)} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setDetailTarget(inst); } }}>
                       <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100">{inst.name}</td>
                       <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs font-mono">{inst.zone}</td>
                       <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs">{inst.machine_type}</td>

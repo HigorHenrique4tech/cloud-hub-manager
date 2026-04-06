@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2, HardDriveDownload, RefreshCw, AlertCircle } from 'lucide-react';
 import Layout from '../../components/layout/layout';
@@ -38,6 +39,7 @@ function fmtBytes(bytes) {
 // ── Create Snapshot Modal ──────────────────────────────────────────────────────
 
 function CreateSnapshotModal({ isOpen, onClose, onSubmit, loading, error }) {
+  useEscapeKey(isOpen, onClose);
   const [form, setForm] = useState({ zone: '', disk_name: '', snapshot_name: '', description: '' });
 
   if (!isOpen) return null;
