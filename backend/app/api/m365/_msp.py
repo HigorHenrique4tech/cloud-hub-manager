@@ -22,7 +22,7 @@ async def list_m365_tenants(
     Enterprise master orgs only.
     """
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    if not master_org or master_org.plan_tier != "enterprise":
+    if not master_org or master_org.plan_tier not in ("enterprise", "enterprise_migration"):
         raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
     if master_org.org_type not in ("master", "standalone"):
         raise HTTPException(status_code=403, detail="Apenas organizações master podem ver tenants dos parceiros.")

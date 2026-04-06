@@ -5,7 +5,7 @@ import finopsService from '../../../services/finopsService';
 import { useOrgWorkspace } from '../../../contexts/OrgWorkspaceContext';
 import { fmtUSD } from '../../../utils/formatters';
 
-const PLAN_ORDER = { free: 0, pro: 1, enterprise: 2 };
+const PLAN_ORDER = { free: 0, pro: 1, enterprise: 2, enterprise_migration: 3 };
 
 const FinOpsWidget = () => {
   const navigate = useNavigate();

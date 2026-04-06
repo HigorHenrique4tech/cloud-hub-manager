@@ -68,7 +68,7 @@ def _get_org_plan(db: Session, organization_id) -> str:
 
 
 def _require_enterprise(plan: str, feature: str = "Microsoft 365"):
-    if plan != "enterprise":
+    if plan not in ("enterprise", "enterprise_migration"):
         raise HTTPException(
             status_code=403,
             detail=f"Recurso '{feature}' requer plano Enterprise.",
