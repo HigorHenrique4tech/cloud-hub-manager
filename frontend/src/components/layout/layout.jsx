@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { ShieldOff } from 'lucide-react';
 import Header from './header';
 import Sidebar from './sidebar';
 import AzureSecondarySidebar from './AzureSecondarySidebar';
@@ -8,10 +9,30 @@ import GcpSecondarySidebar from './GcpSecondarySidebar';
 import M365SecondarySidebar from './M365SecondarySidebar';
 import TrialBanner from '../common/TrialBanner';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
+import { useAuth } from '../../contexts/AuthContext';
+
+const SuspendedScreen = () => (
+  <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center p-6">
+    <div className="max-w-md w-full text-center space-y-4">
+      <div className="mx-auto w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+        <ShieldOff className="w-8 h-8 text-red-500" />
+      </div>
+      <h1 className="text-xl font-bold text-gray-900 dark:text-white">Organização suspensa</h1>
+      <p className="text-gray-600 dark:text-gray-400">
+        Sua organização foi suspensa pelo administrador da plataforma.
+        Entre em contato com o suporte para mais informações.
+      </p>
+      <a href="/support" className="inline-block mt-2 px-4 py-2 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary-dark transition-colors">
+        Contatar suporte
+      </a>
+    </div>
+  </div>
+);
 
 const Layout = ({ children }) => {
   const { pathname } = useLocation();
-  const { currentWorkspace } = useOrgWorkspace();
+  const { currentOrg, currentWorkspace, loading } = useOrgWorkspace();
+  const { user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const isAzurePath = pathname.startsWith('/azure');
   const isAwsPath = pathname.startsWith('/aws');
@@ -20,6 +41,11 @@ const Layout = ({ children }) => {
 
   // Close sidebar on route change (mobile)
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
+
+  // If user is authenticated but has no org (all suspended), show blocked screen
+  if (!loading && user && !currentOrg) {
+    return <SuspendedScreen />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col">

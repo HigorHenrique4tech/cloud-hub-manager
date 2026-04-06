@@ -89,6 +89,11 @@ api.interceptors.response.use(
       }
     }
 
+    // Org suspended/deleted — notify context to refresh org list
+    if (error.response?.status === 404 && error.response?.data?.detail === 'Organização não encontrada') {
+      window.dispatchEvent(new Event('org-suspended'));
+    }
+
     if (error.response) {
       console.error('API Error:', error.response.data);
     } else if (error.request) {

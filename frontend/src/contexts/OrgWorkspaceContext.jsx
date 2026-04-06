@@ -105,7 +105,18 @@ export const OrgWorkspaceProvider = ({ children }) => {
       setCurrentOrg(prev => {
         if (!prev) return prev;
         const updated = organizations.find(o => o.id === prev.id);
-        return updated || prev;
+        if (updated) return updated;
+        // Org was removed/suspended — fall back to another org
+        const fallback = organizations[0] || null;
+        if (fallback) {
+          localStorage.setItem('selectedOrg', fallback.slug);
+          loadWorkspaces(fallback.slug);
+        } else {
+          localStorage.removeItem('selectedOrg');
+          setWorkspaces([]);
+          setCurrentWorkspace(null);
+        }
+        return fallback;
       });
     } catch (err) {
       console.error('Failed to refresh orgs:', err);
@@ -117,6 +128,13 @@ export const OrgWorkspaceProvider = ({ children }) => {
       await loadWorkspaces(currentOrg.slug);
     }
   }, [currentOrg]);
+
+  // Listen for org-suspended events from API interceptor
+  useEffect(() => {
+    const handler = () => refreshOrgs();
+    window.addEventListener('org-suspended', handler);
+    return () => window.removeEventListener('org-suspended', handler);
+  }, [refreshOrgs]);
 
   const isMasterOrg = currentOrg?.org_type === 'master';
   const isPartnerOrg = currentOrg?.org_type === 'partner';
