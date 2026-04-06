@@ -1404,7 +1404,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
 // ── Migration Upsell (plan gate) ─────────────────────────────────────────────
 
 const MigrationUpsell = ({ effectivePlan }) => {
-  const isEnterprise = effectivePlan === 'enterprise';
+  const isEnterprise = effectivePlan === 'enterprise' || effectivePlan === 'enterprise_migration';
   return (
     <Layout>
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">

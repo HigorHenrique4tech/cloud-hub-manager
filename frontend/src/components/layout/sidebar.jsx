@@ -93,7 +93,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   const { isMasterOrg, currentOrg } = useOrgWorkspace();
   const { user } = useAuth();
   const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
-  const isEnterprise = effectivePlan === 'enterprise';
+  const isEnterprise = effectivePlan === 'enterprise' || effectivePlan === 'enterprise_migration';
 
   const pendingCountQ = useQuery({
     queryKey: ['approvals-count'],

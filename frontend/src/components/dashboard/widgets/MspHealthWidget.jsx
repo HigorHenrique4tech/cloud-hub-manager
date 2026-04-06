@@ -22,7 +22,7 @@ const MspHealthWidget = () => {
   const { currentOrg } = useOrgWorkspace();
 
   const isMaster = currentOrg?.org_type === 'master' || currentOrg?.org_type === 'standalone';
-  const isEnterprise = (currentOrg?.effective_plan || currentOrg?.plan_tier) === 'enterprise';
+  const isEnterprise = ['enterprise', 'enterprise_migration'].includes(currentOrg?.effective_plan || currentOrg?.plan_tier);
 
   const summaryQ = useQuery({
     queryKey: ['msp-widget', currentOrg?.slug],

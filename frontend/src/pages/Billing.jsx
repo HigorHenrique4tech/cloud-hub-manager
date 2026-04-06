@@ -55,7 +55,7 @@ const Billing = () => {
   const { currentOrg, isMasterOrg } = useOrgWorkspace();
   const slug = currentOrg?.slug;
   const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
-  const isEnterprise = effectivePlan === 'enterprise';
+  const isEnterprise = effectivePlan === 'enterprise' || effectivePlan === 'enterprise_migration';
   const trial = currentOrg?.trial || {};
 
   const { data: usageData, isLoading: usageLoading } = useQuery({

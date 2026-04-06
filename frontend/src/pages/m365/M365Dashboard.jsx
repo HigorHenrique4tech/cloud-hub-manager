@@ -3495,7 +3495,7 @@ const DefenderTab = ({ incidentsData, incidentsLoading, incidentsError, alertsDa
 export default function M365Dashboard() {
   const { currentOrg } = useOrgWorkspace();
   const planTier = (currentOrg?.plan_tier || 'free').toLowerCase();
-  const isEnterprise = planTier === 'enterprise';
+  const isEnterprise = planTier === 'enterprise' || planTier === 'enterprise_migration';
 
   const [activeTab, setActiveTab] = useState('visao-geral');
   const [showCredModal, setShowCredModal] = useState(false);
