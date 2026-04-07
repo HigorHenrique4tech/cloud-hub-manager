@@ -192,7 +192,7 @@ def _get_org_plan(member: MemberContext, db: Session) -> str:
 
 def _require_pro(member: MemberContext, db: Session):
     plan = _get_org_plan(member, db)
-    order = {"free": 0, "pro": 1, "enterprise": 2}
+    order = {"free": 0, "pro": 1, "enterprise": 2, "enterprise_migration": 3}
     if order.get(plan, 0) < 1:
         raise HTTPException(
             status_code=403,
