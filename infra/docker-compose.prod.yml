@@ -142,6 +142,28 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # ── Migration Worker (Celery) ────────────────────────────────────────────────
+  migration-worker:
+    build:
+      context: ..
+      dockerfile: infra/docker/backend.prod.Dockerfile
+    container_name: cloudatlas-migration-worker
+    command: celery -A app.workers.celery_app worker -Q migration --loglevel=info --concurrency=2
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudhub}:${POSTGRES_PASSWORD:-cloudhub_pass}@postgres:5432/${POSTGRES_DB:-cloudhub_db}
+      - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    networks:
+      - cloudatlas-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── Database Backup (daily to Azure Blob Storage) ───────────────────────────
   backup:
     build:
