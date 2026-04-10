@@ -38,7 +38,12 @@ class TenantToTenantEngine(MigrationEngine):
             self.source_cfg["client_id"],
             self.source_cfg["client_secret"],
         )
-        return {"Authorization": f"Bearer {token}"}
+        src_user = self.source_cfg.get("src_user_id") or (self.mailbox.source_email if self.mailbox else "")
+        return {
+            "Authorization": f"Bearer {token}",
+            # Required for app-only access to Exchange Online mailboxes
+            "X-AnchorMailbox": src_user,
+        }
 
     def _dst_headers(self) -> dict:
         token = self._get_token(
@@ -46,9 +51,12 @@ class TenantToTenantEngine(MigrationEngine):
             self.dest_cfg["client_id"],
             self.dest_cfg["client_secret"],
         )
+        dest_user = self.dest_cfg.get("dest_user_id") or (self.mailbox.destination_email if self.mailbox else "")
         return {
             "Authorization": f"Bearer {token}",
             "Content-Type": "message/rfc822",
+            # Required for app-only access to Exchange Online mailboxes
+            "X-AnchorMailbox": dest_user,
         }
 
     def _get_mime(self, user_id: str, msg_id: str, headers: dict) -> bytes:
@@ -149,11 +157,21 @@ class TenantToTenantEngine(MigrationEngine):
                 url = skip_token  # retomada: last_uid guarda o nextLink
 
             while url:
+                _url = url  # capture for closure
+
                 def fetch_page():
-                    r = requests.get(url, headers=src_hdrs, timeout=30)
+                    r = requests.get(_url, headers=src_hdrs, timeout=30)
                     if r.status_code == 429:
                         raise Exception("429 throttle")
-                    r.raise_for_status()
+                    if not r.ok:
+                        try:
+                            err = r.json().get("error", {})
+                            raise Exception(
+                                f"HTTP {r.status_code} [{err.get('code','')}]: "
+                                f"{err.get('message','')[:300]}"
+                            )
+                        except (ValueError, KeyError):
+                            raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
                     return r.json()
 
                 page = self.retry_on_throttle(fetch_page)
@@ -222,11 +240,21 @@ class TenantToTenantEngine(MigrationEngine):
                f"&$select=id,internetMessageId,size&$top=50")
 
         while url:
+            _url = url  # capture for closure
+
             def fetch():
-                r = requests.get(url, headers=src_hdrs, timeout=30)
+                r = requests.get(_url, headers=src_hdrs, timeout=30)
                 if r.status_code == 429:
                     raise Exception("429 throttle")
-                r.raise_for_status()
+                if not r.ok:
+                    try:
+                        err = r.json().get("error", {})
+                        raise Exception(
+                            f"HTTP {r.status_code} [{err.get('code','')}]: "
+                            f"{err.get('message','')[:300]}"
+                        )
+                    except (ValueError, KeyError):
+                        raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
                 return r.json()
 
             page = self.retry_on_throttle(fetch)
