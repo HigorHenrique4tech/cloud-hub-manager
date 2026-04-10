@@ -91,12 +91,13 @@ class TenantToTenantEngine(MigrationEngine):
         if not parsed.get("Date"):
             raw_bytes = f"Date: {_formatdate()}\r\n".encode() + raw_bytes
 
-        # Graph API exige MIME em base64 no body
-        encoded = _b64.b64encode(raw_bytes)
+        # Graph API exige MIME em base64url (urlsafe, sem padding) com Content-Type: text/plain
+        # Ref: https://learn.microsoft.com/graph/api/user-post-messages (MIME format)
+        encoded = _b64.urlsafe_b64encode(raw_bytes)
 
         import_hdrs = {
             "Authorization": headers["Authorization"],
-            "Content-Type": "message/rfc822",
+            "Content-Type": "text/plain",
             "X-AnchorMailbox": dest_user,
         }
 
