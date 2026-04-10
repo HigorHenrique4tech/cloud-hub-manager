@@ -136,6 +136,7 @@ class TenantToTenantEngine(MigrationEngine):
             "subject": _decode_str(msg.get("Subject", "(sem assunto)")),
             "body": {"contentType": body_type, "content": body_content or ""},
             "isRead": True,
+            "isDraft": False,
         }
 
         from_addr = _addr(msg.get("From", ""))
@@ -202,7 +203,13 @@ class TenantToTenantEngine(MigrationEngine):
                     raise Exception(f"HTTP {r.status_code}: {r.text[:200]}")
             return r.json().get("id", "")
 
-        return self.retry_on_throttle(do)
+        msg_id = self.retry_on_throttle(do)
+        logger.debug(
+            f"Importado: subj='{graph_msg.get('subject')}' "
+            f"from='{graph_msg.get('from',{}).get('emailAddress',{}).get('address','')}' "
+            f"folder={folder} → id={msg_id}"
+        )
+        return msg_id
 
     def _get_or_create_folder(self, dest_user: str, folder_name: str,
                                headers: dict, _cache: dict) -> str:
