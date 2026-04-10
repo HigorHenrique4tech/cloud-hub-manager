@@ -73,52 +73,33 @@ class TenantToTenantEngine(MigrationEngine):
     def _import_message(self, dest_user: str, raw_bytes: bytes,
                         headers: dict, dest_folder_id: str = None) -> str:
         """
-        Importa mensagem MIME na pasta correta do destino via dois passos:
-        1. POST /mailFolders/{id}/messages (JSON vazio) → obtém message ID
-        2. PUT  /messages/{id}/$value (MIME raw) → substitui conteúdo
-
-        Este é o único fluxo suportado pelo Graph API para importação de MIME
-        sem perder metadados (remetente, data, pasta).
+        Importa mensagem MIME na pasta correta do destino.
+        Endpoint: POST /mailFolders/{id}/messages com Content-Type: message/rfc822.
+        O MIME precisa ter header Date: válido — garantido aqui antes do POST.
         """
+        import email as _email_lib
+        from email.utils import formatdate as _formatdate
+
         folder = dest_folder_id or "inbox"
         base_user = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}"
-        auth_hdr = headers["Authorization"]
-        json_hdrs = {
-            "Authorization": auth_hdr,
-            "Content-Type": "application/json",
-            "X-AnchorMailbox": dest_user,
-        }
-        mime_hdrs = {
-            "Authorization": auth_hdr,
+
+        # Garantir que o MIME tem Date: header (obrigatório pelo Graph API)
+        parsed = _email_lib.message_from_bytes(raw_bytes)
+        if not parsed.get("Date"):
+            # Adiciona Date no início do raw bytes
+            date_line = f"Date: {_formatdate()}\r\n".encode()
+            raw_bytes = date_line + raw_bytes
+
+        import_hdrs = {
+            "Authorization": headers["Authorization"],
             "Content-Type": "message/rfc822",
             "X-AnchorMailbox": dest_user,
         }
 
-        # Passo 1: criar rascunho vazio na pasta correta
-        def create_draft():
+        def do():
             r = requests.post(
                 f"{base_user}/mailFolders/{quote(folder, safe='')}/messages",
-                headers=json_hdrs,
-                json={},
-                timeout=30,
-            )
-            if r.status_code == 429:
-                raise Exception("429 throttle")
-            if not r.ok:
-                try:
-                    err = r.json().get("error", {})
-                    raise Exception(f"HTTP {r.status_code} [{err.get('code','')}]: {err.get('message','')[:200]}")
-                except (ValueError, KeyError):
-                    raise Exception(f"HTTP {r.status_code}: {r.text[:200]}")
-            return r.json()["id"]
-
-        msg_id = self.retry_on_throttle(create_draft)
-
-        # Passo 2: fazer upload do MIME completo
-        def upload_mime():
-            r = requests.put(
-                f"{base_user}/messages/{quote(msg_id, safe='')}/\$value",
-                headers=mime_hdrs,
+                headers=import_hdrs,
                 data=raw_bytes,
                 timeout=60,
             )
@@ -130,9 +111,9 @@ class TenantToTenantEngine(MigrationEngine):
                     raise Exception(f"HTTP {r.status_code} [{err.get('code','')}]: {err.get('message','')[:200]}")
                 except (ValueError, KeyError):
                     raise Exception(f"HTTP {r.status_code}: {r.text[:200]}")
+            return r.json().get("id", "")
 
-        self.retry_on_throttle(upload_mime)
-        return msg_id
+        return self.retry_on_throttle(do)
 
     def _get_or_create_folder(self, dest_user: str, folder_name: str,
                                headers: dict, _cache: dict) -> str:
