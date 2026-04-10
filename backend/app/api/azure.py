@@ -802,6 +802,12 @@ async def ws_get_azure_costs(
             return {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD"}
     result = await _run(svc.get_cost_by_subscription, start_date, end_date, granularity.capitalize())
     if not result.get('success'):
+        error_msg = result.get('error', '')
+        if '429' in error_msg:
+            # Rate limited — return empty data instead of 500
+            logger.warning("Azure Cost Management rate-limited, returning empty data")
+            return {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD",
+                    "warning": "Dados de custo temporariamente indisponiveis (rate limit). Tente novamente em alguns minutos."}
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo Azure'))
     return result
 

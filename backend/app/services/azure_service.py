@@ -698,7 +698,20 @@ class AzureService:
                     grouping=[QueryGrouping(type="Dimension", name="ServiceName")],
                 ),
             )
-            result = cost_client.query.usage(scope=scope, parameters=query)
+            # Retry on 429 (rate limit) with exponential backoff
+            import time as _time
+            _max_retries = 3
+            for _attempt in range(_max_retries):
+                try:
+                    result = cost_client.query.usage(scope=scope, parameters=query)
+                    break
+                except Exception as _rate_err:
+                    if "429" in str(_rate_err) and _attempt < _max_retries - 1:
+                        _wait = (2 ** _attempt) * 5  # 5s, 10s, 20s
+                        logger.warning("Cost Management 429 rate-limited, retrying in %ds (attempt %d/%d)", _wait, _attempt + 1, _max_retries)
+                        _time.sleep(_wait)
+                    else:
+                        raise
             rows = result.rows or []
             columns = [col.name for col in (result.columns or [])]
             logger.info("Azure cost columns: %s", columns)

@@ -194,7 +194,7 @@ async def create_project(
     return svc.create_project(
         db,
         workspace_id=str(member.workspace_id),
-        user_id=str(member.user_id),
+        user_id=str(member.user.id),
         name=body.name,
         description=body.description,
         migration_type=body.migration_type,
