@@ -151,8 +151,9 @@ class TenantToTenantEngine(MigrationEngine):
 
             # Lista mensagens com paginação
             # folder_id pode conter caracteres especiais (base64) — URL-encode obrigatório
+            # 'size' não existe em Microsoft.OutlookServices.Message (Exchange Online)
             url = (f"{GRAPH_V1}/users/{src_user}/mailFolders/{quote(folder_id, safe='')}/messages"
-                   f"?$top=50&$select=id,internetMessageId,size")
+                   f"?$top=50&$select=id,internetMessageId")
             if skip_token and skip_token.startswith("http"):
                 url = skip_token  # retomada: last_uid guarda o nextLink
 
@@ -237,7 +238,7 @@ class TenantToTenantEngine(MigrationEngine):
         # Busca mensagens criadas após o início da migração
         url = (f"{GRAPH_V1}/users/{src_user}/messages"
                f"?$filter=createdDateTime ge {cutoff}"
-               f"&$select=id,internetMessageId,size&$top=50")
+               f"&$select=id,internetMessageId&$top=50")
 
         while url:
             _url = url  # capture for closure
