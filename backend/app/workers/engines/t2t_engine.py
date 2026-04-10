@@ -281,7 +281,18 @@ class TenantToTenantEngine(MigrationEngine):
             "X-AnchorMailbox": dest_user,
         }
 
-        # Mapeia nomes especiais para well-known names
+        # Rastreia o que aconteceu em cada passo para diagnóstico.
+        steps: list[str] = []
+
+        def _describe(resp: requests.Response) -> str:
+            """Extrai code + message da resposta da Graph de forma segura."""
+            try:
+                err = resp.json().get("error", {}) or {}
+                return f"HTTP {resp.status_code} [{err.get('code','')}] {err.get('message','')[:160]}"
+            except Exception:
+                return f"HTTP {resp.status_code} body={resp.text[:160]}"
+
+        # ── Passo 1: tentativa via well-known name ─────────────────────────
         WELL_KNOWN = {
             "inbox": "inbox", "caixa de entrada": "inbox",
             "sent items": "sentitems", "itens enviados": "sentitems",
@@ -289,47 +300,75 @@ class TenantToTenantEngine(MigrationEngine):
         }
         wk = WELL_KNOWN.get(folder_name.lower())
         if wk:
-            r = requests.get(f"{base_user}/mailFolders/{wk}", headers=get_hdrs, timeout=15)
+            try:
+                r = requests.get(f"{base_user}/mailFolders/{wk}", headers=get_hdrs, timeout=15)
+                if r.ok:
+                    fid = r.json()["id"]
+                    _cache[folder_name] = fid
+                    return fid
+                steps.append(f"wkn({wk}): {_describe(r)}")
+            except Exception as exc:
+                steps.append(f"wkn({wk}): exc={exc}")
+
+        # ── Passo 2: listar pastas e casar por displayName ─────────────────
+        try:
+            r = requests.get(
+                f"{base_user}/mailFolders?$top=100&$select=id,displayName",
+                headers=get_hdrs, timeout=15,
+            )
+            if r.ok:
+                for f in r.json().get("value", []):
+                    if (f.get("displayName") or "").lower() == folder_name.lower():
+                        _cache[folder_name] = f["id"]
+                        return f["id"]
+                steps.append(f"list: ok mas '{folder_name}' não encontrada")
+            else:
+                steps.append(f"list: {_describe(r)}")
+        except Exception as exc:
+            steps.append(f"list: exc={exc}")
+
+        # ── Passo 3: criar pasta nova ───────────────────────────────────────
+        try:
+            create_hdrs = {**get_hdrs, "Content-Type": "application/json"}
+            r = requests.post(
+                f"{base_user}/mailFolders",
+                headers=create_hdrs,
+                json={"displayName": folder_name},
+                timeout=15,
+            )
             if r.ok:
                 fid = r.json()["id"]
                 _cache[folder_name] = fid
                 return fid
+            steps.append(f"create: {_describe(r)}")
+        except Exception as exc:
+            steps.append(f"create: exc={exc}")
 
-        # Busca entre as pastas existentes (case-insensitive)
-        r = requests.get(
-            f"{base_user}/mailFolders?$top=100&$select=id,displayName",
-            headers=get_hdrs, timeout=15,
-        )
-        if r.ok:
-            for f in r.json().get("value", []):
-                if (f.get("displayName") or "").lower() == folder_name.lower():
-                    _cache[folder_name] = f["id"]
-                    return f["id"]
+        # ── Passo 4: fallback para Inbox ────────────────────────────────────
+        try:
+            r = requests.get(f"{base_user}/mailFolders/inbox", headers=get_hdrs, timeout=15)
+            if r.ok:
+                inbox_id = r.json()["id"]
+                _cache[folder_name] = inbox_id
+                self.add_log(
+                    f"Pasta '{folder_name}' não resolvida — usando Inbox como fallback. "
+                    f"Detalhes: {' | '.join(steps)}",
+                    "warning",
+                )
+                return inbox_id
+            steps.append(f"inbox: {_describe(r)}")
+        except Exception as exc:
+            steps.append(f"inbox: exc={exc}")
 
-        # Cria nova pasta
-        create_hdrs = {**get_hdrs, "Content-Type": "application/json"}
-        r = requests.post(
-            f"{base_user}/mailFolders",
-            headers=create_hdrs,
-            json={"displayName": folder_name},
-            timeout=15,
+        # Nada funcionou — logar tudo no detalhe
+        diag = " | ".join(steps) if steps else "(sem detalhes)"
+        self.add_log(
+            f"Falha total em _get_or_create_folder('{folder_name}') para {dest_user}: {diag}",
+            "error",
         )
-        if r.ok:
-            fid = r.json()["id"]
-            _cache[folder_name] = fid
-            return fid
-
-        # Fallback: resolver ID real da Inbox
-        logger.warning(
-            f"Não foi possível resolver/criar pasta '{folder_name}': "
-            f"HTTP {r.status_code} {r.text[:200]} — usando Inbox."
+        raise Exception(
+            f"Falha ao resolver pasta '{folder_name}' no destino ({dest_user}): {diag}"
         )
-        r = requests.get(f"{base_user}/mailFolders/inbox", headers=get_hdrs, timeout=15)
-        if r.ok:
-            inbox_id = r.json()["id"]
-            _cache[folder_name] = inbox_id
-            return inbox_id
-        raise Exception(f"Falha ao resolver pasta '{folder_name}' e também falha ao obter Inbox")
 
     # ── Teste de conexão ──────────────────────────────────────────────────────
 
