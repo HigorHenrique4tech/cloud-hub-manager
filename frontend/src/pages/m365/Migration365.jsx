@@ -1016,16 +1016,26 @@ const ProjectDetail = ({ projectId, onBack }) => {
             {exportMenuOpen && (
               <div className="absolute right-0 top-8 z-20 w-36 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1">
                 {[{ fmt: 'csv', label: 'CSV' }, { fmt: 'pdf', label: 'PDF' }].map(({ fmt, label }) => (
-                  <a
+                  <button
                     key={fmt}
-                    href={migrationApi.exportReport(projectId, fmt)}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={() => setExportMenuOpen(false)}
-                    className="flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    onClick={async () => {
+                      setExportMenuOpen(false);
+                      try {
+                        const resp = await api.get(migrationApi.exportReport(projectId, fmt), { responseType: 'blob' });
+                        const url = URL.createObjectURL(resp.data);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = `migracao_${projectId.slice(0,8)}.${fmt}`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch {
+                        alert(`Erro ao exportar ${label.toUpperCase()}`);
+                      }
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
                     <FileText className="w-3.5 h-3.5 text-gray-400" /> {label}
-                  </a>
+                  </button>
                 ))}
               </div>
             )}
@@ -1174,16 +1184,23 @@ const ProjectDetail = ({ projectId, onBack }) => {
                         </td>
                         <td className="px-4 py-3 text-right relative">
                           <button
-                            onClick={() => setMbMenuOpen(mbMenuOpen === mb.id ? null : mb.id)}
+                            onClick={e => { e.stopPropagation(); setMbMenuOpen(mbMenuOpen === mb.id ? null : mb.id); }}
                             className="p-1.5 rounded hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
                           >
                             <MoreVertical className="w-3.5 h-3.5" />
                           </button>
                           {mbMenuOpen === mb.id && (
                             <div
-                              className="absolute right-4 top-8 z-20 w-40 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1"
+                              className="absolute right-4 top-8 z-20 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1"
                               onClick={e => e.stopPropagation()}
                             >
+                              {/* Ver ledger — abre aba de logs filtrada */}
+                              <button
+                                onClick={() => { setTab('logs'); setMbMenuOpen(null); }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                              >
+                                <FileText className="w-3.5 h-3.5" /> Ver logs
+                              </button>
                               {mb.status === 'running' && (
                                 <button
                                   onClick={() => pauseMbMut.mutate(mb.id)}

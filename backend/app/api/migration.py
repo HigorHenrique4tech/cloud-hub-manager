@@ -278,6 +278,96 @@ async def set_project_status(
     return project
 
 
+@ws_router.get("/projects/{project_id}/report")
+async def export_report(
+    project_id: str,
+    format: str = "csv",
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Exporta relatório da migração em CSV ou PDF."""
+    import io, csv
+    from fastapi.responses import StreamingResponse
+
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    mailboxes = svc.list_mailboxes(db, str(member.workspace_id), project_id)
+
+    if format == "csv":
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Origem", "Destino", "Status", "Fase", "Migradas", "Total", "Verificado", "Erro"])
+        for mb in mailboxes:
+            writer.writerow([
+                mb.get("source_email", ""),
+                mb.get("destination_email", ""),
+                mb.get("status", ""),
+                mb.get("phase", ""),
+                mb.get("items_migrated", 0),
+                mb.get("items_total", 0),
+                "Sim" if mb.get("verified_at") else "Não",
+                mb.get("error_message", ""),
+            ])
+        output.seek(0)
+        filename = f"migracao_{project_id[:8]}.csv"
+        return StreamingResponse(
+            iter([output.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    elif format == "pdf":
+        # PDF simples com reportlab se disponível, senão HTML convertido
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+            from reportlab.lib.styles import getSampleStyleSheet
+            from reportlab.lib import colors
+
+            buffer = io.BytesIO()
+            doc = SimpleDocTemplate(buffer, pagesize=A4)
+            styles = getSampleStyleSheet()
+            elements = []
+
+            elements.append(Paragraph(f"Relatório de Migração: {project.get('name','')}", styles['Title']))
+            elements.append(Spacer(1, 12))
+            elements.append(Paragraph(f"Status: {project.get('status','')} | Total: {project.get('mailbox_count',0)} caixas", styles['Normal']))
+            elements.append(Spacer(1, 20))
+
+            data = [["Origem", "Destino", "Status", "Migradas/Total", "Verificado"]]
+            for mb in mailboxes:
+                data.append([
+                    mb.get("source_email", ""),
+                    mb.get("destination_email", ""),
+                    mb.get("status", ""),
+                    f"{mb.get('items_migrated',0)}/{mb.get('items_total',0)}",
+                    "Sim" if mb.get("verified_at") else "Não",
+                ])
+
+            table = Table(data, colWidths=[130, 130, 70, 90, 60])
+            table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e6fd9')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
+            ]))
+            elements.append(table)
+            doc.build(elements)
+            buffer.seek(0)
+            filename = f"migracao_{project_id[:8]}.pdf"
+            return StreamingResponse(
+                buffer,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f"attachment; filename={filename}"},
+            )
+        except ImportError:
+            raise HTTPException(status_code=501, detail="Exportação PDF requer reportlab. Use CSV.")
+    else:
+        raise HTTPException(status_code=400, detail="Formato inválido. Use 'csv' ou 'pdf'.")
+
+
 @ws_router.get("/projects/{project_id}/stats")
 async def get_project_stats(
     project_id: str,

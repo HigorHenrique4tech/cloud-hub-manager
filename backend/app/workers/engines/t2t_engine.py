@@ -70,15 +70,118 @@ class TenantToTenantEngine(MigrationEngine):
             return r.content
         return self.retry_on_throttle(do)
 
-    def _import_message(self, dest_user: str, raw_bytes: bytes, headers: dict) -> str:
-        url = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}/messages/$value"
-        def do():
-            r = requests.post(url, headers=headers, data=raw_bytes, timeout=60)
+    def _import_message(self, dest_user: str, raw_bytes: bytes,
+                        headers: dict, dest_folder_id: str = None) -> str:
+        """
+        Importa mensagem MIME na pasta correta do destino via dois passos:
+        1. POST /mailFolders/{id}/messages (JSON vazio) → obtém message ID
+        2. PUT  /messages/{id}/$value (MIME raw) → substitui conteúdo
+
+        Este é o único fluxo suportado pelo Graph API para importação de MIME
+        sem perder metadados (remetente, data, pasta).
+        """
+        folder = dest_folder_id or "inbox"
+        base_user = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}"
+        auth_hdr = headers["Authorization"]
+        json_hdrs = {
+            "Authorization": auth_hdr,
+            "Content-Type": "application/json",
+            "X-AnchorMailbox": dest_user,
+        }
+        mime_hdrs = {
+            "Authorization": auth_hdr,
+            "Content-Type": "message/rfc822",
+            "X-AnchorMailbox": dest_user,
+        }
+
+        # Passo 1: criar rascunho vazio na pasta correta
+        def create_draft():
+            r = requests.post(
+                f"{base_user}/mailFolders/{quote(folder, safe='')}/messages",
+                headers=json_hdrs,
+                json={},
+                timeout=30,
+            )
             if r.status_code == 429:
                 raise Exception("429 throttle")
-            r.raise_for_status()
-            return r.json().get("id", "")
-        return self.retry_on_throttle(do)
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(f"HTTP {r.status_code} [{err.get('code','')}]: {err.get('message','')[:200]}")
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {r.status_code}: {r.text[:200]}")
+            return r.json()["id"]
+
+        msg_id = self.retry_on_throttle(create_draft)
+
+        # Passo 2: fazer upload do MIME completo
+        def upload_mime():
+            r = requests.put(
+                f"{base_user}/messages/{quote(msg_id, safe='')}/\$value",
+                headers=mime_hdrs,
+                data=raw_bytes,
+                timeout=60,
+            )
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(f"HTTP {r.status_code} [{err.get('code','')}]: {err.get('message','')[:200]}")
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {r.status_code}: {r.text[:200]}")
+
+        self.retry_on_throttle(upload_mime)
+        return msg_id
+
+    def _get_or_create_folder(self, dest_user: str, folder_name: str,
+                               headers: dict, _cache: dict) -> str:
+        """Retorna o ID da pasta no destino, criando se não existir. Cache em memória."""
+        if folder_name in _cache:
+            return _cache[folder_name]
+
+        # Mapeia nomes de pastas especiais para well-known names
+        WELL_KNOWN = {
+            "Inbox": "inbox", "Caixa de Entrada": "inbox",
+            "Sent Items": "sentitems", "Itens Enviados": "sentitems",
+            "Deleted Items": "deleteditems", "Itens Excluídos": "deleteditems",
+            "Drafts": "drafts", "Rascunhos": "drafts",
+            "Junk Email": "junkemail", "Lixo Eletrônico": "junkemail",
+            "Archive": "archive", "Arquivo Morto": "archive",
+        }
+
+        wk = WELL_KNOWN.get(folder_name)
+        if wk:
+            url = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}/mailFolders/{wk}"
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.ok:
+                folder_id = r.json()["id"]
+                _cache[folder_name] = folder_id
+                return folder_id
+
+        # Buscar entre as pastas existentes
+        url = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}/mailFolders?$top=100"
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.ok:
+            for f in r.json().get("value", []):
+                if f["displayName"].lower() == folder_name.lower():
+                    _cache[folder_name] = f["id"]
+                    return f["id"]
+
+        # Criar pasta nova
+        r = requests.post(
+            f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}/mailFolders",
+            headers={**headers, "Content-Type": "application/json"},
+            json={"displayName": folder_name},
+            timeout=15,
+        )
+        if r.ok:
+            folder_id = r.json()["id"]
+            _cache[folder_name] = folder_id
+            return folder_id
+
+        logger.warning(f"Não foi possível criar pasta '{folder_name}', usando Inbox.")
+        return "inbox"
 
     def _list_folders(self, user_id: str, headers: dict) -> list[dict]:
         """Lista pastas de email do usuário via Graph."""
@@ -137,6 +240,7 @@ class TenantToTenantEngine(MigrationEngine):
         dst_hdrs = self._dst_headers()
         total_migrated = self.mailbox.items_migrated or 0
         folders = self._list_folders(src_user, src_hdrs)
+        _folder_cache = {}  # cache folder_name → dest folder_id
 
         for folder in folders:
             folder_id   = folder["id"]
@@ -193,7 +297,10 @@ class TenantToTenantEngine(MigrationEngine):
                         msg_id_header = (parsed.get("Message-ID") or msg_int_id or "").strip()
                         content_hash = hashlib.sha256(raw_bytes[:4096]).hexdigest()
 
-                        dest_id = self._import_message(dest_user, raw_bytes, dst_hdrs)
+                        dest_folder_id = self._get_or_create_folder(
+                            dest_user, folder_name, dst_hdrs, _folder_cache
+                        )
+                        dest_id = self._import_message(dest_user, raw_bytes, dst_hdrs, dest_folder_id)
                         self.record_copied(
                             folder=folder_name,
                             uid=msg_id,
@@ -219,6 +326,8 @@ class TenantToTenantEngine(MigrationEngine):
 
             self.save_checkpoint(folder_name, last_uid, batch_count, completed=True)
             self.add_log(f"Pasta '{folder_name}' concluída: {batch_count} msgs processadas.")
+            # Atualiza progresso ao fim de cada pasta (mesmo que < BATCH_SIZE)
+            on_progress(total_migrated, self.mailbox.items_total or 0, 0)
 
     # ── Fase 3: Delta sync ────────────────────────────────────────────────────
 
