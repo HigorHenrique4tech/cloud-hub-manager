@@ -1,8 +1,13 @@
-"""Tenant-to-Tenant engine — M365 Graph API → M365 Graph API."""
+"""Tenant-to-Tenant engine — M365 Graph API → M365 Graph API.
+
+Import via MIME bruto (base64 + text/plain) com preservação total:
+sender, datas, Message-ID, anexos e headers. PATCH posterior com
+PidTagMessageFlags limpa o bit de rascunho (mfUnsent).
+"""
+import base64
 import email as email_lib
 import hashlib
 import logging
-import time
 from urllib.parse import quote
 
 import requests
@@ -12,14 +17,42 @@ from .base import MigrationEngine, ProgressCallback, BATCH_SIZE
 logger = logging.getLogger(__name__)
 GRAPH_V1 = "https://graph.microsoft.com/v1.0"
 
+# Pastas de sistema que não devem ser migradas.
+# Fonte primária: wellKnownName (independente de idioma).
+SYSTEM_FOLDER_WKN = {
+    "deleteditems",
+    "drafts",
+    "junkemail",
+    "outbox",
+    "recoverableitemsdeletions",
+    "recoverableitemspurges",
+    "recoverableitemsversions",
+    "recoverableitemsroot",
+    "syncissues",
+    "conversationhistory",
+    "conflicts",
+    "localfailures",
+    "serverfailures",
+}
+# Fallback por displayName (caso wellKnownName não venha preenchido).
+SYSTEM_FOLDER_NAMES = {
+    "deleted items", "drafts", "junk email", "outbox",
+    "recoverable items", "sync issues", "conversation history",
+    "conflicts", "local failures", "server failures",
+    "itens excluídos", "rascunhos", "lixo eletrônico", "caixa de saída",
+    "itens recuperáveis", "problemas de sincronização",
+    "histórico de conversas",
+}
+
 
 class TenantToTenantEngine(MigrationEngine):
     """
-    Fonte: tenant M365 de origem (app registration com Mail.Read + MailboxSettings.Read).
+    Fonte: tenant M365 de origem (app registration com Mail.Read).
     Destino: tenant M365 de destino (app registration com Mail.ReadWrite).
-
     Usa Graph API em ambos os lados.
     """
+
+    # ── Auth / headers ────────────────────────────────────────────────────────
 
     def _get_token(self, tenant_id: str, client_id: str, client_secret: str) -> str:
         url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
@@ -41,7 +74,6 @@ class TenantToTenantEngine(MigrationEngine):
         src_user = self.source_cfg.get("src_user_id") or (self.mailbox.source_email if self.mailbox else "")
         return {
             "Authorization": f"Bearer {token}",
-            # Required for app-only access to Exchange Online mailboxes
             "X-AnchorMailbox": src_user,
         }
 
@@ -54,223 +86,226 @@ class TenantToTenantEngine(MigrationEngine):
         dest_user = self.dest_cfg.get("dest_user_id") or (self.mailbox.destination_email if self.mailbox else "")
         return {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "message/rfc822",
-            # Required for app-only access to Exchange Online mailboxes
             "X-AnchorMailbox": dest_user,
         }
 
+    @staticmethod
+    def _enc_user(user_id: str) -> str:
+        """URL-encode de UPN para segmento de path."""
+        return quote(user_id or "", safe="@.")
+
+    # ── Download MIME (fonte) ─────────────────────────────────────────────────
+
     def _get_mime(self, user_id: str, msg_id: str, headers: dict) -> bytes:
         """Baixa mensagem em formato MIME bruto."""
-        url = f"{GRAPH_V1}/users/{user_id}/messages/{quote(msg_id, safe='')}/$value"
+        url = (
+            f"{GRAPH_V1}/users/{self._enc_user(user_id)}"
+            f"/messages/{quote(msg_id, safe='')}/$value"
+        )
+
         def do():
-            r = requests.get(url, headers=headers, timeout=60)
+            r = requests.get(url, headers=headers, timeout=120)
             if r.status_code == 429:
                 raise Exception("429 throttle")
             r.raise_for_status()
             return r.content
+
         return self.retry_on_throttle(do)
 
-    def _mime_to_graph_json(self, raw_bytes: bytes) -> dict:
+    # ── Import MIME (destino) ─────────────────────────────────────────────────
+
+    def _import_message(
+        self,
+        dest_user: str,
+        raw_mime_bytes: bytes,
+        dst_hdrs: dict,
+        dest_folder_id: str,
+    ) -> str:
         """
-        Converte MIME bruto para o formato JSON aceito pelo Graph API.
-        Content-Type: message/rfc822 não funciona no Graph API v1.0 —
-        usamos a API JSON que é o único método confiável.
+        Importa mensagem com fidelidade total.
+
+        Passo 1: POST base64(MIME) com Content-Type: text/plain.
+                 A Graph cria a mensagem preservando sender original,
+                 datas (receivedDateTime / sentDateTime), internetMessageId
+                 e anexos — mas entra como rascunho.
+
+        Passo 2: PATCH com singleValueExtendedProperties PR_MESSAGE_FLAGS=1
+                 (mfRead only, sem mfUnsent) → limpa flag de rascunho e
+                 marca como lida.
+
+        Retorna o ID da mensagem criada no destino.
         """
-        import email as _em
-        from email.header import decode_header as _dh
-        from email.utils import parseaddr as _pa
+        base_user = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}"
 
-        def _decode_str(s):
-            if not s:
-                return ""
-            parts = _dh(s)
-            result = []
-            for part, enc in parts:
-                if isinstance(part, bytes):
-                    result.append(part.decode(enc or "utf-8", errors="replace"))
-                else:
-                    result.append(str(part))
-            return " ".join(result)
-
-        def _addr(s):
-            name, addr = _pa(s or "")
-            if addr:
-                return {"emailAddress": {"name": _decode_str(name) or addr, "address": addr}}
-            return None
-
-        def _addrs(s):
-            if not s:
-                return []
-            result = []
-            for part in s.split(","):
-                a = _addr(part.strip())
-                if a:
-                    result.append(a)
-            return result
-
-        msg = _em.message_from_bytes(raw_bytes)
-
-        # Extrair corpo — preferir HTML, depois texto
-        body_content = ""
-        body_type = "text"
-        if msg.is_multipart():
-            for part in msg.walk():
-                ct = part.get_content_type()
-                if ct == "text/html" and not body_content:
-                    payload = part.get_payload(decode=True)
-                    if payload:
-                        body_content = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-                        body_type = "html"
-                elif ct == "text/plain" and not body_content:
-                    payload = part.get_payload(decode=True)
-                    if payload:
-                        body_content = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
-                        body_type = "text"
-        else:
-            payload = msg.get_payload(decode=True)
-            if payload:
-                body_content = payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
-                body_type = "html" if "text/html" in (msg.get_content_type() or "") else "text"
-
-        graph_msg = {
-            "subject": _decode_str(msg.get("Subject", "(sem assunto)")),
-            "body": {"contentType": body_type, "content": body_content or ""},
-            "isRead": True,
-            "isDraft": False,
-        }
-
-        from_addr = _addr(msg.get("From", ""))
-        if from_addr:
-            graph_msg["from"] = from_addr
-
-        to_addrs = _addrs(msg.get("To", ""))
-        if to_addrs:
-            graph_msg["toRecipients"] = to_addrs
-
-        cc_addrs = _addrs(msg.get("Cc", ""))
-        if cc_addrs:
-            graph_msg["ccRecipients"] = cc_addrs
-
-        # Data da mensagem original
-        date_str = msg.get("Date", "")
-        if date_str:
-            try:
-                from email.utils import parsedate_to_datetime as _ptd
-                dt = _ptd(date_str)
-                graph_msg["receivedDateTime"] = dt.isoformat()
-                graph_msg["sentDateTime"] = dt.isoformat()
-            except Exception:
-                pass
-
-        # Message-ID original para dedup
-        mid = msg.get("Message-ID", "").strip()
-        if mid:
-            graph_msg["internetMessageId"] = mid
-
-        return graph_msg
-
-    def _import_message(self, dest_user: str, raw_bytes: bytes,
-                        headers: dict, dest_folder_id: str = None) -> str:
-        """
-        Importa mensagem na pasta correta do destino via Graph API JSON.
-        Content-Type: message/rfc822 não funciona no Graph API v1.0.
-        """
-        folder = dest_folder_id or "inbox"
-        base_user = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}"
-
-        graph_msg = self._mime_to_graph_json(raw_bytes)
-
-        import_hdrs = {
-            "Authorization": headers["Authorization"],
-            "Content-Type": "application/json",
+        # ── Passo 1: upload do MIME em base64 ────────────────────────────────
+        b64_mime = base64.b64encode(raw_mime_bytes).decode("ascii")
+        post_hdrs = {
+            "Authorization": dst_hdrs["Authorization"],
+            "Content-Type": "text/plain",
             "X-AnchorMailbox": dest_user,
         }
+        post_url = (
+            f"{base_user}/mailFolders/{quote(dest_folder_id, safe='')}/messages"
+        )
 
-        def do():
-            r = requests.post(
-                f"{base_user}/mailFolders/{quote(folder, safe='')}/messages",
-                headers=import_hdrs,
-                json=graph_msg,
-                timeout=60,
-            )
+        def post_mime():
+            r = requests.post(post_url, headers=post_hdrs, data=b64_mime, timeout=180)
             if r.status_code == 429:
                 raise Exception("429 throttle")
             if not r.ok:
                 try:
                     err = r.json().get("error", {})
-                    raise Exception(f"HTTP {r.status_code} [{err.get('code','')}]: {err.get('message','')[:200]}")
+                    raise Exception(
+                        f"HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
                 except (ValueError, KeyError):
-                    raise Exception(f"HTTP {r.status_code}: {r.text[:200]}")
-            return r.json().get("id", "")
+                    raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+            return r.json()
 
-        msg_id = self.retry_on_throttle(do)
-        logger.debug(
-            f"Importado: subj='{graph_msg.get('subject')}' "
-            f"from='{graph_msg.get('from',{}).get('emailAddress',{}).get('address','')}' "
-            f"folder={folder} → id={msg_id}"
-        )
-        return msg_id
+        created = self.retry_on_throttle(post_mime)
+        new_id = created.get("id", "")
+        if not new_id:
+            raise Exception("Graph não retornou ID da mensagem importada")
 
-    def _get_or_create_folder(self, dest_user: str, folder_name: str,
-                               headers: dict, _cache: dict) -> str:
-        """Retorna o ID da pasta no destino, criando se não existir. Cache em memória."""
-        if folder_name in _cache:
-            return _cache[folder_name]
-
-        # Mapeia nomes de pastas especiais para well-known names
-        WELL_KNOWN = {
-            "Inbox": "inbox", "Caixa de Entrada": "inbox",
-            "Sent Items": "sentitems", "Itens Enviados": "sentitems",
-            "Deleted Items": "deleteditems", "Itens Excluídos": "deleteditems",
-            "Drafts": "drafts", "Rascunhos": "drafts",
-            "Junk Email": "junkemail", "Lixo Eletrônico": "junkemail",
-            "Archive": "archive", "Arquivo Morto": "archive",
+        # ── Passo 2: limpar flag de rascunho via extended property ──────────
+        # PR_MESSAGE_FLAGS = 0x0E07 (PT_LONG)
+        #   0x01 mfRead    — lida
+        #   0x08 mfUnsent  — rascunho (é este que queremos APAGAR)
+        #   0x20 mfFromMe  — enviada pelo dono da caixa
+        # Valor "1" = mfRead apenas → mensagem lida, não rascunho, recebida.
+        patch_hdrs = {
+            "Authorization": dst_hdrs["Authorization"],
+            "Content-Type": "application/json",
+            "X-AnchorMailbox": dest_user,
         }
+        patch_body = {
+            "singleValueExtendedProperties": [
+                {"id": "Integer 0x0E07", "value": "1"}
+            ]
+        }
+        patch_url = f"{base_user}/messages/{quote(new_id, safe='')}"
 
-        wk = WELL_KNOWN.get(folder_name)
-        if wk:
-            url = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}/mailFolders/{wk}"
-            r = requests.get(url, headers=headers, timeout=15)
-            if r.ok:
-                folder_id = r.json()["id"]
-                _cache[folder_name] = folder_id
-                return folder_id
+        def patch_flags():
+            r = requests.patch(patch_url, headers=patch_hdrs, json=patch_body, timeout=30)
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                # Não fatal — logamos e seguimos. Pior caso: mensagem fica como rascunho
+                # no destino mas o conteúdo/anexos estão lá.
+                logger.warning(
+                    f"PATCH flags falhou para msg {new_id}: "
+                    f"HTTP {r.status_code} {r.text[:200]}"
+                )
+                return False
+            return True
 
-        # Buscar entre as pastas existentes
-        url = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}/mailFolders?$top=100"
-        r = requests.get(url, headers=headers, timeout=15)
-        if r.ok:
-            for f in r.json().get("value", []):
-                if f["displayName"].lower() == folder_name.lower():
-                    _cache[folder_name] = f["id"]
-                    return f["id"]
+        try:
+            self.retry_on_throttle(patch_flags)
+        except Exception as exc:
+            logger.warning(f"PATCH flags erro para msg {new_id}: {exc}")
 
-        # Criar pasta nova
-        r = requests.post(
-            f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}/mailFolders",
-            headers={**headers, "Content-Type": "application/json"},
-            json={"displayName": folder_name},
-            timeout=15,
+        logger.debug(
+            f"Importado via MIME base64: id={new_id} "
+            f"folder={dest_folder_id[:20]}... bytes={len(raw_mime_bytes)}"
         )
-        if r.ok:
-            folder_id = r.json()["id"]
-            _cache[folder_name] = folder_id
-            return folder_id
+        return new_id
 
-        logger.warning(f"Não foi possível criar pasta '{folder_name}', usando Inbox.")
-        return "inbox"
+    # ── Descoberta de pastas ──────────────────────────────────────────────────
+
+    def _is_system_folder(self, folder: dict) -> bool:
+        wkn = (folder.get("wellKnownName") or "").lower()
+        if wkn in SYSTEM_FOLDER_WKN:
+            return True
+        name = (folder.get("displayName") or "").strip().lower()
+        if name in SYSTEM_FOLDER_NAMES:
+            return True
+        return False
 
     def _list_folders(self, user_id: str, headers: dict) -> list[dict]:
-        """Lista pastas de email do usuário via Graph."""
-        url = f"{GRAPH_V1}/users/{user_id}/mailFolders?$top=50"
-        folders = []
+        """Lista pastas de email do usuário, excluindo pastas de sistema."""
+        url = (
+            f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders"
+            f"?$top=100&$select=id,displayName,wellKnownName,totalItemCount,parentFolderId"
+        )
+        folders: list[dict] = []
         while url:
             resp = requests.get(url, headers=headers, timeout=30)
             resp.raise_for_status()
             data = resp.json()
-            folders.extend(data.get("value", []))
+            for f in data.get("value", []):
+                if self._is_system_folder(f):
+                    continue
+                folders.append(f)
             url = data.get("@odata.nextLink")
         return folders
+
+    def _get_or_create_folder(
+        self,
+        dest_user: str,
+        folder_name: str,
+        dst_hdrs: dict,
+        _cache: dict,
+    ) -> str:
+        """Retorna o ID da pasta no destino, criando se não existir. Cache em memória."""
+        if folder_name in _cache:
+            return _cache[folder_name]
+
+        base_user = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}"
+        get_hdrs = {
+            "Authorization": dst_hdrs["Authorization"],
+            "X-AnchorMailbox": dest_user,
+        }
+
+        # Mapeia nomes especiais para well-known names
+        WELL_KNOWN = {
+            "inbox": "inbox", "caixa de entrada": "inbox",
+            "sent items": "sentitems", "itens enviados": "sentitems",
+            "archive": "archive", "arquivo morto": "archive",
+        }
+        wk = WELL_KNOWN.get(folder_name.lower())
+        if wk:
+            r = requests.get(f"{base_user}/mailFolders/{wk}", headers=get_hdrs, timeout=15)
+            if r.ok:
+                fid = r.json()["id"]
+                _cache[folder_name] = fid
+                return fid
+
+        # Busca entre as pastas existentes (case-insensitive)
+        r = requests.get(
+            f"{base_user}/mailFolders?$top=100&$select=id,displayName",
+            headers=get_hdrs, timeout=15,
+        )
+        if r.ok:
+            for f in r.json().get("value", []):
+                if (f.get("displayName") or "").lower() == folder_name.lower():
+                    _cache[folder_name] = f["id"]
+                    return f["id"]
+
+        # Cria nova pasta
+        create_hdrs = {**get_hdrs, "Content-Type": "application/json"}
+        r = requests.post(
+            f"{base_user}/mailFolders",
+            headers=create_hdrs,
+            json={"displayName": folder_name},
+            timeout=15,
+        )
+        if r.ok:
+            fid = r.json()["id"]
+            _cache[folder_name] = fid
+            return fid
+
+        # Fallback: resolver ID real da Inbox
+        logger.warning(
+            f"Não foi possível resolver/criar pasta '{folder_name}': "
+            f"HTTP {r.status_code} {r.text[:200]} — usando Inbox."
+        )
+        r = requests.get(f"{base_user}/mailFolders/inbox", headers=get_hdrs, timeout=15)
+        if r.ok:
+            inbox_id = r.json()["id"]
+            _cache[folder_name] = inbox_id
+            return inbox_id
+        raise Exception(f"Falha ao resolver pasta '{folder_name}' e também falha ao obter Inbox")
 
     # ── Teste de conexão ──────────────────────────────────────────────────────
 
@@ -311,17 +346,20 @@ class TenantToTenantEngine(MigrationEngine):
     # ── Fase 2: Migração ──────────────────────────────────────────────────────
 
     def migrate_mailbox(self, on_progress: ProgressCallback) -> None:
-        src_user  = self.source_cfg.get("src_user_id") or self.mailbox.source_email
+        src_user = self.source_cfg.get("src_user_id") or self.mailbox.source_email
         dest_user = self.dest_cfg.get("dest_user_id") or self.mailbox.destination_email
         src_hdrs = self._src_headers()
         dst_hdrs = self._dst_headers()
         total_migrated = self.mailbox.items_migrated or 0
         folders = self._list_folders(src_user, src_hdrs)
-        _folder_cache = {}  # cache folder_name → dest folder_id
+        _folder_cache: dict = {}  # folder_name → dest folder_id
+
+        src_enc = self._enc_user(src_user)
 
         for folder in folders:
-            folder_id   = folder["id"]
+            folder_id = folder["id"]
             folder_name = folder["displayName"]
+
             chk = self.get_checkpoint(folder_name)
             if chk and chk.completed and chk.phase == "initial":
                 continue
@@ -330,16 +368,16 @@ class TenantToTenantEngine(MigrationEngine):
             batch_count = 0
             last_uid = skip_token or ""
 
-            # Lista mensagens com paginação
-            # folder_id pode conter caracteres especiais (base64) — URL-encode obrigatório
             # 'size' não existe em Microsoft.OutlookServices.Message (Exchange Online)
-            url = (f"{GRAPH_V1}/users/{src_user}/mailFolders/{quote(folder_id, safe='')}/messages"
-                   f"?$top=50&$select=id,internetMessageId")
+            url = (
+                f"{GRAPH_V1}/users/{src_enc}/mailFolders/{quote(folder_id, safe='')}/messages"
+                f"?$top=50&$select=id,internetMessageId"
+            )
             if skip_token and skip_token.startswith("http"):
                 url = skip_token  # retomada: last_uid guarda o nextLink
 
             while url:
-                _url = url  # capture for closure
+                _url = url  # captura para closure
 
                 def fetch_page():
                     r = requests.get(_url, headers=src_hdrs, timeout=30)
@@ -360,8 +398,8 @@ class TenantToTenantEngine(MigrationEngine):
                 messages = page.get("value", [])
 
                 for msg in messages:
-                    msg_id      = msg["id"]
-                    msg_int_id  = msg.get("internetMessageId", "").strip()
+                    msg_id = msg["id"]
+                    msg_int_id = (msg.get("internetMessageId") or "").strip()
 
                     if self.is_already_migrated(folder_name, msg_id, msg_int_id or None):
                         batch_count += 1
@@ -377,7 +415,9 @@ class TenantToTenantEngine(MigrationEngine):
                         dest_folder_id = self._get_or_create_folder(
                             dest_user, folder_name, dst_hdrs, _folder_cache
                         )
-                        dest_id = self._import_message(dest_user, raw_bytes, dst_hdrs, dest_folder_id)
+                        dest_id = self._import_message(
+                            dest_user, raw_bytes, dst_hdrs, dest_folder_id
+                        )
                         self.record_copied(
                             folder=folder_name,
                             uid=msg_id,
@@ -389,7 +429,10 @@ class TenantToTenantEngine(MigrationEngine):
                         total_migrated += 1
                     except Exception as e:
                         self.record_failed(folder_name, msg_id, str(e))
-                        self.add_log(f"Falha msg {msg_id} em '{folder_name}': {e}", "warning")
+                        self.add_log(
+                            f"Falha msg {msg_id} em '{folder_name}': {e}",
+                            "warning",
+                        )
 
                     batch_count += 1
                     last_uid = msg_id
@@ -403,64 +446,85 @@ class TenantToTenantEngine(MigrationEngine):
 
             self.save_checkpoint(folder_name, last_uid, batch_count, completed=True)
             self.add_log(f"Pasta '{folder_name}' concluída: {batch_count} msgs processadas.")
-            # Atualiza progresso ao fim de cada pasta (mesmo que < BATCH_SIZE)
             on_progress(total_migrated, self.mailbox.items_total or 0, 0)
 
     # ── Fase 3: Delta sync ────────────────────────────────────────────────────
 
     def delta_sync(self, on_progress: ProgressCallback) -> None:
-        """Usa delta query do Graph para pegar mensagens novas desde a última sincronização."""
+        """Pega mensagens novas desde o início da migração, por pasta."""
         if not self.mailbox.started_at:
             return
 
-        src_user  = self.source_cfg.get("src_user_id") or self.mailbox.source_email
+        src_user = self.source_cfg.get("src_user_id") or self.mailbox.source_email
         dest_user = self.dest_cfg.get("dest_user_id") or self.mailbox.destination_email
         src_hdrs = self._src_headers()
         dst_hdrs = self._dst_headers()
         total_migrated = self.mailbox.items_migrated or 0
+        _folder_cache: dict = {}
 
         cutoff = self.mailbox.started_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        folders = self._list_folders(src_user, src_hdrs)
+        src_enc = self._enc_user(src_user)
 
-        # Busca mensagens criadas após o início da migração
-        url = (f"{GRAPH_V1}/users/{src_user}/messages"
-               f"?$filter=createdDateTime ge {cutoff}"
-               f"&$select=id,internetMessageId&$top=50")
+        for folder in folders:
+            folder_id = folder["id"]
+            folder_name = folder["displayName"]
 
-        while url:
-            _url = url  # capture for closure
+            url = (
+                f"{GRAPH_V1}/users/{src_enc}/mailFolders/{quote(folder_id, safe='')}/messages"
+                f"?$filter=createdDateTime ge {cutoff}"
+                f"&$select=id,internetMessageId&$top=50"
+            )
 
-            def fetch():
-                r = requests.get(_url, headers=src_hdrs, timeout=30)
-                if r.status_code == 429:
-                    raise Exception("429 throttle")
-                if not r.ok:
+            while url:
+                _url = url
+
+                def fetch():
+                    r = requests.get(_url, headers=src_hdrs, timeout=30)
+                    if r.status_code == 429:
+                        raise Exception("429 throttle")
+                    if not r.ok:
+                        try:
+                            err = r.json().get("error", {})
+                            raise Exception(
+                                f"HTTP {r.status_code} [{err.get('code','')}]: "
+                                f"{err.get('message','')[:300]}"
+                            )
+                        except (ValueError, KeyError):
+                            raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+                    return r.json()
+
+                page = self.retry_on_throttle(fetch)
+
+                for msg in page.get("value", []):
+                    msg_id = msg["id"]
+                    msg_int_id = (msg.get("internetMessageId") or "").strip()
+                    if self.is_already_migrated(folder_name, msg_id, msg_int_id or None):
+                        continue
                     try:
-                        err = r.json().get("error", {})
-                        raise Exception(
-                            f"HTTP {r.status_code} [{err.get('code','')}]: "
-                            f"{err.get('message','')[:300]}"
+                        raw_bytes = self._get_mime(src_user, msg_id, src_hdrs)
+                        parsed = email_lib.message_from_bytes(raw_bytes)
+                        msg_id_header = (parsed.get("Message-ID") or msg_int_id or "").strip()
+                        dest_folder_id = self._get_or_create_folder(
+                            dest_user, folder_name, dst_hdrs, _folder_cache
                         )
-                    except (ValueError, KeyError):
-                        raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
-                return r.json()
+                        dest_id = self._import_message(
+                            dest_user, raw_bytes, dst_hdrs, dest_folder_id
+                        )
+                        self.record_copied(
+                            folder=folder_name,
+                            uid=msg_id,
+                            dest_id=dest_id,
+                            msg_id_header=msg_id_header or None,
+                            size_bytes=len(raw_bytes),
+                        )
+                        total_migrated += 1
+                        on_progress(total_migrated, self.mailbox.items_total or 0, 0)
+                    except Exception as e:
+                        self.record_failed(folder_name, msg_id, str(e))
+                        self.add_log(
+                            f"Delta falha msg {msg_id} em '{folder_name}': {e}",
+                            "warning",
+                        )
 
-            page = self.retry_on_throttle(fetch)
-            for msg in page.get("value", []):
-                msg_id     = msg["id"]
-                msg_int_id = msg.get("internetMessageId", "").strip()
-                if self.is_already_migrated("INBOX", msg_id, msg_int_id or None):
-                    continue
-                try:
-                    raw_bytes = self._get_mime(src_user, msg_id, src_hdrs)
-                    parsed = email_lib.message_from_bytes(raw_bytes)
-                    msg_id_header = (parsed.get("Message-ID") or msg_int_id or "").strip()
-                    dest_id = self._import_message(dest_user, raw_bytes, dst_hdrs)
-                    self.record_copied(folder="INBOX", uid=msg_id, dest_id=dest_id,
-                                       msg_id_header=msg_id_header or None,
-                                       size_bytes=len(raw_bytes))
-                    total_migrated += 1
-                    on_progress(total_migrated, self.mailbox.items_total or 0, 0)
-                except Exception as e:
-                    self.record_failed("INBOX", msg_id, str(e))
-
-            url = page.get("@odata.nextLink")
+                url = page.get("@odata.nextLink")
