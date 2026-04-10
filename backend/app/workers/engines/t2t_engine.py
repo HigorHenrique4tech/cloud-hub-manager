@@ -70,34 +70,118 @@ class TenantToTenantEngine(MigrationEngine):
             return r.content
         return self.retry_on_throttle(do)
 
+    def _mime_to_graph_json(self, raw_bytes: bytes) -> dict:
+        """
+        Converte MIME bruto para o formato JSON aceito pelo Graph API.
+        Content-Type: message/rfc822 não funciona no Graph API v1.0 —
+        usamos a API JSON que é o único método confiável.
+        """
+        import email as _em
+        from email.header import decode_header as _dh
+        from email.utils import parseaddr as _pa
+
+        def _decode_str(s):
+            if not s:
+                return ""
+            parts = _dh(s)
+            result = []
+            for part, enc in parts:
+                if isinstance(part, bytes):
+                    result.append(part.decode(enc or "utf-8", errors="replace"))
+                else:
+                    result.append(str(part))
+            return " ".join(result)
+
+        def _addr(s):
+            name, addr = _pa(s or "")
+            if addr:
+                return {"emailAddress": {"name": _decode_str(name) or addr, "address": addr}}
+            return None
+
+        def _addrs(s):
+            if not s:
+                return []
+            result = []
+            for part in s.split(","):
+                a = _addr(part.strip())
+                if a:
+                    result.append(a)
+            return result
+
+        msg = _em.message_from_bytes(raw_bytes)
+
+        # Extrair corpo — preferir HTML, depois texto
+        body_content = ""
+        body_type = "text"
+        if msg.is_multipart():
+            for part in msg.walk():
+                ct = part.get_content_type()
+                if ct == "text/html" and not body_content:
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        body_content = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                        body_type = "html"
+                elif ct == "text/plain" and not body_content:
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        body_content = payload.decode(part.get_content_charset() or "utf-8", errors="replace")
+                        body_type = "text"
+        else:
+            payload = msg.get_payload(decode=True)
+            if payload:
+                body_content = payload.decode(msg.get_content_charset() or "utf-8", errors="replace")
+                body_type = "html" if "text/html" in (msg.get_content_type() or "") else "text"
+
+        graph_msg = {
+            "subject": _decode_str(msg.get("Subject", "(sem assunto)")),
+            "body": {"contentType": body_type, "content": body_content or ""},
+            "isRead": True,
+        }
+
+        from_addr = _addr(msg.get("From", ""))
+        if from_addr:
+            graph_msg["from"] = from_addr
+
+        to_addrs = _addrs(msg.get("To", ""))
+        if to_addrs:
+            graph_msg["toRecipients"] = to_addrs
+
+        cc_addrs = _addrs(msg.get("Cc", ""))
+        if cc_addrs:
+            graph_msg["ccRecipients"] = cc_addrs
+
+        # Data da mensagem original
+        date_str = msg.get("Date", "")
+        if date_str:
+            try:
+                from email.utils import parsedate_to_datetime as _ptd
+                dt = _ptd(date_str)
+                graph_msg["receivedDateTime"] = dt.isoformat()
+                graph_msg["sentDateTime"] = dt.isoformat()
+            except Exception:
+                pass
+
+        # Message-ID original para dedup
+        mid = msg.get("Message-ID", "").strip()
+        if mid:
+            graph_msg["internetMessageId"] = mid
+
+        return graph_msg
+
     def _import_message(self, dest_user: str, raw_bytes: bytes,
                         headers: dict, dest_folder_id: str = None) -> str:
         """
-        Importa mensagem MIME na pasta correta do destino.
-
-        Graph API requer que o conteúdo MIME seja base64-encoded no body
-        quando Content-Type: message/rfc822 é usado em POST /mailFolders/{id}/messages.
-        Ref: https://learn.microsoft.com/graph/api/user-post-messages
+        Importa mensagem na pasta correta do destino via Graph API JSON.
+        Content-Type: message/rfc822 não funciona no Graph API v1.0.
         """
-        import base64 as _b64
-        import email as _email_lib
-        from email.utils import formatdate as _formatdate
-
         folder = dest_folder_id or "inbox"
         base_user = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}"
 
-        # Garantir Date: header (obrigatório)
-        parsed = _email_lib.message_from_bytes(raw_bytes)
-        if not parsed.get("Date"):
-            raw_bytes = f"Date: {_formatdate()}\r\n".encode() + raw_bytes
-
-        # Graph API exige MIME em base64url (urlsafe, sem padding) com Content-Type: text/plain
-        # Ref: https://learn.microsoft.com/graph/api/user-post-messages (MIME format)
-        encoded = _b64.urlsafe_b64encode(raw_bytes)
+        graph_msg = self._mime_to_graph_json(raw_bytes)
 
         import_hdrs = {
             "Authorization": headers["Authorization"],
-            "Content-Type": "text/plain",
+            "Content-Type": "application/json",
             "X-AnchorMailbox": dest_user,
         }
 
@@ -105,7 +189,7 @@ class TenantToTenantEngine(MigrationEngine):
             r = requests.post(
                 f"{base_user}/mailFolders/{quote(folder, safe='')}/messages",
                 headers=import_hdrs,
-                data=encoded,
+                json=graph_msg,
                 timeout=60,
             )
             if r.status_code == 429:
