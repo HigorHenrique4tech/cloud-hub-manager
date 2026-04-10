@@ -3,6 +3,7 @@ import email as email_lib
 import hashlib
 import logging
 import time
+from urllib.parse import quote
 
 import requests
 
@@ -52,7 +53,7 @@ class TenantToTenantEngine(MigrationEngine):
 
     def _get_mime(self, user_id: str, msg_id: str, headers: dict) -> bytes:
         """Baixa mensagem em formato MIME bruto."""
-        url = f"{GRAPH_V1}/users/{user_id}/messages/{msg_id}/$value"
+        url = f"{GRAPH_V1}/users/{user_id}/messages/{quote(msg_id, safe='')}/$value"
         def do():
             r = requests.get(url, headers=headers, timeout=60)
             if r.status_code == 429:
@@ -62,7 +63,7 @@ class TenantToTenantEngine(MigrationEngine):
         return self.retry_on_throttle(do)
 
     def _import_message(self, dest_user: str, raw_bytes: bytes, headers: dict) -> str:
-        url = f"{GRAPH_V1}/users/{dest_user}/messages/$value"
+        url = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}/messages/$value"
         def do():
             r = requests.post(url, headers=headers, data=raw_bytes, timeout=60)
             if r.status_code == 429:
@@ -141,7 +142,8 @@ class TenantToTenantEngine(MigrationEngine):
             last_uid = skip_token or ""
 
             # Lista mensagens com paginação
-            url = (f"{GRAPH_V1}/users/{src_user}/mailFolders/{folder_id}/messages"
+            # folder_id pode conter caracteres especiais (base64) — URL-encode obrigatório
+            url = (f"{GRAPH_V1}/users/{src_user}/mailFolders/{quote(folder_id, safe='')}/messages"
                    f"?$top=50&$select=id,internetMessageId,size")
             if skip_token and skip_token.startswith("http"):
                 url = skip_token  # retomada: last_uid guarda o nextLink
