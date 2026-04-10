@@ -764,26 +764,17 @@ async def worker_health(
             except Exception as e:
                 debug_info["ping_error"] = str(e)[:100]
 
-            # Fallback: checar Redis keys diretamente
+            # Fallback: checar tarefas ativas na fila (não usa binding — ela persiste mesmo offline)
             if worker_status != "ok":
                 try:
                     r = redis_lib.from_url(settings.REDIS_URL,
                                            socket_connect_timeout=2, socket_timeout=2)
-                    # Listar todas as _kombu.binding.* keys para diagnóstico
-                    all_bindings = {}
-                    for key in r.scan_iter("_kombu.binding.*", count=100):
-                        key_str = key.decode() if isinstance(key, bytes) else key
-                        members = r.smembers(key)
-                        all_bindings[key_str] = len(members)
-
-                    debug_info["redis_bindings"] = all_bindings
-
-                    if "_kombu.binding.migration" in all_bindings:
-                        worker_status = "ok"
-                    elif any("celery" in k for k in all_bindings):
-                        worker_status = "ok"
-                    else:
-                        worker_status = "offline"
+                    # Contar mensagens pendentes na fila de migração (lista kombu)
+                    migration_queue_len = r.llen("migration") or 0
+                    debug_info["migration_queue_len"] = migration_queue_len
+                    # Se inspect.ping() não respondeu, worker está offline
+                    worker_status = "offline"
+                    queued_tasks = int(migration_queue_len)
                 except Exception as e:
                     debug_info["redis_fallback_error"] = str(e)[:100]
                     worker_status = "offline"
@@ -860,15 +851,17 @@ def _dispatch_migration_worker(project_id: str, verify_only: bool = False,
     Tenta despachar a task Celery.
     Se Redis não estiver disponível, registra warning mas não quebra a API.
     """
+    import uuid as _uuid
     try:
         from app.workers.migration_worker import run_migration_project
+        task_id = f"migration-{project_id}-{_uuid.uuid4().hex[:8]}"
         run_migration_project.apply_async(
             args=[project_id],
             kwargs={"verify_only": verify_only, "delta_only": delta_only},
             queue="migration",
-            task_id=f"migration-{project_id}",
+            task_id=task_id,
         )
-        logger.info(f"Migration task despachada para projeto {project_id}")
+        logger.info(f"Migration task despachada para projeto {project_id} (task_id={task_id})")
     except Exception as exc:
         logger.error(
             f"Falha ao despachar migration task para {project_id}: {exc}. "
