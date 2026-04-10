@@ -74,21 +74,25 @@ class TenantToTenantEngine(MigrationEngine):
                         headers: dict, dest_folder_id: str = None) -> str:
         """
         Importa mensagem MIME na pasta correta do destino.
-        Endpoint: POST /mailFolders/{id}/messages com Content-Type: message/rfc822.
-        O MIME precisa ter header Date: válido — garantido aqui antes do POST.
+
+        Graph API requer que o conteúdo MIME seja base64-encoded no body
+        quando Content-Type: message/rfc822 é usado em POST /mailFolders/{id}/messages.
+        Ref: https://learn.microsoft.com/graph/api/user-post-messages
         """
+        import base64 as _b64
         import email as _email_lib
         from email.utils import formatdate as _formatdate
 
         folder = dest_folder_id or "inbox"
         base_user = f"{GRAPH_V1}/users/{quote(dest_user, safe='@.')}"
 
-        # Garantir que o MIME tem Date: header (obrigatório pelo Graph API)
+        # Garantir Date: header (obrigatório)
         parsed = _email_lib.message_from_bytes(raw_bytes)
         if not parsed.get("Date"):
-            # Adiciona Date no início do raw bytes
-            date_line = f"Date: {_formatdate()}\r\n".encode()
-            raw_bytes = date_line + raw_bytes
+            raw_bytes = f"Date: {_formatdate()}\r\n".encode() + raw_bytes
+
+        # Graph API exige MIME em base64 no body
+        encoded = _b64.b64encode(raw_bytes)
 
         import_hdrs = {
             "Authorization": headers["Authorization"],
@@ -100,7 +104,7 @@ class TenantToTenantEngine(MigrationEngine):
             r = requests.post(
                 f"{base_user}/mailFolders/{quote(folder, safe='')}/messages",
                 headers=import_hdrs,
-                data=raw_bytes,
+                data=encoded,
                 timeout=60,
             )
             if r.status_code == 429:
