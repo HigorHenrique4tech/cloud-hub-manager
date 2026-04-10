@@ -18,8 +18,10 @@ logger = logging.getLogger(__name__)
 GRAPH_V1 = "https://graph.microsoft.com/v1.0"
 
 # Pastas de sistema que não devem ser migradas.
-# Fonte primária: wellKnownName (independente de idioma).
-SYSTEM_FOLDER_WKN = {
+# Resolvidas via endpoints well-known do Graph (/mailFolders/{wkn}) para obter
+# os IDs reais e filtrar — independente de idioma. wellKnownName como propriedade
+# não existe em v1.0 (só beta), então não dá para usar em $select.
+SYSTEM_WELL_KNOWN_NAMES = [
     "deleteditems",
     "drafts",
     "junkemail",
@@ -27,14 +29,13 @@ SYSTEM_FOLDER_WKN = {
     "recoverableitemsdeletions",
     "recoverableitemspurges",
     "recoverableitemsversions",
-    "recoverableitemsroot",
     "syncissues",
     "conversationhistory",
     "conflicts",
     "localfailures",
     "serverfailures",
-}
-# Fallback por displayName (caso wellKnownName não venha preenchido).
+]
+# Fallback por displayName (se o GET por wkn falhar em algum tenant).
 SYSTEM_FOLDER_NAMES = {
     "deleted items", "drafts", "junk email", "outbox",
     "recoverable items", "sync issues", "conversation history",
@@ -213,28 +214,51 @@ class TenantToTenantEngine(MigrationEngine):
 
     # ── Descoberta de pastas ──────────────────────────────────────────────────
 
-    def _is_system_folder(self, folder: dict) -> bool:
-        wkn = (folder.get("wellKnownName") or "").lower()
-        if wkn in SYSTEM_FOLDER_WKN:
-            return True
-        name = (folder.get("displayName") or "").strip().lower()
-        if name in SYSTEM_FOLDER_NAMES:
-            return True
-        return False
+    def _resolve_system_folder_ids(self, user_id: str, headers: dict) -> set[str]:
+        """
+        Resolve os IDs reais das pastas de sistema via endpoints well-known.
+        Retorna um set com todos os IDs encontrados — pastas não existentes
+        simplesmente não entram no set (GET retorna 404, ignoramos).
+        """
+        base = f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders"
+        ids: set[str] = set()
+        for wkn in SYSTEM_WELL_KNOWN_NAMES:
+            try:
+                r = requests.get(f"{base}/{wkn}?$select=id", headers=headers, timeout=15)
+                if r.ok:
+                    fid = r.json().get("id")
+                    if fid:
+                        ids.add(fid)
+            except Exception as exc:
+                logger.debug(f"Ignorando pasta de sistema '{wkn}': {exc}")
+        return ids
 
     def _list_folders(self, user_id: str, headers: dict) -> list[dict]:
         """Lista pastas de email do usuário, excluindo pastas de sistema."""
+        system_ids = self._resolve_system_folder_ids(user_id, headers)
+
         url = (
             f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders"
-            f"?$top=100&$select=id,displayName,wellKnownName,totalItemCount,parentFolderId"
+            f"?$top=100&$select=id,displayName,totalItemCount,parentFolderId"
         )
         folders: list[dict] = []
         while url:
             resp = requests.get(url, headers=headers, timeout=30)
-            resp.raise_for_status()
+            if not resp.ok:
+                try:
+                    err = resp.json().get("error", {})
+                    raise Exception(
+                        f"HTTP {resp.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {resp.status_code}: {resp.text[:300]}")
             data = resp.json()
             for f in data.get("value", []):
-                if self._is_system_folder(f):
+                if f.get("id") in system_ids:
+                    continue
+                name = (f.get("displayName") or "").strip().lower()
+                if name in SYSTEM_FOLDER_NAMES:
                     continue
                 folders.append(f)
             url = data.get("@odata.nextLink")
