@@ -63,7 +63,19 @@ class TenantToTenantEngine(MigrationEngine):
             "client_secret": client_secret,
             "scope": "https://graph.microsoft.com/.default",
         }, timeout=30)
-        resp.raise_for_status()
+        if not resp.ok:
+            # Extrai error/error_description da resposta OAuth para diagnóstico claro
+            try:
+                data = resp.json()
+                code = data.get("error", "")
+                desc = data.get("error_description", "")[:300]
+                raise Exception(
+                    f"OAuth {resp.status_code} [{code}] tenant={tenant_id[:8]}...: {desc}"
+                )
+            except (ValueError, KeyError):
+                raise Exception(
+                    f"OAuth {resp.status_code} tenant={tenant_id[:8]}...: {resp.text[:200]}"
+                )
         return resp.json()["access_token"]
 
     def _src_headers(self) -> dict:
@@ -373,24 +385,58 @@ class TenantToTenantEngine(MigrationEngine):
     # ── Teste de conexão ──────────────────────────────────────────────────────
 
     def test_connection(self) -> dict:
+        """Valida auth e acesso à Graph tanto no tenant de origem quanto no destino."""
+        # ── Origem ──────────────────────────────────────────────────────────
         try:
-            headers = self._src_headers()
-            resp = requests.get(
-                f"{GRAPH_V1}/organization",
-                headers=headers, timeout=15,
-            )
-            resp.raise_for_status()
-            orgs = resp.json().get("value", [])
-            display_name = orgs[0].get("displayName", "") if orgs else ""
+            src_headers = self._src_headers()
+            resp = requests.get(f"{GRAPH_V1}/organization", headers=src_headers, timeout=15)
+            if not resp.ok:
+                try:
+                    err = resp.json().get("error", {})
+                    return {
+                        "ok": False,
+                        "message": (
+                            f"Origem: HTTP {resp.status_code} [{err.get('code','')}] "
+                            f"{err.get('message','')[:200]}"
+                        ),
+                    }
+                except Exception:
+                    return {"ok": False, "message": f"Origem: HTTP {resp.status_code} {resp.text[:200]}"}
+            src_orgs = resp.json().get("value", [])
+            src_name = src_orgs[0].get("displayName", "") if src_orgs else ""
+        except Exception as exc:
+            return {"ok": False, "message": f"Origem: {exc}"}
+
+        # ── Destino ─────────────────────────────────────────────────────────
+        if not self.dest_cfg.get("tenant_id"):
             return {
                 "ok": True,
-                "message": f"Conectado ao tenant de origem via Graph API. Organização: {display_name}.",
+                "message": f"Origem OK ({src_name}). Destino não informado neste teste.",
             }
+        try:
+            dst_headers = self._dst_headers()
+            resp = requests.get(f"{GRAPH_V1}/organization", headers=dst_headers, timeout=15)
+            if not resp.ok:
+                try:
+                    err = resp.json().get("error", {})
+                    return {
+                        "ok": False,
+                        "message": (
+                            f"Destino: HTTP {resp.status_code} [{err.get('code','')}] "
+                            f"{err.get('message','')[:200]}"
+                        ),
+                    }
+                except Exception:
+                    return {"ok": False, "message": f"Destino: HTTP {resp.status_code} {resp.text[:200]}"}
+            dst_orgs = resp.json().get("value", [])
+            dst_name = dst_orgs[0].get("displayName", "") if dst_orgs else ""
         except Exception as exc:
-            err = str(exc)
-            if "401" in err or "403" in err:
-                return {"ok": False, "message": f"Autenticação negada: {err}"}
-            return {"ok": False, "message": f"Falha ao conectar ao tenant de origem: {err}"}
+            return {"ok": False, "message": f"Destino: {exc}"}
+
+        return {
+            "ok": True,
+            "message": f"Conectado. Origem: {src_name}. Destino: {dst_name}.",
+        }
 
     # ── Fase 1: Assessment ────────────────────────────────────────────────────
 
@@ -411,8 +457,27 @@ class TenantToTenantEngine(MigrationEngine):
     def migrate_mailbox(self, on_progress: ProgressCallback) -> None:
         src_user = self.source_cfg.get("src_user_id") or self.mailbox.source_email
         dest_user = self.dest_cfg.get("dest_user_id") or self.mailbox.destination_email
-        src_hdrs = self._src_headers()
-        dst_hdrs = self._dst_headers()
+
+        # Captura erros de auth logo no início com mensagem clara.
+        try:
+            src_hdrs = self._src_headers()
+        except Exception as exc:
+            self.add_log(
+                f"Falha ao autenticar no tenant de ORIGEM: {exc}. "
+                f"Verifique client_id, client_secret (pode ter expirado) e tenant_id.",
+                "error",
+            )
+            raise
+        try:
+            dst_hdrs = self._dst_headers()
+        except Exception as exc:
+            self.add_log(
+                f"Falha ao autenticar no tenant de DESTINO: {exc}. "
+                f"Verifique client_id, client_secret (pode ter expirado) e tenant_id.",
+                "error",
+            )
+            raise
+
         total_migrated = self.mailbox.items_migrated or 0
         folders = self._list_folders(src_user, src_hdrs)
         _folder_cache: dict = {}  # folder_name → dest folder_id
