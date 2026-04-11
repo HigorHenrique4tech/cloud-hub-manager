@@ -26,6 +26,7 @@ const _prefetchMap = {
   '/approvals': () => import('../../pages/ApprovalsPage'),
   '/notifications': () => import('../../pages/NotificationChannels'),
   '/logs': () => import('../../pages/logs'),
+  '/security/automation': () => import('../../pages/security/SecurityAutomation'),
   '/billing': () => import('../../pages/Billing'),
   '/org/settings': () => import('../../pages/OrgSettings'),
   '/workspace/settings': () => import('../../pages/WorkspaceSettings'),
@@ -154,6 +155,9 @@ const Sidebar = ({ mobileOpen, onClose }) => {
         </PermissionGate>
         <PermissionGate permission="logs.view">
           <NavItem to="/logs" label="Logs" icon={FileText} />
+        </PermissionGate>
+        <PermissionGate permission="resources.manage">
+          <NavItem to="/security/automation" label="Segurança" icon={ShieldCheck} />
         </PermissionGate>
 
         {/* ── Conta / Org ── */}
