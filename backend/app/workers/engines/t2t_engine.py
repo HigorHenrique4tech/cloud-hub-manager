@@ -135,79 +135,110 @@ class TenantToTenantEngine(MigrationEngine):
         dest_folder_id: str,
     ) -> str:
         """
-        Importa mensagem com fidelidade total.
+        Importa mensagem com fidelidade total via 3 chamadas.
 
-        Passo 1: POST base64(MIME) com Content-Type: text/plain.
-                 A Graph cria a mensagem preservando sender original,
-                 datas (receivedDateTime / sentDateTime), internetMessageId
-                 e anexos — mas entra como rascunho.
+        Passo 1: POST base64(MIME) em /users/{id}/messages (text/plain).
+                 ATENÇÃO: o endpoint /mailFolders/{id}/messages NÃO aceita
+                 MIME — só JSON. Por isso criamos no top-level (vai para
+                 Drafts) e depois movemos.
 
-        Passo 2: PATCH com singleValueExtendedProperties PR_MESSAGE_FLAGS=1
-                 (mfRead only, sem mfUnsent) → limpa flag de rascunho e
-                 marca como lida.
+        Passo 2: POST /messages/{id}/move com destinationId = pasta alvo.
+                 O move cria cópia e deleta original — retorna novo ID.
 
-        Retorna o ID da mensagem criada no destino.
+        Passo 3: PATCH /messages/{moved_id} com singleValueExtendedProperties
+                 PR_MESSAGE_FLAGS=1 (mfRead, sem mfUnsent) → limpa flag de
+                 rascunho e marca como lida.
+
+        Retorna o ID final da mensagem no destino.
         """
         base_user = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}"
+        auth = dst_hdrs["Authorization"]
 
-        # ── Passo 1: upload do MIME em base64 ────────────────────────────────
+        # ── Passo 1: upload do MIME em base64 no endpoint top-level ─────────
         b64_mime = base64.b64encode(raw_mime_bytes).decode("ascii")
         post_hdrs = {
-            "Authorization": dst_hdrs["Authorization"],
+            "Authorization": auth,
             "Content-Type": "text/plain",
             "X-AnchorMailbox": dest_user,
         }
-        post_url = (
-            f"{base_user}/mailFolders/{quote(dest_folder_id, safe='')}/messages"
-        )
 
         def post_mime():
-            r = requests.post(post_url, headers=post_hdrs, data=b64_mime, timeout=180)
+            r = requests.post(
+                f"{base_user}/messages",
+                headers=post_hdrs,
+                data=b64_mime,
+                timeout=180,
+            )
             if r.status_code == 429:
                 raise Exception("429 throttle")
             if not r.ok:
                 try:
                     err = r.json().get("error", {})
                     raise Exception(
-                        f"HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"POST MIME HTTP {r.status_code} [{err.get('code','')}]: "
                         f"{err.get('message','')[:300]}"
                     )
                 except (ValueError, KeyError):
-                    raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+                    raise Exception(f"POST MIME HTTP {r.status_code}: {r.text[:300]}")
             return r.json()
 
         created = self.retry_on_throttle(post_mime)
-        new_id = created.get("id", "")
-        if not new_id:
+        draft_id = created.get("id", "")
+        if not draft_id:
             raise Exception("Graph não retornou ID da mensagem importada")
 
-        # ── Passo 2: limpar flag de rascunho via extended property ──────────
-        # PR_MESSAGE_FLAGS = 0x0E07 (PT_LONG)
-        #   0x01 mfRead    — lida
-        #   0x08 mfUnsent  — rascunho (é este que queremos APAGAR)
-        #   0x20 mfFromMe  — enviada pelo dono da caixa
-        # Valor "1" = mfRead apenas → mensagem lida, não rascunho, recebida.
-        patch_hdrs = {
-            "Authorization": dst_hdrs["Authorization"],
+        # ── Passo 2: mover para a pasta alvo (cria cópia, retorna novo ID) ──
+        json_hdrs = {
+            "Authorization": auth,
             "Content-Type": "application/json",
             "X-AnchorMailbox": dest_user,
         }
+        move_url = f"{base_user}/messages/{quote(draft_id, safe='')}/move"
+
+        def post_move():
+            r = requests.post(
+                move_url,
+                headers=json_hdrs,
+                json={"destinationId": dest_folder_id},
+                timeout=30,
+            )
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(
+                        f"MOVE HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"MOVE HTTP {r.status_code}: {r.text[:300]}")
+            return r.json()
+
+        moved = self.retry_on_throttle(post_move)
+        moved_id = moved.get("id", draft_id)
+
+        # ── Passo 3: limpar flag de rascunho via extended property ──────────
+        # PR_MESSAGE_FLAGS = 0x0E07 (PT_LONG)
+        #   0x01 mfRead    — lida
+        #   0x08 mfUnsent  — rascunho (queremos APAGAR este bit)
+        #   0x20 mfFromMe  — enviada pelo dono
+        # Valor "1" = mfRead apenas → lida, não rascunho.
+        patch_url = f"{base_user}/messages/{quote(moved_id, safe='')}"
         patch_body = {
             "singleValueExtendedProperties": [
                 {"id": "Integer 0x0E07", "value": "1"}
             ]
         }
-        patch_url = f"{base_user}/messages/{quote(new_id, safe='')}"
 
         def patch_flags():
-            r = requests.patch(patch_url, headers=patch_hdrs, json=patch_body, timeout=30)
+            r = requests.patch(patch_url, headers=json_hdrs, json=patch_body, timeout=30)
             if r.status_code == 429:
                 raise Exception("429 throttle")
             if not r.ok:
-                # Não fatal — logamos e seguimos. Pior caso: mensagem fica como rascunho
-                # no destino mas o conteúdo/anexos estão lá.
+                # Não fatal — conteúdo já está lá, só fica como rascunho.
                 logger.warning(
-                    f"PATCH flags falhou para msg {new_id}: "
+                    f"PATCH flags falhou para msg {moved_id}: "
                     f"HTTP {r.status_code} {r.text[:200]}"
                 )
                 return False
@@ -216,13 +247,13 @@ class TenantToTenantEngine(MigrationEngine):
         try:
             self.retry_on_throttle(patch_flags)
         except Exception as exc:
-            logger.warning(f"PATCH flags erro para msg {new_id}: {exc}")
+            logger.warning(f"PATCH flags erro para msg {moved_id}: {exc}")
 
         logger.debug(
-            f"Importado via MIME base64: id={new_id} "
+            f"Importado: draft={draft_id[:20]}... → moved={moved_id[:20]}... "
             f"folder={dest_folder_id[:20]}... bytes={len(raw_mime_bytes)}"
         )
-        return new_id
+        return moved_id
 
     # ── Descoberta de pastas ──────────────────────────────────────────────────
 
