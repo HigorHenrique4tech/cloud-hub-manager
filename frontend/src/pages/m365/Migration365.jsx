@@ -561,9 +561,12 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
   const [parseError, setParseError] = useState('');
 
   // ── SharePoint URL resolver ───────────────────────────────────────────────
+  // site_id composto contém vírgulas — não pode passar pelo textarea. Guardamos
+  // direto em spStaged[] e esse array vira a fonte de `entries` no SharePoint.
   const [spSrcUrl, setSpSrcUrl] = useState('');
   const [spDstUrl, setSpDstUrl] = useState('');
   const [spResolveError, setSpResolveError] = useState('');
+  const [spStaged, setSpStaged] = useState([]);  // [{source_email, destination_email, display_name}]
 
   const spResolveMut = useMutation({
     mutationFn: async () => {
@@ -571,27 +574,29 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
       const srcUrl = spSrcUrl.trim();
       const dstUrl = spDstUrl.trim();
       if (!srcUrl) throw new Error('Informe a URL do site de origem.');
+      if (!dstUrl) throw new Error('Informe a URL do site de destino.');
 
       const src = await migrationApi.resolveSpSite(projectId, srcUrl, 'source');
       if (!src.ok) throw new Error(`Origem: ${src.message}`);
 
-      let dst = null;
-      if (dstUrl) {
-        dst = await migrationApi.resolveSpSite(projectId, dstUrl, 'destination');
-        if (!dst.ok) throw new Error(`Destino: ${dst.message}`);
-      }
+      const dst = await migrationApi.resolveSpSite(projectId, dstUrl, 'destination');
+      if (!dst.ok) throw new Error(`Destino: ${dst.message}`);
+
       return { src, dst };
     },
     onSuccess: ({ src, dst }) => {
-      // Anexa na textarea em formato CSV: site_id_src, site_id_dst, nome
-      const line = [src.site_id, dst?.site_id || '', src.display_name || ''].join(', ');
-      setInput(prev => prev ? `${prev.replace(/\n+$/, '')}\n${line}` : line);
+      setSpStaged(prev => [...prev, {
+        source_email: src.site_id,
+        destination_email: dst.site_id,
+        display_name: src.display_name || dst.display_name || '',
+      }]);
       setSpSrcUrl('');
       setSpDstUrl('');
-      setParsed([]);
     },
     onError: (e) => setSpResolveError(e.message || 'Falha ao resolver.'),
   });
+
+  const removeSpStaged = (i) => setSpStaged(prev => prev.filter((_, idx) => idx !== i));
 
   const parseText = () => {
     setParseError('');
@@ -626,7 +631,9 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
   };
 
   // ── Adicionar (comum às duas abas) ────────────────────────────────────────
-  const entries = tab === 'text' ? parsed : (csvPreview?.valid || []);
+  const entries = tab === 'text'
+    ? (isSharePoint ? spStaged : parsed)
+    : (csvPreview?.valid || []);
 
   const addMut = useMutation({
     mutationFn: () => migrationApi.addMailboxes(projectId, { mailboxes: entries }),
@@ -666,46 +673,75 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
           {/* Aba: Colar texto */}
-          {tab === 'text' && (
+          {tab === 'text' && isSharePoint && (
             <>
-              {isSharePoint && (
-                <div className="p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-2">
-                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                    Resolver pela URL do site
-                  </p>
-                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                    Cole a URL amigável (ex.: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">contoso.sharepoint.com/sites/MeuSite</code>) e clicamos na Graph API pra pegar o site_id composto.
-                  </p>
-                  <input
-                    type="text"
-                    value={spSrcUrl}
-                    onChange={e => setSpSrcUrl(e.target.value)}
-                    placeholder="URL do site de origem"
-                    className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <input
-                    type="text"
-                    value={spDstUrl}
-                    onChange={e => setSpDstUrl(e.target.value)}
-                    placeholder="URL do site de destino (opcional)"
-                    className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => spResolveMut.mutate()}
-                    disabled={spResolveMut.isPending || !spSrcUrl.trim()}
-                    className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white"
-                  >
-                    {spResolveMut.isPending
-                      ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      : <Search className="w-3.5 h-3.5" />}
-                    Resolver e anexar
-                  </button>
-                  {spResolveError && (
-                    <p className="text-[11px] text-red-500">{spResolveError}</p>
-                  )}
+              <div className="p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-2">
+                <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
+                  Adicionar site pela URL
+                </p>
+                <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                  Cole a URL amigável (ex.: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">contoso.sharepoint.com/sites/MeuSite</code>). O Graph retorna o site_id composto automaticamente.
+                </p>
+                <input
+                  type="text"
+                  value={spSrcUrl}
+                  onChange={e => setSpSrcUrl(e.target.value)}
+                  placeholder="URL do site de origem"
+                  className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="text"
+                  value={spDstUrl}
+                  onChange={e => setSpDstUrl(e.target.value)}
+                  placeholder="URL do site de destino"
+                  className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => spResolveMut.mutate()}
+                  disabled={spResolveMut.isPending || !spSrcUrl.trim() || !spDstUrl.trim()}
+                  className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white"
+                >
+                  {spResolveMut.isPending
+                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    : <Plus className="w-3.5 h-3.5" />}
+                  Resolver e adicionar à lista
+                </button>
+                {spResolveError && (
+                  <p className="text-[11px] text-red-500">{spResolveError}</p>
+                )}
+              </div>
+
+              {spStaged.length > 0 && (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
+                  {spStaged.map((s, i) => (
+                    <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                          {s.display_name || 'Sem nome'}
+                        </p>
+                        <p className="text-gray-500 truncate font-mono text-[10px]">
+                          origem: {s.source_email}
+                        </p>
+                        <p className="text-gray-500 truncate font-mono text-[10px]">
+                          destino: {s.destination_email}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => removeSpStaged(i)}
+                        className="p-1 text-gray-400 hover:text-red-500 shrink-0"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               )}
+            </>
+          )}
+
+          {tab === 'text' && !isSharePoint && (
+            <>
               <p className="text-xs text-gray-500">Uma por linha: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{srcPlaceholder}, {dstLabel.toLowerCase()}, nome</code></p>
               <textarea
                 rows={8}
@@ -817,7 +853,7 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
             Cancelar
           </button>
-          {tab === 'text' && !parsed.length && (
+          {tab === 'text' && !isSharePoint && !parsed.length && (
             <button onClick={parseText} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium rounded-lg">
               <Search className="w-4 h-4" /> Analisar
             </button>
