@@ -37,6 +37,8 @@ const migrationApi = {
   cancelSchedule:   (id)               => api.delete(wsUrl(`/migration/projects/${id}/schedule`)),
   testConnection:   (migration_type, source_config) =>
                       api.post(wsUrl('/migration/test-connection'), { migration_type, source_config }).then(r => r.data),
+  resolveSpSite:    (project_id, url, side = 'source') =>
+                      api.post(wsUrl('/migration/resolve-sharepoint-site'), { project_id, url, side }).then(r => r.data),
   getLicenseSummary: ()             => api.get(wsUrl('/migration/license-summary')).then(r => r.data),
   requestLicenses:  (data)         => api.post(wsUrl('/migration/licenses/request'), data).then(r => r.data),
   getLicenseHistory: ()             => api.get(wsUrl('/migration/licenses/history')).then(r => r.data),
@@ -545,9 +547,10 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
 
 const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
   const isFile = isFileMigration(migrationType);
-  const srcLabel = migrationType === 'onedrive_to_onedrive' ? 'UPN do usuário' : migrationType === 'sharepoint_to_sharepoint' ? 'Site ID' : 'E-mail de origem';
-  const dstLabel = migrationType === 'onedrive_to_onedrive' ? 'UPN de destino' : migrationType === 'sharepoint_to_sharepoint' ? 'Site ID de destino' : 'E-mail de destino';
-  const srcPlaceholder = migrationType === 'onedrive_to_onedrive' ? 'user@source.com' : migrationType === 'sharepoint_to_sharepoint' ? 'contoso.sharepoint.com,site-id-aqui' : 'email_origem';
+  const isSharePoint = migrationType === 'sharepoint_to_sharepoint';
+  const srcLabel = migrationType === 'onedrive_to_onedrive' ? 'UPN do usuário' : isSharePoint ? 'Site ID' : 'E-mail de origem';
+  const dstLabel = migrationType === 'onedrive_to_onedrive' ? 'UPN de destino' : isSharePoint ? 'Site ID de destino' : 'E-mail de destino';
+  const srcPlaceholder = migrationType === 'onedrive_to_onedrive' ? 'user@source.com' : isSharePoint ? 'contoso.sharepoint.com,site-id-aqui' : 'email_origem';
   const modalTitle = isFile ? (migrationType === 'onedrive_to_onedrive' ? 'Adicionar Usuários (OneDrive)' : 'Adicionar Sites (SharePoint)') : 'Adicionar Caixas de Correio';
   const qc = useQueryClient();
   const [tab, setTab] = useState('text');  // 'text' | 'csv'
@@ -556,6 +559,39 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
   const [input, setInput] = useState('');
   const [parsed, setParsed] = useState([]);
   const [parseError, setParseError] = useState('');
+
+  // ── SharePoint URL resolver ───────────────────────────────────────────────
+  const [spSrcUrl, setSpSrcUrl] = useState('');
+  const [spDstUrl, setSpDstUrl] = useState('');
+  const [spResolveError, setSpResolveError] = useState('');
+
+  const spResolveMut = useMutation({
+    mutationFn: async () => {
+      setSpResolveError('');
+      const srcUrl = spSrcUrl.trim();
+      const dstUrl = spDstUrl.trim();
+      if (!srcUrl) throw new Error('Informe a URL do site de origem.');
+
+      const src = await migrationApi.resolveSpSite(projectId, srcUrl, 'source');
+      if (!src.ok) throw new Error(`Origem: ${src.message}`);
+
+      let dst = null;
+      if (dstUrl) {
+        dst = await migrationApi.resolveSpSite(projectId, dstUrl, 'destination');
+        if (!dst.ok) throw new Error(`Destino: ${dst.message}`);
+      }
+      return { src, dst };
+    },
+    onSuccess: ({ src, dst }) => {
+      // Anexa na textarea em formato CSV: site_id_src, site_id_dst, nome
+      const line = [src.site_id, dst?.site_id || '', src.display_name || ''].join(', ');
+      setInput(prev => prev ? `${prev.replace(/\n+$/, '')}\n${line}` : line);
+      setSpSrcUrl('');
+      setSpDstUrl('');
+      setParsed([]);
+    },
+    onError: (e) => setSpResolveError(e.message || 'Falha ao resolver.'),
+  });
 
   const parseText = () => {
     setParseError('');
@@ -632,6 +668,44 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
           {/* Aba: Colar texto */}
           {tab === 'text' && (
             <>
+              {isSharePoint && (
+                <div className="p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-2">
+                  <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
+                    Resolver pela URL do site
+                  </p>
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400">
+                    Cole a URL amigável (ex.: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">contoso.sharepoint.com/sites/MeuSite</code>) e clicamos na Graph API pra pegar o site_id composto.
+                  </p>
+                  <input
+                    type="text"
+                    value={spSrcUrl}
+                    onChange={e => setSpSrcUrl(e.target.value)}
+                    placeholder="URL do site de origem"
+                    className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="text"
+                    value={spDstUrl}
+                    onChange={e => setSpDstUrl(e.target.value)}
+                    placeholder="URL do site de destino (opcional)"
+                    className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => spResolveMut.mutate()}
+                    disabled={spResolveMut.isPending || !spSrcUrl.trim()}
+                    className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white"
+                  >
+                    {spResolveMut.isPending
+                      ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      : <Search className="w-3.5 h-3.5" />}
+                    Resolver e anexar
+                  </button>
+                  {spResolveError && (
+                    <p className="text-[11px] text-red-500">{spResolveError}</p>
+                  )}
+                </div>
+              )}
               <p className="text-xs text-gray-500">Uma por linha: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{srcPlaceholder}, {dstLabel.toLowerCase()}, nome</code></p>
               <textarea
                 rows={8}

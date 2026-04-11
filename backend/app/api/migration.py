@@ -908,6 +908,124 @@ async def test_connection(
         return {"ok": False, "message": str(exc)}
 
 
+# ── Resolve SharePoint site URL → composite site_id ──────────────────────────
+
+class ResolveSharePointSiteRequest(BaseModel):
+    tenant_id: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    url: str = ""  # Ex: https://contoso.sharepoint.com/sites/MeuSite
+    # Se informado, usa as credenciais do projeto (origem ou destino) em vez das do body
+    project_id: str | None = None
+    side: str = "source"  # "source" ou "destination"
+
+
+def _resolve_sp_site_with_creds(tenant_id: str, client_id: str,
+                                 client_secret: str, url: str) -> dict:
+    """Core: dado um tenant+app+url, resolve o composite site_id via Graph."""
+    import re
+    from urllib.parse import urlparse
+    import requests as _rq
+
+    raw = (url or "").strip()
+    if not raw:
+        return {"ok": False, "message": "URL vazia."}
+    if not raw.startswith(("http://", "https://")):
+        raw = "https://" + raw
+    parsed = urlparse(raw)
+    hostname = parsed.netloc
+    path = parsed.path.rstrip("/")
+
+    if not hostname or ".sharepoint.com" not in hostname.lower():
+        return {"ok": False, "message": "URL inválida. Esperado contoso.sharepoint.com/sites/MeuSite"}
+
+    try:
+        token_resp = _rq.post(
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "https://graph.microsoft.com/.default",
+            },
+            timeout=30,
+        )
+        if token_resp.status_code != 200:
+            try:
+                err = token_resp.json()
+                desc = err.get("error_description", "")
+                m = re.search(r"AADSTS\d+", desc)
+                aad = m.group(0) if m else err.get("error", "")
+                return {"ok": False, "message": f"OAuth {aad}: {desc[:200]}"}
+            except Exception:
+                return {"ok": False, "message": f"OAuth HTTP {token_resp.status_code}"}
+        token = token_resp.json()["access_token"]
+
+        graph_url = (
+            f"https://graph.microsoft.com/v1.0/sites/{hostname}:{path}"
+            if path else
+            f"https://graph.microsoft.com/v1.0/sites/{hostname}"
+        )
+        r = _rq.get(graph_url, headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        if r.status_code != 200:
+            try:
+                err = r.json().get("error", {})
+                return {"ok": False,
+                        "message": f"HTTP {r.status_code} [{err.get('code','')}]: {err.get('message','')[:200]}"}
+            except Exception:
+                return {"ok": False, "message": f"HTTP {r.status_code}: {r.text[:200]}"}
+
+        data = r.json()
+        return {
+            "ok": True,
+            "site_id": data.get("id", ""),
+            "display_name": data.get("displayName", ""),
+            "web_url": data.get("webUrl", ""),
+        }
+    except Exception as exc:
+        return {"ok": False, "message": f"Falha: {exc}"}
+
+
+@ws_router.post("/resolve-sharepoint-site")
+async def resolve_sharepoint_site(
+    body: ResolveSharePointSiteRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Resolve uma URL amigável de site SharePoint (contoso.sharepoint.com/sites/MeuSite)
+    para o site_id composto que a Graph API usa (hostname,collection-guid,site-guid).
+
+    Dois modos:
+    1. body.project_id + body.side: usa credenciais persistidas do projeto (side=source|destination)
+    2. body.tenant_id + body.client_id + body.client_secret: credenciais no body (wizard)
+    """
+    tenant = body.tenant_id
+    cid = body.client_id
+    sec = body.client_secret
+
+    if body.project_id:
+        from app.models.db_models import MigrationProject
+        project = db.query(MigrationProject).filter(
+            MigrationProject.id == body.project_id,
+            MigrationProject.workspace_id == member.workspace_id,
+        ).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+        try:
+            source_cfg, dest_cfg = svc.decrypt_project_configs(db, project)
+        except Exception as exc:
+            return {"ok": False, "message": f"Falha ao ler credenciais do projeto: {exc}"}
+        cfg = dest_cfg if body.side == "destination" else source_cfg
+        tenant = cfg.get("tenant_id", "")
+        cid = cfg.get("client_id", "")
+        sec = cfg.get("client_secret", "")
+        if not (tenant and cid and sec):
+            return {"ok": False, "message": f"Credenciais do projeto ({body.side}) incompletas."}
+
+    return _resolve_sp_site_with_creds(tenant, cid, sec, body.url)
+
+
 # ── Retry failed mailboxes ────────────────────────────────────────────────────
 
 @ws_router.post("/projects/{project_id}/retry-failed")
