@@ -386,10 +386,13 @@ class TenantToTenantEngine(MigrationEngine):
 
     def test_connection(self) -> dict:
         """
-        Valida auth e acesso à Graph tanto no tenant de origem quanto no destino.
-        Usa GET /users/{id}/mailFolders/inbox em cada lado — valida OAuth +
-        Mail.Read/ReadWrite + existência do UPN em uma única chamada, sem
-        exigir permissão adicional como Organization.Read.All.
+        Valida auth e (se UPN informado) acesso à Graph nos tenants de origem
+        e destino.
+
+        Sem UPN: valida apenas o OAuth — confirma que tenant_id, client_id e
+        client_secret estão corretos (pega a maioria dos erros).
+        Com UPN: também faz GET /users/{id}/mailFolders/inbox — valida
+        permissão Mail.Read/ReadWrite + existência do usuário.
         """
 
         def _describe_err(resp: requests.Response) -> str:
@@ -399,58 +402,63 @@ class TenantToTenantEngine(MigrationEngine):
             except Exception:
                 return f"HTTP {resp.status_code} {resp.text[:200]}"
 
-        # ── Origem ──────────────────────────────────────────────────────────
+        notes: list[str] = []
+
+        # ── Origem: OAuth ───────────────────────────────────────────────────
+        try:
+            src_headers = self._src_headers()
+        except Exception as exc:
+            return {"ok": False, "message": f"Origem (OAuth): {exc}"}
+
+        # ── Origem: validação de permissão (opcional, se UPN disponível) ────
         src_user = self.source_cfg.get("src_user_id") or (
             self.mailbox.source_email if self.mailbox else ""
         )
-        if not src_user:
-            return {
-                "ok": False,
-                "message": "Origem: informe o UPN do usuário (src_user_id) para testar.",
-            }
-        try:
-            src_headers = self._src_headers()
-            url = f"{GRAPH_V1}/users/{self._enc_user(src_user)}/mailFolders/inbox?$select=id,totalItemCount"
-            resp = requests.get(url, headers=src_headers, timeout=15)
-            if not resp.ok:
-                return {"ok": False, "message": f"Origem ({src_user}): {_describe_err(resp)}"}
-            src_count = resp.json().get("totalItemCount", 0)
-        except Exception as exc:
-            return {"ok": False, "message": f"Origem ({src_user}): {exc}"}
+        if src_user:
+            try:
+                url = (
+                    f"{GRAPH_V1}/users/{self._enc_user(src_user)}"
+                    f"/mailFolders/inbox?$select=id,totalItemCount"
+                )
+                resp = requests.get(url, headers=src_headers, timeout=15)
+                if not resp.ok:
+                    return {"ok": False, "message": f"Origem ({src_user}): {_describe_err(resp)}"}
+                src_count = resp.json().get("totalItemCount", 0)
+                notes.append(f"Origem OK ({src_user}, {src_count} msgs no Inbox)")
+            except Exception as exc:
+                return {"ok": False, "message": f"Origem ({src_user}): {exc}"}
+        else:
+            notes.append("Origem OAuth OK (permissão será validada na migração)")
 
-        # ── Destino ─────────────────────────────────────────────────────────
+        # ── Destino: OAuth ──────────────────────────────────────────────────
         if not self.dest_cfg.get("tenant_id"):
-            return {
-                "ok": True,
-                "message": f"Origem OK ({src_user}, {src_count} msgs no Inbox). Destino não informado neste teste.",
-            }
+            return {"ok": True, "message": " · ".join(notes) + " · Destino não informado."}
+
+        try:
+            dst_headers = self._dst_headers()
+        except Exception as exc:
+            return {"ok": False, "message": f"Destino (OAuth): {exc}"}
+
+        # ── Destino: validação de permissão (opcional) ──────────────────────
         dest_user = self.dest_cfg.get("dest_user_id") or (
             self.mailbox.destination_email if self.mailbox else ""
         )
-        if not dest_user:
-            return {
-                "ok": True,
-                "message": (
-                    f"Origem OK ({src_user}, {src_count} msgs). "
-                    f"Destino: informe o UPN (dest_user_id) para validar."
-                ),
-            }
-        try:
-            dst_headers = self._dst_headers()
-            url = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}/mailFolders/inbox?$select=id"
-            resp = requests.get(url, headers=dst_headers, timeout=15)
-            if not resp.ok:
-                return {"ok": False, "message": f"Destino ({dest_user}): {_describe_err(resp)}"}
-        except Exception as exc:
-            return {"ok": False, "message": f"Destino ({dest_user}): {exc}"}
+        if dest_user:
+            try:
+                url = (
+                    f"{GRAPH_V1}/users/{self._enc_user(dest_user)}"
+                    f"/mailFolders/inbox?$select=id"
+                )
+                resp = requests.get(url, headers=dst_headers, timeout=15)
+                if not resp.ok:
+                    return {"ok": False, "message": f"Destino ({dest_user}): {_describe_err(resp)}"}
+                notes.append(f"Destino OK ({dest_user})")
+            except Exception as exc:
+                return {"ok": False, "message": f"Destino ({dest_user}): {exc}"}
+        else:
+            notes.append("Destino OAuth OK (permissão será validada na migração)")
 
-        return {
-            "ok": True,
-            "message": (
-                f"Conectado. Origem: {src_user} ({src_count} msgs no Inbox). "
-                f"Destino: {dest_user} OK."
-            ),
-        }
+        return {"ok": True, "message": " · ".join(notes)}
 
     # ── Fase 1: Assessment ────────────────────────────────────────────────────
 
