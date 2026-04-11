@@ -217,26 +217,135 @@ class SharePointEngine(MigrationEngine):
 
     # ── Mapeamento de drives ─────────────────────────────────────────────────────
 
+    # Nomes equivalentes da document library padrão em vários idiomas
+    _DEFAULT_LIB_NAMES = {
+        "documents", "shared documents",
+        "documentos", "documentos compartilhados",
+        "documentos partilhados",
+        "dokumente", "freigegebene dokumente",
+        "documenti", "documenti condivisi",
+    }
+
+    def _create_document_library(self, dst_site_id: str, display_name: str,
+                                  dst_hdrs: dict) -> tuple[str, str] | None:
+        """
+        Cria uma document library no site destino via /lists com template.
+        Depois resolve o drive_id correspondente à lista criada.
+        Retorna (drive_id, drive_name) ou None.
+        """
+        try:
+            r = requests.post(
+                f"{GRAPH_V1}/sites/{dst_site_id}/lists",
+                headers={**dst_hdrs, "Content-Type": "application/json"},
+                json={
+                    "displayName": display_name,
+                    "list": {"template": "documentLibrary"},
+                },
+                timeout=30,
+            )
+            if r.status_code not in (200, 201):
+                self.add_log(
+                    f"Falha ao criar library '{display_name}' no destino: "
+                    f"HTTP {r.status_code} {r.text[:200]}",
+                    "warning",
+                )
+                return None
+            list_data = r.json()
+            list_id = list_data.get("id", "")
+
+            # Resolve drive_id via /lists/{id}/drive
+            drv = requests.get(
+                f"{GRAPH_V1}/sites/{dst_site_id}/lists/{list_id}/drive",
+                headers=dst_hdrs, timeout=15,
+            )
+            if drv.status_code == 200:
+                d = drv.json()
+                return (d.get("id", ""), d.get("name", display_name))
+            self.add_log(
+                f"Library '{display_name}' criada mas drive não localizado "
+                f"(HTTP {drv.status_code}).",
+                "warning",
+            )
+            return None
+        except Exception as exc:
+            self.add_log(f"Exceção criando library '{display_name}': {exc}", "warning")
+            return None
+
     def _map_drives(self, src_site_id: str, dst_site_id: str,
                     src_hdrs: dict, dst_hdrs: dict) -> list[tuple]:
         """
-        Mapeia drives do site origem → destino por nome.
+        Mapeia drives do site origem → destino em três estratégias:
+        1. Match exato por nome
+        2. Match de default libraries (Documents / Documentos / Dokumente etc.)
+        3. Auto-map 1:1 quando cada lado tem exatamente uma library
+        4. Criar library no destino via POST /sites/{id}/lists
+
         Retorna lista de (src_drive_id, dst_drive_id, drive_name).
         """
         src_drives = self._get_site_drives(src_site_id, src_hdrs)
         dst_drives = self._get_site_drives(dst_site_id, dst_hdrs)
 
-        dst_by_name = {d["name"]: d["id"] for d in dst_drives}
-        mappings = []
+        dst_by_name = {d["name"]: d for d in dst_drives}
+        dst_defaults = [
+            d for d in dst_drives
+            if (d.get("name") or "").strip().lower() in self._DEFAULT_LIB_NAMES
+        ]
+        used_dst_ids: set[str] = set()
+        mappings: list[tuple] = []
 
         for sd in src_drives:
-            dst_id = dst_by_name.get(sd["name"])
-            if dst_id:
-                mappings.append((sd["id"], dst_id, sd["name"]))
+            src_name = sd.get("name", "")
+            src_name_norm = src_name.strip().lower()
+
+            # 1. Match exato
+            match = dst_by_name.get(src_name)
+            if match and match["id"] not in used_dst_ids:
+                mappings.append((sd["id"], match["id"], src_name))
+                used_dst_ids.add(match["id"])
+                self.add_log(f"Drive '{src_name}' mapeado por nome exato.")
+                continue
+
+            # 2. Default library — se source é default, casa com default do destino
+            if src_name_norm in self._DEFAULT_LIB_NAMES:
+                default_match = next(
+                    (d for d in dst_defaults if d["id"] not in used_dst_ids),
+                    None,
+                )
+                if default_match:
+                    mappings.append((sd["id"], default_match["id"], src_name))
+                    used_dst_ids.add(default_match["id"])
+                    self.add_log(
+                        f"Drive '{src_name}' mapeado para '{default_match.get('name')}' "
+                        f"(default library do destino)."
+                    )
+                    continue
+
+            # 3. Auto-map 1:1 quando só há uma library em cada lado
+            if len(src_drives) == 1 and len(dst_drives) == 1 \
+               and dst_drives[0]["id"] not in used_dst_ids:
+                dd = dst_drives[0]
+                mappings.append((sd["id"], dd["id"], src_name))
+                used_dst_ids.add(dd["id"])
+                self.add_log(
+                    f"Drive '{src_name}' mapeado automaticamente para "
+                    f"'{dd.get('name')}' (única library de cada lado)."
+                )
+                continue
+
+            # 4. Criar a library no destino
+            self.add_log(
+                f"Library '{src_name}' não encontrada no destino — criando..."
+            )
+            created = self._create_document_library(dst_site_id, src_name, dst_hdrs)
+            if created:
+                new_id, new_name = created
+                mappings.append((sd["id"], new_id, src_name))
+                used_dst_ids.add(new_id)
+                self.add_log(f"Library '{new_name}' criada no destino.")
             else:
                 self.add_log(
-                    f"Drive '{sd['name']}' não encontrado no site destino — ignorado.",
-                    "warning"
+                    f"Drive '{src_name}' não pôde ser mapeado nem criado — ignorado.",
+                    "warning",
                 )
 
         return mappings
