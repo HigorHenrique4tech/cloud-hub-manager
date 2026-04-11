@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
   ShieldAlert, ShieldCheck, ShieldOff, Zap, Settings, History,
   AlertTriangle, XCircle, CheckCircle2, Clock, RefreshCw,
   ChevronRight, Play, Plus, Building2, Key, ListChecks, Loader2,
+  ArrowLeft,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
@@ -256,7 +257,7 @@ function EventsTab() {
 
 // ── Incident Response Tab ─────────────────────────────────────────────────────
 
-function IncidentResponseTab() {
+function IncidentResponseTab({ isMaster }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
@@ -440,6 +441,7 @@ function IncidentResponseTab() {
 
       {showCreate && (
         <CreateIRModal
+          isMaster={isMaster}
           onClose={() => setShowCreate(false)}
           onCreated={(ir) => { setSelectedIR(ir.id); qc.invalidateQueries({ queryKey: ['ir-list'] }); }}
         />
@@ -450,7 +452,7 @@ function IncidentResponseTab() {
 
 // ── Create IR Modal ───────────────────────────────────────────────────────────
 
-function CreateIRModal({ onClose, onCreated }) {
+function CreateIRModal({ onClose, onCreated, isMaster }) {
   const { toast } = useToast();
   const [form, setForm] = useState({
     title: '',
@@ -511,7 +513,7 @@ function CreateIRModal({ onClose, onCreated }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Template *</label>
             <div className="space-y-2">
-              {(templatesQ.data?.templates || []).map(t => (
+              {(templatesQ.data?.templates || []).filter(t => isMaster || t.type !== 'containment_with_suspend').map(t => (
                 <label key={t.type} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all
                   ${form.template_type === t.type
                     ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
@@ -791,7 +793,7 @@ function AuditTab() {
 
 // ── Settings Tab ──────────────────────────────────────────────────────────────
 
-function SettingsTab() {
+function SettingsTab({ isMaster }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [showPCForm, setShowPCForm] = useState(false);
@@ -851,8 +853,8 @@ function SettingsTab() {
         )}
       </div>
 
-      {/* Partner Center */}
-      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
+      {/* Partner Center — visível apenas para org master (CSP/MSP) */}
+      {isMaster && <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
         <div className="flex items-start justify-between mb-3">
           <div>
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
@@ -921,7 +923,7 @@ function SettingsTab() {
             </div>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -929,13 +931,18 @@ function SettingsTab() {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function SecurityAutomation() {
-  const { currentOrg } = useOrgWorkspace();
+  const { currentOrg, orgs } = useOrgWorkspace();
   const { irId } = useParams();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(irId ? 'ir' : 'events');
 
   const isPro = ['enterprise', 'enterprise_migration'].includes(
     currentOrg?.effective_plan || currentOrg?.plan_tier
   );
+
+  // isMasterUser = true se o usuário pertence a uma org master, independente
+  // do workspace que está gerenciando no momento (ex: gerenciando workspace de cliente)
+  const isMasterUser = orgs.some(o => o.org_type === 'master');
 
   if (!isPro) {
     return (
@@ -953,6 +960,13 @@ export default function SecurityAutomation() {
   return (
     <div className="p-6 h-full flex flex-col">
       <div className="flex items-center gap-3 mb-6">
+        <button
+          onClick={() => navigate('/')}
+          className="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          title="Voltar ao painel"
+        >
+          <ArrowLeft size={18} />
+        </button>
         <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
           <ShieldAlert size={20} className="text-red-600 dark:text-red-400" />
         </div>
@@ -978,10 +992,10 @@ export default function SecurityAutomation() {
 
       <div className="flex-1 min-h-0 overflow-y-auto">
         {activeTab === 'events'    && <EventsTab />}
-        {activeTab === 'ir'        && <IncidentResponseTab />}
+        {activeTab === 'ir'        && <IncidentResponseTab isMaster={isMasterUser} />}
         {activeTab === 'playbooks' && <PlaybooksTab />}
         {activeTab === 'audit'     && <AuditTab />}
-        {activeTab === 'settings'  && <SettingsTab />}
+        {activeTab === 'settings'  && <SettingsTab isMaster={isMasterUser} />}
       </div>
     </div>
   );
