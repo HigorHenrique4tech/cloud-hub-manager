@@ -1,4 +1,4 @@
-import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Clock, Zap, Headphones, Shield, Hourglass, CloudCog, Users, CreditCard, Wallet, Menu } from 'lucide-react';
+import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Clock, Zap, Headphones, Shield, ShieldAlert, Hourglass, CloudCog, Users, CreditCard, Wallet, Menu, ArrowRightLeft, Database, AlertTriangle, Info, ShieldCheck } from 'lucide-react';
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -32,7 +32,7 @@ const Header = ({ onMenuToggle }) => {
     refetchInterval: 60000,
     retry: false,
   });
-  const unreadEvents = eventsData?.events || eventsData || [];
+  const unreadEvents = Array.isArray(eventsData) ? eventsData : (eventsData?.events || []);
   const unreadCount = unreadEvents.length;
 
   const markReadMutation = useMutation({
@@ -181,7 +181,7 @@ const Header = ({ onMenuToggle }) => {
             <div className="relative" ref={bellRef}>
               <button
                 onClick={() => setBellOpen((o) => !o)}
-                title="Alertas de custo"
+                title="Notificações"
                 className="relative p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100
                            dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700
                            transition-colors"
@@ -201,13 +201,13 @@ const Header = ({ onMenuToggle }) => {
                                 border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700">
                     <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Alertas não lidos {unreadCount > 0 && `(${unreadCount})`}
+                      Notificações {unreadCount > 0 && `(${unreadCount} não lidas)`}
                     </span>
                     <button
-                      onClick={() => { setBellOpen(false); navigate('/costs'); }}
+                      onClick={() => { setBellOpen(false); navigate('/notifications/history'); }}
                       className="text-xs text-primary hover:underline"
                     >
-                      Ver todos
+                      Ver histórico
                     </button>
                   </div>
                   {unreadEvents.length === 0 ? (
@@ -218,20 +218,26 @@ const Header = ({ onMenuToggle }) => {
                     <ul className="divide-y divide-gray-100 dark:divide-gray-700 max-h-72 overflow-y-auto">
                       {unreadEvents.map((ev) => {
                         const TYPE_META = {
-                          anomaly:     { Icon: TrendingDown, color: 'text-red-500',    label: 'Anomalia' },
-                          budget:      { Icon: Wallet,       color: 'text-yellow-500', label: 'Orçamento' },
-                          schedule:    { Icon: Clock,        color: 'text-blue-500',   label: 'Agendamento' },
-                          finops_scan: { Icon: Zap,          color: 'text-indigo-500', label: 'FinOps' },
-                          cost_alert:  { Icon: Bell,         color: 'text-orange-500', label: 'Alerta' },
-                          trial:       { Icon: Hourglass,    color: 'text-purple-500', label: 'Trial' },
-                          approval:    { Icon: CheckCircle2, color: 'text-green-500',  label: 'Aprovação' },
-                          policy:      { Icon: Shield,       color: 'text-slate-500',  label: 'Política' },
-                          security:    { Icon: Shield,       color: 'text-red-500',    label: 'Segurança' },
-                          cloud_account: { Icon: CloudCog,   color: 'text-cyan-500',   label: 'Conta Cloud' },
-                          workspace:   { Icon: Users,        color: 'text-teal-500',   label: 'Workspace' },
-                          billing:     { Icon: CreditCard,   color: 'text-green-500',  label: 'Cobrança' },
-                          member:      { Icon: Users,        color: 'text-blue-500',   label: 'Membro' },
-                          plan:        { Icon: Crown,        color: 'text-amber-500',  label: 'Plano' },
+                          anomaly:        { Icon: TrendingDown,  color: 'text-red-500',    label: 'Anomalia' },
+                          budget:         { Icon: Wallet,        color: 'text-yellow-500', label: 'Orçamento' },
+                          schedule:       { Icon: Clock,         color: 'text-blue-500',   label: 'Agendamento' },
+                          finops_scan:    { Icon: Zap,           color: 'text-indigo-500', label: 'FinOps' },
+                          cost_alert:     { Icon: Bell,          color: 'text-orange-500', label: 'Alerta de Custo' },
+                          trial:          { Icon: Hourglass,     color: 'text-purple-500', label: 'Trial' },
+                          approval:       { Icon: CheckCircle2,  color: 'text-green-500',  label: 'Aprovação' },
+                          policy:         { Icon: Shield,        color: 'text-slate-500',  label: 'Política' },
+                          security:       { Icon: Shield,        color: 'text-red-500',    label: 'Segurança' },
+                          security_alert: { Icon: ShieldAlert,   color: 'text-red-500',    label: 'Alerta de Segurança' },
+                          security_auto:  { Icon: ShieldCheck,   color: 'text-orange-500', label: 'Automação de Segurança' },
+                          cloud_account:  { Icon: CloudCog,      color: 'text-cyan-500',   label: 'Conta Cloud' },
+                          workspace:      { Icon: Users,         color: 'text-teal-500',   label: 'Workspace' },
+                          billing:        { Icon: CreditCard,    color: 'text-green-500',  label: 'Cobrança' },
+                          member:         { Icon: Users,         color: 'text-blue-500',   label: 'Membro' },
+                          plan:           { Icon: Crown,         color: 'text-amber-500',  label: 'Plano' },
+                          migration:      { Icon: ArrowRightLeft, color: 'text-blue-500',  label: 'Migração' },
+                          backup:         { Icon: Database,      color: 'text-sky-500',    label: 'Backup' },
+                          warning:        { Icon: AlertTriangle, color: 'text-amber-500',  label: 'Aviso' },
+                          info:           { Icon: Info,          color: 'text-gray-400',   label: 'Info' },
                         };
                         const meta = TYPE_META[ev.notification_type] || TYPE_META.cost_alert;
                         const { Icon, color, label } = meta;
@@ -239,7 +245,7 @@ const Header = ({ onMenuToggle }) => {
                           <li
                             key={ev.id}
                             className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
-                            onClick={() => { setBellOpen(false); navigate(ev.link_to || '/costs'); }}
+                            onClick={() => { setBellOpen(false); navigate(ev.link_to || '/notifications/history'); }}
                           >
                             <Icon className={`w-4 h-4 ${color} mt-0.5 flex-shrink-0`} />
                             <div className="flex-1 min-w-0">

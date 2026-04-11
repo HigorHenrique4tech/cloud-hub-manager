@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Plus, Trash2, HardDriveDownload, RefreshCw, HardDrive,
   Archive, Shield, Play, Clock, CheckCircle,
-  XCircle, AlertCircle, Database,
+  XCircle, AlertCircle, Database, ShieldCheck, ShieldAlert, ShieldOff, AlertTriangle,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
@@ -766,11 +766,228 @@ function BackupArchiveTab() {
   );
 }
 
+// ── Coverage Tab ───────────────────────────────────────────────────────────────
+
+const RISK_MAP = {
+  critical: { cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300', label: 'Crítico' },
+  high:     { cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300', label: 'Alto' },
+  medium:   { cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300', label: 'Médio' },
+  ok:       { cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300', label: 'OK' },
+};
+
+function RiskBadge({ risk }) {
+  const r = RISK_MAP[risk] || RISK_MAP.medium;
+  return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${r.cls}`}>{r.label}</span>;
+}
+
+function CoverageTab() {
+  const qc = useQueryClient();
+  const [subTab, setSubTab] = useState('summary');
+
+  const coverageQ = useQuery({
+    queryKey: ['azure-backup-coverage'],
+    queryFn: () => azureService.getBackupCoverage(),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const unprotectedQ = useQuery({
+    queryKey: ['azure-backup-unprotected'],
+    queryFn: () => azureService.getUnprotectedVMs(),
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: subTab === 'unprotected',
+  });
+  const healthQ = useQuery({
+    queryKey: ['azure-backup-health'],
+    queryFn: () => azureService.getBackupHealth(),
+    staleTime: 5 * 60_000,
+    retry: false,
+    enabled: subTab === 'health',
+  });
+
+  const scanMut = useMutation({
+    mutationFn: () => azureService.triggerBackupScan(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['azure-backup-coverage'] });
+      qc.invalidateQueries({ queryKey: ['azure-backup-unprotected'] });
+      qc.invalidateQueries({ queryKey: ['azure-backup-health'] });
+    },
+  });
+
+  const d = coverageQ.data;
+  const pct = d?.coverage_pct ?? 0;
+  const barColor = pct >= 90 ? 'bg-green-500' : pct >= 70 ? 'bg-yellow-400' : 'bg-red-500';
+
+  const SUB_TABS = [
+    { key: 'summary',     label: 'Resumo' },
+    { key: 'unprotected', label: `Sem Backup${d ? ` (${d.unprotected_vms})` : ''}` },
+    { key: 'health',      label: 'Saúde dos Backups' },
+  ];
+
+  return (
+    <div>
+      {/* Sub-tab bar */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+          {SUB_TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setSubTab(t.key)}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${subTab === t.key
+                ? 'border-sky-500 text-sky-600 dark:text-sky-400'
+                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200'}`}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+        <button
+          onClick={() => scanMut.mutate()}
+          disabled={scanMut.isPending || coverageQ.isFetching}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/30 disabled:opacity-50 transition-colors"
+        >
+          <RefreshCw size={12} className={(scanMut.isPending || coverageQ.isFetching) ? 'animate-spin' : ''} />
+          Escanear agora
+        </button>
+      </div>
+
+      {/* Summary sub-tab */}
+      {subTab === 'summary' && (
+        coverageQ.isLoading ? (
+          <div className="space-y-4">
+            {[1,2,3].map(i => <div key={i} className="h-20 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />)}
+          </div>
+        ) : d ? (
+          <div className="space-y-6">
+            {/* Coverage bar */}
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5">
+              <div className="flex items-end justify-between mb-2">
+                <div>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Cobertura de Backup</p>
+                  <p className="text-4xl font-bold text-gray-900 dark:text-gray-100">{pct}%</p>
+                </div>
+                <p className="text-xs text-gray-400">{d.vaults_count} vault(s) · escaneado {formatDate(d.scanned_at)}</p>
+              </div>
+              <div className="h-3 w-full bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${pct}%` }} />
+              </div>
+            </div>
+
+            {/* Stats row */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              {[
+                { label: 'Total de VMs',  value: d.total_vms,        color: 'gray' },
+                { label: 'Protegidas',    value: d.protected_vms,    color: 'green' },
+                { label: 'Sem backup',    value: d.unprotected_vms,  color: 'red' },
+                { label: 'Com falha',     value: d.failing_backups,  color: 'orange' },
+                { label: 'Desatualizados',value: d.stale_backups,    color: 'yellow' },
+              ].map(s => (
+                <div key={s.label} className={`text-center p-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800`}>
+                  <p className={`text-2xl font-bold text-${s.color}-600 dark:text-${s.color}-400`}>{s.value}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{s.label}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Alert banners */}
+            {d.failing_backups > 0 && (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300">
+                <ShieldAlert size={16} />
+                <span className="text-sm font-medium">{d.failing_backups} backup(s) com falha — verifique a aba "Saúde dos Backups"</span>
+              </div>
+            )}
+            {d.stale_backups > 0 && (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-300">
+                <AlertTriangle size={16} />
+                <span className="text-sm font-medium">{d.stale_backups} restore point(s) com mais de 7 dias</span>
+              </div>
+            )}
+            {d.unprotected_vms === 0 && d.failing_backups === 0 && d.stale_backups === 0 && (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300">
+                <ShieldCheck size={16} />
+                <span className="text-sm font-medium">Todas as VMs estão protegidas e com backup saudável.</span>
+              </div>
+            )}
+          </div>
+        ) : (
+          <EmptyState icon={ShieldOff} title="Sem dados de cobertura" description='Clique em "Escanear agora" para analisar a cobertura de backup.' />
+        )
+      )}
+
+      {/* Unprotected VMs sub-tab */}
+      {subTab === 'unprotected' && (
+        unprotectedQ.isLoading ? <SkeletonTable columns={4} rows={5} /> : (
+          (unprotectedQ.data || []).length === 0 ? (
+            <EmptyState icon={ShieldCheck} title="Nenhuma VM sem backup" description="Todas as VMs da assinatura estão protegidas." />
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    {['VM', 'Grupo de Recursos', 'Região', 'OS', 'Risco'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {(unprotectedQ.data || []).map((vm, i) => (
+                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{vm.name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{vm.resource_group}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{vm.location}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{vm.os_type || '—'}</td>
+                      <td className="px-4 py-3"><RiskBadge risk={vm.risk} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )
+      )}
+
+      {/* Backup Health sub-tab */}
+      {subTab === 'health' && (
+        healthQ.isLoading ? <SkeletonTable columns={6} rows={5} /> : (
+          (healthQ.data || []).length === 0 ? (
+            <EmptyState icon={Shield} title="Sem itens protegidos" description="Não há VMs com backup configurado nesta assinatura." />
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+              <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700 bg-white dark:bg-gray-800">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    {['VM', 'Vault', 'Último Backup', 'Status', 'Política', 'Risco'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {(healthQ.data || []).map((item, i) => (
+                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{item.vm_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{item.vault_name}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{formatDate(item.last_backup_time)}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{item.last_backup_status || '—'}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{item.policy_name || '—'}</td>
+                      <td className="px-4 py-3"><RiskBadge risk={item.risk} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )
+        )
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────────────
 
 const MAIN_TABS = [
   { key: 'snapshots', label: 'Snapshots de Disco', icon: HardDrive },
   { key: 'backup',    label: 'Backup de VMs',      icon: Shield },
+  { key: 'coverage',  label: 'Cobertura',           icon: ShieldCheck },
 ];
 
 export default function AzureBackup() {
@@ -815,6 +1032,7 @@ export default function AzureBackup() {
 
       {activeTab === 'snapshots' && <SnapshotsTab />}
       {activeTab === 'backup'    && <BackupArchiveTab />}
+      {activeTab === 'coverage'  && <CoverageTab />}
     </Layout>
   );
 }

@@ -10,6 +10,7 @@ import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import ResourceMetricsPanel from '../../components/monitoring/ResourceMetricsPanel';
 import azureService from '../../services/azureservices';
+import BackupCoverageWidget from '../../components/azure/BackupCoverageWidget';
 
 // ─ Resource type → icon + color ──────────────────────────────────────────────
 const RESOURCE_TYPE_MAP = {
@@ -327,6 +328,11 @@ const AzureOverview = () => {
           </div>
         </section>
       )}
+
+      {/* Backup Coverage Widget */}
+      <div className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <BackupCoverageWidget />
+      </div>
 
       {/* Resource Groups */}
       <section className="mb-8">

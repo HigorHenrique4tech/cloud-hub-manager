@@ -171,7 +171,9 @@ async def ws_delete_alert(
 @ws_router.get("/events")
 async def ws_get_events(
     unread_only: bool = Query(False),
+    notification_type: str = Query(None, description="Filter by type, e.g. migration, security_alert, backup"),
     limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
     member: MemberContext = Depends(require_permission("alerts.view")),
     db: Session = Depends(get_db),
 ):
@@ -186,8 +188,11 @@ async def ws_get_events(
     )
     if unread_only:
         query = query.filter(AlertEvent.is_read == False)
-    events = query.order_by(AlertEvent.triggered_at.desc()).limit(limit).all()
-    return [event_to_dict(e) for e in events]
+    if notification_type:
+        query = query.filter(AlertEvent.notification_type == notification_type)
+    total = query.count()
+    events = query.order_by(AlertEvent.triggered_at.desc()).offset(offset).limit(limit).all()
+    return {"items": [event_to_dict(e) for e in events], "total": total, "offset": offset, "limit": limit}
 
 
 @ws_router.post("/events/{event_id}/read")

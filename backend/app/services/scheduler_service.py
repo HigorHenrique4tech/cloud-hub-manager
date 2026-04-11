@@ -1119,6 +1119,18 @@ def load_report_schedules(db) -> int:
     except Exception as exc:
         logger.error(f"Failed to register webhook_retry job: {exc}")
 
+    # Register daily Azure backup coverage scan (06:00 UTC)
+    try:
+        scheduler.add_job(
+            _run_daily_backup_scan,
+            CronTrigger(hour=6, minute=0),
+            id="backup_scan_daily",
+            replace_existing=True,
+        )
+        logger.info("Daily backup scan job registered (06:00 UTC)")
+    except Exception as exc:
+        logger.error(f"Failed to register backup_scan_daily job: {exc}")
+
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count
 
@@ -1132,3 +1144,68 @@ def get_report_next_run(schedule_id: str) -> Optional[str]:
     except Exception:
         pass
     return None
+
+
+def _run_daily_backup_scan() -> None:
+    """
+    Daily job: run backup coverage scan for every Azure-connected workspace
+    and push a notification if there are unprotected or failing VMs.
+    """
+    from app.database import SessionLocal
+    from app.models.db_models import CloudAccount, Workspace
+    from app.services.auth_service import decrypt_for_account
+    from app.services.notification_service import push_notification
+
+    db = SessionLocal()
+    try:
+        accounts = db.query(CloudAccount).filter(
+            CloudAccount.provider == "azure",
+            CloudAccount.is_active == True,
+        ).all()
+        for account in accounts:
+            try:
+                creds = decrypt_for_account(db, account)
+                if not creds:
+                    continue
+                from app.services.azure_service import AzureService
+                from app.services.backup_validation_service import BackupValidationService
+                svc = AzureService(
+                    tenant_id=creds.get("tenant_id"),
+                    client_id=creds.get("client_id"),
+                    client_secret=creds.get("client_secret"),
+                    subscription_id=creds.get("subscription_id"),
+                )
+                bv = BackupValidationService(svc)
+                summary = bv.get_coverage_summary()
+
+                ws_id = str(account.workspace_id)
+                problems = []
+                if summary.get("unprotected_vms", 0) > 0:
+                    problems.append(f"{summary['unprotected_vms']} VM(s) sem backup")
+                if summary.get("failing_backups", 0) > 0:
+                    problems.append(f"{summary['failing_backups']} backup(s) com falha")
+                if summary.get("stale_backups", 0) > 0:
+                    problems.append(f"{summary['stale_backups']} restore point(s) desatualizado(s)")
+
+                if problems:
+                    push_notification(
+                        db, ws_id, "backup",
+                        f"Cobertura de Backup: {'; '.join(problems)}. Acesse Azure → Backup → Cobertura.",
+                        link_to="/azure/backup",
+                    )
+                else:
+                    push_notification(
+                        db, ws_id, "backup",
+                        f"Scan diário: cobertura de backup {summary['coverage_pct']}% — todas as VMs protegidas.",
+                        link_to="/azure/backup",
+                    )
+                logger.info(
+                    "[backup_scan_daily] workspace=%s coverage=%.1f%% unprotected=%s",
+                    ws_id, summary.get("coverage_pct", 0), summary.get("unprotected_vms", 0),
+                )
+            except Exception as exc:
+                logger.warning("[backup_scan_daily] Error scanning account %s: %s", account.id, exc)
+    except Exception as exc:
+        logger.error("[backup_scan_daily] Fatal error: %s", exc)
+    finally:
+        db.close()

@@ -279,6 +279,19 @@ def run_migration_project(self, project_id: str,
                          f"Iniciando migração de {len(mailbox_ids)} caixa(s). "
                          f"Tipo: {migration_type}.")
 
+        # Push start notification
+        try:
+            from app.services.notification_service import push_notification
+            push_notification(
+                db,
+                workspace_id=str(project.workspace_id),
+                notification_type="migration",
+                message=f"Migração '{project.name}' iniciada: {len(mailbox_ids)} caixa(s) em processamento.",
+                link_to=f"/m365/migration/{project_id}",
+            )
+        except Exception:
+            pass
+
         db.close()
         db = None  # threads abrem suas próprias sessões
 

@@ -29,6 +29,7 @@ const Schedules = lazy(() => import('./pages/Schedules'));
 const Inventory = lazy(() => import('./pages/Inventory'));
 const ApprovalsPage = lazy(() => import('./pages/ApprovalsPage'));
 const NotificationChannels = lazy(() => import('./pages/NotificationChannels'));
+const NotificationsHistory = lazy(() => import('./pages/NotificationsHistory'));
 
 // AWS
 const AwsOverview = lazy(() => import('./pages/aws/AwsOverview'));
@@ -173,6 +174,7 @@ function App() {
                 <Route path="/finops" element={<PR><FinOps /></PR>} />
                 <Route path="/schedules" element={<PR><Schedules /></PR>} />
                 <Route path="/notifications" element={<PR><NotificationChannels /></PR>} />
+                <Route path="/notifications/history" element={<PR><NotificationsHistory /></PR>} />
                 <Route path="/m365" element={<PR><M365Dashboard /></PR>} />
                 <Route path="/m365/sharepoint" element={<PR><M365SharePoint /></PR>} />
                 <Route path="/m365/exchange" element={<PR><M365Exchange /></PR>} />

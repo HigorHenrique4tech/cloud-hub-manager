@@ -1462,3 +1462,104 @@ async def ws_advisor_refresh(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Backup Validation (coverage / unprotected VMs / health) ──────────────────
+
+def _build_backup_validation(member: MemberContext, db: Session):
+    from app.services.backup_validation_service import BackupValidationService
+    svc = _get_single_azure_service(member, db)
+    return BackupValidationService(svc)
+
+
+@ws_router.get("/backup-validation/coverage")
+async def ws_backup_coverage(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns a summary of backup coverage across all Recovery Services Vaults:
+    total VMs, protected, unprotected, coverage %, healthy/stale/failing counts.
+    """
+    bv = _build_backup_validation(member, db)
+    try:
+        return await asyncio.to_thread(bv.get_coverage_summary)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/backup-validation/unprotected")
+async def ws_backup_unprotected(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Returns list of VMs with no backup coverage (risk=critical)."""
+    bv = _build_backup_validation(member, db)
+    try:
+        items = await asyncio.to_thread(bv.get_unprotected_vms)
+        return {"items": items, "total": len(items)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/backup-validation/health")
+async def ws_backup_health(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns all protected VMs with health classification:
+    ok, medium (stale restore point >7d), high (failing >3d).
+    """
+    bv = _build_backup_validation(member, db)
+    try:
+        items = await asyncio.to_thread(bv.get_backup_health)
+        return {"items": items, "total": len(items)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backup-validation/scan")
+async def ws_backup_scan(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Triggers an on-demand backup coverage scan and returns the summary.
+    Also fires notifications if unprotected or failing VMs are found.
+    """
+    from app.services.notification_service import push_notification
+
+    bv = _build_backup_validation(member, db)
+    try:
+        summary = await asyncio.to_thread(bv.get_coverage_summary)
+
+        if summary["unprotected_vms"] > 0:
+            push_notification(
+                db, member.workspace_id, "backup_alert",
+                f"{summary['unprotected_vms']} VM(s) sem backup detectada(s). "
+                f"Cobertura atual: {summary['coverage_pct']}%",
+            )
+        if summary["failing_backups"] > 0:
+            push_notification(
+                db, member.workspace_id, "backup_warning",
+                f"{summary['failing_backups']} backup(s) com falha ou restore point desatualizado.",
+            )
+
+        log_activity(
+            db, member.user, "backup.scan", "AZURE_BACKUP_VALIDATION",
+            resource_name="coverage-scan", provider="azure",
+            organization_id=member.organization_id,
+            workspace_id=member.workspace_id,
+        )
+        return {**summary, "notifications_sent": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))

@@ -88,6 +88,12 @@ export const azureService = {
   getAdvisorSummary: () => api.get(wsUrl('/azure/advisor/summary')).then(r => r.data),
   getAdvisorRecommendations: (category) => api.get(wsUrl('/azure/advisor/recommendations'), { params: category ? { category } : {} }).then(r => r.data),
   refreshAdvisor: () => api.post(wsUrl('/azure/advisor/refresh')).then(r => r.data),
+
+  // Backup Validation — coverage analysis
+  getBackupCoverage: () => api.get(wsUrl('/azure/backup-validation/coverage')).then(r => r.data),
+  getUnprotectedVMs: () => api.get(wsUrl('/azure/backup-validation/unprotected')).then(r => r.data),
+  getBackupHealth: () => api.get(wsUrl('/azure/backup-validation/health')).then(r => r.data),
+  triggerBackupScan: () => api.post(wsUrl('/azure/backup-validation/scan')).then(r => r.data),
 };
 
 export default azureService;
