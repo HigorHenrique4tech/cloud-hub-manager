@@ -1,48 +1,45 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import {
   ShieldAlert, ShieldCheck, ShieldOff, Zap, Settings, History,
   AlertTriangle, XCircle, CheckCircle2, Clock, RefreshCw,
-  ChevronRight, User, Server, Globe, Play, Ban, Eye, Plus,
-  Building2, Key, ListChecks, Loader2, Info,
+  ChevronRight, Play, Plus, Building2, Key, ListChecks, Loader2,
 } from 'lucide-react';
 import api from '../../services/api';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
-import { toast } from '../../components/ui/use-toast';
+import { useToast } from '../../contexts/ToastContext';
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
 const wsUrl = (path) => {
-  const slug = window.__orgSlug || localStorage.getItem('org_slug') || 'default';
-  const wsId = window.__workspaceId || localStorage.getItem('workspace_id') || 'default';
+  const slug = localStorage.getItem('org_slug') || 'default';
+  const wsId = localStorage.getItem('workspace_id') || 'default';
   return `/orgs/${slug}/workspaces/${wsId}/security${path}`;
 };
 
 const secApi = {
-  getEvents: (params) => api.get(wsUrl('/automation/events'), { params }).then(r => r.data),
-  getEvent: (id) => api.get(wsUrl(`/automation/events/${id}`)).then(r => r.data),
-  dismissEvent: (id) => api.post(wsUrl(`/automation/events/${id}/dismiss`)).then(r => r.data),
-  executeAction: (id, body) => api.post(wsUrl(`/automation/events/${id}/execute-action`), body).then(r => r.data),
-  triggerScan: () => api.post(wsUrl('/automation/scan')).then(r => r.data),
-  getPlaybooks: () => api.get(wsUrl('/automation/playbooks')).then(r => r.data),
+  getEvents:      (params) => api.get(wsUrl('/automation/events'), { params }).then(r => r.data),
+  getEvent:       (id) => api.get(wsUrl(`/automation/events/${id}`)).then(r => r.data),
+  dismissEvent:   (id) => api.post(wsUrl(`/automation/events/${id}/dismiss`)).then(r => r.data),
+  executeAction:  (id, body) => api.post(wsUrl(`/automation/events/${id}/execute-action`), body).then(r => r.data),
+  triggerScan:    () => api.post(wsUrl('/automation/scan')).then(r => r.data),
+  getPlaybooks:   () => api.get(wsUrl('/automation/playbooks')).then(r => r.data),
   updatePlaybook: (name, body) => api.put(wsUrl(`/automation/playbooks/${name}`), body).then(r => r.data),
-  getAudit: (params) => api.get(wsUrl('/automation/audit'), { params }).then(r => r.data),
-  getSettings: () => api.get(wsUrl('/automation/settings')).then(r => r.data),
+  getAudit:       (params) => api.get(wsUrl('/automation/audit'), { params }).then(r => r.data),
+  getSettings:    () => api.get(wsUrl('/automation/settings')).then(r => r.data),
   updateSettings: (body) => api.put(wsUrl('/automation/settings'), body).then(r => r.data),
-  // Partner Center
-  getPCConfig: () => api.get(wsUrl('/partner-center/config')).then(r => r.data),
-  savePCConfig: (body) => api.put(wsUrl('/partner-center/config'), body).then(r => r.data),
+  getPCConfig:    () => api.get(wsUrl('/partner-center/config')).then(r => r.data),
+  savePCConfig:   (body) => api.put(wsUrl('/partner-center/config'), body).then(r => r.data),
   getCustomerSubs: (tenantId) => api.get(wsUrl(`/partner-center/customers/${tenantId}/subscriptions`)).then(r => r.data),
-  suspendSub: (tenantId, subId) => api.post(wsUrl(`/partner-center/customers/${tenantId}/subscriptions/${subId}/suspend`)).then(r => r.data),
-  reactivateSub: (tenantId, subId) => api.post(wsUrl(`/partner-center/customers/${tenantId}/subscriptions/${subId}/reactivate`)).then(r => r.data),
-  // Incident Responses
-  getIRList: (params) => api.get(wsUrl('/incident-responses'), { params }).then(r => r.data),
+  suspendSub:     (tenantId, subId) => api.post(wsUrl(`/partner-center/customers/${tenantId}/subscriptions/${subId}/suspend`)).then(r => r.data),
+  reactivateSub:  (tenantId, subId) => api.post(wsUrl(`/partner-center/customers/${tenantId}/subscriptions/${subId}/reactivate`)).then(r => r.data),
+  getIRList:      (params) => api.get(wsUrl('/incident-responses'), { params }).then(r => r.data),
   getIRTemplates: () => api.get(wsUrl('/incident-responses/templates')).then(r => r.data),
-  createIR: (body) => api.post(wsUrl('/incident-responses'), body).then(r => r.data),
-  getIR: (id) => api.get(wsUrl(`/incident-responses/${id}`)).then(r => r.data),
-  approveIR: (id, body) => api.post(wsUrl(`/incident-responses/${id}/approve`), body).then(r => r.data),
-  cancelIR: (id) => api.post(wsUrl(`/incident-responses/${id}/cancel`)).then(r => r.data),
+  createIR:       (body) => api.post(wsUrl('/incident-responses'), body).then(r => r.data),
+  getIR:          (id) => api.get(wsUrl(`/incident-responses/${id}`)).then(r => r.data),
+  approveIR:      (id, body) => api.post(wsUrl(`/incident-responses/${id}/approve`), body).then(r => r.data),
+  cancelIR:       (id) => api.post(wsUrl(`/incident-responses/${id}/cancel`)).then(r => r.data),
 };
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -55,15 +52,15 @@ const SEVERITY_BADGE = {
 };
 
 const STATUS_BADGE = {
-  open:              'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  contained:         'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-  dismissed:         'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
-  pending_approval:  'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
-  approved:          'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  running:           'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-  completed:         'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
-  failed:            'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-  cancelled:         'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
+  open:             'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  contained:        'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  dismissed:        'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
+  pending_approval: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+  approved:         'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
+  running:          'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
+  completed:        'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+  failed:           'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+  cancelled:        'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400',
 };
 
 const SOURCE_LABEL = {
@@ -86,8 +83,6 @@ const fmtRelative = (iso) => {
   return `${Math.floor(h / 24)}d atrás`;
 };
 
-// ── Tab bar ───────────────────────────────────────────────────────────────────
-
 const TABS = [
   { id: 'events',    label: 'Eventos',     icon: ShieldAlert },
   { id: 'ir',        label: 'Resposta IR', icon: Zap },
@@ -100,6 +95,7 @@ const TABS = [
 
 function EventsTab() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [severity, setSeverity] = useState('');
   const [selected, setSelected] = useState(null);
 
@@ -120,23 +116,22 @@ function EventsTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sec-events'] });
       setSelected(null);
-      toast({ title: 'Evento descartado.' });
+      toast('Evento descartado.', 'success');
     },
   });
 
   const scanMut = useMutation({
     mutationFn: secApi.triggerScan,
-    onSuccess: () => toast({ title: 'Scan iniciado em background.' }),
+    onSuccess: () => toast('Scan iniciado em background.', 'info'),
   });
 
   const events = evQ.data?.items || [];
 
   return (
     <div className="flex gap-4 h-full">
-      {/* Lista */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-3">
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap">
             {['', 'critical', 'high', 'medium', 'low'].map(s => (
               <button key={s} onClick={() => setSeverity(s)}
                 className={`px-3 py-1 rounded-full text-xs font-medium transition-colors
@@ -148,8 +143,7 @@ function EventsTab() {
               </button>
             ))}
           </div>
-          <button onClick={() => scanMut.mutate()}
-            disabled={scanMut.isPending}
+          <button onClick={() => scanMut.mutate()} disabled={scanMut.isPending}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50">
             {scanMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
             Scan agora
@@ -179,7 +173,7 @@ function EventsTab() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${SEVERITY_BADGE[ev.severity] || SEVERITY_BADGE.medium}`}>
-                        {ev.severity.toUpperCase()}
+                        {ev.severity?.toUpperCase()}
                       </span>
                       <span className="text-xs text-gray-500 dark:text-gray-400">
                         {SOURCE_LABEL[ev.source] || ev.source}
@@ -199,7 +193,6 @@ function EventsTab() {
         )}
       </div>
 
-      {/* Detalhe */}
       {selected && (
         <div className="w-80 shrink-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
           {evDetailQ.isLoading ? (
@@ -248,13 +241,10 @@ function EventsTab() {
               )}
 
               {evDetailQ.data.status === 'open' && (
-                <div className="space-y-2">
-                  <button onClick={() => dismissMut.mutate(selected)}
-                    disabled={dismissMut.isPending}
-                    className="w-full py-2 text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">
-                    Descartar evento
-                  </button>
-                </div>
+                <button onClick={() => dismissMut.mutate(selected)} disabled={dismissMut.isPending}
+                  className="w-full py-2 text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">
+                  Descartar evento
+                </button>
               )}
             </>
           ) : null}
@@ -268,6 +258,7 @@ function EventsTab() {
 
 function IncidentResponseTab() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
   const [selectedIR, setSelectedIR] = useState(null);
 
@@ -281,8 +272,8 @@ function IncidentResponseTab() {
     queryKey: ['ir-detail', selectedIR],
     queryFn: () => secApi.getIR(selectedIR),
     enabled: !!selectedIR,
-    refetchInterval: (data) => {
-      if (data?.status === 'running') return 3000;
+    refetchInterval: (query) => {
+      if (query.state.data?.status === 'running') return 3000;
       return false;
     },
   });
@@ -292,9 +283,9 @@ function IncidentResponseTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ir-list'] });
       qc.invalidateQueries({ queryKey: ['ir-detail', selectedIR] });
-      toast({ title: '✅ Execução aprovada e iniciada.' });
+      toast('Execução aprovada e iniciada.', 'success');
     },
-    onError: (e) => toast({ title: 'Erro', description: e.response?.data?.detail || 'Falha na aprovação.', variant: 'destructive' }),
+    onError: (e) => toast(e.response?.data?.detail || 'Falha na aprovação.', 'error'),
   });
 
   const cancelMut = useMutation({
@@ -302,7 +293,7 @@ function IncidentResponseTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ir-list'] });
       qc.invalidateQueries({ queryKey: ['ir-detail', selectedIR] });
-      toast({ title: 'Resposta cancelada.' });
+      toast('Resposta cancelada.', 'info');
     },
   });
 
@@ -310,12 +301,9 @@ function IncidentResponseTab() {
 
   return (
     <div className="flex gap-4 h-full">
-      {/* Lista */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
-            Respostas a Incidentes
-          </h3>
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-200">Respostas a Incidentes</h3>
           <button onClick={() => setShowCreate(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors">
             <Plus size={12} />
@@ -361,7 +349,6 @@ function IncidentResponseTab() {
         )}
       </div>
 
-      {/* Detalhe */}
       {selectedIR && irDetailQ.data && (
         <div className="w-96 shrink-0 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4 overflow-y-auto">
           <div>
@@ -372,12 +359,10 @@ function IncidentResponseTab() {
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               {irDetailQ.data.template_type === 'containment_with_suspend'
                 ? 'Template: Contenção + Suspensão de Assinatura'
-                : 'Template: Contenção'
-              }
+                : 'Template: Contenção'}
             </p>
           </div>
 
-          {/* Steps */}
           <div>
             <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 uppercase">Etapas</p>
             <div className="space-y-2">
@@ -395,20 +380,15 @@ function IncidentResponseTab() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-gray-700 dark:text-gray-200">{step.label}</p>
-                    {step.error && (
-                      <p className="text-xs text-red-500 mt-0.5 break-all">{step.error}</p>
-                    )}
-                    {step.executed_at && (
-                      <p className="text-[10px] text-gray-400">{fmtDate(step.executed_at)}</p>
-                    )}
+                    {step.error && <p className="text-xs text-red-500 mt-0.5 break-all">{step.error}</p>}
+                    {step.executed_at && <p className="text-[10px] text-gray-400">{fmtDate(step.executed_at)}</p>}
                   </div>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Affected entities */}
-          {(irDetailQ.data.affected_users?.length > 0 || irDetailQ.data.target_resource_ids?.length > 0) && (
+          {(irDetailQ.data.affected_users?.length > 0 || irDetailQ.data.target_subscription_id) && (
             <div className="text-xs bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 space-y-2">
               {irDetailQ.data.affected_users?.length > 0 && (
                 <div>
@@ -429,42 +409,41 @@ function IncidentResponseTab() {
             </div>
           )}
 
-          {/* Actions */}
-          <div className="space-y-2">
-            {irDetailQ.data.status === 'pending_approval' && (
-              <>
-                <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
-                  <AlertTriangle size={12} className="inline mr-1" />
-                  Esta ação é irreversível. Confirme que você entende o impacto antes de aprovar.
+          {irDetailQ.data.status === 'pending_approval' && (
+            <div className="space-y-2">
+              <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-xs text-amber-700 dark:text-amber-300">
+                <AlertTriangle size={12} className="inline mr-1" />
+                Esta ação é irreversível. Confirme que entende o impacto antes de aprovar.
+              </div>
+              {irDetailQ.data.template_type === 'containment_with_suspend' && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-300 space-y-1">
+                  <p className="font-semibold">⚠️ A assinatura será suspensa:</p>
+                  <p>• VMs deallocadas — disco temporário perdido</p>
+                  <p>• Serviços PaaS interrompidos imediatamente</p>
+                  <p>• Reserved Instances continuam sendo cobradas</p>
+                  <p>• Tokens OAuth válidos por até 1h após suspensão</p>
                 </div>
-                {irDetailQ.data.template_type === 'containment_with_suspend' && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-300 space-y-1">
-                    <p className="font-semibold">⚠️ A assinatura será suspensa:</p>
-                    <p>• VMs serão deallocadas (disco temporário perdido)</p>
-                    <p>• Serviços PaaS serão interrompidos</p>
-                    <p>• Reserved Instances continuam sendo cobradas</p>
-                    <p>• Tokens OAuth válidos por até 1h após suspensão</p>
-                  </div>
-                )}
-                <button onClick={() => approveMut.mutate(selectedIR)}
-                  disabled={approveMut.isPending}
-                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
-                  {approveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-                  Aprovar e Executar
-                </button>
-                <button onClick={() => cancelMut.mutate(selectedIR)}
-                  disabled={cancelMut.isPending}
-                  className="w-full py-2 text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">
-                  Cancelar
-                </button>
-              </>
-            )}
-          </div>
+              )}
+              <button onClick={() => approveMut.mutate(selectedIR)} disabled={approveMut.isPending}
+                className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                {approveMut.isPending ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                Aprovar e Executar
+              </button>
+              <button onClick={() => cancelMut.mutate(selectedIR)} disabled={cancelMut.isPending}
+                className="w-full py-2 text-xs font-medium text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50">
+                Cancelar
+              </button>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Create modal */}
-      {showCreate && <CreateIRModal onClose={() => setShowCreate(false)} onCreated={(ir) => { setSelectedIR(ir.id); qc.invalidateQueries({ queryKey: ['ir-list'] }); }} />}
+      {showCreate && (
+        <CreateIRModal
+          onClose={() => setShowCreate(false)}
+          onCreated={(ir) => { setSelectedIR(ir.id); qc.invalidateQueries({ queryKey: ['ir-list'] }); }}
+        />
+      )}
     </div>
   );
 }
@@ -472,7 +451,7 @@ function IncidentResponseTab() {
 // ── Create IR Modal ───────────────────────────────────────────────────────────
 
 function CreateIRModal({ onClose, onCreated }) {
-  const qc = useQueryClient();
+  const { toast } = useToast();
   const [form, setForm] = useState({
     title: '',
     template_type: 'containment',
@@ -491,11 +470,11 @@ function CreateIRModal({ onClose, onCreated }) {
   const createMut = useMutation({
     mutationFn: (body) => secApi.createIR(body),
     onSuccess: (data) => {
-      toast({ title: '🚨 Resposta a incidente criada. Aguardando aprovação.' });
+      toast('Resposta a incidente criada. Aguardando aprovação.', 'success');
       onCreated(data);
       onClose();
     },
-    onError: (e) => toast({ title: 'Erro', description: e.response?.data?.detail || 'Falha ao criar.', variant: 'destructive' }),
+    onError: (e) => toast(e.response?.data?.detail || 'Falha ao criar.', 'error'),
   });
 
   const selectedTemplate = templatesQ.data?.templates?.find(t => t.type === form.template_type);
@@ -503,7 +482,7 @@ function CreateIRModal({ onClose, onCreated }) {
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!form.title.trim()) return;
-    const body = {
+    createMut.mutate({
       title: form.title,
       template_type: form.template_type,
       affected_users: form.affected_users.split('\n').map(s => s.trim()).filter(Boolean),
@@ -511,8 +490,7 @@ function CreateIRModal({ onClose, onCreated }) {
       target_subscription_id: form.target_subscription_id || null,
       target_customer_tenant_id: form.target_customer_tenant_id || null,
       notes: form.notes || null,
-    };
-    createMut.mutate(body);
+    });
   };
 
   return (
@@ -520,9 +498,7 @@ function CreateIRModal({ onClose, onCreated }) {
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200 dark:border-gray-700">
           <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Nova Resposta a Incidente</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Cria uma resposta que requer aprovação antes de executar
-          </p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Requer aprovação de admin antes de executar</p>
         </div>
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
@@ -533,7 +509,7 @@ function CreateIRModal({ onClose, onCreated }) {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Template de resposta *</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Template *</label>
             <div className="space-y-2">
               {(templatesQ.data?.templates || []).map(t => (
                 <label key={t.type} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all
@@ -558,29 +534,21 @@ function CreateIRModal({ onClose, onCreated }) {
             <div className="text-xs bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
               <p className="font-medium text-gray-700 dark:text-gray-200">Steps que serão executados:</p>
               {selectedTemplate.steps?.map((s, i) => (
-                <p key={i} className="text-gray-500 dark:text-gray-400">
-                  {i + 1}. {s.label}
-                </p>
+                <p key={i} className="text-gray-500 dark:text-gray-400">{i + 1}. {s.label}</p>
               ))}
             </div>
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-              Usuários afetados (UPN, um por linha)
-            </label>
-            <textarea value={form.affected_users}
-              onChange={e => setForm(f => ({...f, affected_users: e.target.value}))}
-              rows={3} placeholder="user@contoso.com&#10;admin@contoso.com"
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Usuários afetados (UPN, um por linha)</label>
+            <textarea value={form.affected_users} onChange={e => setForm(f => ({...f, affected_users: e.target.value}))}
+              rows={3} placeholder={'user@contoso.com\nadmin@contoso.com'}
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono focus:ring-2 focus:ring-red-500 outline-none resize-none" />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-              Resource IDs a isolar (um por linha)
-            </label>
-            <textarea value={form.target_resource_ids}
-              onChange={e => setForm(f => ({...f, target_resource_ids: e.target.value}))}
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Resource IDs a isolar (um por linha)</label>
+            <textarea value={form.target_resource_ids} onChange={e => setForm(f => ({...f, target_resource_ids: e.target.value}))}
               rows={2} placeholder="/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Compute/virtualMachines/{vm}"
               className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-xs font-mono focus:ring-2 focus:ring-red-500 outline-none resize-none" />
           </div>
@@ -588,18 +556,14 @@ function CreateIRModal({ onClose, onCreated }) {
           {form.template_type === 'containment_with_suspend' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-                  Customer Tenant ID (CSP) *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Customer Tenant ID (CSP) *</label>
                 <input value={form.target_customer_tenant_id}
                   onChange={e => setForm(f => ({...f, target_customer_tenant_id: e.target.value}))}
                   placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono focus:ring-2 focus:ring-red-500 outline-none" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
-                  Subscription ID a suspender *
-                </label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Subscription ID a suspender *</label>
                 <input value={form.target_subscription_id}
                   onChange={e => setForm(f => ({...f, target_subscription_id: e.target.value}))}
                   placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
@@ -644,6 +608,7 @@ function CreateIRModal({ onClose, onCreated }) {
 
 function PlaybooksTab() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [editing, setEditing] = useState(null);
 
   const pbQ = useQuery({
@@ -656,7 +621,7 @@ function PlaybooksTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['sec-playbooks'] });
       setEditing(null);
-      toast({ title: 'Playbook atualizado.' });
+      toast('Playbook atualizado.', 'success');
     },
   });
 
@@ -676,8 +641,10 @@ function PlaybooksTab() {
           {playbooks.map(pb => (
             <div key={pb.name} className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
               {editing === pb.name ? (
-                <PlaybookEditForm pb={pb} onSave={(body) => updateMut.mutate({ name: pb.name, body })}
-                  onCancel={() => setEditing(null)} saving={updateMut.isPending} />
+                <PlaybookEditForm pb={pb}
+                  onSave={(body) => updateMut.mutate({ name: pb.name, body })}
+                  onCancel={() => setEditing(null)}
+                  saving={updateMut.isPending} />
               ) : (
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
@@ -826,26 +793,26 @@ function AuditTab() {
 
 function SettingsTab() {
   const qc = useQueryClient();
+  const { toast } = useToast();
+  const [showPCForm, setShowPCForm] = useState(false);
+  const [pcForm, setPcForm] = useState({ partner_tenant_id: '', client_id: '', client_secret: '', gdap_security_group_id: '' });
 
   const settingsQ = useQuery({ queryKey: ['sec-settings'], queryFn: secApi.getSettings });
   const pcQ = useQuery({ queryKey: ['pc-config'], queryFn: secApi.getPCConfig });
 
   const settingsMut = useMutation({
     mutationFn: secApi.updateSettings,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sec-settings'] }); toast({ title: 'Configuração salva.' }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['sec-settings'] }); toast('Configuração salva.', 'success'); },
   });
-
-  const [pcForm, setPcForm] = useState({ partner_tenant_id: '', client_id: '', client_secret: '', gdap_security_group_id: '' });
-  const [showPCForm, setShowPCForm] = useState(false);
 
   const pcMut = useMutation({
     mutationFn: secApi.savePCConfig,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['pc-config'] });
       setShowPCForm(false);
-      toast({ title: 'Partner Center configurado.' });
+      toast('Partner Center configurado.', 'success');
     },
-    onError: (e) => toast({ title: 'Erro', description: e.response?.data?.detail || 'Falha.', variant: 'destructive' }),
+    onError: (e) => toast(e.response?.data?.detail || 'Falha ao salvar.', 'error'),
   });
 
   return (
@@ -862,7 +829,8 @@ function SettingsTab() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                Status: <span className={settingsQ.data?.enabled ? 'text-green-600' : 'text-gray-400'}>
+                Status:{' '}
+                <span className={settingsQ.data?.enabled ? 'text-green-600' : 'text-gray-400'}>
                   {settingsQ.data?.enabled ? '● Ativo' : '○ Inativo'}
                 </span>
               </p>
@@ -870,8 +838,7 @@ function SettingsTab() {
                 <p className="text-xs text-gray-400 mt-0.5">Próximo scan: {fmtDate(settingsQ.data.next_run)}</p>
               )}
             </div>
-            <button
-              onClick={() => settingsMut.mutate({ enabled: !settingsQ.data?.enabled })}
+            <button onClick={() => settingsMut.mutate({ enabled: !settingsQ.data?.enabled })}
               disabled={settingsMut.isPending}
               className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors disabled:opacity-50
                 ${settingsQ.data?.enabled
@@ -884,7 +851,7 @@ function SettingsTab() {
         )}
       </div>
 
-      {/* Partner Center config */}
+      {/* Partner Center */}
       <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-5">
         <div className="flex items-start justify-between mb-3">
           <div>
@@ -894,11 +861,11 @@ function SettingsTab() {
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Credenciais para gerenciar assinaturas de clientes via Partner Center API.
-              O App Registration deve ser cadastrado na seção "App Management" do Partner Center.
+              O App Registration deve ser cadastrado em "App Management" do Partner Center.
             </p>
           </div>
           {pcQ.data?.configured && !showPCForm && (
-            <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-2 py-1 rounded-full font-medium">
+            <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 px-2 py-1 rounded-full font-medium shrink-0">
               ✓ Configurado
             </span>
           )}
@@ -912,8 +879,7 @@ function SettingsTab() {
                 <p><span className="text-gray-400">Grupo GDAP:</span> <span className="font-mono text-gray-700 dark:text-gray-200">{pcQ.data.gdap_security_group_id}</span></p>
               )}
             </div>
-            <button onClick={() => setShowPCForm(true)}
-              className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400">
+            <button onClick={() => setShowPCForm(true)} className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400">
               Atualizar credenciais
             </button>
           </div>
@@ -922,7 +888,7 @@ function SettingsTab() {
             {[
               { key: 'partner_tenant_id', label: 'Partner Tenant ID', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
               { key: 'client_id', label: 'Client ID (App Registration)', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
-              { key: 'client_secret', label: 'Client Secret', placeholder: '••••••••••••', type: 'password' },
+              { key: 'client_secret', label: 'Client Secret', placeholder: '••••••••', type: 'password' },
               { key: 'gdap_security_group_id', label: 'GDAP Security Group ID (opcional)', placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
             ].map(({ key, label, placeholder, type }) => (
               <div key={key}>
@@ -933,14 +899,12 @@ function SettingsTab() {
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" />
               </div>
             ))}
-
             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300 space-y-1">
-              <p className="font-semibold">Permissões necessárias no Partner Center:</p>
+              <p className="font-semibold">Permissões necessárias:</p>
               <p>• App cadastrado em "Account settings &gt; App management"</p>
               <p>• Usuário com role <strong>Admin Agent</strong> no partner tenant</p>
               <p>• Relação GDAP ativa com os clientes para ações Azure/Entra</p>
             </div>
-
             <div className="flex gap-2">
               {pcQ.data?.configured && (
                 <button onClick={() => setShowPCForm(false)}
@@ -988,20 +952,16 @@ export default function SecurityAutomation() {
 
   return (
     <div className="p-6 h-full flex flex-col">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-            <ShieldAlert size={20} className="text-red-600 dark:text-red-400" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Security Automation</h1>
-            <p className="text-xs text-gray-500 dark:text-gray-400">Detecção · Playbooks · Resposta a Incidentes CSP</p>
-          </div>
+      <div className="flex items-center gap-3 mb-6">
+        <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+          <ShieldAlert size={20} className="text-red-600 dark:text-red-400" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Security Automation</h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Detecção · Playbooks · Resposta a Incidentes CSP</p>
         </div>
       </div>
 
-      {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-700 mb-5 gap-1">
         {TABS.map(({ id, label, icon: Icon }) => (
           <button key={id} onClick={() => setActiveTab(id)}
@@ -1016,13 +976,12 @@ export default function SecurityAutomation() {
         ))}
       </div>
 
-      {/* Tab content */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {activeTab === 'events' && <EventsTab />}
-        {activeTab === 'ir' && <IncidentResponseTab />}
+        {activeTab === 'events'    && <EventsTab />}
+        {activeTab === 'ir'        && <IncidentResponseTab />}
         {activeTab === 'playbooks' && <PlaybooksTab />}
-        {activeTab === 'audit' && <AuditTab />}
-        {activeTab === 'settings' && <SettingsTab />}
+        {activeTab === 'audit'     && <AuditTab />}
+        {activeTab === 'settings'  && <SettingsTab />}
       </div>
     </div>
   );
