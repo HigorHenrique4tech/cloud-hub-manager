@@ -124,38 +124,80 @@ function EventsTab() {
 
   const events = evQ.data?.items || [];
 
+  const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+  events.forEach(ev => { if (ev.severity in severityCounts) severityCounts[ev.severity]++; });
+
+  const SEVERITY_FILTER = [
+    { key: '',         label: 'Todos',    color: 'text-gray-500 dark:text-gray-400',  dot: 'bg-gray-400' },
+    { key: 'critical', label: 'Critical', color: 'text-red-600 dark:text-red-400',    dot: 'bg-red-500' },
+    { key: 'high',     label: 'High',     color: 'text-orange-600 dark:text-orange-400', dot: 'bg-orange-500' },
+    { key: 'medium',   label: 'Medium',   color: 'text-yellow-600 dark:text-yellow-400', dot: 'bg-yellow-400' },
+    { key: 'low',      label: 'Low',      color: 'text-blue-600 dark:text-blue-400',  dot: 'bg-blue-400' },
+  ];
+
   return (
     <div className="flex gap-4 h-full">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex gap-2 flex-wrap">
-            {['', 'critical', 'high', 'medium', 'low'].map(s => (
-              <button key={s} onClick={() => setSeverity(s)}
-                className={`px-3 py-1 rounded-full text-xs font-medium transition-colors
-                  ${severity === s
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+      <div className="flex-1 min-w-0 space-y-4">
+
+        {/* Stats summary */}
+        <div className="grid grid-cols-4 gap-3">
+          {[
+            { label: 'Critical', count: severityCounts.critical, bg: 'bg-red-50 dark:bg-red-900/20', border: 'border-red-200 dark:border-red-800', text: 'text-red-600 dark:text-red-400', dot: 'bg-red-500' },
+            { label: 'High',     count: severityCounts.high,     bg: 'bg-orange-50 dark:bg-orange-900/20', border: 'border-orange-200 dark:border-orange-800', text: 'text-orange-600 dark:text-orange-400', dot: 'bg-orange-500' },
+            { label: 'Medium',   count: severityCounts.medium,   bg: 'bg-yellow-50 dark:bg-yellow-900/20', border: 'border-yellow-200 dark:border-yellow-800', text: 'text-yellow-600 dark:text-yellow-400', dot: 'bg-yellow-400' },
+            { label: 'Low',      count: severityCounts.low,      bg: 'bg-blue-50 dark:bg-blue-900/20',    border: 'border-blue-200 dark:border-blue-800',    text: 'text-blue-600 dark:text-blue-400', dot: 'bg-blue-400' },
+          ].map(({ label, count, bg, border, text, dot }) => (
+            <button key={label} onClick={() => setSeverity(severity === label.toLowerCase() ? '' : label.toLowerCase())}
+              className={`rounded-xl border p-3 text-left transition-all ${bg} ${border} ${severity === label.toLowerCase() ? 'ring-2 ring-offset-1 ring-current' : 'hover:opacity-80'}`}>
+              <div className="flex items-center gap-1.5 mb-1">
+                <span className={`w-2 h-2 rounded-full ${dot}`} />
+                <span className={`text-xs font-medium ${text}`}>{label}</span>
+              </div>
+              <p className={`text-2xl font-bold ${text}`}>{count}</p>
+            </button>
+          ))}
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1.5 flex-wrap">
+            {SEVERITY_FILTER.map(({ key, label, color, dot }) => (
+              <button key={key} onClick={() => setSeverity(key)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all border
+                  ${severity === key
+                    ? 'bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 border-transparent shadow-sm'
+                    : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-500'
                   }`}>
-                {s || 'Todos'}
+                {key && <span className={`w-1.5 h-1.5 rounded-full ${dot}`} />}
+                {label}
+                {key && <span className={`font-bold ml-0.5 ${severity === key ? '' : color}`}>{severityCounts[key]}</span>}
               </button>
             ))}
           </div>
           <button onClick={() => scanMut.mutate()} disabled={scanMut.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50">
-            {scanMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
-            Scan agora
+            className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50 shadow-sm">
+            {scanMut.isPending ? <Loader2 size={13} className="animate-spin" /> : <RefreshCw size={13} />}
+            {scanMut.isPending ? 'Scanning...' : 'Scan agora'}
           </button>
         </div>
 
         {evQ.isLoading ? (
           <div className="space-y-2">
-            {[1,2,3].map(i => <div key={i} className="h-20 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />)}
+            {[1,2,3].map(i => <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />)}
           </div>
         ) : events.length === 0 ? (
-          <div className="text-center py-16 text-gray-400 dark:text-gray-500">
-            <ShieldCheck size={40} className="mx-auto mb-3 opacity-40" />
-            <p className="font-medium">Nenhum evento de segurança detectado</p>
-            <p className="text-sm mt-1">O próximo scan automático acontece em até 5 min</p>
+          <div className="flex flex-col items-center justify-center py-20 gap-4">
+            <div className="w-16 h-16 rounded-2xl bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 flex items-center justify-center">
+              <ShieldCheck size={32} className="text-green-500 dark:text-green-400" />
+            </div>
+            <div className="text-center">
+              <p className="font-semibold text-gray-800 dark:text-gray-100">Nenhuma ameaça detectada</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">O ambiente está limpo. Próximo scan automático em até 5 min.</p>
+            </div>
+            <button onClick={() => scanMut.mutate()} disabled={scanMut.isPending}
+              className="flex items-center gap-2 px-4 py-2 text-sm text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors">
+              <RefreshCw size={14} /> Fazer scan agora
+            </button>
           </div>
         ) : (
           <div className="space-y-2">
@@ -164,25 +206,25 @@ function EventsTab() {
                 className={`w-full text-left p-4 rounded-xl border transition-all
                   ${selected === ev.id
                     ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-blue-300'
+                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-sm'
                   }`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${SEVERITY_BADGE[ev.severity] || SEVERITY_BADGE.medium}`}>
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${SEVERITY_BADGE[ev.severity] || SEVERITY_BADGE.medium}`}>
                         {ev.severity?.toUpperCase()}
                       </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
                         {SOURCE_LABEL[ev.source] || ev.source}
                       </span>
                       <span className={`text-xs px-1.5 py-0.5 rounded ${STATUS_BADGE[ev.status] || ''}`}>
                         {ev.status}
                       </span>
                     </div>
-                    <p className="font-medium text-sm mt-1 truncate text-gray-900 dark:text-gray-100">{ev.title}</p>
+                    <p className="font-semibold text-sm mt-1.5 truncate text-gray-900 dark:text-gray-100">{ev.title}</p>
                     <p className="text-xs text-gray-400 mt-0.5">{fmtRelative(ev.detected_at || ev.created_at)}</p>
                   </div>
-                  <ChevronRight size={16} className="text-gray-400 shrink-0 mt-1" />
+                  <ChevronRight size={16} className="text-gray-300 dark:text-gray-600 shrink-0 mt-1" />
                 </div>
               </button>
             ))}
@@ -1084,20 +1126,26 @@ export default function SecurityAutomation() {
 
   return (
     <div className="p-6 h-full flex flex-col">
-      <div className="flex items-center gap-3 mb-6">
-        <button
-          onClick={() => navigate('/')}
-          className="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-          title="Voltar ao painel"
-        >
-          <ArrowLeft size={18} />
-        </button>
-        <div className="w-10 h-10 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
-          <ShieldAlert size={20} className="text-red-600 dark:text-red-400" />
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigate('/')}
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+            title="Voltar ao painel"
+          >
+            <ArrowLeft size={18} />
+          </button>
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center shadow-md">
+            <ShieldAlert size={20} className="text-white" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Security Automation</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Detecção · Playbooks · Resposta a Incidentes CSP</p>
+          </div>
         </div>
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Security Automation</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Detecção · Playbooks · Resposta a Incidentes CSP</p>
+        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+          <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+          <span className="text-xs font-medium text-green-700 dark:text-green-400">Monitoramento ativo</span>
         </div>
       </div>
 
