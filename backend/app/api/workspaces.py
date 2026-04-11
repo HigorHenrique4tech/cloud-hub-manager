@@ -55,8 +55,8 @@ def _slugify(text: str) -> str:
     return re.sub(r"[\s_]+", "-", slug)[:100]
 
 
-def _ws_to_dict(ws: Workspace):
-    return {
+def _ws_to_dict(ws: Workspace, effective_role: str = None):
+    d = {
         "id": str(ws.id),
         "organization_id": str(ws.organization_id),
         "name": ws.name,
@@ -65,6 +65,9 @@ def _ws_to_dict(ws: Workspace):
         "is_active": ws.is_active,
         "created_at": ws.created_at.isoformat() if ws.created_at else None,
     }
+    if effective_role:
+        d["effective_role"] = effective_role
+    return d
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
@@ -76,6 +79,14 @@ async def list_workspaces(
     db: Session = Depends(get_db),
 ):
     """List workspaces. Owners/admins see all; others see only their workspaces."""
+    # Load workspace member rows for this user to resolve role overrides
+    ws_member_map = {
+        wm.workspace_id: wm
+        for wm in db.query(WorkspaceMember)
+        .filter(WorkspaceMember.user_id == member.user.id)
+        .all()
+    }
+
     if member.role in ("owner", "admin"):
         workspaces = (
             db.query(Workspace)
@@ -87,24 +98,28 @@ async def list_workspaces(
             .all()
         )
     else:
-        # Only workspaces where user has an explicit WorkspaceMember row
-        member_ws_ids = [
-            wm.workspace_id
-            for wm in db.query(WorkspaceMember)
-            .filter(WorkspaceMember.user_id == member.user.id)
-            .all()
-        ]
         workspaces = (
             db.query(Workspace)
             .filter(
                 Workspace.organization_id == member.organization_id,
                 Workspace.is_active == True,
-                Workspace.id.in_(member_ws_ids),
+                Workspace.id.in_(ws_member_map.keys()),
             )
             .order_by(Workspace.name)
             .all()
         )
-    return {"workspaces": [_ws_to_dict(ws) for ws in workspaces]}
+
+    result = []
+    for ws in workspaces:
+        wm = ws_member_map.get(ws.id)
+        raw_override = wm.role_override if wm else None
+        # Ignore invalid overrides
+        if raw_override and raw_override not in VALID_ROLES:
+            raw_override = None
+        effective_role = raw_override or member.role
+        result.append(_ws_to_dict(ws, effective_role=effective_role))
+
+    return {"workspaces": result}
 
 
 @router.post("", status_code=201)

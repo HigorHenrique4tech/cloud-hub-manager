@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
+from app.core.permissions import ROLE_PERMISSIONS
 from app.database import get_db
 from app.models.db_models import ApprovalRequest, FinOpsRecommendation, OrganizationMember
 from app.services.approval_service import (
@@ -33,10 +34,6 @@ ws_router = APIRouter(
     tags=["Approvals (workspace)"],
 )
 
-# Roles that can approve/reject requests
-APPROVER_ROLES = {"owner", "admin"}
-
-
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 
@@ -46,19 +43,16 @@ class ResolveRequest(BaseModel):
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+_APPROVE_PERMISSION = "resources.manage"
+
 
 def _is_approver(member: MemberContext, db: Session) -> bool:
-    """Return True if the member has owner or admin role in this org."""
-    org_member = (
-        db.query(OrganizationMember)
-        .filter(
-            OrganizationMember.organization_id == member.organization_id,
-            OrganizationMember.user_id == member.user.id,
-            OrganizationMember.is_active == True,
-        )
-        .first()
-    )
-    return org_member is not None and org_member.role in APPROVER_ROLES
+    """Return True if the member's effective role has the approve permission.
+    Uses the workspace effective role (role_override) when available,
+    falling back to the org-level role.
+    """
+    role_perms = ROLE_PERMISSIONS.get(member.role, set())
+    return _APPROVE_PERMISSION in role_perms
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────

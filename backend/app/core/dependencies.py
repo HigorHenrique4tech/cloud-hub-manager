@@ -8,7 +8,7 @@ from app.models.db_models import (
 )
 from app.services.auth_service import decode_token
 from app.core.auth_context import MemberContext
-from app.core.permissions import ROLE_PERMISSIONS
+from app.core.permissions import ROLE_PERMISSIONS, VALID_ROLES
 
 bearer_scheme = HTTPBearer()
 
@@ -116,11 +116,12 @@ def get_workspace_member(
             detail="Você não tem acesso a este workspace",
         )
 
-    effective_role = (
-        ws_member.role_override
-        if (ws_member and ws_member.role_override)
-        else member.role
-    )
+    raw_override = ws_member.role_override if ws_member else None
+    # Silently ignore invalid role_override values to prevent lockout
+    if raw_override and raw_override not in VALID_ROLES:
+        raw_override = None
+
+    effective_role = raw_override if raw_override else member.role
 
     return MemberContext(
         user=member.user,
