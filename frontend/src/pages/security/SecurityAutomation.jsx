@@ -7,17 +7,13 @@ import {
   ChevronRight, Play, Plus, Building2, Key, ListChecks, Loader2,
   ArrowLeft,
 } from 'lucide-react';
-import api from '../../services/api';
+import api, { wsUrl as _wsUrl } from '../../services/api';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import { useToast } from '../../contexts/ToastContext';
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
-const wsUrl = (path) => {
-  const slug = localStorage.getItem('org_slug') || 'default';
-  const wsId = localStorage.getItem('workspace_id') || 'default';
-  return `/orgs/${slug}/workspaces/${wsId}/security${path}`;
-};
+const wsUrl = (path) => _wsUrl(`/security${path}`);
 
 const secApi = {
   getEvents:      (params) => api.get(wsUrl('/automation/events'), { params }).then(r => r.data),
@@ -450,6 +446,35 @@ function IncidentResponseTab({ isMaster }) {
   );
 }
 
+// ── Templates estáticos (definição local — sem chamada de API) ────────────────
+const IR_TEMPLATES = [
+  {
+    type: 'containment',
+    name: 'Contenção de Incidente',
+    description: 'Revoga acessos suspeitos, bloqueia usuários comprometidos, isola VMs e adiciona tags de quarentena.',
+    steps: [
+      'Revogar sessões Entra ID',
+      'Bloquear contas no Entra ID',
+      'Isolar VMs comprometidas',
+      'Adicionar tags de quarentena',
+    ],
+    requiresPartnerCenter: false,
+  },
+  {
+    type: 'containment_with_suspend',
+    name: 'Contenção + Suspensão da Assinatura (CSP)',
+    description: 'Executa todas as ações de contenção e suspende a assinatura Azure via Partner Center API.',
+    steps: [
+      'Revogar sessões Entra ID',
+      'Bloquear contas no Entra ID',
+      'Isolar VMs comprometidas',
+      'Adicionar tags de quarentena',
+      'Suspender assinatura via Partner Center',
+    ],
+    requiresPartnerCenter: true,
+  },
+];
+
 // ── Create IR Modal ───────────────────────────────────────────────────────────
 
 function CreateIRModal({ onClose, onCreated, isMaster }) {
@@ -464,10 +489,7 @@ function CreateIRModal({ onClose, onCreated, isMaster }) {
     notes: '',
   });
 
-  const templatesQ = useQuery({
-    queryKey: ['ir-templates'],
-    queryFn: secApi.getIRTemplates,
-  });
+  const availableTemplates = IR_TEMPLATES.filter(t => isMaster || t.type !== 'containment_with_suspend');
 
   const createMut = useMutation({
     mutationFn: (body) => secApi.createIR(body),
@@ -479,7 +501,7 @@ function CreateIRModal({ onClose, onCreated, isMaster }) {
     onError: (e) => toast(e.response?.data?.detail || 'Falha ao criar.', 'error'),
   });
 
-  const selectedTemplate = templatesQ.data?.templates?.find(t => t.type === form.template_type);
+  const selectedTemplate = availableTemplates.find(t => t.type === form.template_type);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -513,7 +535,7 @@ function CreateIRModal({ onClose, onCreated, isMaster }) {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Template *</label>
             <div className="space-y-2">
-              {(templatesQ.data?.templates || []).filter(t => isMaster || t.type !== 'containment_with_suspend').map(t => (
+              {availableTemplates.map(t => (
                 <label key={t.type} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all
                   ${form.template_type === t.type
                     ? 'border-red-500 bg-red-50 dark:bg-red-900/20'
@@ -536,7 +558,7 @@ function CreateIRModal({ onClose, onCreated, isMaster }) {
             <div className="text-xs bg-gray-50 dark:bg-gray-800 rounded-lg p-3 space-y-1">
               <p className="font-medium text-gray-700 dark:text-gray-200">Steps que serão executados:</p>
               {selectedTemplate.steps?.map((s, i) => (
-                <p key={i} className="text-gray-500 dark:text-gray-400">{i + 1}. {s.label}</p>
+                <p key={i} className="text-gray-500 dark:text-gray-400">{i + 1}. {typeof s === 'string' ? s : s.label}</p>
               ))}
             </div>
           )}
@@ -608,10 +630,96 @@ function CreateIRModal({ onClose, onCreated, isMaster }) {
 
 // ── Playbooks Tab ─────────────────────────────────────────────────────────────
 
+const PB_SOURCES = ['entra_risk','entra_signin','m365_incidents','defender_alerts','azure_activity'];
+const PB_ACTIONS = ['notify','revoke_sessions','block_user','isolate_vm','add_quarantine_tag'];
+
+function NewPlaybookForm({ onSave, onCancel, saving }) {
+  const [form, setForm] = useState({
+    name: '', description: '', sources: [], severity_min: 'high',
+    actions: ['notify'], auto_execute: false, cooldown_minutes: 30, is_active: true,
+  });
+  const toggle = (field, val) => setForm(f => ({
+    ...f, [field]: f[field].includes(val) ? f[field].filter(x => x !== val) : [...f[field], val],
+  }));
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-xl border border-blue-300 dark:border-blue-700 p-4 space-y-3">
+      <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Novo Playbook</h4>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Nome (identificador único) *</label>
+          <input value={form.name} onChange={e => setForm(f => ({...f, name: e.target.value.toLowerCase().replace(/\s+/g,'_')}))}
+            placeholder="ex: brute_force_detected"
+            className="w-full px-2 py-1.5 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono" />
+        </div>
+        <div className="col-span-2">
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Descrição</label>
+          <input value={form.description} onChange={e => setForm(f => ({...f, description: e.target.value}))}
+            className="w-full px-2 py-1.5 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" />
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Fontes monitoradas</label>
+        <div className="flex flex-wrap gap-2">
+          {PB_SOURCES.map(s => (
+            <label key={s} className={`text-[11px] px-2 py-1 rounded-full border cursor-pointer transition-colors
+              ${form.sources.includes(s) ? 'bg-blue-100 dark:bg-blue-900/40 border-blue-400 text-blue-700 dark:text-blue-300' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+              <input type="checkbox" className="hidden" checked={form.sources.includes(s)} onChange={() => toggle('sources', s)} />
+              {s}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Ações a executar</label>
+        <div className="flex flex-wrap gap-2">
+          {PB_ACTIONS.map(a => (
+            <label key={a} className={`text-[11px] px-2 py-1 rounded-full border cursor-pointer transition-colors
+              ${form.actions.includes(a) ? 'bg-red-100 dark:bg-red-900/40 border-red-400 text-red-700 dark:text-red-300' : 'border-gray-200 dark:border-gray-600 text-gray-500 dark:text-gray-400'}`}>
+              <input type="checkbox" className="hidden" checked={form.actions.includes(a)} onChange={() => toggle('actions', a)} />
+              {a}
+            </label>
+          ))}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Severidade mínima</label>
+          <select value={form.severity_min} onChange={e => setForm(f => ({...f, severity_min: e.target.value}))}
+            className="w-full px-2 py-1.5 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+            {['low','medium','high','critical'].map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-300 mb-1">Cooldown (min)</label>
+          <input type="number" value={form.cooldown_minutes}
+            onChange={e => setForm(f => ({...f, cooldown_minutes: parseInt(e.target.value) || 0}))}
+            className="w-full px-2 py-1.5 text-xs rounded border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" />
+        </div>
+      </div>
+      <div className="flex gap-4">
+        <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200 cursor-pointer">
+          <input type="checkbox" checked={form.auto_execute} onChange={e => setForm(f => ({...f, auto_execute: e.target.checked}))} className="accent-red-600" />
+          Auto-executar (⚠️ use com cuidado)
+        </label>
+      </div>
+      <div className="flex gap-2 pt-1">
+        <button onClick={onCancel} className="px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700">
+          Cancelar
+        </button>
+        <button onClick={() => form.name.trim() && onSave(form)} disabled={saving || !form.name.trim()}
+          className="px-3 py-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white rounded-lg disabled:opacity-50 flex items-center gap-1">
+          {saving && <Loader2 size={10} className="animate-spin" />} Criar playbook
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function PlaybooksTab() {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [editing, setEditing] = useState(null);
+  const [creating, setCreating] = useState(false);
 
   const pbQ = useQuery({
     queryKey: ['sec-playbooks'],
@@ -620,10 +728,11 @@ function PlaybooksTab() {
 
   const updateMut = useMutation({
     mutationFn: ({ name, body }) => secApi.updatePlaybook(name, body),
-    onSuccess: () => {
+    onSuccess: (_, { isNew }) => {
       qc.invalidateQueries({ queryKey: ['sec-playbooks'] });
       setEditing(null);
-      toast('Playbook atualizado.', 'success');
+      setCreating(false);
+      toast(isNew ? 'Playbook criado.' : 'Playbook atualizado.', 'success');
     },
   });
 
@@ -631,9 +740,25 @@ function PlaybooksTab() {
 
   return (
     <div>
-      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-        Playbooks definem quais eventos disparam alertas e ações. Por padrão, nenhum executa automaticamente.
-      </p>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Playbooks definem quais eventos disparam alertas e ações. Por padrão, nenhum executa automaticamente.
+        </p>
+        {!creating && (
+          <button onClick={() => setCreating(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shrink-0 ml-4">
+            <Plus size={13} /> Novo playbook
+          </button>
+        )}
+      </div>
+      {creating && (
+        <div className="mb-4">
+          <NewPlaybookForm
+            onSave={(body) => updateMut.mutate({ name: body.name, body, isNew: true })}
+            onCancel={() => setCreating(false)}
+            saving={updateMut.isPending} />
+        </div>
+      )}
       {pbQ.isLoading ? (
         <div className="space-y-2">
           {[1,2,3].map(i => <div key={i} className="h-16 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />)}
