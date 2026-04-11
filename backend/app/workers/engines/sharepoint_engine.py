@@ -244,33 +244,49 @@ class SharePointEngine(MigrationEngine):
     # ── Interface MigrationEngine ────────────────────────────────────────────────
 
     def test_connection(self) -> dict:
+        # Sem site_id (ex.: wizard step 2): só valida OAuth — evita exigir Organization.Read.All.
+        test_site = self.source_cfg.get("test_site_id") or (
+            self.mailbox.source_email if self.mailbox else None
+        )
         try:
-            headers = self._src_headers()
-            test_site = self.source_cfg.get("test_site_id") or (
-                self.mailbox.source_email if self.mailbox else None
+            token = self._get_token(
+                self.source_cfg["tenant_id"],
+                self.source_cfg["client_id"],
+                self.source_cfg["client_secret"],
             )
-            if not test_site:
-                resp = requests.get(f"{GRAPH_V1}/organization", headers=headers, timeout=15)
-                resp.raise_for_status()
-                orgs = resp.json().get("value", [])
-                name = orgs[0].get("displayName", "") if orgs else ""
-                return {"ok": True, "message": f"Conectado ao tenant. Organização: {name}."}
+        except requests.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.response.json().get("error_description", "")
+            except Exception:
+                pass
+            return {"ok": False, "message": f"Falha OAuth: {body or exc}"}
+        except Exception as exc:
+            return {"ok": False, "message": f"Falha OAuth: {exc}"}
 
-            resp = requests.get(f"{GRAPH_V1}/sites/{test_site}",
-                                headers=headers, timeout=15)
-            resp.raise_for_status()
+        if not test_site:
+            return {
+                "ok": True,
+                "message": "Credenciais OAuth válidas. Informe um site_id ao adicionar sites para validar o acesso.",
+            }
+
+        try:
+            headers = {"Authorization": f"Bearer {token}"}
+            resp = requests.get(f"{GRAPH_V1}/sites/{test_site}", headers=headers, timeout=15)
+            if resp.status_code != 200:
+                try:
+                    err = resp.json().get("error", {})
+                    return {"ok": False, "message": f"HTTP {resp.status_code} [{err.get('code','')}]: {err.get('message','')[:200]}"}
+                except Exception:
+                    return {"ok": False, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
             site = resp.json()
             drives = self._get_site_drives(test_site, headers)
             return {
                 "ok": True,
-                "message": f"Conectado ao site '{site.get('displayName', '')}'. "
-                           f"{len(drives)} biblioteca(s) encontrada(s).",
+                "message": f"Conectado ao site '{site.get('displayName', '')}'. {len(drives)} biblioteca(s) encontrada(s).",
             }
         except Exception as exc:
-            err = str(exc)
-            if "401" in err or "403" in err:
-                return {"ok": False, "message": f"Autenticação negada. Verifique Sites.ReadWrite.All: {err}"}
-            return {"ok": False, "message": f"Falha ao conectar: {err}"}
+            return {"ok": False, "message": f"Falha ao conectar: {exc}"}
 
     def assess(self) -> dict:
         src_site = self.mailbox.source_email  # site_id

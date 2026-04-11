@@ -51,7 +51,7 @@ const MIGRATION_TYPES = [
   { id: 'imap',              label: 'IMAP Genérico',          icon: Wifi,       desc: 'Yahoo, Outlook.com, Zoho e outros servidores IMAP', color: 'text-green-500', category: 'email' },
   { id: 'onedrive_to_onedrive',     label: 'OneDrive → OneDrive',       icon: HardDrive,     desc: 'Migrar arquivos entre OneDrives de tenants diferentes', color: 'text-sky-500',    category: 'files' },
   { id: 'sharepoint_to_sharepoint', label: 'SharePoint → SharePoint',   icon: FolderOpen,    desc: 'Migrar bibliotecas de documentos entre sites SharePoint', color: 'text-teal-500', category: 'files' },
-  { id: 'teams_chat',               label: 'Teams Chat → Teams',        icon: MessageSquare, desc: 'Migrar conversas de chat e mensagens de canais do Teams', color: 'text-violet-500', category: 'teams' },
+  // teams_chat: na geladeira — chat 1:1/grupo não tem API oficial de import
 ];
 
 const SOURCE_FIELDS = {
@@ -112,7 +112,7 @@ const TYPE_LABELS = {
   teams_chat:                'Teams Chat → Teams',
 };
 
-const FILE_MIGRATION_TYPES = ['onedrive_to_onedrive', 'sharepoint_to_sharepoint', 'teams_chat'];
+const FILE_MIGRATION_TYPES = ['onedrive_to_onedrive', 'sharepoint_to_sharepoint'];
 const isFileMigration = (type) => FILE_MIGRATION_TYPES.includes(type);
 
 const LOG_LEVEL_CONFIG = {
@@ -777,17 +777,23 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const [mbPage, setMbPage] = useState(1);
   const [logFilter, setLogFilter] = useState('all');
 
+  // Polling enquanto a migração está ativa. react-query v5: o callback de
+  // refetchInterval recebe um objeto Query — o data fica em query.state.data.
+  const isActive = (status) => status === 'running' || status === 'pending';
+
   const { data: project, isLoading } = useQuery({
     queryKey: ['migration-project', projectId],
     queryFn: () => migrationApi.getProject(projectId),
-    refetchInterval: (data) => data?.status === 'running' ? 5000 : false,
+    refetchInterval: (query) => isActive(query.state.data?.status) ? 3000 : false,
+    refetchIntervalInBackground: false,
     retry: false,
   });
 
   const { data: mailboxes = [] } = useQuery({
     queryKey: ['migration-mailboxes', projectId],
     queryFn: () => migrationApi.listMailboxes(projectId),
-    refetchInterval: project?.status === 'running' ? 5000 : false,
+    refetchInterval: isActive(project?.status) ? 3000 : false,
+    refetchIntervalInBackground: false,
     retry: false,
   });
 
@@ -795,6 +801,8 @@ const ProjectDetail = ({ projectId, onBack }) => {
     queryKey: ['migration-logs', projectId],
     queryFn: () => migrationApi.listLogs(projectId),
     enabled: tab === 'logs',
+    refetchInterval: tab === 'logs' && isActive(project?.status) ? 3000 : false,
+    refetchIntervalInBackground: false,
     retry: false,
   });
 

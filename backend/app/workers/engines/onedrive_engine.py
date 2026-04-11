@@ -227,36 +227,56 @@ class OneDriveEngine(MigrationEngine):
     # ── Interface MigrationEngine ────────────────────────────────────────────────
 
     def test_connection(self) -> dict:
+        # Sem UPN (ex.: wizard step 2, antes de adicionar usuários): só valida OAuth.
+        # Isso evita exigir Organization.Read.All — só Files.ReadWrite.All.
+        src_user = self.source_cfg.get("test_user") or (
+            self.mailbox.source_email if self.mailbox else None
+        )
         try:
-            headers = self._src_headers()
-            src_user = self.source_cfg.get("test_user") or (
-                self.mailbox.source_email if self.mailbox else None
+            token = self._get_token(
+                self.source_cfg["tenant_id"],
+                self.source_cfg["client_id"],
+                self.source_cfg["client_secret"],
             )
-            # Se nenhum user especificado, teste com /organization
-            if not src_user:
-                resp = requests.get(f"{GRAPH_V1}/organization", headers=headers, timeout=15)
-                resp.raise_for_status()
-                orgs = resp.json().get("value", [])
-                name = orgs[0].get("displayName", "") if orgs else ""
-                return {"ok": True, "message": f"Conectado ao tenant. Organização: {name}."}
+        except requests.HTTPError as exc:
+            body = ""
+            try:
+                body = exc.response.json().get("error_description", "")
+            except Exception:
+                pass
+            return {"ok": False, "message": f"Falha OAuth: {body or exc}"}
+        except Exception as exc:
+            return {"ok": False, "message": f"Falha OAuth: {exc}"}
 
-            resp = requests.get(f"{GRAPH_V1}/users/{src_user}/drive",
-                                headers=headers, timeout=15)
-            resp.raise_for_status()
+        if not src_user:
+            return {
+                "ok": True,
+                "message": "Credenciais OAuth válidas. Informe um UPN ao adicionar usuários para validar o acesso ao OneDrive.",
+            }
+
+        try:
+            resp = requests.get(
+                f"{GRAPH_V1}/users/{src_user}/drive",
+                headers={"Authorization": f"Bearer {token}"}, timeout=15,
+            )
+            if resp.status_code != 200:
+                try:
+                    err = resp.json().get("error", {})
+                    code = err.get("code", "")
+                    msg = err.get("message", "")
+                    return {"ok": False, "message": f"HTTP {resp.status_code} [{code}]: {msg[:200]}"}
+                except Exception:
+                    return {"ok": False, "message": f"HTTP {resp.status_code}: {resp.text[:200]}"}
             drive = resp.json()
-            quota = drive.get("quota", {})
+            quota = drive.get("quota") or {}
             used_gb = round(quota.get("used", 0) / 1_073_741_824, 1)
             total_gb = round(quota.get("total", 0) / 1_073_741_824, 1)
             return {
                 "ok": True,
-                "message": f"Conectado ao OneDrive de {src_user}. "
-                           f"Uso: {used_gb} GB / {total_gb} GB.",
+                "message": f"Conectado ao OneDrive de {src_user}. Uso: {used_gb} GB / {total_gb} GB.",
             }
         except Exception as exc:
-            err = str(exc)
-            if "401" in err or "403" in err:
-                return {"ok": False, "message": f"Autenticação negada. Verifique as permissões Files.ReadWrite.All: {err}"}
-            return {"ok": False, "message": f"Falha ao conectar: {err}"}
+            return {"ok": False, "message": f"Falha ao conectar: {exc}"}
 
     def assess(self) -> dict:
         src_user = self.mailbox.source_email
