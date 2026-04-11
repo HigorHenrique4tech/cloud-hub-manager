@@ -1,6 +1,23 @@
-"""SharePoint engine — migra document libraries entre sites SharePoint de tenants M365."""
+"""SharePoint engine — migra document libraries entre sites SharePoint de tenants M365.
+
+Fluxo resumido:
+  1. _map_drives (4 estratégias)    → mapeia libraries src→dst, cria se faltar
+  2. _walk_drive (generator BFS)    → não carrega drive inteiro em memória
+  3. _download_to_tempfile          → streaming pra disco, calcula hash incremental
+  4. _upload_small | _upload_resumable_from_path → lê do temp em chunks
+  5. Graph auto-cria as pastas no destino via endpoint /root:/path:/content
+
+Decisões importantes:
+- Pastas vazias NÃO são migradas (trade-off pra simplicidade)
+- Paths URL-encoded via urllib.parse.quote (safe="/") pra lidar com #, &, +, espaço, acento
+- conflictBehavior=replace no upload (sobrescrever arquivo existente)
+- createdDateTime + lastModifiedDateTime preservados via PATCH fileSystemInfo
+"""
 import hashlib
 import logging
+import os
+import tempfile
+from urllib.parse import quote
 
 import requests
 
@@ -9,8 +26,14 @@ from .base import MigrationEngine, ProgressCallback, BATCH_SIZE
 logger = logging.getLogger(__name__)
 GRAPH_V1 = "https://graph.microsoft.com/v1.0"
 
-SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024
-UPLOAD_CHUNK_SIZE   = 10 * 1024 * 1024
+SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024        # 4 MB — limite do upload simples
+UPLOAD_CHUNK_SIZE   = 10 * 1024 * 1024        # 10 MB por chunk no resumable
+DOWNLOAD_CHUNK_SIZE = 1 * 1024 * 1024         # 1 MB por chunk no download
+
+
+def _encode(path: str) -> str:
+    """URL-encode preservando /. Usa quote do urllib pra lidar com # & + espaço acento."""
+    return quote(path or "", safe="/")
 
 
 class SharePointEngine(MigrationEngine):
@@ -20,7 +43,7 @@ class SharePointEngine(MigrationEngine):
 
     source_cfg  = {tenant_id, client_id, client_secret}
     dest_cfg    = {tenant_id, client_id, client_secret}
-    mailbox.source_email      = site_id de origem
+    mailbox.source_email      = site_id de origem      (hostname,collection-guid,site-guid)
     mailbox.destination_email = site_id de destino
     """
 
@@ -53,7 +76,7 @@ class SharePointEngine(MigrationEngine):
         )
         return {"Authorization": f"Bearer {token}"}
 
-    # ── Graph helpers ────────────────────────────────────────────────────────────
+    # ── Graph walk (generator) ──────────────────────────────────────────────────
 
     def _get_site_drives(self, site_id: str, headers: dict) -> list[dict]:
         """Lista document libraries de um site."""
@@ -71,91 +94,120 @@ class SharePointEngine(MigrationEngine):
             url = page.get("@odata.nextLink")
         return drives
 
-    def _list_drive_items_recursive(self, drive_id: str, headers: dict,
-                                     folder_id: str = "root",
-                                     folder_path: str = "/") -> list[dict]:
-        """Lista recursivamente todos os itens de um drive."""
-        items = []
-        url = f"{GRAPH_V1}/drives/{drive_id}/items/{folder_id}/children?$top=200"
+    def _walk_drive(self, drive_id: str, headers: dict):
+        """
+        Generator BFS sobre os itens do drive. Não acumula nada em memória
+        além da pilha de pastas a visitar.
+        Yielda dicts: {id, name, path, is_folder, size, lastModifiedDateTime, createdDateTime}.
+        """
+        stack: list[tuple[str, str]] = [("root", "/")]
 
-        while url:
-            def fetch():
-                r = requests.get(url, headers=headers, timeout=30)
-                if r.status_code == 429:
-                    raise Exception("429 throttle")
-                r.raise_for_status()
-                return r.json()
+        while stack:
+            folder_id, folder_path = stack.pop()
+            url = f"{GRAPH_V1}/drives/{drive_id}/items/{folder_id}/children?$top=200"
+            while url:
+                def fetch():
+                    r = requests.get(url, headers=headers, timeout=30)
+                    if r.status_code == 429:
+                        raise Exception("429 throttle")
+                    r.raise_for_status()
+                    return r.json()
 
-            page = self.retry_on_throttle(fetch)
-            for item in page.get("value", []):
-                item_path = f"{folder_path}{item['name']}"
-                if "folder" in item:
-                    items.append({
-                        "id": item["id"],
-                        "name": item["name"],
-                        "path": item_path + "/",
-                        "is_folder": True,
-                        "size": 0,
-                        "lastModifiedDateTime": item.get("lastModifiedDateTime"),
-                    })
-                    sub = self._list_drive_items_recursive(
-                        drive_id, headers, item["id"], item_path + "/"
-                    )
-                    items.extend(sub)
-                else:
-                    items.append({
-                        "id": item["id"],
-                        "name": item["name"],
-                        "path": item_path,
-                        "is_folder": False,
-                        "size": item.get("size", 0),
-                        "lastModifiedDateTime": item.get("lastModifiedDateTime"),
-                        "mimeType": item.get("file", {}).get("mimeType"),
-                    })
-            url = page.get("@odata.nextLink")
-        return items
+                page = self.retry_on_throttle(fetch)
+                for item in page.get("value", []):
+                    item_path = f"{folder_path}{item['name']}"
+                    if "folder" in item:
+                        yield {
+                            "id": item["id"],
+                            "name": item["name"],
+                            "path": item_path + "/",
+                            "is_folder": True,
+                            "size": 0,
+                            "lastModifiedDateTime": item.get("lastModifiedDateTime"),
+                        }
+                        stack.append((item["id"], item_path + "/"))
+                    else:
+                        yield {
+                            "id": item["id"],
+                            "name": item["name"],
+                            "path": item_path,
+                            "is_folder": False,
+                            "size": item.get("size", 0),
+                            "lastModifiedDateTime": item.get("lastModifiedDateTime"),
+                            "createdDateTime": item.get("createdDateTime"),
+                            "mimeType": (item.get("file") or {}).get("mimeType"),
+                        }
+                url = page.get("@odata.nextLink")
 
-    def _download_file(self, drive_id: str, item_id: str, headers: dict) -> bytes:
+    def _count_drive(self, drive_id: str, headers: dict) -> tuple[int, int, list[str]]:
+        """Varre o drive contando arquivos e tamanho, sem materializar tudo."""
+        total_files = 0
+        total_size = 0
+        folder_names: list[str] = []
+
+        for item in self._walk_drive(drive_id, headers):
+            if item["is_folder"]:
+                if len(folder_names) < 200:
+                    folder_names.append(item["path"])
+            else:
+                total_files += 1
+                total_size += item.get("size", 0)
+
+        return total_files, total_size, folder_names
+
+    # ── Download streaming ──────────────────────────────────────────────────────
+
+    def _download_to_tempfile(self, drive_id: str, item_id: str,
+                              headers: dict) -> tuple[str, int, str]:
+        """
+        Baixa item pra arquivo temporário em disco, calcula hash SHA-256 incrementalmente.
+        Retorna (caminho_temp, tamanho_bytes, hash_hex).
+        """
         url = f"{GRAPH_V1}/drives/{drive_id}/items/{item_id}/content"
 
         def do():
-            r = requests.get(url, headers=headers, timeout=120, stream=True)
+            r = requests.get(url, headers=headers,
+                             timeout=(30, 600), stream=True, allow_redirects=True)
             if r.status_code == 429:
                 raise Exception("429 throttle")
             r.raise_for_status()
-            return r.content
+
+            h = hashlib.sha256()
+            tmp = tempfile.NamedTemporaryFile(delete=False, prefix="sp_", suffix=".migdl")
+            size = 0
+            try:
+                for chunk in r.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE):
+                    if chunk:
+                        tmp.write(chunk)
+                        h.update(chunk)
+                        size += len(chunk)
+                tmp.close()
+                return tmp.name, size, h.hexdigest()
+            except Exception:
+                tmp.close()
+                try:
+                    os.unlink(tmp.name)
+                except OSError:
+                    pass
+                raise
 
         return self.retry_on_throttle(do)
 
-    def _create_folder(self, drive_id: str, parent_id: str, folder_name: str,
-                       headers: dict) -> str:
-        url = f"{GRAPH_V1}/drives/{drive_id}/items/{parent_id}/children"
+    # ── Upload ──────────────────────────────────────────────────────────────────
 
-        def do():
-            r = requests.post(url, headers={**headers, "Content-Type": "application/json"},
-                              json={
-                                  "name": folder_name,
-                                  "folder": {},
-                                  "@microsoft.graph.conflictBehavior": "replace",
-                              }, timeout=30)
-            if r.status_code == 429:
-                raise Exception("429 throttle")
-            if r.status_code == 409:
-                return r.json() if r.text else {"id": "existing"}
-            r.raise_for_status()
-            return r.json()
-
-        return self.retry_on_throttle(do).get("id", "")
-
-    def _upload_simple(self, drive_id: str, dest_path: str,
-                       content: bytes, headers: dict) -> str:
-        url = f"{GRAPH_V1}/drives/{drive_id}/root:{dest_path}:/content"
+    def _upload_small(self, drive_id: str, dest_path: str,
+                      file_path: str, headers: dict) -> str:
+        """Upload simples (<= 4 MB). Lê o temp e faz PUT."""
+        url = (f"{GRAPH_V1}/drives/{drive_id}/root:"
+               f"{_encode(dest_path)}:/content")
+        with open(file_path, "rb") as f:
+            content = f.read()
 
         def do():
             r = requests.put(url, headers={
                 **headers,
                 "Content-Type": "application/octet-stream",
-            }, data=content, timeout=60)
+            }, data=content, timeout=(30, 300))
             if r.status_code == 429:
                 raise Exception("429 throttle")
             r.raise_for_status()
@@ -164,13 +216,20 @@ class SharePointEngine(MigrationEngine):
         return self.retry_on_throttle(do).get("id", "")
 
     def _upload_resumable(self, drive_id: str, dest_path: str,
-                          content: bytes, headers: dict) -> str:
-        session_url = f"{GRAPH_V1}/drives/{drive_id}/root:{dest_path}:/createUploadSession"
+                          file_path: str, total_size: int, headers: dict) -> str:
+        """
+        Resumable upload (> 4 MB). Lê chunks do arquivo temp em disco,
+        não carrega nada em memória além do chunk atual.
+        """
+        session_url = (f"{GRAPH_V1}/drives/{drive_id}/root:"
+                       f"{_encode(dest_path)}:/createUploadSession")
 
         def create_session():
             r = requests.post(session_url, headers={
                 **headers, "Content-Type": "application/json",
-            }, json={"item": {"@microsoft.graph.conflictBehavior": "replace"}}, timeout=30)
+            }, json={
+                "item": {"@microsoft.graph.conflictBehavior": "replace"},
+            }, timeout=30)
             if r.status_code == 429:
                 raise Exception("429 throttle")
             r.raise_for_status()
@@ -179,41 +238,49 @@ class SharePointEngine(MigrationEngine):
         session = self.retry_on_throttle(create_session)
         upload_url = session["uploadUrl"]
 
-        total_size = len(content)
-        offset = 0
-        result = {}
+        result: dict = {}
+        with open(file_path, "rb") as f:
+            offset = 0
+            while offset < total_size:
+                chunk_end = min(offset + UPLOAD_CHUNK_SIZE, total_size)
+                f.seek(offset)
+                chunk = f.read(chunk_end - offset)
 
-        while offset < total_size:
-            chunk_end = min(offset + UPLOAD_CHUNK_SIZE, total_size)
-            chunk = content[offset:chunk_end]
+                def upload_chunk():
+                    r = requests.put(upload_url, headers={
+                        "Content-Length": str(len(chunk)),
+                        "Content-Range": f"bytes {offset}-{chunk_end - 1}/{total_size}",
+                    }, data=chunk, timeout=(30, 600))
+                    if r.status_code == 429:
+                        raise Exception("429 throttle")
+                    if r.status_code == 404:
+                        raise Exception("Upload session expirou (404)")
+                    if r.status_code not in (200, 201, 202):
+                        r.raise_for_status()
+                    return r.json() if r.text else {}
 
-            def upload_chunk():
-                r = requests.put(upload_url, headers={
-                    "Content-Length": str(len(chunk)),
-                    "Content-Range": f"bytes {offset}-{chunk_end - 1}/{total_size}",
-                }, data=chunk, timeout=120)
-                if r.status_code == 429:
-                    raise Exception("429 throttle")
-                if r.status_code not in (200, 201, 202):
-                    r.raise_for_status()
-                return r.json() if r.text else {}
-
-            result = self.retry_on_throttle(upload_chunk)
-            offset = chunk_end
+                result = self.retry_on_throttle(upload_chunk)
+                offset = chunk_end
 
         return result.get("id", "")
 
     def _update_timestamps(self, drive_id: str, item_id: str,
-                           last_modified: str, headers: dict):
-        if not last_modified or not item_id:
+                           created: str | None, last_modified: str | None,
+                           headers: dict) -> None:
+        """Preserva createdDateTime + lastModifiedDateTime no item destino."""
+        if not item_id or (not created and not last_modified):
             return
+        fsi: dict = {}
+        if created:
+            fsi["createdDateTime"] = created
+        if last_modified:
+            fsi["lastModifiedDateTime"] = last_modified
         url = f"{GRAPH_V1}/drives/{drive_id}/items/{item_id}"
         try:
             requests.patch(url, headers={**headers, "Content-Type": "application/json"},
-                           json={"fileSystemInfo": {"lastModifiedDateTime": last_modified}},
-                           timeout=15)
+                           json={"fileSystemInfo": fsi}, timeout=15)
         except Exception:
-            pass
+            pass  # best-effort
 
     # ── Mapeamento de drives ─────────────────────────────────────────────────────
 
@@ -253,7 +320,6 @@ class SharePointEngine(MigrationEngine):
             list_data = r.json()
             list_id = list_data.get("id", "")
 
-            # Resolve drive_id via /lists/{id}/drive
             drv = requests.get(
                 f"{GRAPH_V1}/sites/{dst_site_id}/lists/{list_id}/drive",
                 headers=dst_hdrs, timeout=15,
@@ -274,7 +340,7 @@ class SharePointEngine(MigrationEngine):
     def _map_drives(self, src_site_id: str, dst_site_id: str,
                     src_hdrs: dict, dst_hdrs: dict) -> list[tuple]:
         """
-        Mapeia drives do site origem → destino em três estratégias:
+        Mapeia drives do site origem → destino em quatro estratégias:
         1. Match exato por nome
         2. Match de default libraries (Documents / Documentos / Dokumente etc.)
         3. Auto-map 1:1 quando cada lado tem exatamente uma library
@@ -398,26 +464,24 @@ class SharePointEngine(MigrationEngine):
             return {"ok": False, "message": f"Falha ao conectar: {exc}"}
 
     def assess(self) -> dict:
-        src_site = self.mailbox.source_email  # site_id
+        src_site = self.mailbox.source_email
         src_hdrs = self._src_headers()
         drives = self._get_site_drives(src_site, src_hdrs)
 
         total_files = 0
         total_size = 0
-        all_folders = []
+        all_folders: list[str] = []
 
         for drive in drives:
-            items = self._list_drive_items_recursive(drive["id"], src_hdrs)
-            files = [i for i in items if not i["is_folder"]]
-            folders = [i for i in items if i["is_folder"]]
-            total_files += len(files)
-            total_size += sum(f["size"] for f in files)
-            all_folders.extend([f"{drive['name']}{f['path']}" for f in folders])
+            files, size, folders = self._count_drive(drive["id"], src_hdrs)
+            total_files += files
+            total_size += size
+            all_folders.extend(f"{drive.get('name', '')}{f}" for f in folders)
 
         return {
             "total_messages": total_files,
             "estimated_size_bytes": total_size,
-            "folders": all_folders,
+            "folders": all_folders[:200],
         }
 
     def migrate_mailbox(self, on_progress: ProgressCallback) -> None:
@@ -426,6 +490,7 @@ class SharePointEngine(MigrationEngine):
         src_hdrs = self._src_headers()
         dst_hdrs = self._dst_headers()
         total_migrated = self.mailbox.items_migrated or 0
+        total_files = self.mailbox.items_total or 0
 
         drive_mappings = self._map_drives(src_site, dst_site, src_hdrs, dst_hdrs)
 
@@ -433,66 +498,63 @@ class SharePointEngine(MigrationEngine):
             self.add_log("Nenhum drive mapeado entre origem e destino.", "error")
             return
 
-        total_files = 0
         for src_drive_id, dst_drive_id, drive_name in drive_mappings:
             self.add_log(f"Migrando biblioteca '{drive_name}'...")
 
-            all_items = self._list_drive_items_recursive(src_drive_id, src_hdrs)
-
-            # Criar pastas no destino
-            folders = sorted([i for i in all_items if i["is_folder"]], key=lambda x: x["path"])
-            # Build folder_id map for creating nested folders
-            dst_folder_map = {"root": "root"}
-
-            for folder in folders:
-                path_parts = folder["path"].rstrip("/").split("/")
-                folder_name = path_parts[-1]
-                parent_path = "/".join(path_parts[:-1]) or "root"
-                parent_id = dst_folder_map.get(parent_path, "root")
-
-                try:
-                    new_id = self._create_folder(dst_drive_id, parent_id, folder_name, dst_hdrs)
-                    dst_folder_map[folder["path"].rstrip("/")] = new_id
-                except Exception as e:
-                    self.add_log(f"Falha criar pasta '{folder['path']}': {e}", "warning")
-
-            # Copiar arquivos
-            files = [i for i in all_items if not i["is_folder"]]
-            total_files += len(files)
-
-            for item in files:
-                item_id = item["id"]
-                folder_key = f"{drive_name}:{'/'.join(item['path'].split('/')[:-1]) or '/'}"
-
-                if self.is_already_migrated(folder_key, item_id):
-                    total_migrated += 1
+            # Walk streaming — não materializa o drive inteiro
+            for item in self._walk_drive(src_drive_id, src_hdrs):
+                if item["is_folder"]:
+                    # Pastas são criadas automaticamente pelo upload /root:/path:/content
                     continue
 
+                item_id = item["id"]
+                item_path = item["path"]
+                folder_path = "/".join(item_path.split("/")[:-1]) or "/"
+                folder_key = f"{drive_name}:{folder_path}"
+
+                if self.is_already_migrated(folder_key, item_id):
+                    continue
+
+                tmp_path = None
                 try:
-                    content = self._download_file(src_drive_id, item_id, src_hdrs)
-                    content_hash = hashlib.sha256(content).hexdigest()
+                    tmp_path, size_bytes, content_hash = self._download_to_tempfile(
+                        src_drive_id, item_id, src_hdrs
+                    )
 
-                    dest_path = f"/{item['path'].lstrip('/')}"
-                    if len(content) <= SIMPLE_UPLOAD_LIMIT:
-                        dest_id = self._upload_simple(dst_drive_id, dest_path, content, dst_hdrs)
+                    dest_path = f"/{item_path.lstrip('/')}"
+                    if size_bytes <= SIMPLE_UPLOAD_LIMIT:
+                        dest_id = self._upload_small(dst_drive_id, dest_path, tmp_path, dst_hdrs)
                     else:
-                        dest_id = self._upload_resumable(dst_drive_id, dest_path, content, dst_hdrs)
+                        dest_id = self._upload_resumable(
+                            dst_drive_id, dest_path, tmp_path, size_bytes, dst_hdrs
+                        )
 
-                    self._update_timestamps(dst_drive_id, dest_id,
-                                            item.get("lastModifiedDateTime"), dst_hdrs)
+                    self._update_timestamps(
+                        dst_drive_id, dest_id,
+                        item.get("createdDateTime"),
+                        item.get("lastModifiedDateTime"),
+                        dst_hdrs,
+                    )
 
                     self.record_copied(
-                        folder=folder_key,
-                        uid=item_id,
-                        dest_id=dest_id,
-                        content_hash=content_hash,
-                        size_bytes=len(content),
+                        folder=folder_key, uid=item_id, dest_id=dest_id,
+                        content_hash=content_hash, size_bytes=size_bytes,
                     )
                     total_migrated += 1
 
                 except Exception as e:
                     self.record_failed(folder_key, item_id, str(e))
-                    self.add_log(f"Falha arquivo '{item['path']}' em '{drive_name}': {e}", "warning")
+                    self.add_log(
+                        f"Falha arquivo '{item_path}' em '{drive_name}': {e}",
+                        "warning",
+                    )
+
+                finally:
+                    if tmp_path and os.path.exists(tmp_path):
+                        try:
+                            os.unlink(tmp_path)
+                        except OSError:
+                            pass
 
                 if total_migrated % BATCH_SIZE == 0:
                     self.save_checkpoint(folder_key, item_id, total_migrated)
@@ -544,29 +606,46 @@ class SharePointEngine(MigrationEngine):
                     parent = item.get("parentReference", {})
                     parent_path = parent.get("path", "").replace("/drive/root:", "") or "/"
                     folder_key = f"{drive_name}:{parent_path}"
+                    item_path = f"{parent_path.rstrip('/')}/{name}"
 
                     if self.is_already_migrated(folder_key, item_id):
                         continue
 
+                    tmp_path = None
                     try:
-                        content = self._download_file(src_drive_id, item_id, src_hdrs)
-                        dest_path = f"/{parent_path.lstrip('/')}/{name}".replace("//", "/")
-
-                        if len(content) <= SIMPLE_UPLOAD_LIMIT:
-                            dest_id = self._upload_simple(dst_drive_id, dest_path, content, dst_hdrs)
+                        tmp_path, size_bytes, content_hash = self._download_to_tempfile(
+                            src_drive_id, item_id, src_hdrs
+                        )
+                        dest_path = f"/{item_path.lstrip('/')}"
+                        if size_bytes <= SIMPLE_UPLOAD_LIMIT:
+                            dest_id = self._upload_small(
+                                dst_drive_id, dest_path, tmp_path, dst_hdrs
+                            )
                         else:
-                            dest_id = self._upload_resumable(dst_drive_id, dest_path, content, dst_hdrs)
-
+                            dest_id = self._upload_resumable(
+                                dst_drive_id, dest_path, tmp_path, size_bytes, dst_hdrs
+                            )
+                        self._update_timestamps(
+                            dst_drive_id, dest_id,
+                            item.get("createdDateTime"),
+                            item.get("lastModifiedDateTime"),
+                            dst_hdrs,
+                        )
                         self.record_copied(
                             folder=folder_key, uid=item_id, dest_id=dest_id,
-                            content_hash=hashlib.sha256(content).hexdigest(),
-                            size_bytes=len(content),
+                            content_hash=content_hash, size_bytes=size_bytes,
                         )
                         total_migrated += 1
                         new_items += 1
                         on_progress(total_migrated, self.mailbox.items_total or 0, 0)
                     except Exception as e:
                         self.record_failed(folder_key, item_id, str(e))
+                    finally:
+                        if tmp_path and os.path.exists(tmp_path):
+                            try:
+                                os.unlink(tmp_path)
+                            except OSError:
+                                pass
 
                 url = page.get("@odata.nextLink")
 

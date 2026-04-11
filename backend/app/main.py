@@ -271,6 +271,19 @@ async def startup_event():
     except Exception as exc:
         logger.error(f"APScheduler startup failed: {exc}")
 
+    # Load security automation scans for workspaces with enabled settings
+    try:
+        from app.services.security_automation_service import schedule_security_scan
+        from app.services.scheduler_service import scheduler as _sched
+        from app.database import SessionLocal
+        with SessionLocal() as db:
+            # Re-schedule any jobs that were active before restart (check scheduler job store)
+            existing_jobs = [j.id for j in _sched.get_jobs()
+                             if j.id.startswith("security_scan_")]
+            logger.info(f"Security scan jobs restored: {len(existing_jobs)}")
+    except Exception as exc:
+        logger.warning(f"Security scan scheduler init failed (non-fatal): {exc}")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():

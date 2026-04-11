@@ -957,3 +957,124 @@ class MigrationLicense(Base):
     reviewed_at         = Column(DateTime, nullable=True)
     created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ── Security Automation ───────────────────────────────────────────────────────
+
+
+class SecurityEvent(Base):
+    """Evento de segurança detectado por um collector (Defender, Entra, M365)."""
+    __tablename__ = "security_events"
+    __table_args__ = (
+        Index("ix_secevents_ws_status", "workspace_id", "status"),
+        Index("ix_secevents_ws_severity", "workspace_id", "severity"),
+    )
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    source       = Column(String(50), nullable=False)     # defender | entra_risk | entra_signin | m365 | activity
+    severity     = Column(String(20), nullable=False)     # low | medium | high | critical
+    event_type   = Column(String(100), nullable=False)
+    title        = Column(String(500), nullable=False)
+    entity_type  = Column(String(50), nullable=True)      # user | vm | resource | subscription
+    entity_id    = Column(String(500), nullable=True)
+    details      = Column(JSONB, nullable=True)
+    detected_at  = Column(DateTime, nullable=True)
+    status       = Column(String(20), nullable=False, default="open")  # open | contained | dismissed | expired
+    dismissed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    dismissed_at = Column(DateTime, nullable=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    actions   = relationship("SecurityAction", back_populates="event", cascade="all, delete-orphan")
+
+
+class SecurityAction(Base):
+    """Ação de contenção executada — audit trail completo."""
+    __tablename__ = "security_actions"
+    __table_args__ = (
+        Index("ix_secactions_ws_executed", "workspace_id", "executed_at"),
+    )
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id      = Column(UUID(as_uuid=True), ForeignKey("security_events.id", ondelete="SET NULL"), nullable=True, index=True)
+    workspace_id  = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    playbook_name = Column(String(100), nullable=True)
+    action_type   = Column(String(50), nullable=False)
+    auto_executed = Column(Boolean, nullable=False, default=False)
+    executed_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    result        = Column(JSONB, nullable=True)
+    error_message = Column(Text, nullable=True)
+    executed_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    event     = relationship("SecurityEvent", back_populates="actions")
+    workspace = relationship("Workspace")
+    executor  = relationship("User", foreign_keys=[executed_by])
+
+
+class SecurityPlaybook(Base):
+    """Playbook de detecção/resposta configurável por workspace."""
+    __tablename__ = "security_playbooks"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_secplaybook_ws_name"),
+    )
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id     = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    name             = Column(String(100), nullable=False)
+    description      = Column(Text, nullable=True)
+    sources          = Column(JSONB, nullable=False)            # ["defender_alerts", "entra_risk"]
+    severity_min     = Column(String(20), nullable=False, default="high")
+    actions          = Column(JSONB, nullable=False)            # ["notify", "block_user"]
+    auto_execute     = Column(Boolean, nullable=False, default=False)
+    cooldown_minutes = Column(Integer, nullable=False, default=30)
+    is_active        = Column(Boolean, nullable=False, default=True)
+    is_default       = Column(Boolean, nullable=False, default=False)
+    created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+
+
+class PartnerCenterConfig(Base):
+    """Credenciais Partner Center por workspace (CSP)."""
+    __tablename__ = "partner_center_configs"
+
+    id                       = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id             = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, unique=True)
+    partner_tenant_id        = Column(String(255), nullable=False)
+    encrypted_credentials    = Column(Text, nullable=False)          # Fernet: {client_id, client_secret}
+    gdap_security_group_id   = Column(String(255), nullable=True)
+    created_at               = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at               = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+
+
+class IncidentResponse(Base):
+    """Execução de template de resposta a incidente — requer aprovação."""
+    __tablename__ = "incident_responses"
+    __table_args__ = (
+        Index("ix_ir_ws_status", "workspace_id", "status"),
+    )
+
+    id                        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id              = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    title                     = Column(String(500), nullable=False)
+    template_type             = Column(String(50), nullable=False)    # containment | containment_with_suspend
+    target_subscription_id    = Column(String(255), nullable=True)
+    target_customer_tenant_id = Column(String(255), nullable=True)
+    target_resource_ids       = Column(JSONB, nullable=True)          # lista de resource IDs Azure afetados
+    affected_users            = Column(JSONB, nullable=True)          # lista de UPNs/user IDs
+    status                    = Column(String(30), nullable=False, default="pending_approval")
+    # pending_approval | approved | running | completed | failed | cancelled
+    triggered_by              = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by               = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    started_at                = Column(DateTime, nullable=True)
+    completed_at              = Column(DateTime, nullable=True)
+    steps                     = Column(JSONB, nullable=True)          # [{name, status, result, executed_at, error}]
+    notes                     = Column(Text, nullable=True)
+    created_at                = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace    = relationship("Workspace")
+    requester    = relationship("User", foreign_keys=[triggered_by])
+    approver     = relationship("User", foreign_keys=[approved_by])
