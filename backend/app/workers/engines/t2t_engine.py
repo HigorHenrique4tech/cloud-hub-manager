@@ -385,57 +385,71 @@ class TenantToTenantEngine(MigrationEngine):
     # ── Teste de conexão ──────────────────────────────────────────────────────
 
     def test_connection(self) -> dict:
-        """Valida auth e acesso à Graph tanto no tenant de origem quanto no destino."""
+        """
+        Valida auth e acesso à Graph tanto no tenant de origem quanto no destino.
+        Usa GET /users/{id}/mailFolders/inbox em cada lado — valida OAuth +
+        Mail.Read/ReadWrite + existência do UPN em uma única chamada, sem
+        exigir permissão adicional como Organization.Read.All.
+        """
+
+        def _describe_err(resp: requests.Response) -> str:
+            try:
+                err = resp.json().get("error", {}) or {}
+                return f"HTTP {resp.status_code} [{err.get('code','')}] {err.get('message','')[:200]}"
+            except Exception:
+                return f"HTTP {resp.status_code} {resp.text[:200]}"
+
         # ── Origem ──────────────────────────────────────────────────────────
+        src_user = self.source_cfg.get("src_user_id") or (
+            self.mailbox.source_email if self.mailbox else ""
+        )
+        if not src_user:
+            return {
+                "ok": False,
+                "message": "Origem: informe o UPN do usuário (src_user_id) para testar.",
+            }
         try:
             src_headers = self._src_headers()
-            resp = requests.get(f"{GRAPH_V1}/organization", headers=src_headers, timeout=15)
+            url = f"{GRAPH_V1}/users/{self._enc_user(src_user)}/mailFolders/inbox?$select=id,totalItemCount"
+            resp = requests.get(url, headers=src_headers, timeout=15)
             if not resp.ok:
-                try:
-                    err = resp.json().get("error", {})
-                    return {
-                        "ok": False,
-                        "message": (
-                            f"Origem: HTTP {resp.status_code} [{err.get('code','')}] "
-                            f"{err.get('message','')[:200]}"
-                        ),
-                    }
-                except Exception:
-                    return {"ok": False, "message": f"Origem: HTTP {resp.status_code} {resp.text[:200]}"}
-            src_orgs = resp.json().get("value", [])
-            src_name = src_orgs[0].get("displayName", "") if src_orgs else ""
+                return {"ok": False, "message": f"Origem ({src_user}): {_describe_err(resp)}"}
+            src_count = resp.json().get("totalItemCount", 0)
         except Exception as exc:
-            return {"ok": False, "message": f"Origem: {exc}"}
+            return {"ok": False, "message": f"Origem ({src_user}): {exc}"}
 
         # ── Destino ─────────────────────────────────────────────────────────
         if not self.dest_cfg.get("tenant_id"):
             return {
                 "ok": True,
-                "message": f"Origem OK ({src_name}). Destino não informado neste teste.",
+                "message": f"Origem OK ({src_user}, {src_count} msgs no Inbox). Destino não informado neste teste.",
+            }
+        dest_user = self.dest_cfg.get("dest_user_id") or (
+            self.mailbox.destination_email if self.mailbox else ""
+        )
+        if not dest_user:
+            return {
+                "ok": True,
+                "message": (
+                    f"Origem OK ({src_user}, {src_count} msgs). "
+                    f"Destino: informe o UPN (dest_user_id) para validar."
+                ),
             }
         try:
             dst_headers = self._dst_headers()
-            resp = requests.get(f"{GRAPH_V1}/organization", headers=dst_headers, timeout=15)
+            url = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}/mailFolders/inbox?$select=id"
+            resp = requests.get(url, headers=dst_headers, timeout=15)
             if not resp.ok:
-                try:
-                    err = resp.json().get("error", {})
-                    return {
-                        "ok": False,
-                        "message": (
-                            f"Destino: HTTP {resp.status_code} [{err.get('code','')}] "
-                            f"{err.get('message','')[:200]}"
-                        ),
-                    }
-                except Exception:
-                    return {"ok": False, "message": f"Destino: HTTP {resp.status_code} {resp.text[:200]}"}
-            dst_orgs = resp.json().get("value", [])
-            dst_name = dst_orgs[0].get("displayName", "") if dst_orgs else ""
+                return {"ok": False, "message": f"Destino ({dest_user}): {_describe_err(resp)}"}
         except Exception as exc:
-            return {"ok": False, "message": f"Destino: {exc}"}
+            return {"ok": False, "message": f"Destino ({dest_user}): {exc}"}
 
         return {
             "ok": True,
-            "message": f"Conectado. Origem: {src_name}. Destino: {dst_name}.",
+            "message": (
+                f"Conectado. Origem: {src_user} ({src_count} msgs no Inbox). "
+                f"Destino: {dest_user} OK."
+            ),
         }
 
     # ── Fase 1: Assessment ────────────────────────────────────────────────────
