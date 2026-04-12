@@ -4,7 +4,7 @@ import logging
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from sqlalchemy.orm import Session
 
 from app.core.auth_context import MemberContext
@@ -26,12 +26,27 @@ ws_router = APIRouter(
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
+VALID_MIGRATION_TYPES = {
+    "imap", "exchange_onprem", "google_workspace", "tenant_to_tenant",
+    "onedrive_to_onedrive", "sharepoint_to_sharepoint", "teams_chat",
+}
+
+
 class CreateProjectRequest(BaseModel):
     name: str
     description: Optional[str] = None
-    migration_type: str   # google_workspace | exchange_onprem | tenant_to_tenant | imap
-    source_config: dict   # credentials / connection info for source
+    migration_type: str
+    source_config: dict
     destination_config: dict
+
+    @validator("migration_type")
+    def validate_migration_type(cls, v):
+        if v not in VALID_MIGRATION_TYPES:
+            raise ValueError(
+                f"migration_type inválido: '{v}'. "
+                f"Use: {', '.join(sorted(VALID_MIGRATION_TYPES))}"
+            )
+        return v
 
 
 class UpdateProjectRequest(BaseModel):
@@ -271,101 +286,20 @@ async def set_project_status(
     if not project:
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
 
-    # Dispara o worker Celery ao iniciar migração
+    # Dispara o worker Celery ao iniciar migração.
+    # Se o dispatch falhar, reverte o status para evitar que o projeto fique "running" sem worker.
     if body.status == "running":
-        _dispatch_migration_worker(project_id)
+        try:
+            _dispatch_migration_worker(project_id)
+        except Exception as exc:
+            logger.error(f"Falha ao despachar worker para {project_id}: {exc}")
+            svc.set_project_status(db, str(member.workspace_id), project_id, "draft")
+            raise HTTPException(
+                status_code=503,
+                detail="Worker de migração indisponível. Verifique se o container migration-worker está rodando.",
+            )
 
     return project
-
-
-@ws_router.get("/projects/{project_id}/report")
-async def export_report(
-    project_id: str,
-    format: str = "csv",
-    member: MemberContext = Depends(require_permission("m365.view")),
-    db: Session = Depends(get_db),
-):
-    """Exporta relatório da migração em CSV ou PDF."""
-    import io, csv
-    from fastapi.responses import StreamingResponse
-
-    project = svc.get_project(db, str(member.workspace_id), project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
-    mailboxes = svc.list_mailboxes(db, str(member.workspace_id), project_id)
-
-    if format == "csv":
-        output = io.StringIO()
-        writer = csv.writer(output)
-        writer.writerow(["Origem", "Destino", "Status", "Fase", "Migradas", "Total", "Verificado", "Erro"])
-        for mb in mailboxes:
-            writer.writerow([
-                mb.get("source_email", ""),
-                mb.get("destination_email", ""),
-                mb.get("status", ""),
-                mb.get("phase", ""),
-                mb.get("items_migrated", 0),
-                mb.get("items_total", 0),
-                "Sim" if mb.get("verified_at") else "Não",
-                mb.get("error_message", ""),
-            ])
-        output.seek(0)
-        filename = f"migracao_{project_id[:8]}.csv"
-        return StreamingResponse(
-            iter([output.getvalue()]),
-            media_type="text/csv",
-            headers={"Content-Disposition": f"attachment; filename={filename}"},
-        )
-
-    elif format == "pdf":
-        # PDF simples com reportlab se disponível, senão HTML convertido
-        try:
-            from reportlab.lib.pagesizes import A4
-            from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-            from reportlab.lib.styles import getSampleStyleSheet
-            from reportlab.lib import colors
-
-            buffer = io.BytesIO()
-            doc = SimpleDocTemplate(buffer, pagesize=A4)
-            styles = getSampleStyleSheet()
-            elements = []
-
-            elements.append(Paragraph(f"Relatório de Migração: {project.get('name','')}", styles['Title']))
-            elements.append(Spacer(1, 12))
-            elements.append(Paragraph(f"Status: {project.get('status','')} | Total: {project.get('mailbox_count',0)} caixas", styles['Normal']))
-            elements.append(Spacer(1, 20))
-
-            data = [["Origem", "Destino", "Status", "Migradas/Total", "Verificado"]]
-            for mb in mailboxes:
-                data.append([
-                    mb.get("source_email", ""),
-                    mb.get("destination_email", ""),
-                    mb.get("status", ""),
-                    f"{mb.get('items_migrated',0)}/{mb.get('items_total',0)}",
-                    "Sim" if mb.get("verified_at") else "Não",
-                ])
-
-            table = Table(data, colWidths=[130, 130, 70, 90, 60])
-            table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1e6fd9')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
-                ('FONTSIZE', (0, 0), (-1, -1), 8),
-                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
-                ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f8f9fa')]),
-            ]))
-            elements.append(table)
-            doc.build(elements)
-            buffer.seek(0)
-            filename = f"migracao_{project_id[:8]}.pdf"
-            return StreamingResponse(
-                buffer,
-                media_type="application/pdf",
-                headers={"Content-Disposition": f"attachment; filename={filename}"},
-            )
-        except ImportError:
-            raise HTTPException(status_code=501, detail="Exportação PDF requer reportlab. Use CSV.")
-    else:
-        raise HTTPException(status_code=400, detail="Formato inválido. Use 'csv' ou 'pdf'.")
 
 
 @ws_router.get("/projects/{project_id}/stats")
@@ -506,11 +440,20 @@ async def retry_mailbox(
     if not mb:
         raise HTTPException(status_code=404, detail="Caixa não encontrada ou não está em estado de falha/pausa.")
 
-    # Se projeto não está rodando, dispara worker para pegar a caixa resetada
+    # Se projeto não está rodando, dispara worker para pegar a caixa resetada.
+    # Retry individual não consome licenças — a caixa já foi contabilizada na execução original.
     project = svc.get_project(db, str(member.workspace_id), project_id)
     if project and project["status"] not in ("running",):
         svc.set_project_status(db, str(member.workspace_id), project_id, "running")
-        _dispatch_migration_worker(project_id)
+        try:
+            _dispatch_migration_worker(project_id)
+        except Exception as exc:
+            logger.error(f"Falha ao despachar worker no retry de mailbox {mailbox_id}: {exc}")
+            svc.set_project_status(db, str(member.workspace_id), project_id, project["status"])
+            raise HTTPException(
+                status_code=503,
+                detail="Worker de migração indisponível. Verifique se o container migration-worker está rodando.",
+            )
 
     return mb
 
@@ -887,6 +830,12 @@ class TestConnectionRequest(BaseModel):
     migration_type: str
     source_config: dict
 
+    @validator("migration_type")
+    def validate_migration_type(cls, v):
+        if v not in VALID_MIGRATION_TYPES:
+            raise ValueError(f"migration_type inválido: '{v}'")
+        return v
+
 
 @ws_router.post("/test-connection")
 async def test_connection(
@@ -899,7 +848,7 @@ async def test_connection(
     """
     try:
         from app.workers.engines import get_engine
-        engine = get_engine(body.migration_type, body.source_config, {})
+        engine = get_engine(body.migration_type, body.source_config, {}, db=None, mailbox=None)
         result = engine.test_connection()
         return result
     except NotImplementedError:
@@ -1054,24 +1003,20 @@ async def retry_failed(
 # ── Helper: dispatch Celery ───────────────────────────────────────────────────
 
 def _dispatch_migration_worker(project_id: str, verify_only: bool = False,
-                                delta_only: bool = False):
+                                delta_only: bool = False) -> bool:
     """
-    Tenta despachar a task Celery.
-    Se Redis não estiver disponível, registra warning mas não quebra a API.
+    Despacha a task Celery para o worker de migração.
+    Retorna True em caso de sucesso, False se Redis/worker não estiver disponível.
+    Levanta exceção se o dispatch falhar — o chamador deve tratar.
     """
     import uuid as _uuid
-    try:
-        from app.workers.migration_worker import run_migration_project
-        task_id = f"migration-{project_id}-{_uuid.uuid4().hex[:8]}"
-        run_migration_project.apply_async(
-            args=[project_id],
-            kwargs={"verify_only": verify_only, "delta_only": delta_only},
-            queue="migration",
-            task_id=task_id,
-        )
-        logger.info(f"Migration task despachada para projeto {project_id} (task_id={task_id})")
-    except Exception as exc:
-        logger.error(
-            f"Falha ao despachar migration task para {project_id}: {exc}. "
-            "Verifique se o Redis e o worker Celery estão rodando."
-        )
+    from app.workers.migration_worker import run_migration_project
+    task_id = f"migration-{project_id}-{_uuid.uuid4().hex[:8]}"
+    run_migration_project.apply_async(
+        args=[project_id],
+        kwargs={"verify_only": verify_only, "delta_only": delta_only},
+        queue="migration",
+        task_id=task_id,
+    )
+    logger.info(f"Migration task despachada para projeto {project_id} (task_id={task_id})")
+    return True

@@ -17,12 +17,21 @@ import PermissionGate from '../common/PermissionGate';
 
 // Regras que o scanner de segurança marcaria como perigosas
 function isDangerousRule(rule) {
-  const port = (rule.dest_port || '').toLowerCase();
-  const src = (rule.source_address || '').toLowerCase();
-  const isDangerPort = ['22', '3389', '*', '0-65535'].includes(port) ||
-    port.includes('22') || port.includes('3389');
+  const port = (rule.dest_port || '').trim();
+  const src  = (rule.source_address || '').toLowerCase();
+
+  const portCoversSSHorRDP = port === '*' || port === '0-65535' ||
+    port.split(',').some(seg => {
+      seg = seg.trim();
+      if (seg.includes('-')) {
+        const [lo, hi] = seg.split('-').map(Number);
+        return (22 >= lo && 22 <= hi) || (3389 >= lo && 3389 <= hi);
+      }
+      return seg === '22' || seg === '3389';
+    });
+
   const isOpenSource = ['*', 'internet', '0.0.0.0/0', 'any'].includes(src);
-  return rule.access === 'Allow' && rule.direction === 'Inbound' && isDangerPort && isOpenSource;
+  return rule.access === 'Allow' && rule.direction === 'Inbound' && portCoversSSHorRDP && isOpenSource;
 }
 
 const DIRECTION_COLORS = {
@@ -232,10 +241,12 @@ function AddNSGRuleModal({ nsgRg, nsgName, existingRules, onClose, onSuccess }) 
 
 function NSGRulesTable({ rules, nsgRg, nsgName, onMutate }) {
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const deleteMut = useMutation({
     mutationFn: (ruleName) => azureService.deleteNSGRule(nsgRg, nsgName, ruleName),
-    onSuccess: () => { setConfirmDelete(null); onMutate(); },
+    onSuccess: () => { setConfirmDelete(null); setDeleteError(''); onMutate(); },
+    onError: (e) => setDeleteError(e.response?.data?.detail || e.message || 'Erro ao excluir regra'),
   });
 
   if (rules.length === 0) {
@@ -290,23 +301,28 @@ function NSGRulesTable({ rules, nsgRg, nsgName, onMutate }) {
 
       {/* Confirmação de exclusão */}
       {confirmDelete && (
-        <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40 mt-2">
-          <p className="text-xs text-red-700 dark:text-red-300">
-            Excluir regra <strong>{confirmDelete}</strong>?
-          </p>
-          <div className="flex gap-2">
-            <button onClick={() => setConfirmDelete(null)}
-              className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-700">
-              Cancelar
-            </button>
-            <button
-              onClick={() => deleteMut.mutate(confirmDelete)}
-              disabled={deleteMut.isPending}
-              className="text-xs px-2 py-1 rounded bg-red-500 hover:bg-red-600 text-white disabled:opacity-50 flex items-center gap-1">
-              {deleteMut.isPending ? <RefreshCw size={10} className="animate-spin" /> : null}
-              Excluir
-            </button>
+        <div className="flex flex-col gap-2 mt-2">
+          <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
+            <p className="text-xs text-red-700 dark:text-red-300">
+              Excluir regra <strong>{confirmDelete}</strong>?
+            </p>
+            <div className="flex gap-2">
+              <button onClick={() => { setConfirmDelete(null); setDeleteError(''); }}
+                className="text-xs px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-white dark:hover:bg-gray-700">
+                Cancelar
+              </button>
+              <button
+                onClick={() => deleteMut.mutate(confirmDelete)}
+                disabled={deleteMut.isPending}
+                className="text-xs px-2 py-1 rounded bg-red-500 hover:bg-red-600 text-white disabled:opacity-50 flex items-center gap-1">
+                {deleteMut.isPending ? <RefreshCw size={10} className="animate-spin" /> : null}
+                Excluir
+              </button>
+            </div>
           </div>
+          {deleteError && (
+            <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">{deleteError}</p>
+          )}
         </div>
       )}
     </>
@@ -401,6 +417,11 @@ function NICCard({ nic, index }) {
           {/* NSG Section */}
           {nicQ.isLoading ? (
             <div className="h-20 rounded-lg bg-gray-100 dark:bg-gray-700 animate-pulse" />
+          ) : nicQ.isError ? (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300">
+              <AlertTriangle size={13} className="flex-shrink-0" />
+              <p className="text-xs">{nicQ.error?.response?.data?.detail || nicQ.error?.message || 'Erro ao carregar detalhes da NIC'}</p>
+            </div>
           ) : nsgName ? (
             <div className="space-y-3">
               {/* NSG header */}

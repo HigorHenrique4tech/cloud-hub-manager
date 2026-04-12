@@ -90,9 +90,9 @@ export const azureService = {
   refreshAdvisor: () => api.post(wsUrl('/azure/advisor/refresh')).then(r => r.data),
 
   // NIC + NSG
-  getNICDetail: (rg, nicName) => api.get(wsUrl(`/azure/nics/${rg}/${nicName}`)).then(r => r.data),
-  addNSGRule: (rg, nsgName, data) => api.post(wsUrl(`/azure/nsg/${rg}/${nsgName}/rules`), data).then(r => r.data),
-  deleteNSGRule: (rg, nsgName, ruleName) => api.delete(wsUrl(`/azure/nsg/${rg}/${nsgName}/rules/${ruleName}`)).then(r => r.data),
+  getNICDetail: (rg, nicName) => api.get(wsUrl(`/azure/nics/${encodeURIComponent(rg)}/${encodeURIComponent(nicName)}`)).then(r => r.data),
+  addNSGRule: (rg, nsgName, data) => api.post(wsUrl(`/azure/nsg/${encodeURIComponent(rg)}/${encodeURIComponent(nsgName)}/rules`), data).then(r => r.data),
+  deleteNSGRule: (rg, nsgName, ruleName) => api.delete(wsUrl(`/azure/nsg/${encodeURIComponent(rg)}/${encodeURIComponent(nsgName)}/rules/${encodeURIComponent(ruleName)}`)).then(r => r.data),
 
   // Backup Validation — coverage analysis
   getBackupCoverage: () => api.get(wsUrl('/azure/backup-validation/coverage')).then(r => r.data),

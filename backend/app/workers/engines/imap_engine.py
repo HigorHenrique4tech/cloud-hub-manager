@@ -62,143 +62,156 @@ class ImapEngine(MigrationEngine):
 
     def assess(self) -> dict:
         src = self._connect_src()
-        folders = self._list_folders(src)
-        total = 0
-        size_estimate = 0
+        try:
+            folders = self._list_folders(src)
+            total = 0
+            size_estimate = 0
 
-        for folder in folders:
+            for folder in folders:
+                try:
+                    src.select(f'"{folder}"', readonly=True)
+                    _, data = src.uid("search", None, "ALL")
+                    uids = data[0].split() if data[0] else []
+                    count = len(uids)
+                    total += count
+
+                    # Amostra de tamanho (primeiras 10 msgs)
+                    sample = uids[:min(10, count)]
+                    if sample:
+                        uid_list = b",".join(sample)
+                        _, sizes = src.uid("fetch", uid_list, "(RFC822.SIZE)")
+                        sample_size = 0
+                        sample_count = 0
+                        for item in sizes:
+                            if isinstance(item, tuple):
+                                m = re.search(rb"RFC822\.SIZE (\d+)", item[0])
+                                if m:
+                                    sample_size += int(m.group(1))
+                                    sample_count += 1
+                        if sample_count and count:
+                            size_estimate += (sample_size / sample_count) * count
+                except Exception as e:
+                    logger.warning(f"Assessment — pasta '{folder}' ignorada: {e}")
+
+            return {
+                "total_messages": total,
+                "estimated_size_bytes": int(size_estimate),
+                "folders": folders,
+            }
+        finally:
             try:
-                src.select(f'"{folder}"', readonly=True)
-                _, data = src.uid("search", None, "ALL")
-                uids = data[0].split() if data[0] else []
-                count = len(uids)
-                total += count
-
-                # Amostra de tamanho (primeiras 10 msgs)
-                sample = uids[:min(10, count)]
-                if sample:
-                    uid_list = b",".join(sample)
-                    _, sizes = src.uid("fetch", uid_list, "(RFC822.SIZE)")
-                    sample_size = 0
-                    sample_count = 0
-                    for item in sizes:
-                        if isinstance(item, tuple):
-                            m = re.search(rb"RFC822\.SIZE (\d+)", item[0])
-                            if m:
-                                sample_size += int(m.group(1))
-                                sample_count += 1
-                    if sample_count and count:
-                        size_estimate += (sample_size / sample_count) * count
-            except Exception as e:
-                logger.warning(f"Assessment — pasta '{folder}' ignorada: {e}")
-
-        src.logout()
-        return {
-            "total_messages": total,
-            "estimated_size_bytes": int(size_estimate),
-            "folders": folders,
-        }
+                src.logout()
+            except Exception:
+                pass
 
     # ── Fase 2: Migração inicial ──────────────────────────────────────────────
 
     def migrate_mailbox(self, on_progress: ProgressCallback) -> None:
         src = self._connect_src()
         dst = self._connect_dst()
-        folders = self._list_folders(src)
-        total_migrated = self.mailbox.items_migrated or 0
-        items_total = self.mailbox.items_total or 0
+        try:
+            folders = self._list_folders(src)
+            total_migrated = self.mailbox.items_migrated or 0
+            items_total = self.mailbox.items_total or 0
 
-        for folder in folders:
-            chk = self.get_checkpoint(folder)
-            if chk and chk.completed and chk.phase == "initial":
-                continue  # pasta já concluída nesta fase — pula
+            for folder in folders:
+                chk = self.get_checkpoint(folder)
+                if chk and chk.completed and chk.phase == "initial":
+                    continue  # pasta já concluída nesta fase — pula
 
-            resume_uid = chk.last_uid if chk else None
-            folder_q = f'"{folder}"'
+                resume_uid = chk.last_uid if chk else None
+                folder_q = f'"{folder}"'
 
-            try:
-                src.select(folder_q, readonly=True)
-            except Exception as e:
-                self.add_log(f"Pasta '{folder}' inacessível na fonte: {e}", "warning")
-                continue
-
-            # Busca UIDs a processar (retomada segura)
-            if resume_uid:
-                _, data = src.uid("search", None, f"UID {resume_uid}:*")
-                all_uids = data[0].split() if data[0] else []
-                uids = [u for u in all_uids if int(u) > int(resume_uid)]
-            else:
-                _, data = src.uid("search", None, "ALL")
-                uids = data[0].split() if data[0] else []
-
-            # Cria pasta no destino se não existir
-            self._ensure_folder_dst(dst, folder)
-
-            batch_count = 0
-            last_uid_str = resume_uid or ""
-
-            for uid_bytes in uids:
-                uid_str = uid_bytes.decode()
-
-                # Baixa email bruto
                 try:
-                    _, msg_data = src.uid("fetch", uid_bytes, "(RFC822)")
-                    if not msg_data or not msg_data[0]:
-                        continue
-                    raw: bytes = msg_data[0][1]
+                    src.select(folder_q, readonly=True)
                 except Exception as e:
-                    self.add_log(f"Falha ao baixar UID {uid_str} em '{folder}': {e}", "warning")
+                    self.add_log(f"Pasta '{folder}' inacessível na fonte: {e}", "warning")
                     continue
 
-                # Extrai fingerprints
-                parsed = email_lib.message_from_bytes(raw)
-                msg_id_header = (parsed.get("Message-ID") or "").strip()
-                content_hash = hashlib.sha256(raw[:4096]).hexdigest()
+                # Busca UIDs a processar (retomada segura)
+                if resume_uid:
+                    _, data = src.uid("search", None, f"UID {resume_uid}:*")
+                    all_uids = data[0].split() if data[0] else []
+                    uids = [u for u in all_uids if int(u) > int(resume_uid)]
+                else:
+                    _, data = src.uid("search", None, "ALL")
+                    uids = data[0].split() if data[0] else []
 
-                # Anti-duplicação
-                if self.is_already_migrated(folder, uid_str, msg_id_header or None):
+                # Cria pasta no destino se não existir
+                self._ensure_folder_dst(dst, folder)
+
+                batch_count = 0
+                last_uid_str = resume_uid or ""
+
+                for uid_bytes in uids:
+                    uid_str = uid_bytes.decode()
+
+                    # Baixa email bruto
+                    try:
+                        _, msg_data = src.uid("fetch", uid_bytes, "(RFC822)")
+                        if not msg_data or not msg_data[0]:
+                            continue
+                        raw: bytes = msg_data[0][1]
+                    except Exception as e:
+                        self.add_log(f"Falha ao baixar UID {uid_str} em '{folder}': {e}", "warning")
+                        continue
+
+                    # Extrai fingerprints
+                    parsed = email_lib.message_from_bytes(raw)
+                    msg_id_header = (parsed.get("Message-ID") or "").strip()
+                    content_hash = hashlib.sha256(raw[:4096]).hexdigest()
+
+                    # Anti-duplicação
+                    if self.is_already_migrated(folder, uid_str, msg_id_header or None):
+                        batch_count += 1
+                        last_uid_str = uid_str
+                        continue
+
+                    # Copia para destino via APPEND
+                    try:
+                        dst.select(folder_q)
+                        result, append_data = dst.append(folder_q, None, None, raw)
+                        dest_id = None
+                        if result == "OK" and append_data:
+                            dest_id = append_data[0].decode(errors="ignore") if append_data[0] else None
+
+                        self.record_copied(
+                            folder=folder,
+                            uid=uid_str,
+                            dest_id=dest_id,
+                            msg_id_header=msg_id_header or None,
+                            content_hash=content_hash,
+                            size_bytes=len(raw),
+                        )
+
+                        total_migrated += 1
+                        items_total = max(items_total, total_migrated)
+
+                    except Exception as e:
+                        self.record_failed(folder, uid_str, str(e), msg_id_header or None)
+                        self.add_log(f"Falha ao copiar UID {uid_str} em '{folder}': {e}", "warning")
+
                     batch_count += 1
                     last_uid_str = uid_str
-                    continue
 
-                # Copia para destino via APPEND
-                try:
-                    dst.select(folder_q)
-                    result, append_data = dst.append(folder_q, None, None, raw)
-                    dest_id = None
-                    if result == "OK" and append_data:
-                        dest_id = append_data[0].decode(errors="ignore") if append_data[0] else None
+                    # Checkpoint a cada BATCH_SIZE mensagens
+                    if batch_count % BATCH_SIZE == 0:
+                        self.save_checkpoint(folder, last_uid_str, batch_count)
+                        on_progress(total_migrated, items_total, 0)
 
-                    self.record_copied(
-                        folder=folder,
-                        uid=uid_str,
-                        dest_id=dest_id,
-                        msg_id_header=msg_id_header or None,
-                        content_hash=content_hash,
-                        size_bytes=len(raw),
-                    )
+                # Pasta concluída
+                self.save_checkpoint(folder, last_uid_str, batch_count, completed=True)
+                self.add_log(f"Pasta '{folder}' concluída: {batch_count} mensagens processadas.")
 
-                    total_migrated += 1
-                    items_total = max(items_total, total_migrated)
-
-                except Exception as e:
-                    self.record_failed(folder, uid_str, str(e), msg_id_header or None)
-                    self.add_log(f"Falha ao copiar UID {uid_str} em '{folder}': {e}", "warning")
-
-                batch_count += 1
-                last_uid_str = uid_str
-
-                # Checkpoint a cada BATCH_SIZE mensagens
-                if batch_count % BATCH_SIZE == 0:
-                    self.save_checkpoint(folder, last_uid_str, batch_count)
-                    on_progress(total_migrated, items_total, 0)
-
-            # Pasta concluída
-            self.save_checkpoint(folder, last_uid_str, batch_count, completed=True)
-            self.add_log(f"Pasta '{folder}' concluída: {batch_count} mensagens processadas.")
-
-        src.logout()
-        dst.logout()
+        finally:
+            try:
+                src.logout()
+            except Exception:
+                pass
+            try:
+                dst.logout()
+            except Exception:
+                pass
 
     # ── Fase 3: Delta sync ────────────────────────────────────────────────────
 
@@ -206,60 +219,68 @@ class ImapEngine(MigrationEngine):
         """Busca apenas emails que chegaram DEPOIS do last_uid de cada pasta."""
         src = self._connect_src()
         dst = self._connect_dst()
-        folders = self._list_folders(src)
-        total_migrated = self.mailbox.items_migrated or 0
+        try:
+            folders = self._list_folders(src)
+            total_migrated = self.mailbox.items_migrated or 0
 
-        for folder in folders:
-            chk = self.get_checkpoint(folder)
-            if not chk or not chk.last_uid:
-                continue  # pasta nunca migrada — pula delta
+            for folder in folders:
+                chk = self.get_checkpoint(folder)
+                if not chk or not chk.last_uid:
+                    continue  # pasta nunca migrada — pula delta
 
-            folder_q = f'"{folder}"'
-            try:
-                src.select(folder_q, readonly=True)
-            except Exception:
-                continue
-
-            # Apenas UIDs > último checkpoint
-            _, data = src.uid("search", None, f"UID {chk.last_uid}:*")
-            all_uids = data[0].split() if data[0] else []
-            new_uids = [u for u in all_uids if int(u) > int(chk.last_uid)]
-
-            if not new_uids:
-                continue
-
-            self._ensure_folder_dst(dst, folder)
-            self.add_log(f"Delta sync: {len(new_uids)} novas mensagens em '{folder}'.")
-
-            for uid_bytes in new_uids:
-                uid_str = uid_bytes.decode()
+                folder_q = f'"{folder}"'
                 try:
-                    _, msg_data = src.uid("fetch", uid_bytes, "(RFC822)")
-                    if not msg_data or not msg_data[0]:
-                        continue
-                    raw: bytes = msg_data[0][1]
+                    src.select(folder_q, readonly=True)
                 except Exception:
                     continue
 
-                parsed = email_lib.message_from_bytes(raw)
-                msg_id_header = (parsed.get("Message-ID") or "").strip()
+                # Apenas UIDs > último checkpoint
+                _, data = src.uid("search", None, f"UID {chk.last_uid}:*")
+                all_uids = data[0].split() if data[0] else []
+                new_uids = [u for u in all_uids if int(u) > int(chk.last_uid)]
 
-                if self.is_already_migrated(folder, uid_str, msg_id_header or None):
+                if not new_uids:
                     continue
 
-                try:
-                    dst.select(folder_q)
-                    dst.append(folder_q, None, None, raw)
-                    self.record_copied(folder=folder, uid=uid_str,
-                                       msg_id_header=msg_id_header or None,
-                                       size_bytes=len(raw))
-                    total_migrated += 1
-                    on_progress(total_migrated, self.mailbox.items_total or 0, 0)
-                except Exception as e:
-                    self.record_failed(folder, uid_str, str(e))
+                self._ensure_folder_dst(dst, folder)
+                self.add_log(f"Delta sync: {len(new_uids)} novas mensagens em '{folder}'.")
 
-        src.logout()
-        dst.logout()
+                for uid_bytes in new_uids:
+                    uid_str = uid_bytes.decode()
+                    try:
+                        _, msg_data = src.uid("fetch", uid_bytes, "(RFC822)")
+                        if not msg_data or not msg_data[0]:
+                            continue
+                        raw: bytes = msg_data[0][1]
+                    except Exception:
+                        continue
+
+                    parsed = email_lib.message_from_bytes(raw)
+                    msg_id_header = (parsed.get("Message-ID") or "").strip()
+
+                    if self.is_already_migrated(folder, uid_str, msg_id_header or None):
+                        continue
+
+                    try:
+                        dst.select(folder_q)
+                        dst.append(folder_q, None, None, raw)
+                        self.record_copied(folder=folder, uid=uid_str,
+                                           msg_id_header=msg_id_header or None,
+                                           size_bytes=len(raw))
+                        total_migrated += 1
+                        on_progress(total_migrated, self.mailbox.items_total or 0, 0)
+                    except Exception as e:
+                        self.record_failed(folder, uid_str, str(e))
+
+        finally:
+            try:
+                src.logout()
+            except Exception:
+                pass
+            try:
+                dst.logout()
+            except Exception:
+                pass
 
     # ── Verificação ───────────────────────────────────────────────────────────
 

@@ -5,6 +5,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import update as sa_update
+
 from app.workers.celery_app import celery_app
 from app.database import SessionLocal
 from app.models.db_models import (
@@ -181,13 +183,16 @@ def _migrate_one_mailbox(project_id: str, mailbox_id: str,
         mb.completed_at = datetime.utcnow()
         db.commit()
 
-        # Atualiza contadores do projeto
-        proj = _refresh_project(db, project_id)
-        if proj:
-            proj.completed_count = (proj.completed_count or 0) + 1
-            if mb.verify_result and mb.verify_result.get("ok"):
-                proj.verified_count = (proj.verified_count or 0) + 1
-            db.commit()
+        # Atualiza contadores atomicamente para evitar race condition com as outras threads.
+        update_vals = {MigrationProject.completed_count: MigrationProject.completed_count + 1}
+        if mb.verify_result and mb.verify_result.get("ok"):
+            update_vals[MigrationProject.verified_count] = MigrationProject.verified_count + 1
+        db.execute(
+            sa_update(MigrationProject)
+            .where(MigrationProject.id == project_id)
+            .values(**update_vals)
+        )
+        db.commit()
 
         return {"ok": True, "mailbox_id": mailbox_id, "error": None}
 
@@ -204,10 +209,12 @@ def _migrate_one_mailbox(project_id: str, mailbox_id: str,
             mb.completed_at = datetime.utcnow()
             db.commit()
 
-            proj = _refresh_project(db, project_id)
-            if proj:
-                proj.failed_count = (proj.failed_count or 0) + 1
-                db.commit()
+            db.execute(
+                sa_update(MigrationProject)
+                .where(MigrationProject.id == project_id)
+                .values(failed_count=MigrationProject.failed_count + 1)
+            )
+            db.commit()
 
             _add_project_log(db, project_id, f"Falha em {mb.source_email}: {exc}",
                              level="error", mailbox_id=mailbox_id)
@@ -304,7 +311,7 @@ def run_migration_project(self, project_id: str,
             fire_event(db, str(project.workspace_id), "migration.started", {
                 "project_name": project.name,
                 "type": migration_type,
-                "completed_count": len(mailbox_ids),
+                "pending_count": len(mailbox_ids),
                 "status": "Em execução",
             })
         except Exception:

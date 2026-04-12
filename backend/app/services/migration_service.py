@@ -169,9 +169,7 @@ def bulk_add_mailboxes(
         added += 1
 
     if added:
-        p.mailbox_count = db.query(MigrationMailbox).filter(
-            MigrationMailbox.project_id == project_id
-        ).count() + added
+        p.mailbox_count = (p.mailbox_count or 0) + added
         p.updated_at = datetime.utcnow()
 
     db.commit()
