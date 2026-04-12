@@ -1187,18 +1187,31 @@ def _run_daily_backup_scan() -> None:
                 if summary.get("stale_backups", 0) > 0:
                     problems.append(f"{summary['stale_backups']} restore point(s) desatualizado(s)")
 
+                from app.services.notification_channel_service import fire_event
                 if problems:
                     push_notification(
                         db, ws_id, "backup",
                         f"Cobertura de Backup: {'; '.join(problems)}. Acesse Azure → Backup → Cobertura.",
                         link_to="/azure/backup",
                     )
+                    fire_event(db, ws_id, "backup.vm.unprotected", {
+                        "coverage_pct": summary.get("coverage_pct", 0),
+                        "unprotected_vms": summary.get("unprotected_vms", 0),
+                        "failing_backups": summary.get("failing_backups", 0),
+                        "message": "; ".join(problems),
+                    })
                 else:
                     push_notification(
                         db, ws_id, "backup",
                         f"Scan diário: cobertura de backup {summary['coverage_pct']}% — todas as VMs protegidas.",
                         link_to="/azure/backup",
                     )
+                    fire_event(db, ws_id, "backup.scan.completed", {
+                        "coverage_pct": summary.get("coverage_pct", 0),
+                        "protected_vms": summary.get("protected_vms", 0),
+                        "total_vms": summary.get("total_vms", 0),
+                        "status": "Todas as VMs protegidas",
+                    })
                 logger.info(
                     "[backup_scan_daily] workspace=%s coverage=%.1f%% unprotected=%s",
                     ws_id, summary.get("coverage_pct", 0), summary.get("unprotected_vms", 0),

@@ -22,6 +22,7 @@ const ResourceDetailDrawer = ({
   actions,
   tags,
   extraContent,
+  extraContentFn,
 }) => {
   // Close on Escape key
   useEffect(() => {
@@ -124,6 +125,7 @@ const ResourceDetailDrawer = ({
 
               {/* Extra content (e.g. backup section) */}
               {extraContent && <div>{extraContent}</div>}
+              {extraContentFn && <div>{extraContentFn(detail ?? null)}</div>}
 
               {/* Tags */}
               {resolvedTags && Object.keys(resolvedTags).length > 0 && (

@@ -81,6 +81,17 @@ def _notify_migration_completed(db, project, completed_count: int, failed_count:
             message=status_msg,
             link_to=f"/m365/migration/{project.id}",
         )
+
+        # Fire event para canais (Teams/Telegram/Email)
+        from app.services.notification_channel_service import fire_event
+        event_key = "migration.failed" if (failed_count > 0 and completed_count == 0) else "migration.completed"
+        fire_event(db, str(project.workspace_id), event_key, {
+            "project_name": project.name,
+            "completed_count": completed_count,
+            "failed_count": failed_count,
+            "type": project.migration_type,
+            "status": "Falhou" if event_key == "migration.failed" else "Concluída",
+        })
     except Exception as exc:
         logger.warning(f"Falha ao enviar notificação de conclusão de migração: {exc}")
 
@@ -282,6 +293,7 @@ def run_migration_project(self, project_id: str,
         # Push start notification
         try:
             from app.services.notification_service import push_notification
+            from app.services.notification_channel_service import fire_event
             push_notification(
                 db,
                 workspace_id=str(project.workspace_id),
@@ -289,6 +301,12 @@ def run_migration_project(self, project_id: str,
                 message=f"Migração '{project.name}' iniciada: {len(mailbox_ids)} caixa(s) em processamento.",
                 link_to=f"/m365/migration/{project_id}",
             )
+            fire_event(db, str(project.workspace_id), "migration.started", {
+                "project_name": project.name,
+                "type": migration_type,
+                "completed_count": len(mailbox_ids),
+                "status": "Em execução",
+            })
         except Exception:
             pass
 

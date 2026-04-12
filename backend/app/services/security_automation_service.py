@@ -432,6 +432,7 @@ def run_security_scan(workspace_id: str) -> dict:
     from app.database import SessionLocal
     from app.models.db_models import Workspace, CloudAccount
     from app.services.notification_service import push_notification
+    from app.services.notification_channel_service import fire_event
     from app.services.m365_service import M365Service
 
     db = SessionLocal()
@@ -535,6 +536,12 @@ def run_security_scan(workspace_id: str) -> dict:
                     push_notification(db, workspace_id, "security_auto",
                         f"Ação automática: {pb_name} executado — {normalized['title']}",
                         link_to="/security/automation")
+                    fire_event(db, workspace_id, "security.playbook.executed", {
+                        "playbook": pb_name,
+                        "message": normalized.get("title", ""),
+                        "severity": normalized.get("severity", ""),
+                        "provider": normalized.get("provider", ""),
+                    })
                 else:
                     # Registra ação pendente e notifica
                     save_security_action(
@@ -545,6 +552,13 @@ def run_security_scan(workspace_id: str) -> dict:
                     push_notification(db, workspace_id, "security_alert",
                         f"⚠️ Alerta: {normalized['title']} — ação pendente de aprovação",
                         link_to=f"/security/automation?event={ev.id}")
+                    fire_event(db, workspace_id, "security.alert.triggered", {
+                        "message": normalized.get("title", ""),
+                        "severity": normalized.get("severity", ""),
+                        "provider": normalized.get("provider", ""),
+                        "playbook": pb_name,
+                        "status": "Aguardando aprovação",
+                    })
 
             db.commit()
 

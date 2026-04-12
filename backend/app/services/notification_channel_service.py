@@ -19,55 +19,117 @@ logger = logging.getLogger(__name__)
 CHANNEL_TYPES = ("teams", "telegram", "email")
 
 SUPPORTED_EVENTS = [
-    "alert.triggered",
+    # Recursos
     "resource.started",
     "resource.stopped",
     "resource.failed",
+    # FinOps
+    "alert.triggered",
     "finops.scan.completed",
+    "budget.threshold_crossed",
+    "anomaly.detected",
+    # Segurança
+    "security.alert.triggered",
+    "security.playbook.executed",
+    "security.incident.created",
+    # Migração 365
+    "migration.started",
+    "migration.completed",
+    "migration.failed",
+    # Backup
+    "backup.scan.completed",
+    "backup.vm.unprotected",
+    # Administrativo
     "billing.paid",
     "org.member.added",
     "schedule.executed",
     "schedule.failed",
-    "budget.threshold_crossed",
+    "approval.requested",
+    # Teste
     "test.ping",
 ]
 
-# ── Event label map (PT-BR) ───────────────────────────────────────────────────
+# ── Event metadata: label, emoji, Teams themeColor ────────────────────────────
 
-_EVENT_LABELS = {
-    "alert.triggered":         "Alerta disparado",
-    "resource.started":        "Recurso iniciado",
-    "resource.stopped":        "Recurso parado",
-    "resource.failed":         "Recurso com falha",
-    "finops.scan.completed":   "Scan FinOps concluído",
-    "billing.paid":            "Fatura paga",
-    "org.member.added":        "Membro adicionado",
-    "schedule.executed":       "Agenda executada",
-    "schedule.failed":         "Agenda falhou",
-    "budget.threshold_crossed": "Limite de orçamento atingido",
-    "test.ping":               "Teste de conexão",
+_EVENT_META = {
+    # Recursos
+    "resource.started":          ("Recurso iniciado",               "🟢", "2ECC71"),
+    "resource.stopped":          ("Recurso parado",                 "⚫", "7F8C8D"),
+    "resource.failed":           ("Recurso com falha",              "🔴", "E74C3C"),
+    # FinOps
+    "alert.triggered":           ("Alerta de custo disparado",      "🔔", "E67E22"),
+    "finops.scan.completed":     ("Scan FinOps concluído",          "⚡", "5B2D9E"),
+    "budget.threshold_crossed":  ("Limite de orçamento atingido",   "💸", "F39C12"),
+    "anomaly.detected":          ("Anomalia de custo detectada",    "📈", "E74C3C"),
+    # Segurança
+    "security.alert.triggered":  ("Alerta de segurança disparado",  "🚨", "C0392B"),
+    "security.playbook.executed":("Playbook de segurança executado","🛡️", "E67E22"),
+    "security.incident.created": ("Incidente de segurança criado",  "⚠️",  "E74C3C"),
+    # Migração
+    "migration.started":         ("Migração iniciada",              "🚀", "2980B9"),
+    "migration.completed":       ("Migração concluída",             "✅", "27AE60"),
+    "migration.failed":          ("Migração com falha",             "❌", "E74C3C"),
+    # Backup
+    "backup.scan.completed":     ("Scan de backup concluído",       "🗄️",  "0EA5E9"),
+    "backup.vm.unprotected":     ("VM sem backup detectada",        "🔓", "E74C3C"),
+    # Administrativo
+    "billing.paid":              ("Fatura paga",                    "💳", "27AE60"),
+    "org.member.added":          ("Membro adicionado",              "👤", "2980B9"),
+    "schedule.executed":         ("Agenda executada",               "🕐", "2980B9"),
+    "schedule.failed":           ("Agenda falhou",                  "🕐", "E67E22"),
+    "approval.requested":        ("Aprovação solicitada",           "📋", "8E44AD"),
+    # Teste
+    "test.ping":                 ("Teste de conexão",               "🏓", "7F8C8D"),
 }
+
+def _event_label(event_type: str) -> str:
+    return _EVENT_META.get(event_type, (event_type, "•", "0076D7"))[0]
+
+def _event_emoji(event_type: str) -> str:
+    return _EVENT_META.get(event_type, (event_type, "•", "0076D7"))[1]
+
+def _event_color(event_type: str) -> str:
+    return _EVENT_META.get(event_type, (event_type, "•", "0076D7"))[2]
+
+# Backward compat
+_EVENT_LABELS = {k: v[0] for k, v in _EVENT_META.items()}
 
 # ── Formatters ────────────────────────────────────────────────────────────────
 
 def _teams_payload(event_type: str, payload: dict) -> dict:
     """Build a Teams MessageCard from an event payload."""
-    label = _EVENT_LABELS.get(event_type, event_type)
+    label = _event_label(event_type)
+    emoji = _event_emoji(event_type)
+    color = _event_color(event_type)
+
+    # Build facts from payload, skipping internal fields
+    _SKIP = {"workspace_id", "event", "timestamp"}
+    _FIELD_LABELS = {
+        "name": "Nome", "type": "Tipo", "status": "Status", "message": "Mensagem",
+        "project_name": "Projeto", "completed_count": "Concluídas", "failed_count": "Falhas",
+        "coverage_pct": "Cobertura (%)", "unprotected_vms": "VMs sem backup",
+        "failing_backups": "Backups com falha", "vm_name": "VM", "provider": "Provedor",
+        "resource_name": "Recurso", "playbook": "Playbook", "severity": "Severidade",
+        "workspace_name": "Workspace", "user_email": "Usuário", "amount": "Valor",
+    }
     facts = []
     for k, v in payload.items():
-        if k in ("workspace_id",):
+        if k in _SKIP or v is None:
             continue
-        facts.append({"name": str(k).replace("_", " ").title(), "value": str(v)})
+        label_k = _FIELD_LABELS.get(k, str(k).replace("_", " ").title())
+        facts.append({"name": label_k, "value": str(v)})
+
+    ts = payload.get("timestamp", "")
 
     return {
         "@type": "MessageCard",
         "@context": "http://schema.org/extensions",
-        "themeColor": "0076D7",
-        "summary": f"Cloud Hub Manager — {label}",
+        "themeColor": color,
+        "summary": f"{label}",
         "sections": [
             {
-                "activityTitle": f"☁️ **Cloud Hub Manager**",
-                "activitySubtitle": label,
+                "activityTitle": f"{emoji} **{label}**",
+                "activitySubtitle": f"Cloud Hub Manager · {ts[:16].replace('T', ' ')} UTC" if ts else "Cloud Hub Manager",
                 "facts": facts,
                 "markdown": True,
             }
@@ -77,12 +139,32 @@ def _teams_payload(event_type: str, payload: dict) -> dict:
 
 def _telegram_text(event_type: str, payload: dict) -> str:
     """Build a Telegram HTML message from an event payload."""
-    label = _EVENT_LABELS.get(event_type, event_type)
-    lines = [f"☁️ <b>Cloud Hub Manager</b>", f"<b>{label}</b>", ""]
+    label = _event_label(event_type)
+    emoji = _event_emoji(event_type)
+
+    _SKIP = {"workspace_id", "event", "timestamp"}
+    _FIELD_LABELS = {
+        "name": "Nome", "type": "Tipo", "status": "Status", "message": "Mensagem",
+        "project_name": "Projeto", "completed_count": "Concluídas", "failed_count": "Falhas",
+        "coverage_pct": "Cobertura (%)", "unprotected_vms": "VMs sem backup",
+        "failing_backups": "Backups com falha", "vm_name": "VM", "provider": "Provedor",
+        "resource_name": "Recurso", "playbook": "Playbook", "severity": "Severidade",
+        "workspace_name": "Workspace", "user_email": "Usuário", "amount": "Valor",
+    }
+
+    ts = payload.get("timestamp", "")
+    ts_str = ts[:16].replace("T", " ") + " UTC" if ts else ""
+
+    lines = [
+        f"{emoji} <b>{label}</b>",
+        f"<i>Cloud Hub Manager{' · ' + ts_str if ts_str else ''}</i>",
+        "",
+    ]
     for k, v in payload.items():
-        if k in ("workspace_id",):
+        if k in _SKIP or v is None:
             continue
-        lines.append(f"• <b>{str(k).replace('_', ' ').title()}:</b> {v}")
+        label_k = _FIELD_LABELS.get(k, str(k).replace("_", " ").title())
+        lines.append(f"• <b>{label_k}:</b> {v}")
     return "\n".join(lines)
 
 
@@ -116,24 +198,48 @@ def _deliver_telegram(bot_token: str, chat_id: str, event_type: str, payload: di
 
 def _email_html(event_type: str, payload: dict) -> str:
     """Build an HTML email body from an event payload."""
-    label = _EVENT_LABELS.get(event_type, event_type)
+    label = _event_label(event_type)
+    emoji = _event_emoji(event_type)
+    color = _event_color(event_type)
+    hex_color = f"#{color}"
+
+    _SKIP = {"workspace_id", "event", "timestamp"}
+    _FIELD_LABELS = {
+        "name": "Nome", "type": "Tipo", "status": "Status", "message": "Mensagem",
+        "project_name": "Projeto", "completed_count": "Concluídas", "failed_count": "Falhas",
+        "coverage_pct": "Cobertura (%)", "unprotected_vms": "VMs sem backup",
+        "failing_backups": "Backups com falha", "vm_name": "VM", "provider": "Provedor",
+        "resource_name": "Recurso", "playbook": "Playbook", "severity": "Severidade",
+        "workspace_name": "Workspace", "user_email": "Usuário", "amount": "Valor",
+    }
+
     rows = ""
     for k, v in payload.items():
-        if k in ("workspace_id",):
+        if k in _SKIP or v is None:
             continue
-        rows += f'<tr><td style="padding:4px 8px;font-weight:600;color:#64748b;font-size:13px;">{str(k).replace("_", " ").title()}</td><td style="padding:4px 8px;color:#334155;font-size:13px;">{v}</td></tr>'
+        label_k = _FIELD_LABELS.get(k, str(k).replace("_", " ").title())
+        rows += (
+            f'<tr>'
+            f'<td style="padding:6px 12px;font-weight:600;color:#64748b;font-size:13px;white-space:nowrap;">{label_k}</td>'
+            f'<td style="padding:6px 12px;color:#334155;font-size:13px;">{v}</td>'
+            f'</tr>'
+        )
+
+    ts = payload.get("timestamp", "")
+    ts_str = ts[:16].replace("T", " ") + " UTC" if ts else ""
 
     return f"""
-    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:520px;margin:0 auto;">
-      <div style="background:linear-gradient(135deg,#1E6FD9,#0ea5e9);padding:20px;border-radius:10px 10px 0 0;text-align:center;">
-        <h2 style="color:#fff;margin:0;font-size:16px;">☁️ Cloud Hub Manager</h2>
-        <p style="color:rgba(255,255,255,0.85);margin:4px 0 0;font-size:14px;">{label}</p>
+    <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:540px;margin:0 auto;border-radius:12px;overflow:hidden;box-shadow:0 4px 12px rgba(0,0,0,0.08);">
+      <div style="background:{hex_color};padding:22px 24px;text-align:center;">
+        <p style="color:#fff;margin:0;font-size:26px;">{emoji}</p>
+        <h2 style="color:#fff;margin:6px 0 0;font-size:17px;font-weight:700;">{label}</h2>
+        {f'<p style="color:rgba(255,255,255,0.75);margin:4px 0 0;font-size:12px;">{ts_str}</p>' if ts_str else ''}
       </div>
-      <div style="background:#fff;padding:20px;border:1px solid #e2e8f0;border-top:none;">
-        <table style="width:100%;border-collapse:collapse;">{rows}</table>
+      <div style="background:#fff;padding:20px 24px;border:1px solid #e2e8f0;border-top:none;">
+        <table style="width:100%;border-collapse:collapse;">{rows if rows else '<tr><td style="padding:8px;color:#94a3b8;font-size:13px;">Sem detalhes adicionais.</td></tr>'}</table>
       </div>
-      <div style="padding:12px;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 10px 10px;text-align:center;">
-        <p style="color:#94a3b8;font-size:11px;margin:0;">Notificação automática — Cloud Hub Manager</p>
+      <div style="padding:12px 24px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;text-align:center;">
+        <p style="color:#94a3b8;font-size:11px;margin:0;">Notificação automática · Cloud Hub Manager</p>
       </div>
     </div>
     """

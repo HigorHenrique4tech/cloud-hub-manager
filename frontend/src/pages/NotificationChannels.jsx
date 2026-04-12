@@ -20,31 +20,97 @@ const CHANNEL_TYPES = [
 ];
 
 const EVENT_LABELS = {
-  'alert.triggered':          'Alerta disparado',
-  'resource.started':         'Recurso iniciado',
-  'resource.stopped':         'Recurso parado',
-  'resource.failed':          'Recurso com falha',
-  'finops.scan.completed':    'Scan FinOps concluído',
-  'billing.paid':             'Fatura paga',
-  'org.member.added':         'Membro adicionado',
-  'schedule.executed':        'Agenda executada',
-  'schedule.failed':          'Agenda falhou',
-  'budget.threshold_crossed': 'Limite de orçamento atingido',
-  'test.ping':                'Teste de conexão',
+  // Recursos
+  'resource.started':              'Recurso iniciado',
+  'resource.stopped':              'Recurso parado',
+  'resource.failed':               'Recurso com falha',
+  // FinOps
+  'alert.triggered':               'Alerta de custo disparado',
+  'finops.scan.completed':         'Scan FinOps concluído',
+  'budget.threshold_crossed':      'Limite de orçamento atingido',
+  'anomaly.detected':              'Anomalia de custo detectada',
+  // Segurança
+  'security.alert.triggered':      'Alerta de segurança disparado',
+  'security.playbook.executed':    'Playbook de segurança executado',
+  'security.incident.created':     'Incidente de segurança criado',
+  // Migração
+  'migration.started':             'Migração iniciada',
+  'migration.completed':           'Migração concluída',
+  'migration.failed':              'Migração com falha',
+  // Backup
+  'backup.scan.completed':         'Scan de backup concluído',
+  'backup.vm.unprotected':         'VM sem backup detectada',
+  // Administrativo
+  'billing.paid':                  'Fatura paga',
+  'org.member.added':              'Membro adicionado',
+  'schedule.executed':             'Agenda executada',
+  'schedule.failed':               'Agenda falhou',
+  'approval.requested':            'Aprovação solicitada',
+  // Teste
+  'test.ping':                     'Teste de conexão',
 };
 
+// Grupos para exibição no modal
+const EVENT_GROUPS = [
+  {
+    label: '☁️ Recursos',
+    events: ['resource.started', 'resource.stopped', 'resource.failed'],
+  },
+  {
+    label: '💰 FinOps',
+    events: ['alert.triggered', 'budget.threshold_crossed', 'anomaly.detected', 'finops.scan.completed'],
+  },
+  {
+    label: '🛡️ Segurança',
+    events: ['security.alert.triggered', 'security.incident.created', 'security.playbook.executed'],
+  },
+  {
+    label: '🚀 Migração 365',
+    events: ['migration.started', 'migration.completed', 'migration.failed'],
+  },
+  {
+    label: '🗄️ Backup',
+    events: ['backup.scan.completed', 'backup.vm.unprotected'],
+  },
+  {
+    label: '⚙️ Administrativo',
+    events: ['billing.paid', 'org.member.added', 'schedule.executed', 'schedule.failed', 'approval.requested'],
+  },
+  {
+    label: '🏓 Teste',
+    events: ['test.ping'],
+  },
+];
+
 const EVENT_COLORS = {
-  'alert.triggered':          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  'resource.started':         'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  'resource.stopped':         'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
-  'resource.failed':          'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-  'finops.scan.completed':    'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
-  'billing.paid':             'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
-  'org.member.added':         'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  'schedule.executed':        'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  'schedule.failed':          'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  'budget.threshold_crossed': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
-  'test.ping':                'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+  // Recursos
+  'resource.started':              'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  'resource.stopped':              'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+  'resource.failed':               'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  // FinOps
+  'alert.triggered':               'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  'finops.scan.completed':         'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+  'budget.threshold_crossed':      'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+  'anomaly.detected':              'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  // Segurança
+  'security.alert.triggered':      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  'security.playbook.executed':    'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  'security.incident.created':     'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  // Migração
+  'migration.started':             'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  'migration.completed':           'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  'migration.failed':              'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  // Backup
+  'backup.scan.completed':         'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+  'backup.vm.unprotected':         'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  // Administrativo
+  'billing.paid':                  'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  'org.member.added':              'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  'schedule.executed':             'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  'schedule.failed':               'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  'approval.requested':            'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  // Teste
+  'test.ping':                     'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
 };
 
 const EMPTY_FORM = {
@@ -249,23 +315,52 @@ function ChannelModal({ initial = null, supportedEvents = [], onSave, onClose, i
                 {allSelected ? 'Desmarcar todos' : 'Selecionar todos'}
               </button>
             </div>
-            <div className="grid grid-cols-1 gap-1 max-h-48 overflow-y-auto pr-1 rounded-lg border border-gray-200 dark:border-gray-700 p-2">
-              {supportedEvents.map((ev) => (
-                <label key={ev} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
-                  form.events.includes(ev) ? 'bg-primary/5 dark:bg-primary/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
-                }`}>
-                  <input
-                    type="checkbox"
-                    checked={form.events.includes(ev)}
-                    onChange={() => toggleEvent(ev)}
-                    className="w-3.5 h-3.5 text-primary rounded border-gray-300"
-                  />
-                  <span className={`text-xs font-medium ${form.events.includes(ev) ? 'text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-400'}`}>
-                    {EVENT_LABELS[ev] || ev}
-                  </span>
-                  <span className="ml-auto font-mono text-[10px] text-gray-400 hidden sm:inline">{ev}</span>
-                </label>
-              ))}
+            <div className="space-y-3 max-h-72 overflow-y-auto pr-1 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+              {EVENT_GROUPS.map((group) => {
+                const groupEvents = group.events.filter(e => supportedEvents.includes(e));
+                if (groupEvents.length === 0) return null;
+                const allGroupSelected = groupEvents.every(e => form.events.includes(e));
+                return (
+                  <div key={group.label}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                        {group.label}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (allGroupSelected) {
+                            set('events', form.events.filter(e => !groupEvents.includes(e)));
+                          } else {
+                            const toAdd = groupEvents.filter(e => !form.events.includes(e));
+                            set('events', [...form.events, ...toAdd]);
+                          }
+                        }}
+                        className="text-[10px] text-primary hover:underline"
+                      >
+                        {allGroupSelected ? 'Desmarcar' : 'Todos'}
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-0.5">
+                      {groupEvents.map((ev) => (
+                        <label key={ev} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer transition-colors ${
+                          form.events.includes(ev) ? 'bg-primary/5 dark:bg-primary/10' : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                        }`}>
+                          <input
+                            type="checkbox"
+                            checked={form.events.includes(ev)}
+                            onChange={() => toggleEvent(ev)}
+                            className="w-3.5 h-3.5 text-primary rounded border-gray-300 flex-shrink-0"
+                          />
+                          <span className={`text-xs font-medium ${form.events.includes(ev) ? 'text-gray-800 dark:text-gray-200' : 'text-gray-600 dark:text-gray-400'}`}>
+                            {EVENT_LABELS[ev] || ev}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

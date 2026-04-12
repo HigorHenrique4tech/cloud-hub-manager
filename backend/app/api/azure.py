@@ -1,6 +1,7 @@
 import asyncio
 
 from fastapi import APIRouter, HTTPException, Depends, Query, BackgroundTasks
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -600,6 +601,78 @@ async def ws_get_vm_detail(
     result = await _run(svc.get_vm_detail, resource_group, vm_name)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da VM'))
+    return result
+
+
+# ── NIC + NSG Endpoints ──────────────────────────────────────────────────────
+
+class NSGRuleCreate(BaseModel):
+    rule_name: str = Field(..., min_length=1, max_length=80)
+    priority: int = Field(..., ge=100, le=4096)
+    direction: str = Field(..., pattern="^(Inbound|Outbound)$")
+    access: str = Field(..., pattern="^(Allow|Deny)$")
+    protocol: str = Field(..., pattern="^(Tcp|Udp|Icmp|\\*)$")
+    source_address: str = Field(default="*")
+    source_port: str = Field(default="*")
+    dest_address: str = Field(default="*")
+    dest_port: str
+    description: str = Field(default="")
+
+
+@ws_router.get("/nics/{resource_group}/{nic_name}")
+async def ws_get_nic_detail(
+    resource_group: str,
+    nic_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Retorna detalhes completos de uma NIC, incluindo NSG e suas regras."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.get_nic_detail, resource_group, nic_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da NIC'))
+    return result
+
+
+@ws_router.post("/nsg/{resource_group}/{nsg_name}/rules", status_code=201)
+async def ws_add_nsg_rule(
+    resource_group: str,
+    nsg_name: str,
+    body: NSGRuleCreate,
+    member: MemberContext = Depends(require_permission("resources.edit")),
+    db: Session = Depends(get_db),
+):
+    """Adiciona ou atualiza uma regra em um NSG."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(
+        svc.add_nsg_rule,
+        resource_group, nsg_name, body.rule_name,
+        body.priority, body.direction, body.access, body.protocol,
+        body.source_address, body.source_port,
+        body.dest_address, body.dest_port, body.description,
+    )
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar regra NSG'))
+    log_activity(db, member.user, "nsg.rule.create", "NSGRule",
+                 resource_name=f"{nsg_name}/{body.rule_name}")
+    return result
+
+
+@ws_router.delete("/nsg/{resource_group}/{nsg_name}/rules/{rule_name}", status_code=200)
+async def ws_delete_nsg_rule(
+    resource_group: str,
+    nsg_name: str,
+    rule_name: str,
+    member: MemberContext = Depends(require_permission("resources.edit")),
+    db: Session = Depends(get_db),
+):
+    """Remove uma regra de um NSG."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.delete_nsg_rule, resource_group, nsg_name, rule_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao excluir regra NSG'))
+    log_activity(db, member.user, "nsg.rule.delete", "NSGRule",
+                 resource_name=f"{nsg_name}/{rule_name}")
     return result
 
 

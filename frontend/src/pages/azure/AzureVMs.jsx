@@ -20,6 +20,7 @@ import azureService from '../../services/azureservices';
 import TemplateBar from '../../components/common/TemplateBar';
 import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 import VMBackupSection from '../../components/backup/VMBackupSection';
+import VMNetworkSection from '../../components/azure/VMNetworkSection';
 import { useToast } from '../../contexts/ToastContext';
 import { useBackgroundTasks } from '../../contexts/BackgroundTasksContext';
 
@@ -379,13 +380,6 @@ const AzureVMs = () => {
             { label: 'OS Disk Tamanho', value: detail?.os_disk?.size_gb != null ? `${detail.os_disk.size_gb} GB` : undefined },
             { label: 'Data Disks', value: detail?.data_disks?.length != null ? String(detail.data_disks.length) : undefined },
           ]},
-          { title: 'Rede', fields: detail?.network_interfaces?.length > 0
-            ? detail.network_interfaces.map((nic, i) => ({
-                label: `NIC ${i + 1}`,
-                value: [nic.private_ip, nic.public_ip].filter(Boolean).join(' / ') || '—'
-              }))
-            : [{ label: 'IPs', value: '—' }]
-          },
         ]}
         tags={(detail) => detail?.tags}
         extraContent={detailTarget && (
@@ -394,6 +388,9 @@ const AzureVMs = () => {
             resourceGroup={detailTarget.resource_group}
             vmName={detailTarget.name}
           />
+        )}
+        extraContentFn={(detail) => (
+          <VMNetworkSection networkInterfaces={detail?.network_interfaces || []} />
         )}
       />
     </Layout>

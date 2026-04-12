@@ -912,11 +912,52 @@ class AzureService:
                         'size_gb': d.disk_size_gb or '—',
                         'type': d.managed_disk.storage_account_type if d.managed_disk else '—',
                     })
-            # NICs
+            # NICs — resolve IPs, subnet e NSG name
             network_interfaces = []
             if vm.network_profile and vm.network_profile.network_interfaces:
                 for nic_ref in vm.network_profile.network_interfaces:
-                    network_interfaces.append({'id': nic_ref.id.split('/')[-1] if nic_ref.id else '—'})
+                    nic_name = nic_ref.id.split('/')[-1] if nic_ref.id else '—'
+                    try:
+                        nic_rg = nic_ref.id.split('/resourceGroups/')[1].split('/')[0]
+                        nic = self.network_client.network_interfaces.get(nic_rg, nic_name)
+                        private_ip = None
+                        public_ip = None
+                        subnet_name = ''
+                        vnet_name = ''
+                        nsg_name_val = ''
+                        nsg_rg = ''
+                        if nic.ip_configurations:
+                            primary = next((c for c in nic.ip_configurations if c.primary), nic.ip_configurations[0])
+                            private_ip = primary.private_ip_address
+                            if primary.public_ip_address and primary.public_ip_address.id:
+                                pip_name = primary.public_ip_address.id.split('/')[-1]
+                                pip_rg_val = primary.public_ip_address.id.split('/resourceGroups/')[1].split('/')[0]
+                                try:
+                                    pip = self.network_client.public_ip_addresses.get(pip_rg_val, pip_name)
+                                    public_ip = pip.ip_address
+                                except Exception:
+                                    pass
+                            if primary.subnet and primary.subnet.id:
+                                parts = primary.subnet.id.split('/')
+                                subnet_name = parts[-1]
+                                vnet_name = parts[-3] if len(parts) >= 3 else ''
+                        if nic.network_security_group and nic.network_security_group.id:
+                            nsg_name_val = nic.network_security_group.id.split('/')[-1]
+                            nsg_rg = nic.network_security_group.id.split('/resourceGroups/')[1].split('/')[0]
+                        network_interfaces.append({
+                            'id': nic_name,
+                            'resource_group': nic_rg,
+                            'private_ip': private_ip,
+                            'public_ip': public_ip,
+                            'subnet': subnet_name,
+                            'vnet': vnet_name,
+                            'nsg_name': nsg_name_val,
+                            'nsg_rg': nsg_rg,
+                            'mac_address': nic.mac_address or '',
+                            'enable_ip_forwarding': nic.enable_ip_forwarding or False,
+                        })
+                    except Exception:
+                        network_interfaces.append({'id': nic_name})
             # Admin username
             admin_username = '—'
             if vm.os_profile:
@@ -951,6 +992,117 @@ class AzureService:
             }
         except Exception as e:
             logger.error(f"get_vm_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_nic_detail(self, resource_group: str, nic_name: str) -> Dict:
+        """Retorna detalhes completos de uma NIC, incluindo NSG e suas regras."""
+        try:
+            nic = self.network_client.network_interfaces.get(resource_group, nic_name)
+            ip_configs = []
+            for ip_config in (nic.ip_configurations or []):
+                private_ip = ip_config.private_ip_address
+                public_ip = None
+                public_ip_name = None
+                if ip_config.public_ip_address and ip_config.public_ip_address.id:
+                    pip_name = ip_config.public_ip_address.id.split('/')[-1]
+                    pip_rg = ip_config.public_ip_address.id.split('/resourceGroups/')[1].split('/')[0]
+                    try:
+                        pip = self.network_client.public_ip_addresses.get(pip_rg, pip_name)
+                        public_ip = pip.ip_address
+                        public_ip_name = pip_name
+                    except Exception:
+                        pass
+                subnet_name = ''
+                vnet_name = ''
+                if ip_config.subnet and ip_config.subnet.id:
+                    parts = ip_config.subnet.id.split('/')
+                    subnet_name = parts[-1]
+                    vnet_name = parts[-3] if len(parts) >= 3 else ''
+                ip_configs.append({
+                    'name': ip_config.name,
+                    'private_ip': private_ip,
+                    'public_ip': public_ip,
+                    'public_ip_name': public_ip_name,
+                    'subnet': subnet_name,
+                    'vnet': vnet_name,
+                    'is_primary': ip_config.primary or False,
+                })
+
+            nsg_info = None
+            nsg_rules = []
+            if nic.network_security_group and nic.network_security_group.id:
+                nsg_id = nic.network_security_group.id
+                nsg_name_val = nsg_id.split('/')[-1]
+                nsg_rg = nsg_id.split('/resourceGroups/')[1].split('/')[0]
+                try:
+                    nsg = self.network_client.network_security_groups.get(nsg_rg, nsg_name_val)
+                    nsg_info = {'name': nsg.name, 'id': nsg.id, 'resource_group': nsg_rg}
+                    for rule in (nsg.security_rules or []):
+                        nsg_rules.append({
+                            'name': rule.name,
+                            'priority': rule.priority,
+                            'direction': str(rule.direction),
+                            'access': str(rule.access),
+                            'protocol': str(rule.protocol),
+                            'source_address': rule.source_address_prefix or ', '.join(rule.source_address_prefixes or []),
+                            'source_port': rule.source_port_range or ', '.join(rule.source_port_ranges or []),
+                            'dest_address': rule.destination_address_prefix or ', '.join(rule.destination_address_prefixes or []),
+                            'dest_port': rule.destination_port_range or ', '.join(rule.destination_port_ranges or []),
+                            'description': rule.description or '',
+                        })
+                    nsg_rules.sort(key=lambda r: (r['direction'], r['priority']))
+                except Exception as e:
+                    logger.warning(f"Could not fetch NSG {nsg_name_val}: {e}")
+
+            return {
+                'success': True,
+                'name': nic.name,
+                'id': nic.id,
+                'mac_address': nic.mac_address or '',
+                'enable_ip_forwarding': nic.enable_ip_forwarding or False,
+                'ip_configurations': ip_configs,
+                'nsg': nsg_info,
+                'nsg_rules': nsg_rules,
+            }
+        except Exception as e:
+            logger.error(f"get_nic_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def add_nsg_rule(self, resource_group: str, nsg_name: str, rule_name: str,
+                     priority: int, direction: str, access: str, protocol: str,
+                     source_address: str, source_port: str,
+                     dest_address: str, dest_port: str, description: str = '') -> Dict:
+        """Adiciona ou atualiza uma regra em um NSG."""
+        try:
+            from azure.mgmt.network.models import SecurityRule
+            rule = SecurityRule(
+                protocol=protocol,
+                source_address_prefix=source_address,
+                source_port_range=source_port,
+                destination_address_prefix=dest_address,
+                destination_port_range=dest_port,
+                access=access,
+                direction=direction,
+                priority=priority,
+                description=description,
+            )
+            poller = self.network_client.security_rules.begin_create_or_update(
+                resource_group, nsg_name, rule_name, rule
+            )
+            result = poller.result()
+            return {'success': True, 'name': result.name, 'priority': result.priority}
+        except Exception as e:
+            logger.error(f"add_nsg_rule error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_nsg_rule(self, resource_group: str, nsg_name: str, rule_name: str) -> Dict:
+        """Remove uma regra de um NSG."""
+        try:
+            poller = self.network_client.security_rules.begin_delete(resource_group, nsg_name, rule_name)
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_nsg_rule error: {e}")
             return {'success': False, 'error': str(e)}
 
     def get_sql_server_detail(self, resource_group: str, server_name: str) -> Dict:
