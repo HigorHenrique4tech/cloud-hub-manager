@@ -639,7 +639,7 @@ async def ws_add_nsg_rule(
     resource_group: str,
     nsg_name: str,
     body: NSGRuleCreate,
-    member: MemberContext = Depends(require_permission("resources.edit")),
+    member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
     """Adiciona ou atualiza uma regra em um NSG."""
@@ -663,7 +663,7 @@ async def ws_delete_nsg_rule(
     resource_group: str,
     nsg_name: str,
     rule_name: str,
-    member: MemberContext = Depends(require_permission("resources.edit")),
+    member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
     """Remove uma regra de um NSG."""

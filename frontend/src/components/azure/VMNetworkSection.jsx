@@ -271,7 +271,7 @@ function NSGRulesTable({ rules, nsgRg, nsgName, onMutate }) {
                     <span className={`text-xs font-semibold ${ACCESS_COLORS[rule.access] || 'text-gray-500'}`}>{rule.access}</span>
                   </td>
                   <td className="px-2.5 py-2">
-                    <PermissionGate permission="resources.edit">
+                    <PermissionGate permission="resources.manage">
                       <button
                         onClick={() => setConfirmDelete(rule.name)}
                         className="p-1 rounded text-gray-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
@@ -419,7 +419,7 @@ function NICCard({ nic, index }) {
                     className="p-1 rounded text-gray-400 hover:text-sky-500 transition-colors">
                     <RefreshCw size={12} className={nicQ.isFetching ? 'animate-spin' : ''} />
                   </button>
-                  <PermissionGate permission="resources.edit">
+                  <PermissionGate permission="resources.manage">
                     <button
                       onClick={() => setShowAddRule(true)}
                       className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/30 transition-colors"
