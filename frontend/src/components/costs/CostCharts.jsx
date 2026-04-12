@@ -245,7 +245,7 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
                   return (
                     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-xl text-sm">
                       <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">{svc?.name}</p>
-                      <p className="text-indigo-600 dark:text-indigo-400 font-mono">{fmtUSD(svc?.amount)}</p>
+                      <p className="text-primary-dark dark:text-indigo-400 font-mono">{fmtUSD(svc?.amount)}</p>
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{pct}% do total</p>
                       {onServiceClick && <p className="text-[10px] text-primary mt-1">Clique para ver recursos</p>}
                     </div>

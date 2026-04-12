@@ -44,11 +44,11 @@ const VerifyEmail = () => {
         </div>
 
         <h1 className="text-2xl font-bold text-white mb-3">Verifique seu email</h1>
-        <p className="text-slate-400 text-sm mb-2 leading-relaxed">
+        <p className="text-gray-400 text-sm mb-2 leading-relaxed">
           Enviamos um link de confirmação para:
         </p>
         <p className="text-white font-semibold text-sm mb-6">{email}</p>
-        <p className="text-slate-500 text-xs mb-8 leading-relaxed max-w-sm mx-auto">
+        <p className="text-gray-500 text-xs mb-8 leading-relaxed max-w-sm mx-auto">
           Clique no link enviado para o seu email para ativar sua conta.
           O link expira em 24 horas.
         </p>
@@ -57,9 +57,9 @@ const VerifyEmail = () => {
         <button
           onClick={handleResend}
           disabled={resending || resent}
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-slate-300 rounded-lg
-                     text-sm font-medium hover:bg-slate-700 transition-colors
-                     disabled:opacity-50 disabled:cursor-not-allowed border border-slate-700"
+          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gray-800 text-gray-300 rounded-lg
+                     text-sm font-medium hover:bg-gray-700 transition-colors
+                     disabled:opacity-50 disabled:cursor-not-allowed border border-gray-700"
         >
           {resent ? (
             <>
@@ -80,7 +80,7 @@ const VerifyEmail = () => {
         </button>
 
         {/* Back to login */}
-        <p className="mt-8 text-xs text-slate-600">
+        <p className="mt-8 text-xs text-gray-600">
           Email errado?{' '}
           <Link to="/register" className="text-primary hover:underline">
             Criar nova conta

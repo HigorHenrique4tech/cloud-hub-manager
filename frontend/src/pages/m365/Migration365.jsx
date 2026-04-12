@@ -1088,7 +1088,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
           )}
           {canSchedule && (
             <button onClick={() => setShowSchedule(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-300 dark:border-primary text-primary-dark dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
               <CalendarClock className="w-3.5 h-3.5" /> Agendar
             </button>
           )}
@@ -1482,7 +1482,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
           <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3 mb-4">
               <div className="w-9 h-9 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-                <CalendarClock className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                <CalendarClock className="w-4 h-4 text-primary-dark dark:text-indigo-400" />
               </div>
               <div>
                 <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Agendar início</p>
@@ -1494,7 +1494,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
               value={scheduleDateTime}
               onChange={e => setScheduleDateTime(e.target.value)}
               min={new Date(Date.now() + 60000).toISOString().slice(0, 16)}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary mb-4"
             />
             {scheduleMut.isError && (
               <p className="text-xs text-red-500 mb-3">{scheduleMut.error?.response?.data?.detail || 'Erro ao agendar.'}</p>
@@ -1507,7 +1507,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
               <button
                 onClick={() => scheduleMut.mutate(new Date(scheduleDateTime).toISOString())}
                 disabled={!scheduleDateTime || scheduleMut.isPending}
-                className="flex-1 px-4 py-2 text-sm rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium disabled:opacity-40"
+                className="flex-1 px-4 py-2 text-sm rounded-lg bg-primary hover:bg-primary-dark text-white font-medium disabled:opacity-40"
               >
                 {scheduleMut.isPending ? 'Agendando...' : 'Confirmar'}
               </button>

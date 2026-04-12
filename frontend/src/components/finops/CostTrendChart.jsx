@@ -7,12 +7,12 @@ const CostTrendChart = ({ costTrendQ }) => {
     return (
       <div className="card p-4">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">
+          <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             Tendência de Custo — últimos 30 dias
           </h3>
-          <span className="text-xs text-gray-400 dark:text-slate-500 animate-pulse">Carregando…</span>
+          <span className="text-xs text-gray-400 dark:text-gray-500 animate-pulse">Carregando…</span>
         </div>
-        <div className="h-40 animate-pulse rounded-lg bg-gray-100 dark:bg-slate-800" />
+        <div className="h-40 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800" />
       </div>
     );
   }
@@ -20,10 +20,10 @@ const CostTrendChart = ({ costTrendQ }) => {
   if (costTrendQ.isError) {
     return (
       <div className="card p-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
           Tendência de Custo — últimos 30 dias
         </h3>
-        <div className="h-40 flex items-center justify-center text-xs text-gray-400 dark:text-slate-500">
+        <div className="h-40 flex items-center justify-center text-xs text-gray-400 dark:text-gray-500">
           Dados de custo indisponíveis
         </div>
       </div>
@@ -56,10 +56,10 @@ const CostTrendChart = ({ costTrendQ }) => {
   if (!hasAws && !hasAzure && !hasGcp) {
     return (
       <div className="card p-4">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300 mb-3">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3">
           Tendência de Custo — últimos 30 dias
         </h3>
-        <div className="h-40 flex items-center justify-center text-xs text-gray-400 dark:text-slate-500">
+        <div className="h-40 flex items-center justify-center text-xs text-gray-400 dark:text-gray-500">
           Nenhum dado de custo disponível. Configure uma conta cloud e execute um scan.
         </div>
       </div>
@@ -89,7 +89,7 @@ const CostTrendChart = ({ costTrendQ }) => {
   return (
     <div className="card p-4">
       <div className="flex items-center justify-between mb-3">
-        <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-300">
+        <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
           Tendência de Custo — últimos 30 dias
         </h3>
       </div>
@@ -149,25 +149,25 @@ const CostTrendChart = ({ costTrendQ }) => {
           {hasAws && awsMonthly > 0 && (
             <div className="rounded-lg border border-orange-200 dark:border-orange-800/30 bg-orange-50 dark:bg-orange-900/10 p-2.5">
               <p className="text-[10px] text-orange-600 dark:text-orange-400 font-medium">AWS (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(awsMonthly, currency)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100">~{fmtCost(awsMonthly, currency)}</p>
             </div>
           )}
           {hasAzure && azureMonthly > 0 && (
             <div className="rounded-lg border border-blue-200 dark:border-blue-800/30 bg-blue-50 dark:bg-blue-900/10 p-2.5">
               <p className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">Azure (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(azureMonthly, currency)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100">~{fmtCost(azureMonthly, currency)}</p>
             </div>
           )}
           {hasGcp && gcpMonthly > 0 && (
             <div className="rounded-lg border border-green-200 dark:border-green-800/30 bg-green-50 dark:bg-green-900/10 p-2.5">
               <p className="text-[10px] text-green-600 dark:text-green-400 font-medium">GCP (próx. 30d) *est.</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(gcpMonthly, currency)}</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100">~{fmtCost(gcpMonthly, currency)}</p>
             </div>
           )}
           {(awsMonthly + azureMonthly + gcpMonthly) > 0 && (
-            <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 p-2.5">
-              <p className="text-[10px] text-gray-500 dark:text-slate-400 font-medium">Total (próx. 30d)</p>
-              <p className="text-sm font-bold text-gray-900 dark:text-slate-100">~{fmtCost(awsMonthly + azureMonthly + gcpMonthly, currency)}</p>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 p-2.5">
+              <p className="text-[10px] text-gray-500 dark:text-gray-400 font-medium">Total (próx. 30d)</p>
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100">~{fmtCost(awsMonthly + azureMonthly + gcpMonthly, currency)}</p>
             </div>
           )}
         </div>

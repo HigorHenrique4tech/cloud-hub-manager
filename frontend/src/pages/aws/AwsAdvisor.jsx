@@ -29,7 +29,7 @@ const CATEGORY_ICON = {
   reliability: { icon: Heart, color: 'text-amber-500' },
   performance: { icon: Zap, color: 'text-purple-500' },
   operational_excellence: { icon: Settings2, color: 'text-blue-500' },
-  service_limits: { icon: Server, color: 'text-slate-500' },
+  service_limits: { icon: Server, color: 'text-gray-500' },
   cost: { icon: DollarSign, color: 'text-green-500' },
 };
 
@@ -185,7 +185,7 @@ const AwsAdvisor = () => {
           <SummaryCard icon={Shield} label="Segurança" count={summary.by_category?.security || 0} color="bg-red-500" />
           <SummaryCard icon={Heart} label="Confiabilidade" count={summary.by_category?.reliability || 0} color="bg-amber-500" />
           <SummaryCard icon={Zap} label="Desempenho" count={summary.by_category?.performance || 0} color="bg-purple-500" />
-          <SummaryCard icon={Server} label="Limites de Serviço" count={summary.by_category?.service_limits || 0} color="bg-slate-500" />
+          <SummaryCard icon={Server} label="Limites de Serviço" count={summary.by_category?.service_limits || 0} color="bg-gray-500" />
         </div>
       )}
 

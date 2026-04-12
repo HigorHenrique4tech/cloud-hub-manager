@@ -274,11 +274,11 @@ const FinOps = () => {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50 dark:bg-primary/20">
-              <Zap size={22} className="text-indigo-600 dark:text-primary-light" />
+              <Zap size={22} className="text-primary-dark dark:text-primary-light" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">FinOps</h1>
-              <p className="text-sm text-gray-500 dark:text-slate-400">Detecte desperdício e aplique economias reais na sua infraestrutura</p>
+              <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">FinOps</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Detecte desperdício e aplique economias reais na sua infraestrutura</p>
             </div>
           </div>
           <PlanGate minPlan="pro" feature="Análise Automática">
@@ -287,7 +287,7 @@ const FinOps = () => {
               className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors active:scale-[0.97] ${
                 scanScheduleQ.data?.is_enabled
                   ? 'border-primary/50 bg-primary/10 text-primary-light hover:bg-primary/20'
-                  : 'border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`}
             >
               <Clock size={15} />
@@ -316,8 +316,8 @@ const FinOps = () => {
 
         {/* Scan result toasts */}
         {scanJobStatus?.status === 'queued' && (
-          <div className="flex items-center gap-2 rounded-lg border border-gray-300 dark:border-slate-600 bg-gray-100 dark:bg-slate-800/60 px-4 py-2.5 text-sm text-gray-600 dark:text-slate-300 animate-slide-down">
-            <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-400 dark:border-slate-400 border-t-transparent" />
+          <div className="flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-800/60 px-4 py-2.5 text-sm text-gray-600 dark:text-gray-300 animate-slide-down">
+            <span className="h-3 w-3 animate-spin rounded-full border-2 border-gray-400 dark:border-gray-400 border-t-transparent" />
             Scan na fila, aguardando início...
           </div>
         )}
@@ -341,18 +341,33 @@ const FinOps = () => {
         )}
 
         {/* Tabs */}
-        <div className="border-b border-gray-200 dark:border-slate-700">
-          <nav className="flex gap-1 -mb-px" role="tablist">
+        <div className="border-b border-gray-200 dark:border-gray-700">
+          <nav
+            className="flex gap-1 -mb-px"
+            role="tablist"
+            aria-label="Seções do FinOps"
+            onKeyDown={(e) => {
+              const ids = TABS.map((t) => t.id);
+              const cur = ids.indexOf(activeTab);
+              if (e.key === 'ArrowRight') { e.preventDefault(); setActiveTab(ids[(cur + 1) % ids.length]); }
+              if (e.key === 'ArrowLeft')  { e.preventDefault(); setActiveTab(ids[(cur - 1 + ids.length) % ids.length]); }
+              if (e.key === 'Home') { e.preventDefault(); setActiveTab(ids[0]); }
+              if (e.key === 'End')  { e.preventDefault(); setActiveTab(ids[ids.length - 1]); }
+            }}
+          >
             {TABS.map(({ id, label, icon: Icon }) => (
               <button
                 key={id}
+                id={`tab-${id}`}
                 role="tab"
                 aria-selected={activeTab === id}
+                aria-controls={`tabpanel-${id}`}
+                tabIndex={activeTab === id ? 0 : -1}
                 onClick={() => setActiveTab(id)}
                 className={`inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                   activeTab === id
-                    ? 'border-primary text-indigo-500 dark:text-primary-light'
-                    : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 hover:border-gray-300 dark:hover:border-slate-600'
+                    ? 'border-primary text-primary dark:text-primary-light'
+                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600'
                 }`}
               >
                 <Icon size={15} />
@@ -373,65 +388,73 @@ const FinOps = () => {
         </div>
 
         {/* Tab content */}
-        {activeTab === 'recommendations' && (
-          <RecommendationsTab
-            recsQ={recsQ}
-            applyingId={applyingId}
-            dismissingId={dismissingId}
-            onApply={handleApply}
-            onDismiss={handleDismiss}
-            onRequestApproval={(recId) => { setRequestingApprovalId(recId); requestApprovalMut.mutate(recId); }}
-            requestingApprovalId={requestingApprovalId}
-            selectedIds={selectedIds}
-            onToggle={toggleSelect}
-            toggleAll={toggleAll}
-            allSelected={allSelected}
-            pendingItems={pendingItems}
-            filterStatus={filterStatus}
-            filterProvider={filterProvider}
-            filterSeverity={filterSeverity}
-            setFilterStatus={setFilterStatus}
-            setFilterProvider={setFilterProvider}
-            setFilterSeverity={setFilterSeverity}
-            recsPage={recsPage}
-            setRecsPage={setRecsPage}
-            planTier={planTier}
-            onExportCSV={handleExportCSV}
-            onPrintPDF={handlePrintPDF}
-          />
-        )}
-        {activeTab === 'budgets' && (
-          <BudgetsTab
-            budgetsQ={budgetsQ}
-            deleteBudget={deleteBudget}
-            evaluateBudgets={evaluateBudgets}
-            onOpenModal={() => setShowBudgetModal(true)}
-            onEditBudget={(budget) => setEditBudget(budget)}
-          />
-        )}
-        {activeTab === 'reports' && (
-          <ReportsTab
-            reportScheduleQ={reportScheduleQ}
-            onOpenModal={() => setShowReportScheduleModal(true)}
-          />
-        )}
-        {activeTab === 'anomalies' && (
-          <AnomaliesTab
-            anomaliesQ={anomaliesQ}
-            anomalyScanMut={anomalyScanMut}
-            acknowledgeAnomalyMut={acknowledgeAnomalyMut}
-            filterProvider={filterAnomalyProvider}
-            setFilterProvider={setFilterAnomalyProvider}
-          />
-        )}
-        {activeTab === 'actions' && (
-          <ActionsHistoryTab
-            actionsQ={actionsQ}
-            onRollback={handleRollback}
-            rollbackId={rollbackId}
-            planTier={planTier}
-          />
-        )}
+        <div
+          id={`tabpanel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`tab-${activeTab}`}
+          tabIndex={0}
+          className="focus:outline-none"
+        >
+          {activeTab === 'recommendations' && (
+            <RecommendationsTab
+              recsQ={recsQ}
+              applyingId={applyingId}
+              dismissingId={dismissingId}
+              onApply={handleApply}
+              onDismiss={handleDismiss}
+              onRequestApproval={(recId) => { setRequestingApprovalId(recId); requestApprovalMut.mutate(recId); }}
+              requestingApprovalId={requestingApprovalId}
+              selectedIds={selectedIds}
+              onToggle={toggleSelect}
+              toggleAll={toggleAll}
+              allSelected={allSelected}
+              pendingItems={pendingItems}
+              filterStatus={filterStatus}
+              filterProvider={filterProvider}
+              filterSeverity={filterSeverity}
+              setFilterStatus={setFilterStatus}
+              setFilterProvider={setFilterProvider}
+              setFilterSeverity={setFilterSeverity}
+              recsPage={recsPage}
+              setRecsPage={setRecsPage}
+              planTier={planTier}
+              onExportCSV={handleExportCSV}
+              onPrintPDF={handlePrintPDF}
+            />
+          )}
+          {activeTab === 'budgets' && (
+            <BudgetsTab
+              budgetsQ={budgetsQ}
+              deleteBudget={deleteBudget}
+              evaluateBudgets={evaluateBudgets}
+              onOpenModal={() => setShowBudgetModal(true)}
+              onEditBudget={(budget) => setEditBudget(budget)}
+            />
+          )}
+          {activeTab === 'reports' && (
+            <ReportsTab
+              reportScheduleQ={reportScheduleQ}
+              onOpenModal={() => setShowReportScheduleModal(true)}
+            />
+          )}
+          {activeTab === 'anomalies' && (
+            <AnomaliesTab
+              anomaliesQ={anomaliesQ}
+              anomalyScanMut={anomalyScanMut}
+              acknowledgeAnomalyMut={acknowledgeAnomalyMut}
+              filterProvider={filterAnomalyProvider}
+              setFilterProvider={setFilterAnomalyProvider}
+            />
+          )}
+          {activeTab === 'actions' && (
+            <ActionsHistoryTab
+              actionsQ={actionsQ}
+              onRollback={handleRollback}
+              rollbackId={rollbackId}
+              planTier={planTier}
+            />
+          )}
+        </div>
 
         {/* Modals */}
         {showBudgetModal && (
@@ -488,22 +511,22 @@ const FinOps = () => {
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3
                         rounded-xl border border-primary/40 bg-gray-900/95 backdrop-blur
                         px-5 py-3 shadow-2xl shadow-black/40 animate-slide-up">
-          <span className="text-sm font-medium text-slate-300">
+          <span className="text-sm font-medium text-gray-300">
             {selectedIds.size} selecionada{selectedIds.size !== 1 ? 's' : ''}
           </span>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="text-slate-500 hover:text-slate-300 transition-colors"
+            className="text-gray-500 hover:text-gray-300 transition-colors"
             title="Limpar seleção"
           >
             <X size={16} />
           </button>
-          <div className="w-px h-5 bg-slate-700" />
+          <div className="w-px h-5 bg-gray-700" />
           <button
             onClick={() => bulkDismissMut.mutate(selectedIds)}
             disabled={bulkDismissMut.isPending}
-            className="rounded-lg border border-slate-600 px-3 py-1.5 text-xs font-medium text-slate-300
-                       hover:border-slate-400 hover:text-white disabled:opacity-50 transition-colors active:scale-[0.97]"
+            className="rounded-lg border border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-300
+                       hover:border-gray-400 hover:text-white disabled:opacity-50 transition-colors active:scale-[0.97]"
           >
             {bulkDismissMut.isPending ? 'Ignorando…' : 'Ignorar todas'}
           </button>

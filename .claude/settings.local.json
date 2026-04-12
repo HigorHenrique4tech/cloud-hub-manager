@@ -14,7 +14,8 @@
       "WebSearch",
       "Bash(xargs grep:*)",
       "Bash(npx vite:*)",
-      "Bash(defuddle parse:*)"
+      "Bash(defuddle parse:*)",
+      "Bash(grep -v \"//.*indigo\")"
     ]
   }
 }

@@ -55,7 +55,7 @@ const VerifyCallback = () => {
           <>
             <Loader2 className="w-16 h-16 text-primary animate-spin mx-auto mb-6" />
             <h2 className="text-xl font-semibold text-white mb-2">Verificando email...</h2>
-            <p className="text-slate-400 text-sm">Aguarde um momento</p>
+            <p className="text-gray-400 text-sm">Aguarde um momento</p>
           </>
         )}
 
@@ -65,7 +65,7 @@ const VerifyCallback = () => {
               <CheckCircle2 className="w-10 h-10 text-green-400" />
             </div>
             <h2 className="text-xl font-semibold text-white mb-2">{message}</h2>
-            <p className="text-slate-400 text-sm mb-6">Redirecionando...</p>
+            <p className="text-gray-400 text-sm mb-6">Redirecionando...</p>
           </>
         )}
 
@@ -75,7 +75,7 @@ const VerifyCallback = () => {
               <XCircle className="w-10 h-10 text-red-400" />
             </div>
             <h2 className="text-xl font-semibold text-white mb-2">Falha na verificação</h2>
-            <p className="text-slate-400 text-sm mb-6">{message}</p>
+            <p className="text-gray-400 text-sm mb-6">{message}</p>
             <div className="flex items-center justify-center gap-4">
               <Link
                 to="/login"
@@ -85,7 +85,7 @@ const VerifyCallback = () => {
               </Link>
               <Link
                 to="/register"
-                className="px-4 py-2 bg-slate-700 text-slate-300 text-sm font-medium rounded-lg hover:bg-slate-600 transition-colors"
+                className="px-4 py-2 bg-gray-700 text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-600 transition-colors"
               >
                 Criar conta
               </Link>

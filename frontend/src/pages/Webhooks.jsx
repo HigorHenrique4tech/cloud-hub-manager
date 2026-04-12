@@ -60,8 +60,8 @@ const Webhooks = () => {
               <Webhook size={20} className="text-primary-light" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">Webhooks</h1>
-              <p className="text-sm text-gray-500 dark:text-slate-400">
+              <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Webhooks</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 Receba notificações de eventos em tempo real no seu endpoint
               </p>
             </div>
@@ -97,8 +97,8 @@ const Webhooks = () => {
 
           {!isLoading && !error && webhooks.length === 0 && (
             <div className="card rounded-xl p-10 text-center space-y-3">
-              <Webhook size={32} className="mx-auto text-gray-300 dark:text-slate-600" />
-              <p className="text-gray-500 dark:text-slate-400 text-sm">Nenhum webhook configurado ainda.</p>
+              <Webhook size={32} className="mx-auto text-gray-300 dark:text-gray-600" />
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Nenhum webhook configurado ainda.</p>
               <PermissionGate permission="webhooks.manage">
                 <button
                   onClick={openCreate}
@@ -125,8 +125,8 @@ const Webhooks = () => {
           )}
 
           {!isLoading && (
-            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 text-xs text-gray-500 dark:text-slate-500 space-y-1">
-              <p className="font-medium text-gray-700 dark:text-slate-300">Como usar</p>
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 text-xs text-gray-500 dark:text-gray-500 space-y-1">
+              <p className="font-medium text-gray-700 dark:text-gray-300">Como usar</p>
               <p>Cada requisição inclui o header <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">X-CloudHub-Signature</span> com HMAC-SHA256 do payload para verificação de autenticidade.</p>
               <p>Máximo de 10 webhooks por workspace.</p>
             </div>

@@ -5,11 +5,12 @@ import {
   DndContext, closestCenter, PointerSensor, useSensor, useSensors,
 } from '@dnd-kit/core';
 import {
-  SortableContext, verticalListSortingStrategy, arrayMove,
+  SortableContext, rectSortingStrategy, arrayMove,
 } from '@dnd-kit/sortable';
 import { Settings, Cloud } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
+import { SkeletonCard } from '../components/common/SkeletonLoader';
 import SortableWidget from '../components/dashboard/SortableWidget';
 import DashboardCustomizer from '../components/dashboard/DashboardCustomizer';
 import StatsWidget from '../components/dashboard/widgets/StatsWidget';
@@ -130,9 +131,7 @@ const DashboardInner = () => {
     return <EmptyWorkspaceState />;
   }
 
-  if (accountsLoading || (awsLoading && hasAws) || (azureLoading && hasAzure) || (gcpLoading && hasGcp)) {
-    return <Layout><LoadingSpinner text="Carregando recursos..." /></Layout>;
-  }
+  const isLoadingProviders = accountsLoading || (awsLoading && hasAws) || (azureLoading && hasAzure) || (gcpLoading && hasGcp);
 
   const handleDragEnd = ({ active, over }) => {
     if (!over || active.id === over.id) return;
@@ -154,13 +153,13 @@ const DashboardInner = () => {
                 return `${greeting}, ${user?.name?.split(' ')[0] || 'Bem-vindo'}`;
               })()}
             </h2>
-            <p className="text-white/70 text-sm">
+            <p className="text-white/85 text-sm">
               Aqui está o resumo do seu ambiente multi-cloud
             </p>
           </div>
           <button
             onClick={() => setCustomizerOpen(true)}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-white/80 hover:text-white hover:bg-white/10 border border-white/20 transition-colors"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium text-white/90 hover:text-white hover:bg-white/15 border border-white/30 transition-colors"
           >
             <Settings className="w-4 h-4" />
             Personalizar
@@ -176,26 +175,44 @@ const DashboardInner = () => {
       </div>
 
       {/* Draggable widgets */}
-      <DndContext
-        sensors={sensors}
-        collisionDetection={closestCenter}
-        onDragEnd={handleDragEnd}
-      >
-        <SortableContext
-          items={visibleWidgets.map((w) => w.id)}
-          strategy={verticalListSortingStrategy}
+      {isLoadingProviders ? (
+        <div className="space-y-5">
+          {visibleWidgets.map((w) => (
+            <div key={w.id} className="card animate-pulse space-y-3 min-h-[120px]">
+              <div className="flex items-center gap-3">
+                <div className="skeleton h-8 w-8 rounded-lg" />
+                <div className="skeleton h-4 w-32" />
+              </div>
+              <div className="skeleton h-8 w-24" />
+              <div className="skeleton h-3 w-40" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
         >
-          <div className="space-y-5">
-            {visibleWidgets.map((w) => (
-              <SortableWidget key={w.id} id={w.id}>
-                <WidgetErrorBoundary name={WIDGET_NAMES[w.id] || w.id}>
-                  {WIDGET_COMPONENTS[w.id]}
-                </WidgetErrorBoundary>
-              </SortableWidget>
-            ))}
-          </div>
-        </SortableContext>
-      </DndContext>
+          <SortableContext
+            items={visibleWidgets.map((w) => w.id)}
+            strategy={rectSortingStrategy}
+          >
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              {visibleWidgets.map((w) => (
+                <SortableWidget key={w.id} id={w.id} className={
+                  /* Stats and Activity widgets span full width — they have wide tables */
+                  ['stats', 'activity'].includes(w.id) ? 'xl:col-span-2' : ''
+                }>
+                  <WidgetErrorBoundary name={WIDGET_NAMES[w.id] || w.id}>
+                    {WIDGET_COMPONENTS[w.id]}
+                  </WidgetErrorBoundary>
+                </SortableWidget>
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
+      )}
 
       <DashboardCustomizer
         isOpen={customizerOpen}

@@ -99,11 +99,11 @@ const Inventory = () => {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary-50 dark:bg-indigo-900/30">
-              <PackageSearch size={20} className="text-indigo-600 dark:text-primary-light" />
+              <PackageSearch size={20} className="text-primary-dark dark:text-primary-light" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Inventário de Recursos</h1>
-              <p className="text-xs text-gray-500 dark:text-slate-400">
+              <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Inventário de Recursos</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 {isLoading ? 'Carregando...' : `${total} recurso${total !== 1 ? 's' : ''} encontrado${total !== 1 ? 's' : ''}`}
               </p>
             </div>
@@ -112,7 +112,7 @@ const Inventory = () => {
             <button
               onClick={handleRefresh}
               disabled={isFetching}
-              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-slate-700 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors"
+              className="inline-flex items-center gap-2 px-3 py-2 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
             >
               <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} />
               Atualizar
@@ -133,14 +133,14 @@ const Inventory = () => {
           <select
             value={provider}
             onChange={(e) => handleFilterChange(setProvider)(e.target.value)}
-            className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+            className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none"
           >
             {PROVIDER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
           <select
             value={resourceType}
             onChange={(e) => handleFilterChange(setResourceType)(e.target.value)}
-            className="rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+            className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none"
           >
             {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>
@@ -159,38 +159,38 @@ const Inventory = () => {
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full">
-                <thead className="bg-gray-50 dark:bg-slate-900/50 border-b border-gray-200 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Provider</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Tipo</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Nome</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Grupo de Recurso</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Região</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Spec</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Provider</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Tipo</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Nome</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Grupo de Recurso</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Região</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Spec</th>
                   </tr>
                 </thead>
                 <tbody>
                   {items.map((item, i) => (
-                    <tr key={i} className="border-b border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
+                    <tr key={i} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                       <td className="px-4 py-3"><ProviderBadge provider={item.provider} /></td>
-                      <td className="px-4 py-3 text-xs text-gray-600 dark:text-slate-400">
+                      <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-400">
                         {RESOURCE_TYPE_LABELS[item.resource_type] || item.resource_type}
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-sm font-medium text-gray-800 dark:text-slate-200 truncate max-w-[200px]">{item.name}</p>
-                        <p className="text-xs text-gray-400 dark:text-slate-500 font-mono truncate max-w-[200px]" title={item.resource_id}>{item.resource_id}</p>
+                        <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate max-w-[200px]">{item.name}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate max-w-[200px]" title={item.resource_id}>{item.resource_id}</p>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
                         {item.resource_group || '—'}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`text-xs font-medium ${item.status === 'running' || item.status === 'available' || item.status === 'active' || item.status === 'succeeded' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-slate-400'}`}>
+                        <span className={`text-xs font-medium ${item.status === 'running' || item.status === 'available' || item.status === 'active' || item.status === 'succeeded' ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-gray-400'}`}>
                           {item.status || '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">{item.region || '—'}</td>
-                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400">{item.cost_hint || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{item.region || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{item.cost_hint || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -202,21 +202,21 @@ const Inventory = () => {
         {/* Pagination */}
         {pages > 1 && (
           <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500 dark:text-slate-400">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               Página {page} de {pages} · {total} recursos
             </p>
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setPage(p => Math.max(1, p - 1))}
                 disabled={page === 1 || isFetching}
-                className="p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 transition-colors"
               >
                 <ChevronLeft size={14} />
               </button>
               <button
                 onClick={() => setPage(p => Math.min(pages, p + 1))}
                 disabled={page === pages || isFetching}
-                className="p-1.5 rounded-lg border border-gray-300 dark:border-slate-700 text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+                className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 transition-colors"
               >
                 <ChevronRight size={14} />
               </button>

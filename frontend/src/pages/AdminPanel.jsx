@@ -389,7 +389,7 @@ const OrgsTab = () => {
               <button
                 onClick={() => { setEditingNotes(org.slug); setNotesValue(org.notes || ''); }}
                 title="Notas do parceiro"
-                className="p-1.5 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
+                className="p-1.5 rounded-lg text-gray-400 hover:text-primary-dark hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors">
                 <StickyNote size={13} />
               </button>
             </div>
@@ -522,7 +522,7 @@ const OrgsTab = () => {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl p-6 space-y-4">
             <div className="flex items-center gap-2">
-              <StickyNote size={16} className="text-indigo-500" />
+              <StickyNote size={16} className="text-primary" />
               <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notas do Parceiro</h3>
             </div>
             <p className="text-xs text-gray-400">Notas internas visíveis apenas para administradores (SLA, contato comercial, condições especiais…)</p>
@@ -1014,7 +1014,7 @@ const BillingTab = ({ orgs }) => {
           onClick={() => setShowAnalytics((v) => !v)}
           className={`flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${
             showAnalytics
-              ? 'border-indigo-400 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
+              ? 'border-indigo-400 bg-indigo-500/10 text-primary-dark dark:text-indigo-400'
               : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
           }`}
         >
@@ -1034,7 +1034,7 @@ const BillingTab = ({ orgs }) => {
           <button
             onClick={() => batchGenerateMut.mutate()}
             disabled={batchGenerateMut.isPending}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:text-primary-dark dark:hover:text-indigo-400 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors disabled:opacity-50"
             title="Gerar cobranças recorrentes pendentes"
           >
             {batchGenerateMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Zap size={12} />}
@@ -1098,14 +1098,14 @@ const BillingTab = ({ orgs }) => {
           <button
             onClick={handleBatchAction}
             disabled={!batchAction || batchStatusMut.isPending}
-            className="flex items-center gap-1.5 px-3 py-1 bg-indigo-600 text-white rounded-lg text-xs font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary-dark disabled:opacity-50 transition-colors"
           >
             {batchStatusMut.isPending ? <Loader2 size={11} className="animate-spin" /> : <CheckCircle2 size={11} />}
             Aplicar
           </button>
           <button
             onClick={() => setSelectedIds(new Set())}
-            className="text-xs text-indigo-500 hover:text-indigo-700 transition-colors ml-auto"
+            className="text-xs text-primary hover:text-primary-dark transition-colors ml-auto"
           >
             Limpar seleção
           </button>
@@ -1175,7 +1175,7 @@ const BillingTab = ({ orgs }) => {
                       )}
                       <div className="flex items-center gap-1.5 mt-0.5">
                         {r.is_recurring && (
-                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400">
+                          <span className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-primary-dark dark:bg-indigo-900/30 dark:text-indigo-400">
                             <RefreshCw size={8} /> {RECURRENCE_LABEL[r.recurrence_months] || 'Recorrente'}
                           </span>
                         )}
@@ -1259,7 +1259,7 @@ const BillingTab = ({ orgs }) => {
                           </button>
                         )}
                         <button onClick={() => setHistoryRecord(r)} title="Histórico"
-                          className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                          className="p-1.5 text-gray-400 hover:text-primary-dark hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
                           <History size={13} />
                         </button>
                         <button onClick={() => setEditRecord(r)} title="Editar"

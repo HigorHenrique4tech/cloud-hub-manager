@@ -49,6 +49,13 @@ const Layout = ({ children }) => {
 
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex flex-col">
+      {/* Skip navigation — visible only on keyboard focus */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-lg focus:text-sm focus:font-medium focus:shadow-lg"
+      >
+        Pular para o conteúdo principal
+      </a>
       <TrialBanner />
       <Header onMenuToggle={() => setSidebarOpen(v => !v)} />
       <div className="flex flex-1 overflow-hidden">
@@ -61,7 +68,7 @@ const Layout = ({ children }) => {
         {isAwsPath && <AwsSecondarySidebar />}
         {isGcpPath && <GcpSecondarySidebar />}
         {isM365Path && <M365SecondarySidebar />}
-        <main key={currentWorkspace?.id || 'none'} className="flex-1 px-4 py-6 sm:px-6 sm:py-8 overflow-auto">
+        <main id="main-content" key={currentWorkspace?.id || 'none'} className="flex-1 px-4 py-6 sm:px-6 sm:py-8 overflow-auto">
           {children}
         </main>
       </div>

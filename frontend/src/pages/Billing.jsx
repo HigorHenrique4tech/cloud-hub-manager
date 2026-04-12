@@ -192,7 +192,7 @@ const Billing = () => {
               </div>
               <button
                 onClick={() => navigate('/org/managed')}
-                className="text-sm text-indigo-500 hover:text-primary-light font-medium transition-colors"
+                className="text-sm text-primary hover:text-primary-light font-medium transition-colors"
               >
                 Gerenciar →
               </button>
@@ -222,7 +222,7 @@ const Billing = () => {
                   </p>
                 </div>
               ) : (
-                <p className="text-xs text-gray-400 dark:text-slate-500">
+                <p className="text-xs text-gray-400 dark:text-gray-500">
                   Até {managedSummary.base_included_orgs} orgs incluídas no plano base · orgs adicionais R$ 397,00/org/mês
                 </p>
               )}
@@ -236,7 +236,7 @@ const Billing = () => {
                   </p>
                 </div>
               ) : (
-                <p className="text-xs text-gray-400 dark:text-slate-500">
+                <p className="text-xs text-gray-400 dark:text-gray-500">
                   Cada org parceira inclui {managedSummary.partner_base_workspaces} workspaces · extras a R$ 290,00/ws/mês
                 </p>
               )}

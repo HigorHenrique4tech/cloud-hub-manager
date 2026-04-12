@@ -12,17 +12,17 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
       ) : (
         <div className="max-w-xl">
           {reportScheduleQ.data?.schedule ? (
-            <div className="rounded-xl border border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800/60 p-5 space-y-4">
+            <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800/60 p-5 space-y-4">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-2">
                   <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20">
                     <Mail size={18} className="text-primary-light" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
                       {reportScheduleQ.data.schedule.name}
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                       {reportScheduleQ.data.schedule.schedule_type === 'weekly'
                         ? `Semanal · ${WEEK_DAYS.find((d) => d.value === reportScheduleQ.data.schedule.send_day)?.label ?? ''}`
                         : `Mensal · Dia ${reportScheduleQ.data.schedule.send_day}`
@@ -35,7 +35,7 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
                   <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                     reportScheduleQ.data.schedule.is_enabled
                       ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                      : 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
+                      : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
                   }`}>
                     {reportScheduleQ.data.schedule.is_enabled ? 'Ativo' : 'Inativo'}
                   </span>
@@ -53,10 +53,10 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
 
               {/* Recipients */}
               <div>
-                <p className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Destinatários</p>
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Destinatários</p>
                 <div className="flex flex-wrap gap-1.5">
                   {(reportScheduleQ.data.schedule.recipients ?? []).map((e) => (
-                    <span key={e} className="rounded-full bg-gray-100 dark:bg-slate-700 px-2 py-0.5 text-xs text-gray-600 dark:text-slate-300">
+                    <span key={e} className="rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs text-gray-600 dark:text-gray-300">
                       {e}
                     </span>
                   ))}
@@ -75,7 +75,7 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
                     className={`inline-flex items-center gap-1 text-xs ${
                       reportScheduleQ.data.schedule[key]
                         ? 'text-green-600 dark:text-green-400'
-                        : 'text-gray-400 dark:text-slate-500 line-through'
+                        : 'text-gray-400 dark:text-gray-500 line-through'
                     }`}
                   >
                     <CheckCircle size={11} />
@@ -86,7 +86,7 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
 
               {/* Last run */}
               {reportScheduleQ.data.schedule.last_run_at && (
-                <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-slate-500">
+                <div className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500">
                   {reportScheduleQ.data.schedule.last_run_status === 'success'
                     ? <CheckCircle size={11} className="text-green-400" />
                     : <XCircle size={11} className="text-red-400" />}
@@ -95,7 +95,7 @@ const ReportsTab = ({ reportScheduleQ, onOpenModal }) => (
               )}
             </div>
           ) : (
-            <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-slate-500">
+            <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
               <Mail size={40} className="mb-3 opacity-20" />
               <p className="text-base font-medium">Nenhum relatório agendado</p>
               <p className="text-sm mt-1 mb-4">Configure o envio automático de resumos por email</p>

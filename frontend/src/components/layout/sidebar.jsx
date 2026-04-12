@@ -1,8 +1,9 @@
+import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
-  ShieldCheck, Bell, PackageSearch, GitPullRequestArrow,
+  ShieldCheck, Bell, PackageSearch, GitPullRequestArrow, ChevronDown,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AwsIcon, AzureIcon, GcpIcon, M365Icon } from '../common/CloudProviderIcons';
@@ -43,12 +44,6 @@ const prefetch = (to) => {
 
 // ── Sub-components ────────────────────────────────────────────────────────────
 
-/**
- * Nav item with optional per-cloud active color.
- * activeColor: Tailwind classes applied when the route is active.
- * Falls back to the global bg-primary style when not specified.
- * On hover, prefetches the lazy chunk so navigation is instant.
- */
 const NavItem = ({ to, label, icon: Icon, end, activeColor, badge }) => (
   <NavLink
     to={to}
@@ -72,12 +67,35 @@ const NavItem = ({ to, label, icon: Icon, end, activeColor, badge }) => (
   </NavLink>
 );
 
-/** Subtle uppercase section label between nav groups. */
-const SectionLabel = ({ children }) => (
-  <p className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 select-none">
-    {children}
-  </p>
-);
+/** Collapsible section group. Persists open/closed state in localStorage. */
+const NavSection = ({ label, storageKey, children, defaultOpen = true }) => {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(storageKey) !== 'false'; } catch { return defaultOpen; }
+  });
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try { localStorage.setItem(storageKey, String(next)); } catch { /* ignore */ }
+  };
+
+  return (
+    <div>
+      <button
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-500 select-none transition-colors"
+      >
+        {label}
+        <ChevronDown
+          size={12}
+          className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}
+        />
+      </button>
+      {open && <div className="space-y-0.5">{children}</div>}
+    </div>
+  );
+};
 
 // ── Cloud active-state colors ─────────────────────────────────────────────────
 
@@ -114,54 +132,56 @@ const Sidebar = ({ mobileOpen, onClose }) => {
       <nav className="flex-1 px-2 overflow-y-auto" aria-label="Navegação principal">
 
         {/* Dashboard */}
-        <NavItem to="/" label="Dashboard" icon={LayoutDashboard} end />
+        <div className="mb-1">
+          <NavItem to="/" label="Dashboard" icon={LayoutDashboard} end />
+        </div>
 
         {/* ── Nuvem ── */}
-        <SectionLabel>Nuvem</SectionLabel>
-
-        <PermissionGate permission="resources.view">
-          <NavItem to="/aws"   label="AWS"   icon={AwsIcon}   activeColor={CLOUD_ACTIVE.aws} />
-        </PermissionGate>
-        <PermissionGate permission="resources.view">
-          <NavItem to="/azure" label="Azure" icon={AzureIcon} activeColor={CLOUD_ACTIVE.azure} />
-        </PermissionGate>
-        <PermissionGate permission="resources.view">
-          <NavItem to="/gcp"   label="GCP"   icon={GcpIcon}   activeColor={CLOUD_ACTIVE.gcp} />
-        </PermissionGate>
-        {isEnterprise && (
-          <NavItem to="/m365" label="Microsoft 365" icon={M365Icon} activeColor={CLOUD_ACTIVE.m365} />
-        )}
+        <NavSection label="Nuvem" storageKey="sidebar-section-cloud">
+          <PermissionGate permission="resources.view">
+            <NavItem to="/aws"   label="AWS"   icon={AwsIcon}   activeColor={CLOUD_ACTIVE.aws} />
+          </PermissionGate>
+          <PermissionGate permission="resources.view">
+            <NavItem to="/azure" label="Azure" icon={AzureIcon} activeColor={CLOUD_ACTIVE.azure} />
+          </PermissionGate>
+          <PermissionGate permission="resources.view">
+            <NavItem to="/gcp"   label="GCP"   icon={GcpIcon}   activeColor={CLOUD_ACTIVE.gcp} />
+          </PermissionGate>
+          {isEnterprise && (
+            <NavItem to="/m365" label="Microsoft 365" icon={M365Icon} activeColor={CLOUD_ACTIVE.m365} />
+          )}
+        </NavSection>
 
         {/* ── Ferramentas ── */}
-        <SectionLabel>Ferramentas</SectionLabel>
-
-        <PermissionGate permission="costs.view">
-          <NavItem to="/costs" label="Custos" icon={DollarSign} />
-        </PermissionGate>
-        <PermissionGate permission="finops.view">
-          <NavItem to="/finops" label="FinOps" icon={Zap} />
-        </PermissionGate>
-        <PermissionGate permission="resources.view">
-          <NavItem to="/inventory" label="Inventário" icon={PackageSearch} />
-        </PermissionGate>
-        <PermissionGate permission="resources.view">
-          <NavItem to="/schedules" label="Agendamentos" icon={Clock} />
-        </PermissionGate>
-        <PermissionGate permission="resources.manage">
-          <NavItem to="/approvals" label="Aprovações" icon={GitPullRequestArrow} badge={pendingCount} />
-        </PermissionGate>
-        <PermissionGate permission="webhooks.view">
-          <NavItem to="/notifications" label="Notificações" icon={Bell} />
-        </PermissionGate>
-        <PermissionGate permission="logs.view">
-          <NavItem to="/logs" label="Logs" icon={FileText} />
-        </PermissionGate>
-        <PermissionGate permission="resources.manage">
-          <NavItem to="/security/automation" label="Segurança" icon={ShieldCheck} />
-        </PermissionGate>
+        <NavSection label="Ferramentas" storageKey="sidebar-section-tools">
+          <PermissionGate permission="costs.view">
+            <NavItem to="/costs" label="Custos" icon={DollarSign} />
+          </PermissionGate>
+          <PermissionGate permission="finops.view">
+            <NavItem to="/finops" label="FinOps" icon={Zap} />
+          </PermissionGate>
+          <PermissionGate permission="resources.view">
+            <NavItem to="/inventory" label="Inventário" icon={PackageSearch} />
+          </PermissionGate>
+          <PermissionGate permission="resources.view">
+            <NavItem to="/schedules" label="Agendamentos" icon={Clock} />
+          </PermissionGate>
+          <PermissionGate permission="resources.manage">
+            <NavItem to="/approvals" label="Aprovações" icon={GitPullRequestArrow} badge={pendingCount} />
+          </PermissionGate>
+          <PermissionGate permission="webhooks.view">
+            <NavItem to="/notifications" label="Notificações" icon={Bell} />
+          </PermissionGate>
+          <PermissionGate permission="logs.view">
+            <NavItem to="/logs" label="Logs" icon={FileText} />
+          </PermissionGate>
+          <PermissionGate permission="resources.manage">
+            <NavItem to="/security/automation" label="Segurança" icon={ShieldCheck} />
+          </PermissionGate>
+        </NavSection>
 
         {/* ── Conta / Org ── */}
-        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700 space-y-1">
+        <NavSection label="Conta" storageKey="sidebar-section-account" defaultOpen={false}>
           <PermissionGate permission="costs.view">
             <NavItem to="/billing" label="Faturamento" icon={CreditCard} />
           </PermissionGate>
@@ -173,7 +193,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
           {user?.is_admin && (
             <NavItem to="/admin" label="Admin" icon={ShieldCheck} />
           )}
-        </div>
+        </NavSection>
       </nav>
 
       {/* Configurações — pinned at the very bottom */}

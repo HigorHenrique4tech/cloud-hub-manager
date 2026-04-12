@@ -13,7 +13,7 @@ const CopyButton = ({ text }) => {
     <button onClick={copy} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
       {copied
         ? <Check size={14} className="text-green-500" />
-        : <Copy size={14} className="text-gray-500 dark:text-slate-400" />
+        : <Copy size={14} className="text-gray-500 dark:text-gray-400" />
       }
     </button>
   );

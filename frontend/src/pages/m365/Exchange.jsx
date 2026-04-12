@@ -375,7 +375,7 @@ function CreateSharedMailboxModal({ onClose }) {
       <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
-            <Inbox className="w-5 h-5 text-indigo-500" />
+            <Inbox className="w-5 h-5 text-primary" />
             <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Nova Caixa Compartilhada</p>
           </div>
           <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"><X className="w-4 h-4 text-gray-500" /></button>
@@ -501,7 +501,7 @@ function SharedMailboxesTab({ onSelectMailbox, allUsers }) {
                 <tr key={m.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer" onClick={() => onSelectMailbox(m)}>
                   <td className={tdCls}>
                     <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-full bg-primary-50 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-bold text-indigo-600 dark:text-primary-light flex-shrink-0">
+                      <div className="w-7 h-7 rounded-full bg-primary-50 dark:bg-indigo-900/30 flex items-center justify-center text-xs font-bold text-primary-dark dark:text-primary-light flex-shrink-0">
                         {(m.display_name || '?')[0].toUpperCase()}
                       </div>
                       <span className="font-medium text-gray-900 dark:text-gray-100">{m.display_name}</span>
@@ -509,7 +509,7 @@ function SharedMailboxesTab({ onSelectMailbox, allUsers }) {
                   </td>
                   <td className={tdCls}>{m.mail || '—'}</td>
                   <td className={tdCls}>
-                    <span className="text-xs text-indigo-600 dark:text-primary-light font-medium">Compartilhada</span>
+                    <span className="text-xs text-primary-dark dark:text-primary-light font-medium">Compartilhada</span>
                   </td>
                   <td className={tdCls}><span className="text-xs text-blue-500 hover:underline">Configurar</span></td>
                 </tr>

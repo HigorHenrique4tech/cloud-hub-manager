@@ -9,15 +9,15 @@ const KpiCard = ({ icon: Icon, label, value, sub, color }) => {
     yellow: { bg: 'from-yellow-50 to-yellow-100/50 dark:from-yellow-900/30 dark:to-yellow-800/10', icon: 'text-yellow-500 dark:text-yellow-400', border: 'border-yellow-200 dark:border-yellow-800/30' },
     blue:   { bg: 'from-blue-50 to-blue-100/50 dark:from-blue-900/30 dark:to-blue-800/10',       icon: 'text-blue-500 dark:text-blue-400',     border: 'border-blue-200 dark:border-blue-800/30' },
     red:    { bg: 'from-red-50 to-red-100/50 dark:from-red-900/30 dark:to-red-800/10',           icon: 'text-red-500 dark:text-red-400',       border: 'border-red-200 dark:border-red-800/30' },
-  }[color] || { bg: 'from-gray-50 to-gray-100 dark:from-slate-800 dark:to-slate-800', icon: 'text-gray-400 dark:text-slate-400', border: 'border-gray-200 dark:border-slate-700' };
+  }[color] || { bg: 'from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-800', icon: 'text-gray-400 dark:text-gray-400', border: 'border-gray-200 dark:border-gray-700' };
 
   return (
     <div className={`rounded-xl border ${colors.border} bg-gradient-to-br ${colors.bg} p-5`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-sm text-gray-500 dark:text-slate-400">{label}</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-slate-100">{value}</p>
-          {sub && <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{sub}</p>}
+          <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
+          {sub && <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{sub}</p>}
         </div>
         <Icon className={`${colors.icon} opacity-60`} size={28} />
       </div>
@@ -36,10 +36,10 @@ const WasteSummary = ({ summary, onScan, scanning }) => {
   if (!summary) return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
       {[...Array(4)].map((_, i) => (
-        <div key={i} className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 p-5 space-y-3">
-          <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-24" />
-          <div className="h-7 bg-gray-200 dark:bg-slate-700 rounded w-20" />
-          <div className="h-3 bg-gray-200 dark:bg-slate-700 rounded w-32" />
+        <div key={i} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-5 space-y-3">
+          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-24" />
+          <div className="h-7 bg-gray-200 dark:bg-gray-700 rounded w-20" />
+          <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-32" />
         </div>
       ))}
     </div>

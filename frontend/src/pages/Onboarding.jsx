@@ -76,17 +76,17 @@ function Stepper({ step }) {
                 ? 'bg-green-500 border-green-500 text-white'
                 : i === step
                   ? 'bg-primary border-primary text-white'
-                  : 'border-gray-300 dark:border-slate-600 text-gray-400 dark:text-slate-500'
+                  : 'border-gray-300 dark:border-gray-600 text-gray-400 dark:text-gray-500'
             }`}>
               {i < step ? <CheckCircle2 size={16} /> : i + 1}
             </div>
             <span className={`mt-1 text-xs font-medium ${
-              i <= step ? 'text-gray-700 dark:text-slate-300' : 'text-gray-400 dark:text-slate-500'
+              i <= step ? 'text-gray-700 dark:text-gray-300' : 'text-gray-400 dark:text-gray-500'
             }`}>{label}</span>
           </div>
           {i < STEP_LABELS.length - 1 && (
             <div className={`w-12 h-0.5 mb-5 mx-1 transition-colors ${
-              i < step ? 'bg-green-500' : 'bg-gray-200 dark:bg-slate-700'
+              i < step ? 'bg-green-500' : 'bg-gray-200 dark:bg-gray-700'
             }`} />
           )}
         </div>
@@ -159,11 +159,11 @@ export default function Onboarding() {
         </div>
       </div>
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
           Olá, {user?.name?.split(' ')[0]}! 👋
         </h1>
-        <p className="mt-2 text-gray-500 dark:text-slate-400 text-sm leading-relaxed">
-          Bem-vindo ao <strong className="text-gray-700 dark:text-slate-200">Cloud Hub Manager</strong>.
+        <p className="mt-2 text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
+          Bem-vindo ao <strong className="text-gray-700 dark:text-gray-200">Cloud Hub Manager</strong>.
           Vamos conectar sua primeira conta cloud para você começar a monitorar custos, recursos e segurança em um só lugar.
         </p>
       </div>
@@ -177,7 +177,7 @@ export default function Onboarding() {
         </button>
         <button
           onClick={handleSkipAll}
-          className="w-full text-sm text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+          className="w-full text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
         >
           Pular e ir ao dashboard
         </button>
@@ -189,8 +189,8 @@ export default function Onboarding() {
   const renderStep1 = () => (
     <div className="space-y-5">
       <div className="text-center">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">Escolha um provider</h2>
-        <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Selecione a plataforma cloud para conectar primeiro.</p>
+        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Escolha um provider</h2>
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Selecione a plataforma cloud para conectar primeiro.</p>
       </div>
       <div className="grid grid-cols-2 gap-3">
         {PROVIDERS.map(p => (
@@ -200,14 +200,14 @@ export default function Onboarding() {
             className={`flex flex-col items-center gap-2 rounded-xl border-2 p-4 text-center transition-all hover:scale-[1.02] ${p.color}`}
           >
             <span className="text-2xl">{p.icon}</span>
-            <span className="text-sm font-semibold text-gray-800 dark:text-slate-100">{p.short}</span>
-            <span className="text-xs text-gray-500 dark:text-slate-400 leading-tight">{p.label}</span>
+            <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{p.short}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400 leading-tight">{p.label}</span>
           </button>
         ))}
       </div>
       <button
         onClick={() => setStep(3)}
-        className="w-full text-sm text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+        className="w-full text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
       >
         Pular por agora
       </button>
@@ -218,10 +218,10 @@ export default function Onboarding() {
   const renderStep2 = () => (
     <div className="space-y-5">
       <div className="text-center">
-        <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
           Conectar {providerConfig?.label}
         </h2>
-        <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
           Insira as credenciais de acesso da sua conta.
         </p>
       </div>
@@ -229,7 +229,7 @@ export default function Onboarding() {
       <div className="space-y-3">
         {providerConfig?.fields.map(field => (
           <div key={field}>
-            <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1">
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
               {FIELD_LABELS[field] || field}
             </label>
             {field === 'private_key' ? (
@@ -238,14 +238,14 @@ export default function Onboarding() {
                 value={formData[field] || ''}
                 onChange={e => setFormData({ ...formData, [field]: e.target.value })}
                 placeholder={'-----BEGIN RSA PRIVATE KEY-----\n...\n-----END RSA PRIVATE KEY-----'}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-xs font-mono text-gray-900 dark:text-slate-100 resize-y focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-xs font-mono text-gray-900 dark:text-gray-100 resize-y focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             ) : (
               <input
                 type={field.includes('secret') || field.includes('key') || field.includes('password') ? 'password' : 'text'}
                 value={formData[field] || ''}
                 onChange={e => setFormData({ ...formData, [field]: e.target.value })}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-900 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
               />
             )}
           </div>
@@ -273,7 +273,7 @@ export default function Onboarding() {
         </button>
         <button
           onClick={() => { setError(null); setStep(1); }}
-          className="w-full text-sm text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors"
+          className="w-full text-sm text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
         >
           ← Voltar
         </button>
@@ -290,8 +290,8 @@ export default function Onboarding() {
         </div>
       </div>
       <div>
-        <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100">Tudo pronto!</h2>
-        <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">
+        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">Tudo pronto!</h2>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
           {connected.length > 0
             ? 'Sua conta cloud foi conectada com sucesso.'
             : 'Você pode conectar suas clouds a qualquer momento em Configurações do Workspace.'}
@@ -314,7 +314,7 @@ export default function Onboarding() {
       <div className="space-y-2 pt-1">
         <button
           onClick={() => { setSelectedProvider(null); setFormData({}); setError(null); setStep(1); }}
-          className="w-full rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
         >
           Conectar outra cloud
         </button>
@@ -332,21 +332,21 @@ export default function Onboarding() {
   const STEPS = [renderStep0, renderStep1, renderStep2, renderStep3];
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Card */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-gray-200 dark:border-slate-800 p-8">
+        <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-800 p-8">
           <Stepper step={step} />
           {STEPS[step]?.()}
         </div>
 
         {/* Skip link (steps 1 and 2 only) */}
         {step > 0 && step < 3 && (
-          <p className="mt-4 text-center text-xs text-gray-400 dark:text-slate-600">
+          <p className="mt-4 text-center text-xs text-gray-400 dark:text-gray-600">
             Você pode configurar isso depois em{' '}
             <button
               onClick={handleSkipAll}
-              className="underline hover:text-gray-600 dark:hover:text-slate-400 transition-colors"
+              className="underline hover:text-gray-600 dark:hover:text-gray-400 transition-colors"
             >
               Configurações do Workspace
             </button>

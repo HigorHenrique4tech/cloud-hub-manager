@@ -162,10 +162,10 @@ const OrgSettings = () => {
           {/* Partner org banner */}
           {isPartnerOrg && (
             <div className="flex items-center gap-3 rounded-xl border border-indigo-200 dark:border-indigo-800/40 bg-indigo-50 dark:bg-indigo-900/10 px-4 py-3">
-              <Building2 size={18} className="text-indigo-500 flex-shrink-0" />
+              <Building2 size={18} className="text-primary flex-shrink-0" />
               <div>
                 <p className="text-sm font-semibold text-primary-dark dark:text-primary-light">Organização gerenciada</p>
-                <p className="text-xs text-indigo-500 dark:text-primary-light mt-0.5">
+                <p className="text-xs text-primary dark:text-primary-light mt-0.5">
                   Esta organização faz parte de um contrato Enterprise. O plano é herdado e gerenciado pelo parceiro master.
                 </p>
               </div>
@@ -352,7 +352,7 @@ const OrgSettings = () => {
 
           {/* White Label (enterprise only) */}
           {currentOrg?.org_type === 'master' && (
-            <div className="rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-6">
+            <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-6">
               <WhiteLabelSettings />
             </div>
           )}

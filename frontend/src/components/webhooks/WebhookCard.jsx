@@ -55,14 +55,14 @@ const WebhookCard = ({ hook, supportedEvents, onEdit, onDelete }) => {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <span className="font-semibold text-gray-900 dark:text-slate-100 truncate">{hook.name}</span>
-            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${hook.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-slate-400'}`}>
+            <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">{hook.name}</span>
+            <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${hook.is_active ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
               {hook.is_active ? 'Ativo' : 'Inativo'}
             </span>
           </div>
           <div className="flex items-center gap-1 mt-0.5 max-w-full">
             <a href={hook.url} target="_blank" rel="noreferrer"
-               className="text-xs text-indigo-600 dark:text-primary-light hover:underline truncate max-w-xs"
+               className="text-xs text-primary-dark dark:text-primary-light hover:underline truncate max-w-xs"
                onClick={(e) => e.stopPropagation()}>
               {hook.url}
             </a>
@@ -73,15 +73,15 @@ const WebhookCard = ({ hook, supportedEvents, onEdit, onDelete }) => {
         <PermissionGate permission="webhooks.manage">
           <div className="flex items-center gap-1 flex-shrink-0">
             <button onClick={handleTest} disabled={testing} title="Enviar teste"
-              className="p-1.5 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
+              className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
               <Play size={14} />
             </button>
             <button onClick={handleRegenerate} disabled={regenerating} title="Rotacionar segredo"
-              className="p-1.5 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
+              className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-40 transition-colors">
               <RefreshCw size={14} />
             </button>
             <button onClick={() => onEdit(hook)} title="Editar"
-              className="p-1.5 rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+              className="p-1.5 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
               <Edit2 size={14} />
             </button>
             <button onClick={() => onDelete(hook)} title="Excluir"
@@ -115,7 +115,7 @@ const WebhookCard = ({ hook, supportedEvents, onEdit, onDelete }) => {
       {/* Delivery history toggle */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-500 hover:text-gray-700 dark:hover:text-slate-300 transition-colors"
+        className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 transition-colors"
       >
         {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
         Histórico de entregas

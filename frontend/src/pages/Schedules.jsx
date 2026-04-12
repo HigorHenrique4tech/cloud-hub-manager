@@ -78,7 +78,7 @@ const METRIC_COLORS = {
   instance_count:    'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20',
   anomaly_detected:  'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20',
   cpu_usage_pct:     'text-purple-600 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20',
-  memory_usage_pct:  'text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20',
+  memory_usage_pct:  'text-primary-dark dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/20',
 };
 
 const ACTION_COLORS = {
@@ -97,7 +97,7 @@ const ACTION_ICONS = {
 
 // ── Policy form modal ─────────────────────────────────────────────────────────
 
-const INPUT_CLS = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500';
+const INPUT_CLS = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary';
 
 function PolicyModal({ initial, onClose, onSave, isSaving }) {
   const [form, setForm] = useState(initial || {
@@ -253,7 +253,7 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
                   )}
 
                   {form.conditions.resource_id && (
-                    <p className="text-xs text-indigo-600 dark:text-primary-light font-mono truncate">
+                    <p className="text-xs text-primary-dark dark:text-primary-light font-mono truncate">
                       ID: {form.conditions.resource_id}
                     </p>
                   )}
@@ -304,7 +304,7 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                 <input type="checkbox" checked={form.action.also_notify}
                   onChange={e => set('action.also_notify', e.target.checked)}
-                  className="accent-indigo-600 h-4 w-4" />
+                  className="accent-primary h-4 w-4" />
                 Também enviar notificação
               </label>
             </div>
@@ -421,7 +421,7 @@ function PolicyCard({ policy, onEdit, onDelete, onToggle, onShowLogs }) {
                 {policy.is_active ? <Power className="w-4 h-4" /> : <PowerOff className="w-4 h-4" />}
               </button>
               <button onClick={() => onShowLogs(policy)}
-                className="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-md transition-colors"
+                className="p-1.5 text-gray-400 hover:text-primary-dark dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-md transition-colors"
                 title="Histórico de disparos">
                 <ScrollText className="w-4 h-4" />
               </button>
@@ -446,7 +446,7 @@ function PolicyCard({ policy, onEdit, onDelete, onToggle, onShowLogs }) {
           {/* Condition + Action row */}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {cond.resource_name && (
-              <span className="text-xs text-indigo-600 dark:text-primary-light font-medium bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded">
+              <span className="text-xs text-primary-dark dark:text-primary-light font-medium bg-indigo-50 dark:bg-indigo-900/20 px-2 py-0.5 rounded">
                 {cond.resource_name}
               </span>
             )}
@@ -564,7 +564,7 @@ function PoliciesTab({ isPro }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="card flex items-center gap-3 p-3">
             <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20">
-              <Shield className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <Shield className="w-4 h-4 text-primary-dark dark:text-indigo-400" />
             </div>
             <div>
               <p className="text-lg font-bold text-gray-900 dark:text-white">{stats.total}</p>

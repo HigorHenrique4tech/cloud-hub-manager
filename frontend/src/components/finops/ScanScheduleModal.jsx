@@ -15,13 +15,13 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl animate-scale-in">
-        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl animate-scale-in">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4">
           <div className="flex items-center gap-2">
             <Clock size={16} className="text-primary-light" />
-            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Análise Automática</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Análise Automática</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white transition-colors">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white transition-colors">
             <X size={18} />
           </button>
         </div>
@@ -29,10 +29,10 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
         <div className="space-y-4 px-5 py-4">
           {/* Enable toggle */}
           <div className="flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-800 dark:text-slate-200">Ativar análise automática</span>
+            <span className="text-sm font-medium text-gray-800 dark:text-gray-200">Ativar análise automática</span>
             <button
               onClick={() => set('is_enabled', !form.is_enabled)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_enabled ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'}`}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.is_enabled ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'}`}
             >
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.is_enabled ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
@@ -40,7 +40,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
 
           {/* Frequency */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1.5">Frequência</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1.5">Frequência</label>
             <div className="flex gap-2">
               {SCHED_TYPES.map(({ value, label }) => (
                 <button
@@ -49,7 +49,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
                   className={`flex-1 rounded-lg border py-1.5 text-xs font-medium transition-colors ${
                     form.schedule_type === value
                       ? 'border-primary bg-primary/20 text-primary-dark dark:text-primary-light'
-                      : 'border-gray-300 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:border-gray-400 dark:hover:border-slate-500'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:border-gray-400 dark:hover:border-gray-500'
                   }`}
                 >
                   {label}
@@ -61,20 +61,20 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
           {/* Time + Timezone */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1">Horário</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Horário</label>
               <input
                 type="time"
                 value={form.schedule_time}
                 onChange={(e) => set('schedule_time', e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1">Fuso horário</label>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Fuso horário</label>
               <select
                 value={form.timezone}
                 onChange={(e) => set('timezone', e.target.value)}
-                className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100"
+                className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
               >
                 {TIMEZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
               </select>
@@ -83,11 +83,11 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
 
           {/* Provider */}
           <div>
-            <label className="block text-xs font-medium text-gray-600 dark:text-slate-400 mb-1">Provider</label>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Provider</label>
             <select
               value={form.provider}
               onChange={(e) => set('provider', e.target.value)}
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
             >
               <option value="all">Todos</option>
               <option value="aws">AWS</option>
@@ -98,8 +98,8 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
 
           {/* Last run info */}
           {existing && (
-            <div className="rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 px-3 py-2 space-y-1 text-xs">
-              <div className="flex items-center justify-between text-gray-500 dark:text-slate-400">
+            <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2 space-y-1 text-xs">
+              <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
                 <span>Último scan</span>
                 <span className="flex items-center gap-1">
                   {existing.last_run_status === 'success' && <CheckCircle size={11} className="text-green-500 dark:text-green-400" />}
@@ -108,7 +108,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
                 </span>
               </div>
               {existing.next_run_at && (
-                <div className="flex items-center justify-between text-gray-500 dark:text-slate-400">
+                <div className="flex items-center justify-between text-gray-500 dark:text-gray-400">
                   <span>Próxima execução</span>
                   <span>{fmtDate(existing.next_run_at)}</span>
                 </div>
@@ -130,7 +130,7 @@ const ScanScheduleModal = ({ onClose, existing, onSave, onDelete, saving, deleti
             <div className="flex gap-2">
               <button
                 onClick={onClose}
-                className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors active:scale-[0.97]"
+                className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors active:scale-[0.97]"
               >
                 Cancelar
               </button>

@@ -84,10 +84,10 @@ const BillingAnalytics = () => {
         </div>
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
           <div className="flex items-center gap-2 mb-1">
-            <Target className="w-3.5 h-3.5 text-indigo-500" />
+            <Target className="w-3.5 h-3.5 text-primary" />
             <p className="text-xs text-gray-500 dark:text-gray-400">Previsão (próx. mês)</p>
           </div>
-          <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400">{fmtBRL(forecast[0]?.projected)}</p>
+          <p className="text-lg font-bold text-primary-dark dark:text-indigo-400">{fmtBRL(forecast[0]?.projected)}</p>
         </div>
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-3">
           <div className="flex items-center gap-2 mb-1">

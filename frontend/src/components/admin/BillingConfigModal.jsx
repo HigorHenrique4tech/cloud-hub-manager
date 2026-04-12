@@ -73,7 +73,7 @@ const BillingConfigModal = ({ onClose }) => {
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center">
-              <Settings className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <Settings className="w-4 h-4 text-primary-dark dark:text-indigo-400" />
             </div>
             <div>
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Configuração de Faturamento</h2>
@@ -92,7 +92,7 @@ const BillingConfigModal = ({ onClose }) => {
             {/* Auto-generate */}
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 space-y-4">
               <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                <Calendar className="w-4 h-4 text-indigo-500" /> Geração Automática
+                <Calendar className="w-4 h-4 text-primary" /> Geração Automática
               </h3>
               <Toggle
                 checked={form.auto_generate_enabled}

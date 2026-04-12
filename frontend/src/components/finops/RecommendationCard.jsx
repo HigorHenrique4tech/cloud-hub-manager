@@ -43,7 +43,7 @@ const PROVIDER_BADGE = {
 
 const STATUS_ICON = {
   applied:   <CheckCircle2 size={14} className="text-green-600 dark:text-green-400" />,
-  dismissed: <XCircle size={14} className="text-gray-400 dark:text-slate-400" />,
+  dismissed: <XCircle size={14} className="text-gray-400 dark:text-gray-400" />,
   failed:    <AlertTriangle size={14} className="text-red-600 dark:text-red-400" />,
 };
 
@@ -63,8 +63,8 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
       selected
         ? 'border-indigo-400 bg-indigo-50 dark:border-primary/60 dark:bg-indigo-900/10'
         : isLocked
-          ? 'border-gray-200 bg-gray-50 opacity-60 dark:border-slate-700/50 dark:bg-slate-900/30'
-          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm dark:border-slate-700 dark:bg-slate-800/60 dark:hover:border-slate-600'
+          ? 'border-gray-200 bg-gray-50 opacity-60 dark:border-gray-700/50 dark:bg-gray-900/30'
+          : 'border-gray-200 bg-white hover:border-gray-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800/60 dark:hover:border-gray-600'
     }`}>
       {/* Header row */}
       <div
@@ -78,7 +78,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
             checked={selected}
             onChange={(e) => { e.stopPropagation(); onToggle(); }}
             onClick={(e) => e.stopPropagation()}
-            className="mt-1 h-4 w-4 shrink-0 accent-indigo-600 cursor-pointer"
+            className="mt-1 h-4 w-4 shrink-0 accent-primary cursor-pointer"
           />
         )}
 
@@ -89,13 +89,13 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
 
         <div className="flex-1 min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${PROVIDER_BADGE[rec.provider] || 'bg-gray-100 text-gray-700 dark:bg-slate-700 dark:text-slate-300'}`}>
+            <span className={`rounded px-1.5 py-0.5 text-xs font-semibold ${PROVIDER_BADGE[rec.provider] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
               {rec.provider?.toUpperCase()}
             </span>
-            <span className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{rec.resource_name}</span>
-            <span className="text-xs text-gray-500 dark:text-slate-400">({rec.resource_type})</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{rec.resource_name}</span>
+            <span className="text-xs text-gray-500 dark:text-gray-400">({rec.resource_type})</span>
             {rec.region && (
-              <span className="text-xs text-gray-400 dark:text-slate-500">{rec.region}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{rec.region}</span>
             )}
           </div>
 
@@ -104,16 +104,16 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
             <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${
               isScheduleType ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300'
               : isRightsizing ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
-              : 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300'
+              : 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
             }`}>
               {TYPE_ICON[rec.recommendation_type]}
               {TYPE_LABEL[rec.recommendation_type] || rec.recommendation_type}
             </span>
             {rec.recommended_spec?.instance_type && (
-              <span className="text-xs text-gray-500 dark:text-slate-400">→ {rec.recommended_spec.instance_type}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">→ {rec.recommended_spec.instance_type}</span>
             )}
             {rec.recommended_spec?.vm_size && (
-              <span className="text-xs text-gray-500 dark:text-slate-400">→ {rec.recommended_spec.vm_size}</span>
+              <span className="text-xs text-gray-500 dark:text-gray-400">→ {rec.recommended_spec.vm_size}</span>
             )}
             {isScheduleType && rec.recommended_spec?.suggested_start && (
               <span className="text-xs text-purple-600 dark:text-purple-400">
@@ -124,25 +124,25 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
           </div>
 
           {!isLocked && (
-            <p className="mt-1.5 text-xs text-gray-500 dark:text-slate-400 line-clamp-2">{rec.reasoning}</p>
+            <p className="mt-1.5 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{rec.reasoning}</p>
           )}
         </div>
 
         {/* Saving + controls */}
         <div className="flex flex-col items-end gap-2 shrink-0 ml-2">
           {isLocked ? (
-            <div className="flex items-center gap-1 text-gray-400 dark:text-slate-500 text-sm">
+            <div className="flex items-center gap-1 text-gray-400 dark:text-gray-500 text-sm">
               <Lock size={13} />
               <span>Pro</span>
             </div>
           ) : (
             <span className="text-base font-bold text-green-600 dark:text-green-400">
-              {fmtCost(rec.estimated_saving_monthly)}<span className="text-xs font-normal text-gray-400 dark:text-slate-400">/mês</span>
+              {fmtCost(rec.estimated_saving_monthly)}<span className="text-xs font-normal text-gray-400 dark:text-gray-400">/mês</span>
             </span>
           )}
 
           {rec.status !== 'pending' && STATUS_ICON[rec.status] && (
-            <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-slate-400">
+            <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
               {STATUS_ICON[rec.status]}
               <span className="capitalize">{rec.status}</span>
             </div>
@@ -150,7 +150,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
 
           {!isLocked && (
             <button
-              className="text-gray-400 hover:text-gray-600 dark:text-slate-500 dark:hover:text-slate-300 transition-colors"
+              className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300 transition-colors"
               onClick={(e) => { e.stopPropagation(); setExpanded((v) => !v); }}
             >
               {expanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -161,16 +161,16 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
 
       {/* Expanded details */}
       {expanded && !isLocked && (
-        <div className="border-t border-gray-200 dark:border-slate-700 px-4 py-3 space-y-3">
+        <div className="border-t border-gray-200 dark:border-gray-700 px-4 py-3 space-y-3">
           {/* Spec comparison */}
           {(rec.current_spec || rec.recommended_spec) && (
             <div className="grid grid-cols-2 gap-3 text-xs">
               {rec.current_spec && (
-                <div className="rounded-lg bg-gray-50 border border-gray-200 dark:bg-slate-900/60 dark:border-slate-700 p-3">
-                  <p className="mb-1.5 font-semibold text-gray-500 dark:text-slate-400">Atual</p>
+                <div className="rounded-lg bg-gray-50 border border-gray-200 dark:bg-gray-900/60 dark:border-gray-700 p-3">
+                  <p className="mb-1.5 font-semibold text-gray-500 dark:text-gray-400">Atual</p>
                   {Object.entries(rec.current_spec).map(([k, v]) => (
-                    <p key={k} className="text-gray-700 dark:text-slate-300">
-                      <span className="text-gray-400 dark:text-slate-500">{k}:</span> {String(v)}
+                    <p key={k} className="text-gray-700 dark:text-gray-300">
+                      <span className="text-gray-400 dark:text-gray-500">{k}:</span> {String(v)}
                     </p>
                   ))}
                 </div>
@@ -189,8 +189,8 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
           )}
 
           {/* Cost row */}
-          <div className="flex items-center gap-6 text-xs text-gray-500 dark:text-slate-400">
-            <span>Custo atual: <strong className="text-gray-800 dark:text-slate-200">{fmtCost(rec.current_monthly_cost)}/mês</strong></span>
+          <div className="flex items-center gap-6 text-xs text-gray-500 dark:text-gray-400">
+            <span>Custo atual: <strong className="text-gray-800 dark:text-gray-200">{fmtCost(rec.current_monthly_cost)}/mês</strong></span>
             <span>Economia estimada: <strong className="text-green-600 dark:text-green-400">{fmtCost(rec.estimated_saving_monthly)}/mês</strong></span>
           </div>
 
@@ -200,7 +200,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
               <PermissionGate
                 permission="finops.execute"
                 fallback={
-                  <span className="text-xs text-gray-400 dark:text-slate-500 flex items-center gap-1">
+                  <span className="text-xs text-gray-400 dark:text-gray-500 flex items-center gap-1">
                     <Lock size={12} /> Sem permissão para aplicar
                   </span>
                 }
@@ -243,7 +243,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
                 <button
                   onClick={() => onDismiss(rec.id)}
                   disabled={dismissLoading}
-                  className="rounded-lg border border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-800 px-3 py-1.5 text-xs font-medium disabled:opacity-50 transition-colors dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-400 dark:hover:text-white"
+                  className="rounded-lg border border-gray-300 text-gray-600 hover:border-gray-400 hover:text-gray-800 px-3 py-1.5 text-xs font-medium disabled:opacity-50 transition-colors dark:border-gray-600 dark:text-gray-300 dark:hover:border-gray-400 dark:hover:text-white"
                 >
                   {dismissLoading ? 'Ignorando…' : 'Ignorar'}
                 </button>
@@ -258,7 +258,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
         <div className="px-4 pb-4">
           <a
             href="/billing"
-            className="block rounded-lg border border-dashed border-indigo-300 bg-indigo-50 px-3 py-2 text-center text-xs font-medium text-indigo-600 hover:bg-primary-50 transition-colors dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-primary-light dark:hover:bg-indigo-900/40"
+            className="block rounded-lg border border-dashed border-indigo-300 bg-indigo-50 px-3 py-2 text-center text-xs font-medium text-primary-dark hover:bg-primary-50 transition-colors dark:border-indigo-700 dark:bg-indigo-900/20 dark:text-primary-light dark:hover:bg-indigo-900/40"
           >
             Fazer upgrade para Pro para ver todas as recomendações →
           </a>

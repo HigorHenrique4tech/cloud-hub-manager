@@ -16,15 +16,15 @@ const CostComparisonBar = ({ baseline, actual }) => {
   return (
     <div className="mt-3 space-y-1.5">
       <div className="flex items-center gap-2 text-xs">
-        <span className="w-16 text-gray-500 dark:text-slate-400 shrink-0">Baseline</span>
-        <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden">
+        <span className="w-16 text-gray-500 dark:text-gray-400 shrink-0">Baseline</span>
+        <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div className="h-3 rounded-full bg-blue-400 transition-all duration-500" style={{ width: `${baselinePct}%` }} />
         </div>
-        <span className="w-20 text-right text-gray-600 dark:text-slate-300 font-mono text-[11px]">{fmtUSD(baseline)}/d</span>
+        <span className="w-20 text-right text-gray-600 dark:text-gray-300 font-mono text-[11px]">{fmtUSD(baseline)}/d</span>
       </div>
       <div className="flex items-center gap-2 text-xs">
-        <span className="w-16 text-gray-500 dark:text-slate-400 shrink-0">Observado</span>
-        <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-slate-700 overflow-hidden">
+        <span className="w-16 text-gray-500 dark:text-gray-400 shrink-0">Observado</span>
+        <div className="flex-1 h-3 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
           <div className={`h-3 rounded-full ${barColor} transition-all duration-500`} style={{ width: `${actualPct}%` }} />
         </div>
         <span className="w-20 text-right font-mono text-[11px] font-semibold text-amber-500 dark:text-amber-400">{fmtUSD(actual)}/d</span>
@@ -41,16 +41,16 @@ const AnomalyCard = ({ anomaly, onAcknowledge, acknowledging }) => {
     <div className={`rounded-xl border p-4 transition-all duration-200 ${
       isOpen
         ? 'border-amber-500/40 bg-amber-500/5 dark:bg-amber-900/10'
-        : 'border-gray-200 bg-white dark:border-slate-700 dark:bg-slate-800/40 opacity-60'
+        : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800/40 opacity-60'
     }`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-start gap-3">
-          <div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${isOpen ? 'bg-amber-500/20' : 'bg-gray-100 dark:bg-slate-700'}`}>
-            <AlertTriangle size={16} className={isOpen ? 'text-amber-400' : 'text-gray-400 dark:text-slate-500'} />
+          <div className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${isOpen ? 'bg-amber-500/20' : 'bg-gray-100 dark:bg-gray-700'}`}>
+            <AlertTriangle size={16} className={isOpen ? 'text-amber-400' : 'text-gray-400 dark:text-gray-500'} />
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-sm font-semibold text-gray-900 dark:text-slate-100">{anomaly.service_name}</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{anomaly.service_name}</span>
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium uppercase ${
                 anomaly.provider === 'aws'   ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' :
                 anomaly.provider === 'azure' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' :
@@ -61,12 +61,12 @@ const AnomalyCard = ({ anomaly, onAcknowledge, acknowledging }) => {
               <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
                 isOpen
                   ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                  : 'bg-gray-100 text-gray-500 dark:bg-slate-700 dark:text-slate-400'
+                  : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
               }`}>
                 {isOpen ? 'Aberta' : 'Reconhecida'}
               </span>
             </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Detectada em {anomaly.detected_date ? new Date(anomaly.detected_date).toLocaleDateString('pt-BR') : '—'}
             </p>
             <div className="mt-1.5 flex items-center gap-2">
@@ -84,7 +84,7 @@ const AnomalyCard = ({ anomaly, onAcknowledge, acknowledging }) => {
             <button
               onClick={() => onAcknowledge(anomaly.id)}
               disabled={acknowledging}
-              className="flex-shrink-0 rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-700 disabled:opacity-50 transition-colors active:scale-[0.97]"
+              className="flex-shrink-0 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:opacity-50 transition-colors active:scale-[0.97]"
             >
               Reconhecer
             </button>
@@ -102,14 +102,14 @@ const AnomaliesTab = ({ anomaliesQ, anomalyScanMut, acknowledgeAnomalyMut, filte
     <PlanGate minPlan="pro" feature="Detecção de Anomalias">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <p className="text-sm text-gray-500 dark:text-slate-400 hidden sm:block">
+          <p className="text-sm text-gray-500 dark:text-gray-400 hidden sm:block">
             Picos detectados por análise estatística (3σ acima da baseline).
           </p>
           {/* Provider filter */}
-          <div className="flex rounded-lg border border-gray-200 dark:border-slate-700 overflow-hidden">
+          <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
             <button
               onClick={() => setFilterProvider('')}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors ${!filterProvider ? 'bg-primary text-white' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${!filterProvider ? 'bg-primary text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
             >
               Todos
             </button>
@@ -117,7 +117,7 @@ const AnomaliesTab = ({ anomaliesQ, anomalyScanMut, acknowledgeAnomalyMut, filte
               <button
                 key={p}
                 onClick={() => setFilterProvider(p === filterProvider ? '' : p)}
-                className={`px-3 py-1.5 text-xs font-medium uppercase border-l border-gray-200 dark:border-slate-700 transition-colors ${filterProvider === p ? 'bg-primary text-white' : 'text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'}`}
+                className={`px-3 py-1.5 text-xs font-medium uppercase border-l border-gray-200 dark:border-gray-700 transition-colors ${filterProvider === p ? 'bg-primary text-white' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'}`}
               >
                 {p}
               </button>

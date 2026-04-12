@@ -48,10 +48,10 @@ const WebhookModal = ({ initial, supportedEvents, onClose, onSaved }) => {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
       <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg">
         <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4">
-          <h2 className="font-semibold text-gray-900 dark:text-slate-100">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">
             {editing ? 'Editar Webhook' : 'Novo Webhook'}
           </h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-300 text-xl leading-none">&times;</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 text-xl leading-none">&times;</button>
         </div>
 
         <form onSubmit={submit} className="p-5 space-y-4">
@@ -62,25 +62,25 @@ const WebhookModal = ({ initial, supportedEvents, onClose, onSaved }) => {
           )}
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Nome *</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nome *</label>
             <input
               value={name} onChange={(e) => setName(e.target.value)}
               placeholder="Ex.: Slack Alerts"
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">URL do Endpoint *</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">URL do Endpoint *</label>
             <input
               value={url} onChange={(e) => setUrl(e.target.value)}
               placeholder="https://hooks.example.com/..."
-              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-2">Eventos *</label>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Eventos *</label>
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
               {supportedEvents.map((ev) => (
                 <label key={ev} className="flex items-center gap-2.5 cursor-pointer">
@@ -88,9 +88,9 @@ const WebhookModal = ({ initial, supportedEvents, onClose, onSaved }) => {
                     type="checkbox"
                     checked={events.includes(ev)}
                     onChange={() => toggleEvent(ev)}
-                    className="rounded border-gray-300 dark:border-gray-600 text-indigo-600 focus:ring-indigo-500"
+                    className="rounded border-gray-300 dark:border-gray-600 text-primary-dark focus:ring-primary"
                   />
-                  <span className="text-sm text-gray-700 dark:text-slate-300">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
                     <span className="font-mono text-xs bg-gray-100 dark:bg-gray-700 px-1.5 py-0.5 rounded mr-2">{ev}</span>
                     {EVENT_LABELS[ev] || ''}
                   </span>
@@ -101,7 +101,7 @@ const WebhookModal = ({ initial, supportedEvents, onClose, onSaved }) => {
 
           {editing && (
             <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-gray-700 dark:text-slate-300">Ativo</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Ativo</label>
               <button
                 type="button"
                 onClick={() => setActive((v) => !v)}
@@ -113,7 +113,7 @@ const WebhookModal = ({ initial, supportedEvents, onClose, onSaved }) => {
           )}
 
           <div className="flex justify-end gap-3 pt-2">
-            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+            <button type="button" onClick={onClose} className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
               Cancelar
             </button>
             <button

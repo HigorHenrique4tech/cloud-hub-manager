@@ -50,28 +50,28 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 shadow-2xl">
+      <div className="w-full max-w-sm rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-700 px-5 py-4">
+        <div className="flex items-center justify-between border-b border-gray-700 px-5 py-4">
           <div className="flex items-center gap-2">
             <BookmarkPlus size={18} className="text-primary-light" />
-            <h2 className="text-sm font-semibold text-slate-100">Salvar como Template</h2>
+            <h2 className="text-sm font-semibold text-gray-100">Salvar como Template</h2>
           </div>
-          <button onClick={onClose} className="text-slate-500 hover:text-slate-200 transition-colors">
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-200 transition-colors">
             <X size={16} />
           </button>
         </div>
 
         {/* Body */}
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <p className="text-xs text-slate-400">
-            Tipo: <span className="font-medium text-slate-300">{RESOURCE_LABEL[resourceType] || resourceType}</span>
+          <p className="text-xs text-gray-400">
+            Tipo: <span className="font-medium text-gray-300">{RESOURCE_LABEL[resourceType] || resourceType}</span>
             {' · '}
-            Provider: <span className="font-medium text-slate-300">{provider?.toUpperCase()}</span>
+            Provider: <span className="font-medium text-gray-300">{provider?.toUpperCase()}</span>
           </p>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">
+            <label className="block text-xs font-medium text-gray-400 mb-1">
               Nome do template <span className="text-red-400">*</span>
             </label>
             <input
@@ -80,18 +80,18 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
               onChange={(e) => setName(e.target.value)}
               placeholder="Ex: VM de dev padrão"
               maxLength={255}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-primary focus:outline-none"
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-primary focus:outline-none"
             />
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">Descrição (opcional)</label>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Descrição (opcional)</label>
             <input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Ex: Ubuntu 22.04 com 8GB RAM, SG padrão"
               maxLength={500}
-              className="w-full rounded-lg border border-slate-700 bg-slate-800 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:border-primary focus:outline-none"
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-primary focus:outline-none"
             />
           </div>
 
@@ -105,7 +105,7 @@ const SaveTemplateModal = ({ provider, resourceType, formConfig, onClose }) => {
             <button
               type="button"
               onClick={onClose}
-              className="rounded-lg border border-slate-600 px-4 py-2 text-sm text-slate-300 hover:text-white transition-colors"
+              className="rounded-lg border border-gray-600 px-4 py-2 text-sm text-gray-300 hover:text-white transition-colors"
             >
               Cancelar
             </button>

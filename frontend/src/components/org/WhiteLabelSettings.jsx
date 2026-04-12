@@ -143,13 +143,13 @@ export default function WhiteLabelSettings() {
             <Palette size={20} className="text-purple-500" />
           </div>
           <div>
-            <h3 className="text-base font-semibold text-gray-900 dark:text-slate-100">White Label</h3>
-            <p className="text-xs text-gray-500 dark:text-slate-400">Personalize a plataforma com a marca da sua empresa</p>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">White Label</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Personalize a plataforma com a marca da sua empresa</p>
           </div>
         </div>
         <button
           onClick={handleReset}
-          className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-slate-600 px-3 py-1.5 text-xs text-gray-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-300 hover:text-red-600 dark:hover:text-red-400 transition-colors"
         >
           <RotateCcw size={13} /> Resetar
         </button>
@@ -158,7 +158,7 @@ export default function WhiteLabelSettings() {
       {/* Platform Name */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
             <Type size={13} className="inline mr-1" /> Nome da Plataforma
           </label>
           <input
@@ -166,13 +166,13 @@ export default function WhiteLabelSettings() {
             onChange={(e) => setForm({ ...form, platform_name: e.target.value })}
             placeholder="CloudAtlas"
             maxLength={100}
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none"
           />
-          <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Será exibido na sidebar, header, e-mails e relatórios</p>
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Será exibido na sidebar, header, e-mails e relatórios</p>
         </div>
 
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
             <Mail size={13} className="inline mr-1" /> Nome do Remetente (E-mail)
           </label>
           <input
@@ -180,47 +180,47 @@ export default function WhiteLabelSettings() {
             onChange={(e) => setForm({ ...form, email_sender_name: e.target.value })}
             placeholder="CloudAtlas"
             maxLength={100}
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none"
           />
-          <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Aparece como remetente nos e-mails (ex: "MinhaEmpresa")</p>
+          <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">Aparece como remetente nos e-mails (ex: "MinhaEmpresa")</p>
         </div>
       </div>
 
       {/* Colors */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Cor Primária</label>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Cor Primária</label>
           <div className="flex items-center gap-3">
             <input
               type="color"
               value={form.color_primary}
               onChange={(e) => setForm({ ...form, color_primary: e.target.value })}
-              className="h-10 w-14 rounded-lg border border-gray-300 dark:border-slate-700 cursor-pointer"
+              className="h-10 w-14 rounded-lg border border-gray-300 dark:border-gray-700 cursor-pointer"
             />
             <input
               value={form.color_primary}
               onChange={(e) => setForm({ ...form, color_primary: e.target.value })}
               placeholder="#1E6FD9"
               maxLength={7}
-              className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+              className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none"
             />
           </div>
         </div>
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">Cor Accent</label>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">Cor Accent</label>
           <div className="flex items-center gap-3">
             <input
               type="color"
               value={form.color_accent}
               onChange={(e) => setForm({ ...form, color_accent: e.target.value })}
-              className="h-10 w-14 rounded-lg border border-gray-300 dark:border-slate-700 cursor-pointer"
+              className="h-10 w-14 rounded-lg border border-gray-300 dark:border-gray-700 cursor-pointer"
             />
             <input
               value={form.color_accent}
               onChange={(e) => setForm({ ...form, color_accent: e.target.value })}
               placeholder="#0EA5E9"
               maxLength={7}
-              className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+              className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm font-mono text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none"
             />
           </div>
         </div>
@@ -230,10 +230,10 @@ export default function WhiteLabelSettings() {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
         {/* Logo Light */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
             <Image size={13} className="inline mr-1" /> Logo (fundo claro)
           </label>
-          <div className="relative rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-4 text-center hover:border-primary transition-colors">
+          <div className="relative rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-4 text-center hover:border-primary transition-colors">
             {logoLight?.preview || (branding.is_white_labeled && branding.logo_light_url !== '/logo.png') ? (
               <div className="flex flex-col items-center gap-2">
                 <img src={logoLight?.preview || branding.logo_light_url} alt="Logo claro" className="h-16 object-contain" />
@@ -242,7 +242,7 @@ export default function WhiteLabelSettings() {
             ) : (
               <label className="cursor-pointer flex flex-col items-center gap-1.5">
                 <Upload size={20} className="text-gray-400" />
-                <span className="text-xs text-gray-500 dark:text-slate-400">PNG, SVG ou WEBP (max 300KB)</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">PNG, SVG ou WEBP (max 300KB)</span>
                 <input type="file" accept="image/png,image/svg+xml,image/webp" className="hidden" onChange={handleFileSelect(setLogoLight, 300)} />
               </label>
             )}
@@ -251,10 +251,10 @@ export default function WhiteLabelSettings() {
 
         {/* Logo Dark */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
             <Image size={13} className="inline mr-1" /> Logo (fundo escuro)
           </label>
-          <div className="relative rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-600 bg-slate-900 p-4 text-center hover:border-primary transition-colors">
+          <div className="relative rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 bg-gray-900 p-4 text-center hover:border-primary transition-colors">
             {logoDark?.preview || (branding.is_white_labeled && branding.logo_dark_url !== '/logoblack.png') ? (
               <div className="flex flex-col items-center gap-2">
                 <img src={logoDark?.preview || branding.logo_dark_url} alt="Logo escuro" className="h-16 object-contain" />
@@ -262,8 +262,8 @@ export default function WhiteLabelSettings() {
               </div>
             ) : (
               <label className="cursor-pointer flex flex-col items-center gap-1.5">
-                <Upload size={20} className="text-slate-500" />
-                <span className="text-xs text-slate-400">PNG, SVG ou WEBP (max 300KB)</span>
+                <Upload size={20} className="text-gray-500" />
+                <span className="text-xs text-gray-400">PNG, SVG ou WEBP (max 300KB)</span>
                 <input type="file" accept="image/png,image/svg+xml,image/webp" className="hidden" onChange={handleFileSelect(setLogoDark, 300)} />
               </label>
             )}
@@ -272,10 +272,10 @@ export default function WhiteLabelSettings() {
 
         {/* Favicon */}
         <div>
-          <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1.5">
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5">
             <Image size={13} className="inline mr-1" /> Favicon
           </label>
-          <div className="relative rounded-xl border-2 border-dashed border-gray-300 dark:border-slate-600 bg-white dark:bg-slate-800 p-4 text-center hover:border-primary transition-colors">
+          <div className="relative rounded-xl border-2 border-dashed border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 p-4 text-center hover:border-primary transition-colors">
             {favicon?.preview || branding.favicon_url ? (
               <div className="flex flex-col items-center gap-2">
                 <img src={favicon?.preview || branding.favicon_url} alt="Favicon" className="h-10 w-10 object-contain" />
@@ -284,7 +284,7 @@ export default function WhiteLabelSettings() {
             ) : (
               <label className="cursor-pointer flex flex-col items-center gap-1.5">
                 <Upload size={20} className="text-gray-400" />
-                <span className="text-xs text-gray-500 dark:text-slate-400">ICO ou PNG (max 100KB)</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">ICO ou PNG (max 100KB)</span>
                 <input type="file" accept="image/x-icon,image/png,image/vnd.microsoft.icon" className="hidden" onChange={handleFileSelect(setFavicon, 100)} />
               </label>
             )}
@@ -293,10 +293,10 @@ export default function WhiteLabelSettings() {
       </div>
 
       {/* Powered by toggle */}
-      <div className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 px-4 py-3">
+      <div className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-4 py-3">
         <div>
-          <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Powered by CloudAtlas</p>
-          <p className="text-xs text-gray-500 dark:text-slate-400">Exibir "Powered by CloudAtlas" no rodapé de e-mails e relatórios</p>
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Powered by CloudAtlas</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Exibir "Powered by CloudAtlas" no rodapé de e-mails e relatórios</p>
         </div>
         <button
           type="button"
@@ -304,7 +304,7 @@ export default function WhiteLabelSettings() {
           aria-checked={form.powered_by}
           onClick={() => setForm({ ...form, powered_by: !form.powered_by })}
           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-            form.powered_by ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'
+            form.powered_by ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'
           }`}
         >
           <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
@@ -314,9 +314,9 @@ export default function WhiteLabelSettings() {
       </div>
 
       {/* Live Preview */}
-      <div className="rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 overflow-hidden">
-        <div className="px-4 py-3 border-b border-gray-200 dark:border-slate-700">
-          <p className="text-xs font-medium text-gray-500 dark:text-slate-400 flex items-center gap-1.5"><Eye size={13} /> Preview</p>
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 overflow-hidden">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 flex items-center gap-1.5"><Eye size={13} /> Preview</p>
         </div>
         <div className="p-4 flex items-center gap-6">
           {/* Mini sidebar preview */}
@@ -333,14 +333,14 @@ export default function WhiteLabelSettings() {
             </div>
           </div>
           {/* Mini email preview */}
-          <div className="flex-1 rounded-lg border border-gray-200 dark:border-slate-600 overflow-hidden">
+          <div className="flex-1 rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
             <div className="px-3 py-2 text-xs" style={{ background: `linear-gradient(135deg, ${form.color_primary}, #1e293b)`, color: '#fff' }}>
               <strong>{form.platform_name || 'CloudAtlas'}</strong> — Gestão Multi-Cloud
             </div>
-            <div className="px-3 py-2 text-xs text-gray-600 dark:text-slate-300">
+            <div className="px-3 py-2 text-xs text-gray-600 dark:text-gray-300">
               Olá, esta é uma prévia do e-mail...
             </div>
-            <div className="px-3 py-1.5 border-t border-gray-100 dark:border-slate-700 text-center text-[10px] text-gray-400">
+            <div className="px-3 py-1.5 border-t border-gray-100 dark:border-gray-700 text-center text-[10px] text-gray-400">
               {form.platform_name || 'CloudAtlas'} — Gerenciamento multi-cloud
               {form.powered_by && ' · Powered by CloudAtlas'}
             </div>
@@ -360,7 +360,7 @@ export default function WhiteLabelSettings() {
         <button
           onClick={handleTestEmail}
           disabled={sendingTest || saving}
-          className="flex items-center gap-2 rounded-lg border border-gray-300 dark:border-slate-600 px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-slate-200 hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-60 transition-colors"
+          className="flex items-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-60 transition-colors"
         >
           <Send size={14} />
           {sendingTest ? 'Enviando…' : 'Testar E-mail'}

@@ -17,7 +17,7 @@ const RESOURCE_TYPE_MAP = {
   virtualMachines:      { icon: Server,     color: 'text-blue-500',   bg: 'bg-blue-50 dark:bg-blue-900/20' },
   storageAccounts:      { icon: HardDrive,  color: 'text-amber-500',  bg: 'bg-amber-50 dark:bg-amber-900/20' },
   servers:              { icon: Database,   color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
-  managedClusters:      { icon: Cpu,        color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
+  managedClusters:      { icon: Cpu,        color: 'text-primary', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
   virtualNetworks:      { icon: Network,    color: 'text-teal-500',   bg: 'bg-teal-50 dark:bg-teal-900/20' },
   sites:                { icon: Globe,      color: 'text-green-500',  bg: 'bg-green-50 dark:bg-green-900/20' },
   vaults:               { icon: Cloud,      color: 'text-sky-500',    bg: 'bg-sky-50 dark:bg-sky-900/20' },

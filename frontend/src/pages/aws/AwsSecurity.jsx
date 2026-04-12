@@ -23,14 +23,14 @@ const SeverityBadge = ({ severity }) => {
 };
 
 const FindingRow = ({ f }) => (
-  <tr className="border-b border-gray-100 dark:border-slate-800 hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors">
+  <tr className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
     <td className="px-4 py-3 w-28"><SeverityBadge severity={f.severity} /></td>
     <td className="px-4 py-3">
-      <p className="text-sm font-medium text-gray-800 dark:text-slate-200">{f.resource_name}</p>
-      <p className="text-xs text-gray-400 dark:text-slate-500">{f.resource_type} {f.region ? `· ${f.region}` : ''}</p>
+      <p className="text-sm font-medium text-gray-800 dark:text-gray-200">{f.resource_name}</p>
+      <p className="text-xs text-gray-400 dark:text-gray-500">{f.resource_type} {f.region ? `· ${f.region}` : ''}</p>
     </td>
-    <td className="px-4 py-3 text-sm text-gray-600 dark:text-slate-300">{f.issue}</td>
-    <td className="px-4 py-3 text-xs text-gray-500 dark:text-slate-400 max-w-xs">{f.recommendation}</td>
+    <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-300">{f.issue}</td>
+    <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 max-w-xs">{f.recommendation}</td>
   </tr>
 );
 
@@ -57,8 +57,8 @@ const AwsSecurity = () => {
               <ShieldAlert size={20} className="text-orange-600 dark:text-orange-400" />
             </div>
             <div>
-              <h1 className="text-lg font-semibold text-gray-900 dark:text-slate-100">Verificação de Segurança — AWS</h1>
-              <p className="text-xs text-gray-500 dark:text-slate-400">
+              <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Verificação de Segurança — AWS</h1>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
                 S3 público · Security Groups abertos · Access keys root
               </p>
             </div>
@@ -76,7 +76,7 @@ const AwsSecurity = () => {
         {/* Summary badges (only after scan) */}
         {isSuccess && (
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm text-gray-500 dark:text-slate-400">
+            <span className="text-sm text-gray-500 dark:text-gray-400">
               {data?.scanned_at ? `Escaneado em ${new Date(data.scanned_at).toLocaleString('pt-BR')}` : ''}
             </span>
             {criticals > 0 && (
@@ -127,12 +127,12 @@ const AwsSecurity = () => {
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full">
-                <thead className="bg-gray-50 dark:bg-slate-900/50 border-b border-gray-200 dark:border-slate-700">
+                <thead className="bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-700">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Severity</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Recurso</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Problema</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase">Recomendação</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Severity</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Recurso</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Problema</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">Recomendação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -144,7 +144,7 @@ const AwsSecurity = () => {
         </div>
 
         {/* Info note */}
-        <div className="flex items-start gap-2 text-xs text-gray-400 dark:text-slate-500">
+        <div className="flex items-start gap-2 text-xs text-gray-400 dark:text-gray-500">
           <Info size={13} className="mt-0.5 flex-shrink-0" />
           <span>
             Verificações incluem: S3 Block Public Access, Security Groups com 0.0.0.0/0 em SSH/RDP, e access keys ativas na conta root.

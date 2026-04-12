@@ -83,7 +83,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
         {/* Toolbar */}
         <div className="no-print sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 rounded-t-xl">
           <h2 className="text-base font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <FileText className="w-5 h-5 text-indigo-500" />
+            <FileText className="w-5 h-5 text-primary" />
             Relatório Detalhado de Custos
           </h2>
           <div className="flex items-center gap-2">
@@ -120,7 +120,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           </div>
 
           {/* ── Report header ── */}
-          <div className="flex items-start justify-between border-b-2 border-indigo-600 pb-4">
+          <div className="flex items-start justify-between border-b-2 border-primary pb-4">
             <div>
               <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Relatório de Custos Cloud</h1>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
@@ -131,7 +131,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
               <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Gerado em: {generatedAt}</p>
             </div>
             <div className="text-right">
-              <p className="text-xs uppercase tracking-widest text-indigo-500 font-semibold">{branding.platform_name}</p>
+              <p className="text-xs uppercase tracking-widest text-primary font-semibold">{branding.platform_name}</p>
               <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mt-1">{fmtUSD(data.total)}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500">total no período</p>
             </div>
@@ -140,7 +140,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           {/* ── Summary cards ── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Total do Período', value: fmtUSD(metrics.total),      sub: periodLabel,                   color: 'text-indigo-600 dark:text-primary-light' },
+              { label: 'Total do Período', value: fmtUSD(metrics.total),      sub: periodLabel,                   color: 'text-primary-dark dark:text-primary-light' },
               { label: 'Média Diária',     value: fmtUSD(metrics.avgDaily),    sub: `${days} dias`,                color: 'text-green-600 dark:text-green-400'   },
               { label: 'Projeção Mensal',  value: fmtUSD(metrics.projection),  sub: 'baseado na média',            color: 'text-purple-600 dark:text-purple-400' },
               {
@@ -198,7 +198,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           {data.combined?.length > 0 && (
             <div>
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-indigo-500" />
+                <TrendingUp className="w-4 h-4 text-primary" />
                 Evolução Diária de Gastos
               </h2>
               <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50/30 dark:bg-gray-800/30">
@@ -223,7 +223,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           {topServices.length > 0 && (
             <div>
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-                <DollarSign className="w-4 h-4 text-indigo-500" />
+                <DollarSign className="w-4 h-4 text-primary" />
                 Breakdown por Serviço (Top {topServices.length})
               </h2>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

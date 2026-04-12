@@ -45,30 +45,30 @@ const AddPartnerModal = ({ onClose, onSave, saving }) => {
   const [name, setName] = useState('');
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Adicionar Organização Parceira</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white">
+      <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Adicionar Organização Parceira</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
             <X size={18} />
           </button>
         </div>
         <div className="px-5 py-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Nome da organização</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nome da organização</label>
             <input
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && name.trim() && onSave(name.trim())}
               placeholder="Ex: TechCorp Solutions"
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none"
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none"
             />
-            <p className="mt-1.5 text-xs text-gray-400 dark:text-slate-500">
+            <p className="mt-1.5 text-xs text-gray-400 dark:text-gray-500">
               Um workspace padrão será criado automaticamente. Você será adicionado como owner.
             </p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+            <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
             <button onClick={() => name.trim() && onSave(name.trim())} disabled={saving || !name.trim()}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors">
               {saving ? 'Criando…' : 'Criar Parceira'}
@@ -86,21 +86,21 @@ const RemoveConfirmModal = ({ org, onClose, onConfirm, removing }) => {
   useEscapeKey(true, onClose);
   return (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-    <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl p-6 space-y-4">
+    <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl p-6 space-y-4">
       <div className="flex items-center gap-3">
         <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/30">
           <AlertTriangle size={20} className="text-red-500" />
         </div>
         <div>
-          <p className="text-sm font-semibold text-gray-900 dark:text-slate-100">Remover organização parceira?</p>
-          <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">{org.name}</p>
+          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Remover organização parceira?</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{org.name}</p>
         </div>
       </div>
-      <p className="text-sm text-gray-600 dark:text-slate-300">
+      <p className="text-sm text-gray-600 dark:text-gray-300">
         A organização será desvinculada e seu plano será revertido para <strong>Free</strong>. Os dados internos não serão apagados.
       </p>
       <div className="flex justify-end gap-2">
-        <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+        <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
         <button onClick={onConfirm} disabled={removing}
           className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60 transition-colors">
           {removing ? 'Removendo…' : 'Remover'}
@@ -118,21 +118,21 @@ const EditPartnerModal = ({ org, onClose, onSave, saving }) => {
   const [name, setName] = useState(org.name);
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Editar Organização</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white"><X size={18} /></button>
+      <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Editar Organização</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"><X size={18} /></button>
         </div>
         <div className="px-5 py-4 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Nome da organização</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nome da organização</label>
             <input autoFocus value={name} onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && name.trim() && onSave(name.trim())}
-              className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none" />
-            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500 font-mono">slug: {org.slug} (não muda)</p>
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none" />
+            <p className="mt-1 text-xs text-gray-400 dark:text-gray-500 font-mono">slug: {org.slug} (não muda)</p>
           </div>
           <div className="flex justify-end gap-2 pt-1">
-            <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+            <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
             <button onClick={() => name.trim() && onSave(name.trim())} disabled={saving || !name.trim() || name === org.name}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors">
               {saving ? 'Salvando…' : 'Salvar'}
@@ -151,17 +151,17 @@ const NotesModal = ({ org, onClose, onSave, saving }) => {
   const [notes, setNotes] = useState(org.notes || '');
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Notas internas — {org.name}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white"><X size={18} /></button>
+      <div className="w-full max-w-md rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Notas internas — {org.name}</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"><X size={18} /></button>
         </div>
         <div className="px-5 py-4 space-y-4">
           <textarea autoFocus value={notes} onChange={(e) => setNotes(e.target.value)} rows={5}
             placeholder="Notas sobre o contrato, contato, SLA, observações internas…"
-            className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none resize-none" />
+            className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none resize-none" />
           <div className="flex justify-end gap-2">
-            <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+            <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
             <button onClick={() => onSave(notes)} disabled={saving}
               className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-dark disabled:opacity-60 transition-colors">
               {saving ? 'Salvando…' : 'Salvar nota'}
@@ -188,72 +188,72 @@ const BrandingPartnerModal = ({ org, onClose, onSave, saving }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-200 dark:border-slate-700 px-5 py-4">
+      <div className="w-full max-w-lg rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4">
           <div className="flex items-center gap-2">
             <Palette size={18} className="text-purple-500" />
-            <h2 className="text-base font-semibold text-gray-900 dark:text-slate-100">Personalizar Marca — {org.name}</h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Personalizar Marca — {org.name}</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-slate-400 dark:hover:text-white"><X size={18} /></button>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"><X size={18} /></button>
         </div>
         <div className="px-5 py-4 space-y-4 max-h-[70vh] overflow-y-auto">
-          <div className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-slate-700 px-4 py-3">
+          <div className="flex items-center justify-between rounded-lg border border-gray-200 dark:border-gray-700 px-4 py-3">
             <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-slate-100">Herdar marca da org principal</p>
-              <p className="text-xs text-gray-500 dark:text-slate-400">Quando ativo, usa a personalização da organização master</p>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Herdar marca da org principal</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Quando ativo, usa a personalização da organização master</p>
             </div>
             <button type="button" role="switch" aria-checked={inherit} onClick={() => setInherit(!inherit)}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${inherit ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'}`}>
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${inherit ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'}`}>
               <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${inherit ? 'translate-x-6' : 'translate-x-1'}`} />
             </button>
           </div>
           {!inherit && (
             <>
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Nome da Plataforma</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nome da Plataforma</label>
                 <input value={form.platform_name} onChange={(e) => setForm({ ...form, platform_name: e.target.value })}
                   placeholder="Herdar da org principal" maxLength={100}
-                  className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none" />
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Cor Primária</label>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cor Primária</label>
                   <div className="flex items-center gap-2">
                     <input type="color" value={form.color_primary} onChange={(e) => setForm({ ...form, color_primary: e.target.value })}
-                      className="h-9 w-12 rounded border border-gray-300 dark:border-slate-700 cursor-pointer" />
+                      className="h-9 w-12 rounded border border-gray-300 dark:border-gray-700 cursor-pointer" />
                     <input value={form.color_primary} onChange={(e) => setForm({ ...form, color_primary: e.target.value })}
-                      maxLength={7} className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-mono text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none" />
+                      maxLength={7} className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs font-mono text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none" />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Cor Accent</label>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cor Accent</label>
                   <div className="flex items-center gap-2">
                     <input type="color" value={form.color_accent} onChange={(e) => setForm({ ...form, color_accent: e.target.value })}
-                      className="h-9 w-12 rounded border border-gray-300 dark:border-slate-700 cursor-pointer" />
+                      className="h-9 w-12 rounded border border-gray-300 dark:border-gray-700 cursor-pointer" />
                     <input value={form.color_accent} onChange={(e) => setForm({ ...form, color_accent: e.target.value })}
-                      maxLength={7} className="flex-1 rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-2 py-1.5 text-xs font-mono text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none" />
+                      maxLength={7} className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs font-mono text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none" />
                   </div>
                 </div>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-sm text-gray-700 dark:text-slate-300">Powered by CloudAtlas</span>
+                <span className="text-sm text-gray-700 dark:text-gray-300">Powered by CloudAtlas</span>
                 <button type="button" role="switch" aria-checked={form.powered_by}
                   onClick={() => setForm({ ...form, powered_by: !form.powered_by })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.powered_by ? 'bg-primary' : 'bg-gray-300 dark:bg-slate-600'}`}>
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${form.powered_by ? 'bg-primary' : 'bg-gray-300 dark:bg-gray-600'}`}>
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${form.powered_by ? 'translate-x-6' : 'translate-x-1'}`} />
                 </button>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500 dark:text-slate-400 mb-1">Remetente de E-mail</label>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Remetente de E-mail</label>
                 <input value={form.email_sender_name} onChange={(e) => setForm({ ...form, email_sender_name: e.target.value })}
                   placeholder="Herdar da org principal" maxLength={100}
-                  className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-sm text-gray-900 dark:text-slate-100 focus:border-primary focus:outline-none" />
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-primary focus:outline-none" />
               </div>
             </>
           )}
         </div>
-        <div className="flex justify-end gap-2 border-t border-gray-200 dark:border-slate-700 px-5 py-4">
-          <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+        <div className="flex justify-end gap-2 border-t border-gray-200 dark:border-gray-700 px-5 py-4">
+          <button onClick={onClose} className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
           <button onClick={() => inherit ? onSave(null) : onSave(form)} disabled={saving}
             className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-500 disabled:opacity-60 transition-colors">
             {saving ? 'Salvando…' : 'Salvar'}
@@ -280,14 +280,14 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
 
   return (
     <div
-      className={`rounded-xl border bg-white dark:bg-slate-800/60 p-5 flex flex-col gap-3 transition-all ${
+      className={`rounded-xl border bg-white dark:bg-gray-800/60 p-5 flex flex-col gap-3 transition-all ${
         batchMode && isSelected
           ? 'border-primary ring-2 ring-primary/30'
           : !org.is_active
           ? 'border-red-300/50 dark:border-red-800/40 opacity-70'
           : isAddon
           ? 'border-amber-400/50 dark:border-amber-500/40 hover:border-amber-400 dark:hover:border-amber-500/60'
-          : 'border-gray-300 dark:border-slate-700 hover:border-gray-400 dark:hover:border-slate-600 shadow-sm'
+          : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 shadow-sm'
       }`}
       onClick={batchMode ? () => onToggleSelect(org.slug) : undefined}
       style={batchMode ? { cursor: 'pointer' } : undefined}
@@ -299,7 +299,7 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
           <button onClick={(e) => { e.stopPropagation(); onToggleSelect(org.slug); }} className="flex-shrink-0">
             {isSelected
               ? <CheckSquare size={18} className="text-primary" />
-              : <Square size={18} className="text-gray-400 dark:text-slate-600" />
+              : <Square size={18} className="text-gray-400 dark:text-gray-600" />
             }
           </button>
         )}
@@ -345,23 +345,23 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
             <Building2 size={18} className={isAddon ? 'text-amber-500' : 'text-primary-light'} />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900 dark:text-slate-100 truncate">{org.name}</p>
-            <p className="text-xs text-gray-500 dark:text-slate-500 font-mono truncate">{org.slug}</p>
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{org.name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-500 font-mono truncate">{org.slug}</p>
           </div>
         </div>
         {!batchMode && (
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => onEdit(org)} className="p-1.5 text-gray-500 dark:text-slate-600 hover:text-indigo-600 dark:hover:text-primary-light hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors rounded" title="Renomear">
+            <button onClick={() => onEdit(org)} className="p-1.5 text-gray-500 dark:text-gray-600 hover:text-primary-dark dark:hover:text-primary-light hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors rounded" title="Renomear">
               <Pencil size={14} />
             </button>
-            <button onClick={() => onNotes(org)} className="p-1.5 text-gray-500 dark:text-slate-600 hover:text-yellow-600 dark:hover:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-500/10 transition-colors rounded" title="Notas internas">
+            <button onClick={() => onNotes(org)} className="p-1.5 text-gray-500 dark:text-gray-600 hover:text-yellow-600 dark:hover:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-500/10 transition-colors rounded" title="Notas internas">
               <StickyNote size={14} />
             </button>
             <button onClick={() => onBranding(org)} title="Personalizar marca"
-              className="p-1.5 rounded-lg text-gray-500 dark:text-slate-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors">
+              className="p-1.5 rounded-lg text-gray-500 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors">
               <Palette size={15} />
             </button>
-            <button onClick={() => onRemove(org)} className="p-1.5 text-gray-500 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors rounded" title="Remover parceira">
+            <button onClick={() => onRemove(org)} className="p-1.5 text-gray-500 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors rounded" title="Remover parceira">
               <Trash2 size={14} />
             </button>
           </div>
@@ -371,54 +371,54 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
       {/* Owner info */}
       {org.owner_name && (
         <div className="flex items-center gap-2 px-1">
-          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-primary-light text-[10px] font-bold flex-shrink-0">
+          <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary-50 dark:bg-indigo-900/30 text-primary-dark dark:text-primary-light text-[10px] font-bold flex-shrink-0">
             {initials(org.owner_name)}
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-medium text-gray-700 dark:text-slate-300 truncate">{org.owner_name}</p>
-            {org.owner_email && <p className="text-[10px] text-gray-500 dark:text-slate-500 truncate">{org.owner_email}</p>}
+            <p className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{org.owner_name}</p>
+            {org.owner_email && <p className="text-[10px] text-gray-500 dark:text-gray-500 truncate">{org.owner_email}</p>}
           </div>
         </div>
       )}
 
       {/* Notes preview */}
       {org.notes && (
-        <p className="text-xs text-gray-500 dark:text-slate-400 italic line-clamp-2 px-1 border-l-2 border-yellow-300 dark:border-yellow-600 pl-2">
+        <p className="text-xs text-gray-500 dark:text-gray-400 italic line-clamp-2 px-1 border-l-2 border-yellow-300 dark:border-yellow-600 pl-2">
           {org.notes}
         </p>
       )}
 
       {/* Connection health bar */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 h-1.5 bg-gray-200 dark:bg-slate-700 rounded-full overflow-hidden">
+        <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
           {org.cloud_accounts_count > 0 ? (
             <div className="h-full bg-green-500 rounded-full" style={{ width: '100%' }} />
           ) : (
             <div className="h-full bg-red-400 rounded-full" style={{ width: '100%' }} />
           )}
         </div>
-        <span className="text-[10px] text-gray-500 dark:text-slate-500 whitespace-nowrap font-medium">
+        <span className="text-[10px] text-gray-500 dark:text-gray-500 whitespace-nowrap font-medium">
           {org.cloud_accounts_count} conta{org.cloud_accounts_count !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg bg-gray-100 dark:bg-slate-700/50 px-2 py-1.5 text-center">
-          <p className="text-base font-bold text-gray-900 dark:text-slate-100">{org.workspaces_count}</p>
-          <p className="text-[10px] text-gray-600 dark:text-slate-500 flex items-center justify-center gap-0.5 font-medium">
+        <div className="rounded-lg bg-gray-100 dark:bg-gray-700/50 px-2 py-1.5 text-center">
+          <p className="text-base font-bold text-gray-900 dark:text-gray-100">{org.workspaces_count}</p>
+          <p className="text-[10px] text-gray-600 dark:text-gray-500 flex items-center justify-center gap-0.5 font-medium">
             <Layers size={9} /> Workspaces
           </p>
         </div>
-        <div className="rounded-lg bg-gray-100 dark:bg-slate-700/50 px-2 py-1.5 text-center">
-          <p className="text-base font-bold text-gray-900 dark:text-slate-100">{org.cloud_accounts_count}</p>
-          <p className="text-[10px] text-gray-600 dark:text-slate-500 flex items-center justify-center gap-0.5 font-medium">
+        <div className="rounded-lg bg-gray-100 dark:bg-gray-700/50 px-2 py-1.5 text-center">
+          <p className="text-base font-bold text-gray-900 dark:text-gray-100">{org.cloud_accounts_count}</p>
+          <p className="text-[10px] text-gray-600 dark:text-gray-500 flex items-center justify-center gap-0.5 font-medium">
             <Cloud size={9} /> Contas
           </p>
         </div>
-        <div className="rounded-lg bg-gray-100 dark:bg-slate-700/50 px-2 py-1.5 text-center">
-          <p className="text-base font-bold text-gray-900 dark:text-slate-100">{org.members_count}</p>
-          <p className="text-[10px] text-gray-600 dark:text-slate-500 flex items-center justify-center gap-0.5 font-medium">
+        <div className="rounded-lg bg-gray-100 dark:bg-gray-700/50 px-2 py-1.5 text-center">
+          <p className="text-base font-bold text-gray-900 dark:text-gray-100">{org.members_count}</p>
+          <p className="text-[10px] text-gray-600 dark:text-gray-500 flex items-center justify-center gap-0.5 font-medium">
             <Users size={9} /> Membros
           </p>
         </div>
@@ -426,9 +426,9 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
 
       {/* Footer */}
       <div className="flex items-center justify-between">
-        <div className="text-xs text-gray-500 dark:text-slate-500">
+        <div className="text-xs text-gray-500 dark:text-gray-500">
           <p>Criada em {fmtDate(org.created_at)}</p>
-          {activityAgo && <p className="text-[10px] text-gray-500 dark:text-slate-500">Atividade: {activityAgo}</p>}
+          {activityAgo && <p className="text-[10px] text-gray-500 dark:text-gray-500">Atividade: {activityAgo}</p>}
         </div>
         {!batchMode && (
           <button onClick={() => onAccess(org)}
@@ -465,7 +465,7 @@ const M365TenantsTab = ({ orgSlug, onAccess }) => {
 
   if (tenants.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-slate-500">
+      <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
         <Grid3x3 size={48} className="mb-4 opacity-20" />
         <p className="text-base font-medium">Nenhuma organização parceira encontrada</p>
         <p className="text-sm mt-1">Adicione parceiros para visualizar seus tenants M365</p>
@@ -475,40 +475,40 @@ const M365TenantsTab = ({ orgSlug, onAccess }) => {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-500 dark:text-slate-400">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
         {connectedCount} de {tenants.length} workspace(s) com M365 conectado
       </p>
       <div className="card rounded-2xl overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
-          <thead className="bg-gray-50 dark:bg-slate-800/60">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-800/60">
             <tr>
               {['Organização', 'Workspace', 'Tenant', 'Usuários', 'Licenças', 'Equipes', 'Status'].map((h) => (
-                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 dark:divide-slate-700">
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {tenants.map((t, i) => (
-              <tr key={i} className="hover:bg-gray-50 dark:hover:bg-slate-800/40">
+              <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/40">
                 <td className="px-4 py-3">
-                  <button onClick={() => onAccess(t.org_slug)} className="text-sm font-medium text-indigo-600 dark:text-primary-light hover:underline">
+                  <button onClick={() => onAccess(t.org_slug)} className="text-sm font-medium text-primary-dark dark:text-primary-light hover:underline">
                     {t.org_name}
                   </button>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-500 dark:text-slate-400">{t.workspace_name}</td>
-                <td className="px-4 py-3 text-xs text-gray-400 dark:text-slate-500 font-mono">{t.tenant_domain || '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">{t.overview?.total_users ?? '—'}</td>
-                <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{t.workspace_name}</td>
+                <td className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-mono">{t.tenant_domain || '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{t.overview?.total_users ?? '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
                   {t.overview ? `${t.overview.assigned_licenses} / ${t.overview.total_licenses}` : '—'}
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-700 dark:text-slate-300">{t.overview?.total_teams ?? '—'}</td>
+                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{t.overview?.total_teams ?? '—'}</td>
                 <td className="px-4 py-3">
                   {t.error ? (
                     <span className="flex items-center gap-1 text-xs text-red-500"><XCircle size={12} /> Erro</span>
                   ) : t.connected ? (
                     <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle size={12} /> Conectado</span>
                   ) : (
-                    <span className="text-xs text-gray-400 dark:text-slate-500">Não configurado</span>
+                    <span className="text-xs text-gray-400 dark:text-gray-500">Não configurado</span>
                   )}
                 </td>
               </tr>
@@ -527,19 +527,19 @@ const Pagination = ({ pagination, onPageChange }) => {
   const { page, total_pages, total } = pagination;
   return (
     <div className="flex items-center justify-between py-2">
-      <p className="text-xs text-gray-400 dark:text-slate-500">
+      <p className="text-xs text-gray-400 dark:text-gray-500">
         {total} organização{total !== 1 ? 'ões' : ''}
       </p>
       <div className="flex items-center gap-2">
         <button onClick={() => onPageChange(page - 1)} disabled={page <= 1}
-          className="p-1.5 rounded-lg border border-gray-300 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+          className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
           <ChevronLeft size={14} />
         </button>
-        <span className="text-xs text-gray-600 dark:text-slate-300 font-medium">
+        <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">
           {page} de {total_pages}
         </span>
         <button onClick={() => onPageChange(page + 1)} disabled={page >= total_pages}
-          className="p-1.5 rounded-lg border border-gray-300 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+          className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
           <ChevronRight size={14} />
         </button>
       </div>
@@ -552,11 +552,11 @@ const Pagination = ({ pagination, onPageChange }) => {
 const BatchActionBar = ({ selectedCount, onSuspend, onActivate, onCancel, isPending }) => {
   if (selectedCount === 0) return null;
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-slate-700 bg-white/95 dark:bg-slate-900/95 backdrop-blur-lg shadow-2xl px-5 py-3">
-      <span className="text-sm font-semibold text-gray-700 dark:text-slate-200">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 flex items-center gap-3 rounded-2xl border border-gray-200 dark:border-gray-700 bg-white/95 dark:bg-gray-900/95 backdrop-blur-lg shadow-2xl px-5 py-3">
+      <span className="text-sm font-semibold text-gray-700 dark:text-gray-200">
         {selectedCount} selecionada{selectedCount > 1 ? 's' : ''}
       </span>
-      <div className="w-px h-5 bg-gray-200 dark:bg-slate-700" />
+      <div className="w-px h-5 bg-gray-200 dark:bg-gray-700" />
       <button onClick={onSuspend} disabled={isPending}
         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 disabled:opacity-50 transition-colors">
         <PowerOff size={13} /> Suspender
@@ -566,7 +566,7 @@ const BatchActionBar = ({ selectedCount, onSuspend, onActivate, onCancel, isPend
         <Power size={13} /> Reativar
       </button>
       <button onClick={onCancel}
-        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
         <X size={13} /> Cancelar
       </button>
     </div>
@@ -727,19 +727,19 @@ const ManagedOrgsPage = () => {
               <Building2 size={22} className="text-primary-light" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-slate-100">Organizações Gerenciadas</h1>
-              <p className="text-sm text-gray-500 dark:text-slate-400">
+              <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Organizações Gerenciadas</h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
                 Gerencie organizações parceiras vinculadas à sua conta Enterprise
               </p>
             </div>
           </div>
           <div className="flex items-center gap-3">
             {/* Auto-refresh indicator */}
-            <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400 dark:text-slate-500">
+            <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
               {orgsQ.isFetching && <RefreshCw size={12} className="animate-spin" />}
               {timeAgo && !orgsQ.isFetching && <span>Atualizado {timeAgo}</span>}
               <button onClick={() => orgsQ.refetch()} title="Atualizar agora"
-                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
+                className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                 <RefreshCw size={13} />
               </button>
             </div>
@@ -753,7 +753,7 @@ const ManagedOrgsPage = () => {
         </div>
 
         {/* View tabs */}
-        <div className="flex gap-1 border-b border-gray-200 dark:border-slate-700">
+        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
           {[
             { id: 'orgs', label: 'Organizações Parceiras', icon: Building2 },
             { id: 'm365', label: 'Tenants M365', icon: Grid3x3 },
@@ -761,8 +761,8 @@ const ManagedOrgsPage = () => {
             <button key={id} onClick={() => setActiveView(id)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 activeView === id
-                  ? 'border-primary text-indigo-600 dark:text-primary-light'
-                  : 'border-transparent text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'
+                  ? 'border-primary text-primary-dark dark:text-primary-light'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
               }`}>
               <Icon size={14} /> {label}
             </button>
@@ -778,10 +778,10 @@ const ManagedOrgsPage = () => {
               { label: 'Contas cloud', value: summary.total_cloud_accounts, sub: 'em todas as parceiras' },
               { label: 'Membros', value: summary.total_members, sub: 'em todas as parceiras' },
             ].map(({ label, value, sub }) => (
-              <div key={label} className="rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800/60 p-4 shadow-sm">
-                <p className="text-2xl font-bold text-gray-900 dark:text-slate-100">{value}</p>
-                <p className="text-sm font-medium text-gray-700 dark:text-slate-300 mt-0.5">{label}</p>
-                <p className="text-xs text-gray-500 dark:text-slate-500 mt-0.5">{sub}</p>
+              <div key={label} className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm">
+                <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{value}</p>
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5">{label}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">{sub}</p>
               </div>
             ))}
           </div>
@@ -800,7 +800,7 @@ const ManagedOrgsPage = () => {
           orgsQ.isLoading ? (
             <div className="flex justify-center py-16"><LoadingSpinner /></div>
           ) : managedOrgs.length === 0 && !debouncedSearch ? (
-            <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-slate-500">
+            <div className="flex flex-col items-center justify-center py-20 text-gray-400 dark:text-gray-500">
               <Building2 size={48} className="mb-4 opacity-20" />
               <p className="text-base font-medium">Nenhuma organização parceira ainda</p>
               <p className="text-sm mt-1 mb-4">Adicione parceiros para gerenciar suas infraestruturas centralizadamente</p>
@@ -817,12 +817,12 @@ const ManagedOrgsPage = () => {
                   <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
                   <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
                     placeholder="Buscar por nome ou slug…"
-                    className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                    className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary" />
                 </div>
                 <div className="flex items-center gap-2">
                   <ArrowUpDown size={13} className="text-gray-400" />
                   <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}
-                    className="text-sm rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
                     <option value="recent">Mais recente</option>
                     <option value="name">Nome A-Z</option>
                   </select>
@@ -831,7 +831,7 @@ const ManagedOrgsPage = () => {
                   className={`flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border transition-colors ${
                     batchMode
                       ? 'border-primary bg-primary/10 text-primary'
-                      : 'border-gray-300 dark:border-slate-600 text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'
+                      : 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800'
                   }`}>
                   <CheckSquare size={13} /> {batchMode ? 'Selecionando' : 'Selecionar'}
                 </button>
@@ -839,7 +839,7 @@ const ManagedOrgsPage = () => {
 
               {/* Batch select all */}
               {batchMode && managedOrgs.length > 0 && (
-                <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-slate-400">
+                <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
                   <button onClick={selectedOrgs.size === managedOrgs.length ? deselectAll : selectAll}
                     className="text-primary hover:underline font-medium">
                     {selectedOrgs.size === managedOrgs.length ? 'Limpar seleção' : 'Selecionar todos'}
@@ -876,7 +876,7 @@ const ManagedOrgsPage = () => {
 
               {/* No results for search */}
               {managedOrgs.length === 0 && debouncedSearch && (
-                <div className="text-center py-12 text-gray-400 dark:text-slate-500">
+                <div className="text-center py-12 text-gray-400 dark:text-gray-500">
                   <Search size={32} className="mx-auto mb-3 opacity-30" />
                   <p className="text-sm">Nenhum resultado para "{debouncedSearch}"</p>
                 </div>

@@ -15,7 +15,7 @@ import { alertService } from '../services/alertService';
 const TYPE_META = {
   anomaly:        { Icon: TrendingDown,   color: 'text-red-500',    bg: 'bg-red-50 dark:bg-red-900/20',        label: 'Anomalia',              group: 'FinOps' },
   budget:         { Icon: Wallet,         color: 'text-yellow-500', bg: 'bg-yellow-50 dark:bg-yellow-900/20',  label: 'Orçamento',             group: 'FinOps' },
-  finops_scan:    { Icon: Zap,            color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20',  label: 'FinOps Scan',           group: 'FinOps' },
+  finops_scan:    { Icon: Zap,            color: 'text-primary', bg: 'bg-indigo-50 dark:bg-indigo-900/20',  label: 'FinOps Scan',           group: 'FinOps' },
   cost_alert:     { Icon: Bell,           color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-900/20',  label: 'Alerta de Custo',       group: 'FinOps' },
   security_alert: { Icon: ShieldAlert,    color: 'text-red-600',    bg: 'bg-red-50 dark:bg-red-900/20',        label: 'Alerta de Segurança',   group: 'Segurança' },
   security_auto:  { Icon: ShieldCheck,    color: 'text-orange-500', bg: 'bg-orange-50 dark:bg-orange-900/20',  label: 'Automação de Segurança',group: 'Segurança' },
@@ -24,7 +24,7 @@ const TYPE_META = {
   backup:         { Icon: Database,       color: 'text-sky-500',    bg: 'bg-sky-50 dark:bg-sky-900/20',        label: 'Backup',                group: 'Azure' },
   schedule:       { Icon: Clock,          color: 'text-blue-500',   bg: 'bg-blue-50 dark:bg-blue-900/20',      label: 'Agendamento',           group: 'Geral' },
   approval:       { Icon: CheckCircle2,   color: 'text-green-500',  bg: 'bg-green-50 dark:bg-green-900/20',    label: 'Aprovação',             group: 'Geral' },
-  policy:         { Icon: Shield,         color: 'text-slate-500',  bg: 'bg-slate-50 dark:bg-slate-900/20',    label: 'Política',              group: 'Geral' },
+  policy:         { Icon: Shield,         color: 'text-gray-500',  bg: 'bg-gray-50 dark:bg-gray-900/20',    label: 'Política',              group: 'Geral' },
   cloud_account:  { Icon: CloudCog,       color: 'text-cyan-500',   bg: 'bg-cyan-50 dark:bg-cyan-900/20',      label: 'Conta Cloud',           group: 'Geral' },
   workspace:      { Icon: Users,          color: 'text-teal-500',   bg: 'bg-teal-50 dark:bg-teal-900/20',      label: 'Workspace',             group: 'Geral' },
   billing:        { Icon: CreditCard,     color: 'text-green-500',  bg: 'bg-green-50 dark:bg-green-900/20',    label: 'Cobrança',              group: 'Geral' },

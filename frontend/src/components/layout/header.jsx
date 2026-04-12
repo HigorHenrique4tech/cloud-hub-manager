@@ -1,5 +1,29 @@
 import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Clock, Zap, Headphones, Shield, ShieldAlert, Hourglass, CloudCog, Users, CreditCard, Wallet, Menu, ArrowRightLeft, Database, AlertTriangle, Info, ShieldCheck } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+
+// Hoisted outside component — created once, not per render
+const NOTIFICATION_TYPE_META = {
+  anomaly:        { Icon: TrendingDown,   color: 'text-red-500',    label: 'Anomalia' },
+  budget:         { Icon: Wallet,         color: 'text-yellow-500', label: 'Orçamento' },
+  schedule:       { Icon: Clock,          color: 'text-blue-500',   label: 'Agendamento' },
+  finops_scan:    { Icon: Zap,            color: 'text-primary',    label: 'FinOps' },
+  cost_alert:     { Icon: Bell,           color: 'text-orange-500', label: 'Alerta de Custo' },
+  trial:          { Icon: Hourglass,      color: 'text-purple-500', label: 'Trial' },
+  approval:       { Icon: CheckCircle2,   color: 'text-green-500',  label: 'Aprovação' },
+  policy:         { Icon: Shield,         color: 'text-gray-500',   label: 'Política' },
+  security:       { Icon: Shield,         color: 'text-red-500',    label: 'Segurança' },
+  security_alert: { Icon: ShieldAlert,    color: 'text-red-500',    label: 'Alerta de Segurança' },
+  security_auto:  { Icon: ShieldCheck,    color: 'text-orange-500', label: 'Automação de Segurança' },
+  cloud_account:  { Icon: CloudCog,       color: 'text-cyan-500',   label: 'Conta Cloud' },
+  workspace:      { Icon: Users,          color: 'text-teal-500',   label: 'Workspace' },
+  billing:        { Icon: CreditCard,     color: 'text-green-500',  label: 'Cobrança' },
+  member:         { Icon: Users,          color: 'text-blue-500',   label: 'Membro' },
+  plan:           { Icon: Crown,          color: 'text-amber-500',  label: 'Plano' },
+  migration:      { Icon: ArrowRightLeft, color: 'text-blue-500',   label: 'Migração' },
+  backup:         { Icon: Database,       color: 'text-sky-500',    label: 'Backup' },
+  warning:        { Icon: AlertTriangle,  color: 'text-amber-500',  label: 'Aviso' },
+  info:           { Icon: Info,           color: 'text-gray-400',   label: 'Info' },
+};
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -61,26 +85,28 @@ const Header = ({ onMenuToggle }) => {
     },
   });
 
-  // Close dropdowns when clicking outside
+  // Close dropdowns when clicking outside or pressing Esc
   useEffect(() => {
-    const handler = (e) => {
+    const handleClick = (e) => {
       if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false);
       if (inviteRef.current && !inviteRef.current.contains(e.target)) setInviteOpen(false);
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  // Ctrl+K → toggle command palette
-  useEffect(() => {
-    const handler = (e) => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setBellOpen(false);
+        setInviteOpen(false);
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         setPaletteOpen((prev) => !prev);
       }
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -120,6 +146,9 @@ const Header = ({ onMenuToggle }) => {
                 <button
                   onClick={() => setInviteOpen((o) => !o)}
                   title="Convites pendentes"
+                  aria-label={`Convites pendentes — ${myInvites.length}`}
+                  aria-expanded={inviteOpen}
+                  aria-haspopup="true"
                   className="relative p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100
                              dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700
                              transition-colors"
@@ -170,6 +199,7 @@ const Header = ({ onMenuToggle }) => {
             <button
               onClick={() => setTicketOpen(true)}
               title="Abrir chamado de suporte"
+              aria-label="Abrir chamado de suporte"
               className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100
                          dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700
                          transition-colors"
@@ -182,6 +212,9 @@ const Header = ({ onMenuToggle }) => {
               <button
                 onClick={() => setBellOpen((o) => !o)}
                 title="Notificações"
+                aria-label={unreadCount > 0 ? `Notificações — ${unreadCount} não lidas` : 'Notificações'}
+                aria-expanded={bellOpen}
+                aria-haspopup="true"
                 className="relative p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100
                            dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700
                            transition-colors"
@@ -217,29 +250,7 @@ const Header = ({ onMenuToggle }) => {
                   ) : (
                     <ul className="divide-y divide-gray-100 dark:divide-gray-700 max-h-72 overflow-y-auto">
                       {unreadEvents.map((ev) => {
-                        const TYPE_META = {
-                          anomaly:        { Icon: TrendingDown,  color: 'text-red-500',    label: 'Anomalia' },
-                          budget:         { Icon: Wallet,        color: 'text-yellow-500', label: 'Orçamento' },
-                          schedule:       { Icon: Clock,         color: 'text-blue-500',   label: 'Agendamento' },
-                          finops_scan:    { Icon: Zap,           color: 'text-indigo-500', label: 'FinOps' },
-                          cost_alert:     { Icon: Bell,          color: 'text-orange-500', label: 'Alerta de Custo' },
-                          trial:          { Icon: Hourglass,     color: 'text-purple-500', label: 'Trial' },
-                          approval:       { Icon: CheckCircle2,  color: 'text-green-500',  label: 'Aprovação' },
-                          policy:         { Icon: Shield,        color: 'text-slate-500',  label: 'Política' },
-                          security:       { Icon: Shield,        color: 'text-red-500',    label: 'Segurança' },
-                          security_alert: { Icon: ShieldAlert,   color: 'text-red-500',    label: 'Alerta de Segurança' },
-                          security_auto:  { Icon: ShieldCheck,   color: 'text-orange-500', label: 'Automação de Segurança' },
-                          cloud_account:  { Icon: CloudCog,      color: 'text-cyan-500',   label: 'Conta Cloud' },
-                          workspace:      { Icon: Users,         color: 'text-teal-500',   label: 'Workspace' },
-                          billing:        { Icon: CreditCard,    color: 'text-green-500',  label: 'Cobrança' },
-                          member:         { Icon: Users,         color: 'text-blue-500',   label: 'Membro' },
-                          plan:           { Icon: Crown,         color: 'text-amber-500',  label: 'Plano' },
-                          migration:      { Icon: ArrowRightLeft, color: 'text-blue-500',  label: 'Migração' },
-                          backup:         { Icon: Database,      color: 'text-sky-500',    label: 'Backup' },
-                          warning:        { Icon: AlertTriangle, color: 'text-amber-500',  label: 'Aviso' },
-                          info:           { Icon: Info,          color: 'text-gray-400',   label: 'Info' },
-                        };
-                        const meta = TYPE_META[ev.notification_type] || TYPE_META.cost_alert;
+                        const meta = NOTIFICATION_TYPE_META[ev.notification_type] || NOTIFICATION_TYPE_META.cost_alert;
                         const { Icon, color, label } = meta;
                         return (
                           <li
@@ -259,6 +270,7 @@ const Header = ({ onMenuToggle }) => {
                               onClick={(e) => { e.stopPropagation(); markReadMutation.mutate(ev.id); }}
                               className="flex-shrink-0 text-gray-300 hover:text-green-500 dark:hover:text-green-400 transition-colors"
                               title="Marcar como lido"
+                              aria-label="Marcar como lido"
                             >
                               ✓
                             </button>
@@ -306,6 +318,7 @@ const Header = ({ onMenuToggle }) => {
             <button
               onClick={toggleTheme}
               title={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+              aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
               className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100
                          dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700
                          transition-colors"
@@ -322,6 +335,7 @@ const Header = ({ onMenuToggle }) => {
                 <button
                   onClick={handleLogout}
                   title="Sair"
+                  aria-label="Sair da conta"
                   className="p-2 rounded-lg text-gray-500 hover:text-danger hover:bg-red-50
                              dark:text-gray-400 dark:hover:text-red-400 dark:hover:bg-red-900/20
                              transition-colors"

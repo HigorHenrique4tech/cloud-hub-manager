@@ -2,7 +2,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { GripVertical } from 'lucide-react';
 
-const SortableWidget = ({ id, children }) => {
+const SortableWidget = ({ id, children, className = '' }) => {
   const {
     attributes,
     listeners,
@@ -19,13 +19,13 @@ const SortableWidget = ({ id, children }) => {
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="relative group">
+    <div ref={setNodeRef} style={style} className={`relative group ${className}`}>
       <div
         className="absolute left-2 top-3 z-10 cursor-grab opacity-0 group-hover:opacity-60 transition-opacity touch-none"
         {...attributes}
         {...listeners}
       >
-        <GripVertical size={16} className="text-slate-400" />
+        <GripVertical size={16} className="text-gray-400" />
       </div>
       {children}
     </div>

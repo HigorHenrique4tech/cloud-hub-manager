@@ -43,7 +43,7 @@ const PaymentConfirmation = () => {
           <h1 className="text-2xl font-bold text-white mb-2">
             Pagamento Confirmado
           </h1>
-          <p className="text-slate-400 text-sm leading-relaxed mb-8">
+          <p className="text-gray-400 text-sm leading-relaxed mb-8">
             Seu pagamento foi recebido com sucesso.<br />
             Agradecemos a sua confianca!
           </p>
@@ -66,13 +66,13 @@ const PaymentConfirmation = () => {
           </a>
 
           {/* Secondary link */}
-          <p className="mt-4 text-xs text-slate-500">
+          <p className="mt-4 text-xs text-gray-500">
             Caso tenha duvidas, entre em contato com nosso suporte.
           </p>
         </div>
 
         {/* Footer */}
-        <p className="text-center text-xs text-slate-600 mt-8">
+        <p className="text-center text-xs text-gray-600 mt-8">
           Este pagamento foi processado de forma segura via PIX.
         </p>
       </div>
