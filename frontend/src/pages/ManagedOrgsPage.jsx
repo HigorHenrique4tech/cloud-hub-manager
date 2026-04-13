@@ -6,6 +6,7 @@ import {
   AlertTriangle, Grid3x3, CheckCircle, XCircle, PlusCircle, Pencil,
   StickyNote, Search, ArrowUpDown, Ban, Palette, RefreshCw,
   ChevronLeft, ChevronRight, CheckSquare, Square, Power, PowerOff,
+  Store, Link2, ShieldCheck, AlertCircle, Check, RefreshCcw,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
@@ -336,6 +337,11 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
             <Palette size={10} /> Marca
           </span>
         )}
+        {org.partner_center_id && (
+          <span className="inline-flex items-center gap-1 rounded-md bg-blue-50 dark:bg-blue-500/10 border border-blue-300/50 dark:border-blue-500/30 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">
+            <Store size={10} /> PC
+          </span>
+        )}
       </div>
 
       {/* Header */}
@@ -520,6 +526,261 @@ const M365TenantsTab = ({ orgSlug, onAccess }) => {
   );
 };
 
+/* ── Partner Center Tab ──────────────────────────────────────────────────── */
+
+const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
+  const qc = useQueryClient();
+  const [selected, setSelected] = useState(new Set());
+
+  const statusQ = useQuery({
+    queryKey: ['pc-status', orgSlug, workspaceId],
+    queryFn: () => orgService.pcStatus(orgSlug, workspaceId),
+    enabled: Boolean(orgSlug && workspaceId),
+    retry: false,
+    staleTime: 60_000,
+  });
+
+  const customersQ = useQuery({
+    queryKey: ['pc-customers', orgSlug, workspaceId],
+    queryFn: () => orgService.pcListCustomers(orgSlug, workspaceId),
+    enabled: Boolean(statusQ.data?.configured && statusQ.data?.token_valid),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+
+  const importMut = useMutation({
+    mutationFn: (customer) => orgService.pcImportCustomer(orgSlug, workspaceId, {
+      customer_id: customer.id,
+      customer_name: customer.name,
+      customer_tenant_id: customer.tenant_id,
+    }),
+    onSuccess: (_, customer) => {
+      qc.invalidateQueries({ queryKey: ['pc-customers'] });
+      qc.invalidateQueries({ queryKey: ['managed-orgs'] });
+    },
+  });
+
+  const syncMut = useMutation({
+    mutationFn: () => orgService.pcSyncCustomers(orgSlug, workspaceId, [...selected]),
+    onSuccess: () => {
+      setSelected(new Set());
+      qc.invalidateQueries({ queryKey: ['pc-customers'] });
+      qc.invalidateQueries({ queryKey: ['managed-orgs'] });
+    },
+  });
+
+  // Loading state
+  if (statusQ.isLoading) {
+    return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
+  }
+
+  // Not configured
+  if (!statusQ.data?.configured) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center gap-4">
+        <div className="w-16 h-16 rounded-2xl bg-blue-500/10 dark:bg-blue-500/20 flex items-center justify-center">
+          <Store size={28} className="text-blue-500" />
+        </div>
+        <div>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
+            Partner Center não configurado
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md">
+            Configure as credenciais do Microsoft Partner Center (CSP) para listar e importar clientes automaticamente.
+          </p>
+        </div>
+        <a
+          href="/security/automation"
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg bg-primary text-white hover:bg-primary-dark transition-colors"
+        >
+          <ShieldCheck size={15} /> Ir para Segurança &gt; Partner Center
+        </a>
+      </div>
+    );
+  }
+
+  // Token invalid
+  if (statusQ.data?.configured && !statusQ.data?.token_valid) {
+    return (
+      <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-6 flex items-start gap-3">
+        <AlertCircle size={18} className="text-amber-500 flex-shrink-0 mt-0.5" />
+        <div>
+          <p className="text-sm font-semibold text-amber-700 dark:text-amber-400">Token inválido</p>
+          <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">{statusQ.data.error}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Atualize as credenciais em <strong>Segurança &gt; Partner Center</strong>.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const customers = customersQ.data?.customers || [];
+  const syncedCount = customers.filter((c) => c.synced).length;
+  const selectedArr = [...selected];
+
+  const toggleSelect = (id) => setSelected((prev) => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const toggleAll = () => {
+    const unsynced = customers.filter((c) => !c.synced).map((c) => c.id);
+    if (selected.size === unsynced.length) setSelected(new Set());
+    else setSelected(new Set(unsynced));
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Stats bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm">
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
+            {customersQ.isLoading ? '...' : customersQ.data?.total ?? 0}
+          </p>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5">Clientes CSP</p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">no Partner Center</p>
+        </div>
+        <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm">
+          <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{syncedCount}</p>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mt-0.5">Importados</p>
+          <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">como orgs parceiras</p>
+        </div>
+        <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm">
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Tenant Partner</p>
+          <p className="text-sm font-mono text-gray-700 dark:text-gray-300 truncate">
+            {statusQ.data?.partner_tenant_id}
+          </p>
+          <span className="inline-flex items-center gap-1 text-xs text-green-600 dark:text-green-400 mt-1">
+            <Check size={11} /> Conectado
+          </span>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          {selected.size > 0
+            ? `${selected.size} selecionado(s)`
+            : `${customers.length} cliente(s) encontrado(s)`}
+        </p>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => customersQ.refetch()}
+            disabled={customersQ.isFetching}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCcw size={12} className={customersQ.isFetching ? 'animate-spin' : ''} />
+            Atualizar
+          </button>
+          {selected.size > 0 && (
+            <button
+              onClick={() => syncMut.mutate()}
+              disabled={syncMut.isPending}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-dark disabled:opacity-50 transition-colors"
+            >
+              {syncMut.isPending ? <RefreshCcw size={12} className="animate-spin" /> : <Link2 size={12} />}
+              Importar {selected.size} selecionado(s)
+            </button>
+          )}
+        </div>
+      </div>
+
+      {syncMut.isSuccess && (
+        <div className="rounded-lg border border-green-500/30 bg-green-500/5 px-4 py-2.5 text-sm text-green-700 dark:text-green-400">
+          {syncMut.data?.message}
+          {syncMut.data?.errors?.length > 0 && (
+            <span className="ml-2 text-amber-600 dark:text-amber-400">
+              ({syncMut.data.errors.length} erro(s))
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Customer table */}
+      {customersQ.isLoading ? (
+        <div className="flex justify-center py-10"><LoadingSpinner /></div>
+      ) : customers.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+          <Store size={40} className="mb-3 opacity-20" />
+          <p className="text-sm">Nenhum cliente encontrado no Partner Center</p>
+        </div>
+      ) : (
+        <div className="card rounded-2xl overflow-hidden">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-800/60">
+              <tr>
+                <th className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selected.size > 0 && selected.size === customers.filter((c) => !c.synced).length}
+                    onChange={toggleAll}
+                    className="rounded border-gray-300 dark:border-gray-600"
+                  />
+                </th>
+                {['Cliente', 'Domínio', 'Tenant ID', 'País', 'Status'].map((h) => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                    {h}
+                  </th>
+                ))}
+                <th className="px-4 py-3" />
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {customers.map((c) => (
+                <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                  <td className="px-4 py-3">
+                    {c.synced ? (
+                      <Check size={14} className="text-green-500" />
+                    ) : (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(c.id)}
+                        onChange={() => toggleSelect(c.id)}
+                        className="rounded border-gray-300 dark:border-gray-600"
+                      />
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{c.name}</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{c.id}</p>
+                  </td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{c.domain || '—'}</td>
+                  <td className="px-4 py-3 text-xs font-mono text-gray-400 dark:text-gray-500">
+                    {c.tenant_id ? `${c.tenant_id.slice(0, 8)}…` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400">{c.country || '—'}</td>
+                  <td className="px-4 py-3">
+                    {c.synced ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-medium text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 px-2 py-0.5 rounded-full">
+                        <Check size={10} /> Importado
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-400 dark:text-gray-500">Não importado</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    {!c.synced && (
+                      <button
+                        onClick={() => importMut.mutate(c)}
+                        disabled={importMut.isPending}
+                        className="text-xs font-medium text-primary-dark dark:text-primary-light hover:underline disabled:opacity-50"
+                      >
+                        Importar
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+};
+
 /* ── Pagination ──────────────────────────────────────────────────────────── */
 
 const Pagination = ({ pagination, onPageChange }) => {
@@ -578,7 +839,7 @@ const BatchActionBar = ({ selectedCount, onSuspend, onActivate, onCancel, isPend
 const ManagedOrgsPage = () => {
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const { currentOrg, switchOrg, refreshOrgs } = useOrgWorkspace();
+  const { currentOrg, currentWorkspace, switchOrg, refreshOrgs } = useOrgWorkspace();
 
   const [activeView, setActiveView] = useState('orgs');
   const [showAddModal, setShowAddModal] = useState(false);
@@ -757,6 +1018,7 @@ const ManagedOrgsPage = () => {
           {[
             { id: 'orgs', label: 'Organizações Parceiras', icon: Building2 },
             { id: 'm365', label: 'Tenants M365', icon: Grid3x3 },
+            { id: 'partner_center', label: 'Partner Center', icon: Store },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setActiveView(id)}
               className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -891,6 +1153,11 @@ const ManagedOrgsPage = () => {
         {/* M365 tenants tab */}
         {activeView === 'm365' && (
           <M365TenantsTab orgSlug={currentOrg?.slug} onAccess={handleAccessM365} />
+        )}
+
+        {/* Partner Center tab */}
+        {activeView === 'partner_center' && (
+          <PartnerCenterTab orgSlug={currentOrg?.slug} workspaceId={currentWorkspace?.id} />
         )}
       </div>
 

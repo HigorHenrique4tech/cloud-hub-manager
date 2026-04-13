@@ -15,7 +15,16 @@
       "Bash(xargs grep:*)",
       "Bash(npx vite:*)",
       "Bash(defuddle parse:*)",
-      "Bash(grep -v \"//.*indigo\")"
+      "Bash(grep -v \"//.*indigo\")",
+      "Bash(grep -n \"PartnerCenterConfig\\\\|partner_center\" \"c:/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/backend/alembic/versions/\"*.py)",
+      "Bash(awk -F': ' '{print $2}')",
+      "Bash(ls c:/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/backend/alembic/versions/*.py)",
+      "Bash(xargs -I{} basename {} .py)",
+      "Bash(awk -F'_' '{print $1}')",
+      "Bash(awk '{print $3}')",
+      "Bash(awk '{print $2}')",
+      "Read(//c/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/**)",
+      "Bash(python -m py_compile app/api/partner_center.py)"
     ]
   }
 }

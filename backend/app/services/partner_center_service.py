@@ -62,6 +62,56 @@ def get_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
     return resp.json()["access_token"]
 
 
+# ── Customers ────────────────────────────────────────────────────────────────
+
+def list_customers(pc_token: str) -> list[dict]:
+    """
+    Lista todos os clientes do partner CSP.
+    GET /v1/customers
+    """
+    url = f"{PC_API}/v1/customers"
+    headers = {"Authorization": f"Bearer {pc_token}"}
+    items = []
+    while url:
+        resp = requests.get(url, headers=headers, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        items.extend(data.get("items", []))
+        # continuation token for next page
+        url = data.get("links", {}).get("next", {}).get("uri") if data.get("links", {}).get("next") else None
+    return [
+        {
+            "id": c.get("id"),
+            "name": (c.get("companyProfile") or {}).get("companyName", ""),
+            "tenant_id": (c.get("companyProfile") or {}).get("tenantId", ""),
+            "domain": (c.get("companyProfile") or {}).get("domain", ""),
+            "country": (c.get("companyProfile") or {}).get("companyAddress", {}).get("country", ""),
+            "relationship_to_partner": c.get("relationshipToPartner", ""),
+            "custom_domain_name": c.get("customDomainName", ""),
+            "allowDelegatedAccess": c.get("allowDelegatedAccess", False),
+        }
+        for c in items
+    ]
+
+
+def get_customer(pc_token: str, customer_id: str) -> dict:
+    """GET /v1/customers/{id} — detalhes de um cliente."""
+    url = f"{PC_API}/v1/customers/{customer_id}"
+    headers = {"Authorization": f"Bearer {pc_token}"}
+    resp = requests.get(url, headers=headers, timeout=30)
+    if resp.status_code == 404:
+        raise ValueError(f"Cliente '{customer_id}' não encontrado no Partner Center.")
+    resp.raise_for_status()
+    c = resp.json()
+    return {
+        "id": c.get("id"),
+        "name": (c.get("companyProfile") or {}).get("companyName", ""),
+        "tenant_id": (c.get("companyProfile") or {}).get("tenantId", ""),
+        "domain": (c.get("companyProfile") or {}).get("domain", ""),
+        "country": (c.get("companyProfile") or {}).get("companyAddress", {}).get("country", ""),
+    }
+
+
 # ── Customer subscriptions ───────────────────────────────────────────────────
 
 def list_customer_subscriptions(pc_token: str, customer_tenant_id: str) -> list[dict]:

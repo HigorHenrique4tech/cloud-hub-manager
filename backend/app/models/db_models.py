@@ -40,6 +40,9 @@ class Organization(Base):
     wl_color_accent     = Column(String(7), nullable=True)          # hex #RRGGBB
     wl_powered_by       = Column(Boolean, default=True, nullable=False)  # show "Powered by CloudAtlas"
     wl_email_sender_name = Column(String(100), nullable=True)       # custom email sender name
+    # ── Partner Center (CSP) ────────────────────────────────────────────────
+    partner_center_id     = Column(String(100), nullable=True)     # PC customer ID (for partner orgs)
+    partner_center_tenant = Column(String(100), nullable=True)     # Azure AD tenant ID do cliente
     created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

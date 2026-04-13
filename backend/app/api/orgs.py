@@ -92,6 +92,8 @@ def _org_to_dict(org: Organization, role: str = None, db: Session = None):
         "currency_display": org.currency_display or "USD",
         "exchange_rate_brl": org.exchange_rate_brl,
         "exchange_rate_auto": org.exchange_rate_auto or False,
+        "partner_center_id": org.partner_center_id,
+        "partner_center_tenant": org.partner_center_tenant,
     }
     if org.org_type in ("master", "partner"):
         d["branding"] = get_branding(org, db)
@@ -804,6 +806,8 @@ def _managed_org_to_dict(org: Organization, db: Session, stats: dict = None) -> 
         "health_status": health,
         "cloud_providers": providers,
         "last_activity_at": last_act.isoformat() if last_act else None,
+        "partner_center_id": org.partner_center_id,
+        "partner_center_tenant": org.partner_center_tenant,
     }
 
 

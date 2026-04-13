@@ -89,6 +89,18 @@ export const orgService = {
   sendTestBrandingEmail: async (slug) =>
     (await api.post(`/orgs/${slug}/branding/test-email`)).data,
 
+  // ── Partner Center (CSP) ────────────────────────────────────────────────
+  pcStatus: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/status`)).data,
+  pcListCustomers: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/customers`)).data,
+  pcGetSubscriptions: async (slug, wsId, customerId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/customers/${customerId}/subscriptions`)).data,
+  pcImportCustomer: async (slug, wsId, body) =>
+    (await api.post(`/orgs/${slug}/workspaces/${wsId}/partner-center/import`, body)).data,
+  pcSyncCustomers: async (slug, wsId, customerIds) =>
+    (await api.post(`/orgs/${slug}/workspaces/${wsId}/partner-center/sync`, { customer_ids: customerIds })).data,
+
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {
     const params = provider ? { provider } : {};
