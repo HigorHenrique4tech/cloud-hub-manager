@@ -27,6 +27,7 @@ from .migration import ws_router as migration_ws_router
 from .cost_report import ws_router as cost_report_ws_router
 from .security_automation import ws_router as security_automation_ws_router
 from .partner_center import ws_router as partner_center_ws_router
+from .costs import ws_router as costs_ws_router
 
 api_router = APIRouter()
 
@@ -72,5 +73,6 @@ api_router.include_router(migration_ws_router)
 api_router.include_router(cost_report_ws_router)
 api_router.include_router(security_automation_ws_router)
 api_router.include_router(partner_center_ws_router)
+api_router.include_router(costs_ws_router)
 
 __all__ = ["api_router"]

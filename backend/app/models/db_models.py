@@ -43,6 +43,9 @@ class Organization(Base):
     # ── Partner Center (CSP) ────────────────────────────────────────────────
     partner_center_id     = Column(String(100), nullable=True)     # PC customer ID (for partner orgs)
     partner_center_tenant = Column(String(100), nullable=True)     # Azure AD tenant ID do cliente
+    # ── CSP Cost Management ──────────────────────────────────────────────────
+    cost_source_preference = Column(String(30), nullable=False, default="auto")  # auto | cost_management | partner_center | estimated
+    cost_markup_pct        = Column(Float, nullable=False, default=0)             # % markup sobre custo partner (CSP)
     created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
