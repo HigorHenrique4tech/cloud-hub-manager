@@ -35,7 +35,7 @@ class CostFacadeService:
             "offer_id": "MS-AZR-XXXX",
         }
         """
-        from app.models.db_models import CloudAccount, Workspace, Organization
+        from app.models.db_models import CloudAccount, Workspace
 
         # 1. Checar configuração de preferência da org
         workspace = db.query(Workspace).filter(Workspace.id == workspace_id).first()
@@ -98,10 +98,10 @@ class CostFacadeService:
             "warning": "string" (se fonte não é Cost Management)
         }
         """
-        from app.models.db_models import Organization
+        from app.models.db_models import Workspace
 
-        workspace = db.query(Organization).filter(
-            Organization.id == workspace_id
+        workspace = db.query(Workspace).filter(
+            Workspace.id == workspace_id
         ).first()
         if not workspace:
             return {
@@ -153,12 +153,9 @@ class CostFacadeService:
                     costs = csp_service.normalize_to_cost_format(raw)
 
                     # Aplicar markup se configurado
-                    org = db.query(Organization).filter(
-                        Organization.id == workspace_id
-                    ).first()
-                    if org and org.cost_markup_pct > 0:
+                    if workspace.organization and workspace.organization.cost_markup_pct > 0:
                         costs = CspCostService.apply_markup(
-                            costs, org.cost_markup_pct
+                            costs, workspace.organization.cost_markup_pct
                         )
 
                     return {
