@@ -48,7 +48,6 @@ const migrationApi = {
 
 const MIGRATION_TYPES = [
   { id: 'google_workspace',  label: 'Google Workspace',       icon: Globe,      desc: 'Gmail, Google Calendar, Contatos → M365', color: 'text-blue-500',   category: 'email' },
-  { id: 'exchange_onprem',   label: 'Exchange On-Premises',   icon: Server,     desc: 'Exchange 2013/2016/2019 → Exchange Online', color: 'text-orange-500', category: 'email' },
   { id: 'tenant_to_tenant',  label: 'M365 Tenant → Tenant',   icon: Building2,  desc: 'De um tenant M365 para outro', color: 'text-purple-500',            category: 'email' },
   { id: 'imap',              label: 'IMAP Genérico',          icon: Wifi,       desc: 'Yahoo, Outlook.com, Zoho e outros servidores IMAP', color: 'text-green-500', category: 'email' },
   { id: 'onedrive_to_onedrive',     label: 'OneDrive → OneDrive',       icon: HardDrive,     desc: 'Migrar arquivos entre OneDrives de tenants diferentes', color: 'text-sky-500',    category: 'files' },
@@ -61,12 +60,6 @@ const SOURCE_FIELDS = {
     { key: 'domain',            label: 'Domínio',                   placeholder: 'empresa.com' },
     { key: 'service_account',   label: 'Service Account (JSON)',    placeholder: 'Cole o JSON da conta de serviço', multiline: true },
     { key: 'admin_email',       label: 'E-mail do Admin',           placeholder: 'admin@empresa.com' },
-  ],
-  exchange_onprem: [
-    { key: 'host',              label: 'Servidor Exchange (hostname/IP)', placeholder: 'mail.empresa.com' },
-    { key: 'username',          label: 'Usuário Admin (UPN)',        placeholder: 'admin@empresa.local' },
-    { key: 'password',          label: 'Senha',                     placeholder: '••••••••', type: 'password' },
-    { key: 'ews_url',           label: 'URL EWS (opcional)',        placeholder: 'https://mail.empresa.com/EWS/Exchange.asmx' },
   ],
   tenant_to_tenant: [
     { key: 'tenant_id',         label: 'Tenant ID de origem',       placeholder: 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx' },
@@ -106,7 +99,6 @@ const STATUS_CONFIG = {
 
 const TYPE_LABELS = {
   google_workspace:          'Google Workspace',
-  exchange_onprem:           'Exchange On-Premises',
   tenant_to_tenant:          'M365 Tenant → Tenant',
   imap:                      'IMAP Genérico',
   onedrive_to_onedrive:      'OneDrive → OneDrive',

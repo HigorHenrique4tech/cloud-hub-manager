@@ -27,7 +27,7 @@ ws_router = APIRouter(
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 VALID_MIGRATION_TYPES = {
-    "imap", "exchange_onprem", "google_workspace", "tenant_to_tenant",
+    "imap", "google_workspace", "tenant_to_tenant",
     "onedrive_to_onedrive", "sharepoint_to_sharepoint", "teams_chat",
 }
 

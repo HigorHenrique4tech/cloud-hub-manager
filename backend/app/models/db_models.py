@@ -840,7 +840,7 @@ class MigrationProject(Base):
     created_by         = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     name               = Column(String(255), nullable=False)
     description        = Column(Text, nullable=True)
-    migration_type     = Column(String(50), nullable=False)  # google_workspace | exchange_onprem | tenant_to_tenant | imap
+    migration_type     = Column(String(50), nullable=False)  # google_workspace | tenant_to_tenant | imap | onedrive_to_onedrive | sharepoint_to_sharepoint | teams_chat
     status             = Column(String(30), nullable=False, default="draft", index=True)  # draft | ready | running | paused | completed | failed
     source_config      = Column(Text, nullable=True)   # Fernet-encrypted JSON
     destination_config = Column(Text, nullable=True)   # Fernet-encrypted JSON
