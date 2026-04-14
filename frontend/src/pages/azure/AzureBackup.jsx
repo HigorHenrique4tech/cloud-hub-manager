@@ -927,7 +927,7 @@ function CoverageTab() {
             <span className="text-sm font-medium">Erro ao carregar dados de VMs sem backup. Tente novamente.</span>
           </div>
         ) : (
-          (unprotectedQ.data || []).length === 0 ? (
+          (unprotectedQ.data?.items || []).length === 0 ? (
             <EmptyState icon={ShieldCheck} title="Nenhuma VM sem backup" description="Todas as VMs da assinatura estão protegidas." />
           ) : (
             <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
@@ -940,7 +940,7 @@ function CoverageTab() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {(unprotectedQ.data || []).map((vm, i) => (
+                  {(unprotectedQ.data?.items || []).map((vm, i) => (
                     <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{vm.name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{vm.resource_group}</td>
@@ -964,7 +964,7 @@ function CoverageTab() {
             <span className="text-sm font-medium">Erro ao carregar dados de saúde dos backups. Tente novamente.</span>
           </div>
         ) : (
-          (healthQ.data || []).length === 0 ? (
+          (healthQ.data?.items || []).length === 0 ? (
             <EmptyState icon={Shield} title="Sem itens protegidos" description="Não há VMs com backup configurado nesta assinatura." />
           ) : (
             <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
@@ -977,7 +977,7 @@ function CoverageTab() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-                  {(healthQ.data || []).map((item, i) => (
+                  {(healthQ.data?.items || []).map((item, i) => (
                     <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
                       <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{item.vm_name}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">{item.vault_name}</td>
