@@ -17,7 +17,10 @@ Application permissions (admin consent required):
 
 import logging
 import requests
-from app.core.metrics import MigrationMetrics
+from app.core.metrics import (
+    graph_api_requests_total,
+    MigrationMetrics
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +77,7 @@ class M365Base:
 
         # Record Graph API metrics
         endpoint = url.split('?')[0].split('/')[-1] if url else 'unknown'
-        MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='GET', status=r.status_code).inc()
+        graph_api_requests_total.labels(endpoint=endpoint, method='GET', status=r.status_code).inc()
 
         # Record throttle if rate limited
         if r.status_code == 429:
