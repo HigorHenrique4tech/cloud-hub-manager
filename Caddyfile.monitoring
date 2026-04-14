@@ -1,0 +1,61 @@
+# Configuração Caddy para Prometheus + Grafana
+# Adicionar ao seu Caddyfile existente
+
+# ─────────────────────────────────────────────────────────────────────
+# Prometheus - metrics.cloudatlas.app.br
+# ─────────────────────────────────────────────────────────────────────
+
+metrics.cloudatlas.app.br {
+    # Reverse proxy para Prometheus (porta 9090)
+    reverse_proxy localhost:9090 {
+        # Headers necessários
+        header_uri -X-Forwarded-Host
+        header_upstream X-Forwarded-Host {http.request.host}
+        header_upstream X-Forwarded-Proto {http.request.proto}
+        header_upstream X-Real-IP {http.request.remote.host}
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/prometheus.log
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Frame-Options "DENY"
+        X-Content-Type-Options "nosniff"
+    }
+}
+
+# ─────────────────────────────────────────────────────────────────────
+# Grafana - grafana.cloudatlas.app.br
+# ─────────────────────────────────────────────────────────────────────
+
+grafana.cloudatlas.app.br {
+    # Reverse proxy para Grafana (porta 3001)
+    reverse_proxy localhost:3001 {
+        # Headers necessários
+        header_uri -X-Forwarded-Host
+        header_upstream X-Forwarded-Host {http.request.host}
+        header_upstream X-Forwarded-Proto {http.request.proto}
+        header_upstream X-Real-IP {http.request.remote.host}
+
+        # WebSocket support para Grafana real-time
+        header_upstream Connection "upgrade"
+        header_upstream Upgrade "websocket"
+    }
+
+    # Logging
+    log {
+        output file /var/log/caddy/grafana.log
+    }
+
+    # Security headers
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Frame-Options "SAMEORIGIN"
+        X-Content-Type-Options "nosniff"
+        Content-Security-Policy "frame-ancestors 'self';"
+    }
+}
