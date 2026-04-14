@@ -104,7 +104,7 @@ class M365Base:
             )
 
             # Record Graph API metrics
-            MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='GET', status=r.status_code).inc()
+            graph_api_requests_total.labels(endpoint=endpoint, method='GET', status=r.status_code).inc()
 
             # Record throttle if rate limited
             if r.status_code == 429:
@@ -124,7 +124,7 @@ class M365Base:
 
         # Record Graph API metrics
         endpoint = path.split('?')[0].split('/')[-1] if path else 'unknown'
-        MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='POST', status=r.status_code).inc()
+        graph_api_requests_total.labels(endpoint=endpoint, method='POST', status=r.status_code).inc()
 
         # Record throttle if rate limited
         if r.status_code == 429:
@@ -146,7 +146,7 @@ class M365Base:
 
         # Record Graph API metrics
         endpoint = path.split('?')[0].split('/')[-1] if path else 'unknown'
-        MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='PATCH', status=r.status_code).inc()
+        graph_api_requests_total.labels(endpoint=endpoint, method='PATCH', status=r.status_code).inc()
 
         # Record throttle if rate limited
         if r.status_code == 429:
@@ -168,7 +168,7 @@ class M365Base:
 
         # Record Graph API metrics
         endpoint = path.split('?')[0].split('/')[-1] if path else 'unknown'
-        MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='DELETE', status=r.status_code).inc()
+        graph_api_requests_total.labels(endpoint=endpoint, method='DELETE', status=r.status_code).inc()
 
         # Record throttle if rate limited
         if r.status_code == 429:
