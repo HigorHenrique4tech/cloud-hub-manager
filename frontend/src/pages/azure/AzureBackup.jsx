@@ -857,6 +857,11 @@ function CoverageTab() {
           <div className="space-y-4">
             {[1,2,3].map(i => <div key={i} className="h-20 bg-gray-100 dark:bg-gray-700 rounded-xl animate-pulse" />)}
           </div>
+        ) : coverageQ.isError ? (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+            <AlertCircle size={16} />
+            <span className="text-sm font-medium">Erro ao carregar dados de cobertura de backup. Tente novamente.</span>
+          </div>
         ) : d ? (
           <div className="space-y-6">
             {/* Coverage bar */}
@@ -916,7 +921,12 @@ function CoverageTab() {
 
       {/* Unprotected VMs sub-tab */}
       {subTab === 'unprotected' && (
-        unprotectedQ.isLoading ? <SkeletonTable columns={4} rows={5} /> : (
+        unprotectedQ.isLoading ? <SkeletonTable columns={4} rows={5} /> : unprotectedQ.isError ? (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+            <AlertCircle size={16} />
+            <span className="text-sm font-medium">Erro ao carregar dados de VMs sem backup. Tente novamente.</span>
+          </div>
+        ) : (
           (unprotectedQ.data || []).length === 0 ? (
             <EmptyState icon={ShieldCheck} title="Nenhuma VM sem backup" description="Todas as VMs da assinatura estão protegidas." />
           ) : (
@@ -948,7 +958,12 @@ function CoverageTab() {
 
       {/* Backup Health sub-tab */}
       {subTab === 'health' && (
-        healthQ.isLoading ? <SkeletonTable columns={6} rows={5} /> : (
+        healthQ.isLoading ? <SkeletonTable columns={6} rows={5} /> : healthQ.isError ? (
+          <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300">
+            <AlertCircle size={16} />
+            <span className="text-sm font-medium">Erro ao carregar dados de saúde dos backups. Tente novamente.</span>
+          </div>
+        ) : (
           (healthQ.data || []).length === 0 ? (
             <EmptyState icon={Shield} title="Sem itens protegidos" description="Não há VMs com backup configurado nesta assinatura." />
           ) : (
