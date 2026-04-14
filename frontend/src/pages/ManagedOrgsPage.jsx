@@ -15,6 +15,7 @@ import { AwsIcon, AzureIcon, GcpIcon, M365Icon } from '../components/common/Clou
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import orgService from '../services/orgService';
 import m365Service from '../services/m365Service';
+import GdapPanel from '../components/gdap/GdapPanel';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -530,6 +531,7 @@ const M365TenantsTab = ({ orgSlug, onAccess }) => {
 
 const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
   const qc = useQueryClient();
+  const [pcSubTab, setPcSubTab] = useState(0); // 0=Clientes, 1=GDAP
   const [selected, setSelected] = useState(new Set());
 
   const statusQ = useQuery({
@@ -633,7 +635,26 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
 
   return (
     <div className="space-y-4">
-      {/* Stats bar */}
+      {/* Sub-tabs */}
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
+        {['Clientes', 'GDAP'].map((tab, i) => (
+          <button
+            key={tab}
+            onClick={() => setPcSubTab(i)}
+            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
+              pcSubTab === i
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {pcSubTab === 0 ? (
+        <>
+          {/* Stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm">
           <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
@@ -776,6 +797,10 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
             </tbody>
           </table>
         </div>
+      )}
+        </>
+      ) : (
+        <GdapPanel workspaceId={workspaceId} />
       )}
     </div>
   );

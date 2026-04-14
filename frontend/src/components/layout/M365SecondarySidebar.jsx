@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { Grid3x3, Globe, Mail, MonitorPlay, BookOpen, Link2, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
+import { Grid3x3, Globe, Mail, MonitorPlay, BookOpen, ChevronLeft, ChevronRight, ArrowRightLeft } from 'lucide-react';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 
 const BASE_NAV_ITEMS = [
@@ -20,7 +20,6 @@ const M365SecondarySidebar = () => {
 
   const m365NavItems = [
     ...BASE_NAV_ITEMS,
-    ...(isMasterOrg ? [{ to: '/m365/gdap', label: 'GDAP', icon: Link2 }] : []),
   ];
 
   const toggle = () => {
