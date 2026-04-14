@@ -71,6 +71,7 @@ exchangelib==5.2.0
 
 # Monitoring
 prometheus-fastapi-instrumentator==7.0.0
+prometheus-client==0.19.0
 
 # PDF generation (Executive Reports)
 reportlab==4.2.5

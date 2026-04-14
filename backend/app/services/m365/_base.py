@@ -17,6 +17,7 @@ Application permissions (admin consent required):
 
 import logging
 import requests
+from app.core.metrics import MigrationMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +71,15 @@ class M365Base:
         """GET a single Graph URL (absolute or relative to v1)."""
         full_url = url if url.startswith("https://") else f"{GRAPH_V1}{url}"
         r = requests.get(full_url, headers=self._headers(), params=params, timeout=30)
+
+        # Record Graph API metrics
+        endpoint = url.split('?')[0].split('/')[-1] if url else 'unknown'
+        MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='GET', status=r.status_code).inc()
+
+        # Record throttle if rate limited
+        if r.status_code == 429:
+            MigrationMetrics.record_graph_api_throttle(endpoint)
+
         r.raise_for_status()
         return r.json()
 
@@ -81,6 +91,7 @@ class M365Base:
         items: list = []
         url = f"{base}{path}"
         token = self._get_token()
+        endpoint = path.split('?')[0].split('/')[-1] if path else 'unknown'
         while url:
             r = requests.get(
                 url,
@@ -88,6 +99,14 @@ class M365Base:
                 params=params,
                 timeout=30,
             )
+
+            # Record Graph API metrics
+            MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='GET', status=r.status_code).inc()
+
+            # Record throttle if rate limited
+            if r.status_code == 429:
+                MigrationMetrics.record_graph_api_throttle(endpoint)
+
             r.raise_for_status()
             data = r.json()
             items.extend(data.get("value", []))
@@ -99,6 +118,15 @@ class M365Base:
         """POST to a Graph URL and return JSON response."""
         full_url = path if path.startswith("https://") else f"{GRAPH_V1}{path}"
         r = requests.post(full_url, headers=self._headers(), json=body, timeout=30)
+
+        # Record Graph API metrics
+        endpoint = path.split('?')[0].split('/')[-1] if path else 'unknown'
+        MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='POST', status=r.status_code).inc()
+
+        # Record throttle if rate limited
+        if r.status_code == 429:
+            MigrationMetrics.record_graph_api_throttle(endpoint)
+
         if not r.ok:
             try:
                 err_body = r.json()
@@ -112,6 +140,15 @@ class M365Base:
         """PATCH to a Graph URL and return JSON response."""
         full_url = path if path.startswith("https://") else f"{GRAPH_V1}{path}"
         r = requests.patch(full_url, headers=self._headers(), json=body, timeout=30)
+
+        # Record Graph API metrics
+        endpoint = path.split('?')[0].split('/')[-1] if path else 'unknown'
+        MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='PATCH', status=r.status_code).inc()
+
+        # Record throttle if rate limited
+        if r.status_code == 429:
+            MigrationMetrics.record_graph_api_throttle(endpoint)
+
         if not r.ok:
             try:
                 err_body = r.json()
@@ -125,6 +162,15 @@ class M365Base:
         """DELETE to a Graph URL (204 No Content expected)."""
         full_url = path if path.startswith("https://") else f"{GRAPH_V1}{path}"
         r = requests.delete(full_url, headers=self._headers(), timeout=30)
+
+        # Record Graph API metrics
+        endpoint = path.split('?')[0].split('/')[-1] if path else 'unknown'
+        MigrationMetrics.graph_api_requests_total.labels(endpoint=endpoint, method='DELETE', status=r.status_code).inc()
+
+        # Record throttle if rate limited
+        if r.status_code == 429:
+            MigrationMetrics.record_graph_api_throttle(endpoint)
+
         if not r.ok and r.status_code != 404:
             try:
                 err_body = r.json()

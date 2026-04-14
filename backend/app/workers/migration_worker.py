@@ -1,6 +1,7 @@
 """Celery task — orquestra a migração completa de um projeto."""
 import logging
 import uuid
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Optional
@@ -14,6 +15,7 @@ from app.models.db_models import (
 )
 from app.services.migration_service import decrypt_project_configs
 from app.workers.engines import get_engine
+from app.core.metrics import MigrationMetrics
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +111,7 @@ def _migrate_one_mailbox(project_id: str, mailbox_id: str,
     Retorna {"ok": bool, "mailbox_id": str, "error": str|None}
     """
     db = SessionLocal()
+    start_time = time.time()
     try:
         mb = db.query(MigrationMailbox).filter(MigrationMailbox.id == mailbox_id).first()
         if not mb:
@@ -149,6 +152,11 @@ def _migrate_one_mailbox(project_id: str, mailbox_id: str,
                 mb.items_total = total
             db.commit()
 
+            # Record metrics for items migrated and bytes transferred
+            if migrated > 0 and size_delta > 0:
+                source_type = mb.source_email.split('@')[-1] if mb.source_email else 'unknown'
+                MigrationMetrics.record_items_migrated(migration_type, "email", migrated, size_delta)
+
         engine.migrate_mailbox(on_progress)
 
         # ── Fase 3: Delta sync ────────────────────────────────────────────────
@@ -183,6 +191,11 @@ def _migrate_one_mailbox(project_id: str, mailbox_id: str,
         mb.completed_at = datetime.utcnow()
         db.commit()
 
+        # Record task completion metric
+        duration_seconds = time.time() - start_time
+        source_type = mb.source_email.split('@')[-1] if mb.source_email else 'unknown'
+        MigrationMetrics.record_task_completion(migration_type, source_type, duration_seconds)
+
         # Atualiza contadores atomicamente para evitar race condition com as outras threads.
         update_vals = {MigrationProject.completed_count: MigrationProject.completed_count + 1}
         if mb.verify_result and mb.verify_result.get("ok"):
@@ -208,6 +221,10 @@ def _migrate_one_mailbox(project_id: str, mailbox_id: str,
             mb.error_message = str(exc)[:500]
             mb.completed_at = datetime.utcnow()
             db.commit()
+
+            # Record task failure metric
+            error_type = type(exc).__name__
+            MigrationMetrics.record_task_failure(migration_type, error_type)
 
             db.execute(
                 sa_update(MigrationProject)
@@ -245,6 +262,9 @@ def run_migration_project(self, project_id: str,
     db = SessionLocal()
 
     try:
+        # Record worker as online at start
+        MigrationMetrics.set_worker_status(True)
+
         project = _refresh_project(db, project_id)
         if not project:
             logger.error(f"Projeto {project_id} não encontrado.")
@@ -290,9 +310,16 @@ def run_migration_project(self, project_id: str,
             project.status = "completed"
             project.completed_at = datetime.utcnow()
             db.commit()
+            # Record pending and active tasks as 0
+            MigrationMetrics.set_pending_tasks(0)
+            MigrationMetrics.set_active_tasks(0)
             return
 
         mailbox_ids = [str(mb.id) for mb in mailboxes]
+        # Record pending tasks
+        MigrationMetrics.set_pending_tasks(len(mailbox_ids))
+        MigrationMetrics.set_active_tasks(0)
+
         _add_project_log(db, project_id,
                          f"Iniciando migração de {len(mailbox_ids)} caixa(s). "
                          f"Tipo: {migration_type}.")
@@ -364,6 +391,11 @@ def run_migration_project(self, project_id: str,
                     project.status = "completed"
                 project.completed_at = datetime.utcnow()
                 final_db.commit()
+
+                # Update metrics for completion
+                MigrationMetrics.set_pending_tasks(0)
+                MigrationMetrics.set_active_tasks(0)
+
                 _add_project_log(
                     final_db, project_id,
                     f"Migração concluída. Completadas: {completed}, Falhas: {failed}.",
