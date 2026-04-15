@@ -1312,7 +1312,7 @@ const SetupScreen = ({ onConnect }) => (
     </div>
     <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Conectar Microsoft 365</h2>
     <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mb-6">
-      Integre seu tenant Microsoft 365 para visualizar usuários, licenças, equipes e relatórios de segurança diretamente no Cloud Hub Manager.
+      Integre seu tenant Microsoft 365 para visualizar usuários, licenças, equipes e relatórios de segurança diretamente no Cloud Atlas Manager.
     </p>
     <button
       onClick={onConnect}

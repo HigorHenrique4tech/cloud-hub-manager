@@ -16,7 +16,7 @@
 scp nginx-monitoring.conf user@cloudatlas.app.br:/tmp/
 
 # Ou via git se estiver em produção
-cd /var/www/cloud-hub-manager
+cd /var/www/cloud-atlas-manager
 git pull  # pega nginx-monitoring.conf
 ```
 
@@ -152,8 +152,8 @@ docker-compose ps
 docker-compose up -d
 
 # Verificar logs
-docker logs cloudhub-prometheus
-docker logs cloudhub-grafana
+docker logs cloudatlas-prometheus
+docker logs cloudatlas-grafana
 ```
 
 ### Connection Refused

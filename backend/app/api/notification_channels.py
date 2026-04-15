@@ -278,7 +278,7 @@ def test_channel(
         "event": "test.ping",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "workspace_id": str(ctx.workspace_id),
-        "message": "Teste de conexão do Cloud Hub Manager",
+        "message": "Teste de conexão do Cloud Atlas Manager",
     }
     ok, error = _send_to_channel(ch, "test.ping", payload)
 

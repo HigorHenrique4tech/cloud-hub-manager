@@ -312,7 +312,7 @@ Módulo completo de detecção de desperdício e automação de economia:
 
 ### Webhooks de Eventos — Pro+
 - **Eventos:** `resource.started`, `resource.stopped`, `resource.failed`, `alert.triggered`, `finops.scan.completed`, `billing.paid`, `org.member.added`, `schedule.executed`
-- **Assinatura HMAC-SHA256** via header `X-CloudHub-Signature`
+- **Assinatura HMAC-SHA256** via header `X-CloudAtlas-Signature`
 - Histórico de entregas com status HTTP e payload
 - Máximo 10 webhooks por workspace
 - Regeneração de secret
@@ -409,7 +409,7 @@ Módulo completo de detecção de desperdício e automação de economia:
 ## Estrutura do Projeto
 
 ```
-cloud-hub-manager/
+cloud-atlas-manager/
 ├── backend/
 │   ├── app/
 │   │   ├── api/
@@ -568,7 +568,7 @@ cloud-hub-manager/
 
 ```bash
 # 1. Clone o repositório
-git clone <repo> && cd cloud-hub-manager
+git clone <repo> && cd cloud-atlas-manager
 
 # 2. Configure o ambiente
 cp .env.example .env
@@ -611,9 +611,9 @@ docker compose -f observabilidade/docker-compose.yml up -d
 
 | Variável | Descrição | Padrão |
 |----------|-----------|--------|
-| `POSTGRES_USER` | Usuário do banco | `cloudhub` |
-| `POSTGRES_PASSWORD` | Senha do banco | `cloudhub_pass` |
-| `POSTGRES_DB` | Nome do banco | `cloudhub_db` |
+| `POSTGRES_USER` | Usuário do banco | `cloudatlas` |
+| `POSTGRES_PASSWORD` | Senha do banco | `cloudatlas_pass` |
+| `POSTGRES_DB` | Nome do banco | `cloudatlas_db` |
 | `SECRET_KEY` | Chave JWT + criptografia | — |
 | `ENCRYPTION_KEY` | Chave Fernet explícita | derivado do `SECRET_KEY` |
 | `REDIS_URL` | URL do Redis | `redis://redis:6379/0` |

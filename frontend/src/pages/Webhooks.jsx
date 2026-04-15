@@ -127,7 +127,7 @@ const Webhooks = () => {
           {!isLoading && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 text-xs text-gray-500 dark:text-gray-500 space-y-1">
               <p className="font-medium text-gray-700 dark:text-gray-300">Como usar</p>
-              <p>Cada requisição inclui o header <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">X-CloudHub-Signature</span> com HMAC-SHA256 do payload para verificação de autenticidade.</p>
+              <p>Cada requisição inclui o header <span className="font-mono bg-gray-100 dark:bg-gray-700 px-1 rounded">X-CloudAtlas-Signature</span> com HMAC-SHA256 do payload para verificação de autenticidade.</p>
               <p>Máximo de 10 webhooks por workspace.</p>
             </div>
           )}

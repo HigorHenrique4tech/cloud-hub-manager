@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     ]
 
     # Database
-    DATABASE_URL: str = "postgresql://cloudhub:cloudhub_pass@localhost:5432/cloudhub_db"
+    DATABASE_URL: str = "postgresql://cloudatlas:cloudatlas_pass@localhost:5432/cloudatlas_db"
 
     # Authentication
     SECRET_KEY: str = "changeme-use-openssl-rand-hex-32-in-production"

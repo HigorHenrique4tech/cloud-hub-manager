@@ -1,5 +1,5 @@
 """
-Prometheus metrics for Cloud Hub Manager - Migration365
+Prometheus metrics for Cloud Atlas Manager - Migration365
 """
 
 from prometheus_client import (

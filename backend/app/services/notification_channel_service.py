@@ -129,7 +129,7 @@ def _teams_payload(event_type: str, payload: dict) -> dict:
         "sections": [
             {
                 "activityTitle": f"{emoji} **{label}**",
-                "activitySubtitle": f"Cloud Hub Manager · {ts[:16].replace('T', ' ')} UTC" if ts else "Cloud Hub Manager",
+                "activitySubtitle": f"Cloud Atlas Manager · {ts[:16].replace('T', ' ')} UTC" if ts else "Cloud Atlas Manager",
                 "facts": facts,
                 "markdown": True,
             }
@@ -157,7 +157,7 @@ def _telegram_text(event_type: str, payload: dict) -> str:
 
     lines = [
         f"{emoji} <b>{label}</b>",
-        f"<i>Cloud Hub Manager{' · ' + ts_str if ts_str else ''}</i>",
+        f"<i>Cloud Atlas Manager{' · ' + ts_str if ts_str else ''}</i>",
         "",
     ]
     for k, v in payload.items():
@@ -239,7 +239,7 @@ def _email_html(event_type: str, payload: dict) -> str:
         <table style="width:100%;border-collapse:collapse;">{rows if rows else '<tr><td style="padding:8px;color:#94a3b8;font-size:13px;">Sem detalhes adicionais.</td></tr>'}</table>
       </div>
       <div style="padding:12px 24px;background:#f8fafc;border:1px solid #e2e8f0;border-top:none;border-radius:0 0 12px 12px;text-align:center;">
-        <p style="color:#94a3b8;font-size:11px;margin:0;">Notificação automática · Cloud Hub Manager</p>
+        <p style="color:#94a3b8;font-size:11px;margin:0;">Notificação automática · Cloud Atlas Manager</p>
       </div>
     </div>
     """
@@ -255,7 +255,7 @@ def _deliver_email(recipients: str, event_type: str, payload: dict) -> tuple[boo
         if not emails:
             return False, "Nenhum destinatário configurado"
         for email in emails:
-            ok = _send_email(email, f"Cloud Hub Manager — {label}", html)
+            ok = _send_email(email, f"Cloud Atlas Manager — {label}", html)
             if not ok:
                 return False, f"Falha ao enviar para {email}"
         return True, None

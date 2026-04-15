@@ -18,7 +18,7 @@
              │
     ┌────────┴────────┬────────────┬─────────────┐
     │                 │            │             │
-  Frontend       Backend      Cloud-Hub     Monitoring
+  Frontend       Backend      Cloud-Atlas     Monitoring
   (3000/3001)    (8000)      Manager     (Prometheus)
                                           (Grafana)
 ```
@@ -175,8 +175,8 @@ docker-compose up -d prometheus grafana
 docker logs cloudatlas-caddy -f
 
 # Ver logs de prometheus/grafana
-docker logs cloudhub-prometheus
-docker logs cloudhub-grafana
+docker logs cloudatlas-prometheus
+docker logs cloudatlas-grafana
 ```
 
 ### DNS não resolve

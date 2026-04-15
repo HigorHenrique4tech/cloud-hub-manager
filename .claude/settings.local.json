@@ -2,8 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(node:*)",
-      "Bash(grep -n \"await svc\\\\.\\\\|svc\\\\.[a-z].*\\(\\)$\" c:/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/backend/app/api/aws.py)",
-      "Bash(grep -l \"mfa\\\\|MFA\" /c/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/backend/alembic/versions/*.py)",
+      "Bash(grep -n \"await svc\\\\.\\\\|svc\\\\.[a-z].*\\(\\)$\" c:/Users/higor/Downloads/cloud-atlas-manager/cloud-atlas-manager/backend/app/api/aws.py)",
+      "Bash(grep -l \"mfa\\\\|MFA\" /c/Users/higor/Downloads/cloud-atlas-manager/cloud-atlas-manager/backend/alembic/versions/*.py)",
       "Bash(find:*)",
       "Bash(while IFS= read -r line)",
       "Bash(do echo:*)",
@@ -16,14 +16,14 @@
       "Bash(npx vite:*)",
       "Bash(defuddle parse:*)",
       "Bash(grep -v \"//.*indigo\")",
-      "Bash(grep -n \"PartnerCenterConfig\\\\|partner_center\" \"c:/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/backend/alembic/versions/\"*.py)",
+      "Bash(grep -n \"PartnerCenterConfig\\\\|partner_center\" \"c:/Users/higor/Downloads/cloud-atlas-manager/cloud-atlas-manager/backend/alembic/versions/\"*.py)",
       "Bash(awk -F': ' '{print $2}')",
-      "Bash(ls c:/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/backend/alembic/versions/*.py)",
+      "Bash(ls c:/Users/higor/Downloads/cloud-atlas-manager/cloud-atlas-manager/backend/alembic/versions/*.py)",
       "Bash(xargs -I{} basename {} .py)",
       "Bash(awk -F'_' '{print $1}')",
       "Bash(awk '{print $3}')",
       "Bash(awk '{print $2}')",
-      "Read(//c/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/**)",
+      "Read(//c/Users/higor/Downloads/cloud-atlas-manager/cloud-atlas-manager/**)",
       "Bash(python -m py_compile app/api/partner_center.py)"
     ]
   }

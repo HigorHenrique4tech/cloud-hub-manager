@@ -7,7 +7,7 @@ on:
 env:
   VM_HOST: ${{ secrets.VM_HOST }}
   VM_USER: cloudatlas
-  APP_DIR: /app/cloud-hub-manager
+  APP_DIR: /app/cloud-atlas-manager
 
 jobs:
   # ── Backend tests (gate before deploy) ────────────────────────────────────

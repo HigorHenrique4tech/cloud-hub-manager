@@ -41,16 +41,16 @@ services:
     image: postgres:16-alpine
     container_name: cloudatlas-postgres
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-cloudhub}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudhub_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-cloudhub_db}
+      POSTGRES_USER: ${POSTGRES_USER:-cloudatlas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cloudatlas_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-cloudatlas_db}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - cloudatlas-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudhub} -d ${POSTGRES_DB:-cloudhub_db}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cloudatlas} -d ${POSTGRES_DB:-cloudatlas_db}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -62,7 +62,7 @@ services:
       dockerfile: infra/docker/backend.prod.Dockerfile
     container_name: cloudatlas-backend
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudhub}:${POSTGRES_PASSWORD:-cloudhub_pass}@postgres:5432/${POSTGRES_DB:-cloudhub_db}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudatlas}:${POSTGRES_PASSWORD:-cloudatlas_pass}@postgres:5432/${POSTGRES_DB:-cloudatlas_db}
       - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - 'ALLOWED_ORIGINS=["https://cloudatlas.app.br","https://www.cloudatlas.app.br","https://hub.cloudatlas.app.br","https://desk.cloudatlas.app.br","http://localhost","http://localhost:3000"]'
@@ -150,7 +150,7 @@ services:
     container_name: cloudatlas-migration-worker
     command: ["celery", "-A", "app.workers.celery_app", "worker", "-Q", "migration", "--loglevel=info", "--concurrency=2"]
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudhub}:${POSTGRES_PASSWORD:-cloudhub_pass}@postgres:5432/${POSTGRES_DB:-cloudhub_db}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudatlas}:${POSTGRES_PASSWORD:-cloudatlas_pass}@postgres:5432/${POSTGRES_DB:-cloudatlas_db}
       - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - REDIS_URL=redis://redis:6379/0
@@ -178,9 +178,9 @@ services:
     container_name: cloudatlas-backup
     environment:
       - PGHOST=postgres
-      - PGUSER=${POSTGRES_USER:-cloudhub}
-      - PGPASSWORD=${POSTGRES_PASSWORD:-cloudhub_pass}
-      - PGDATABASE=${POSTGRES_DB:-cloudhub_db}
+      - PGUSER=${POSTGRES_USER:-cloudatlas}
+      - PGPASSWORD=${POSTGRES_PASSWORD:-cloudatlas_pass}
+      - PGDATABASE=${POSTGRES_DB:-cloudatlas_db}
       - AZURE_STORAGE_ACCOUNT=${BACKUP_AZURE_STORAGE_ACCOUNT:-}
       - AZURE_STORAGE_KEY=${BACKUP_AZURE_STORAGE_KEY:-}
       - AZURE_STORAGE_CONTAINER=${BACKUP_AZURE_CONTAINER:-cloudatlas-backups}
