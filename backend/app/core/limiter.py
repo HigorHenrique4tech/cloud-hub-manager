@@ -104,7 +104,10 @@ limiter = Limiter(
     default_limits=[GLOBAL],
     storage_uri=_get_storage_uri(),
     in_memory_fallback_enabled=True,
-    swallow_errors=True,
+    # swallow_errors=False: if both Redis and in-memory fallback fail,
+    # the request is rejected (fail-closed) rather than silently bypassing
+    # rate limits, which would allow unlimited brute-force during outages.
+    swallow_errors=False,
 )
 
 

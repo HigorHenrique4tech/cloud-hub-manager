@@ -187,9 +187,10 @@ async def abacatepay_webhook(
     Secured by a shared secret sent in the X-AbacatePay-Token header.
     Idempotent: already-PAID payments are acknowledged without reprocessing.
     """
-    # Validate webhook secret
+    # Validate webhook secret (constant-time comparison to prevent timing attacks)
+    import hmac as _hmac
     expected = settings.ABACATEPAY_WEBHOOK_SECRET
-    if not expected or x_abacatepay_token != expected:
+    if not expected or not _hmac.compare_digest(x_abacatepay_token, expected):
         logger.warning("AbacatePay webhook: invalid or missing token")
         raise HTTPException(status_code=403, detail="Forbidden")
 

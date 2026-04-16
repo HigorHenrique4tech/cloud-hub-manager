@@ -1402,16 +1402,32 @@ async def upload_billing_attachment(
     if not record:
         raise HTTPException(status_code=404, detail="Registro não encontrado")
 
-    # Validate file type
-    allowed_types = {"application/pdf", "image/jpeg", "image/png", "image/webp"}
-    if file.content_type not in allowed_types:
-        raise HTTPException(status_code=400, detail="Tipo de arquivo não permitido. Use PDF, JPEG ou PNG.")
-
     # Enforce file size limit (10 MB)
     MAX_FILE_SIZE = 10 * 1024 * 1024
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=413, detail="Arquivo muito grande. Limite: 10 MB.")
+
+    # Validate actual file content via magic bytes (not just client Content-Type header)
+    _MAGIC_SIGS = {
+        b"%PDF":                       ".pdf",
+        b"\xff\xd8\xff":               ".jpg",   # JPEG
+        b"\x89PNG\r\n\x1a\n":          ".png",
+        b"RIFF":                        ".webp",  # WebP starts with RIFF....WEBP
+    }
+    detected_ext = None
+    for sig, ext in _MAGIC_SIGS.items():
+        if content[:len(sig)] == sig:
+            # Extra check for WebP: bytes 8-12 must be "WEBP"
+            if ext == ".webp" and content[8:12] != b"WEBP":
+                continue
+            detected_ext = ext
+            break
+    if not detected_ext:
+        raise HTTPException(
+            status_code=400,
+            detail="Tipo de arquivo não permitido. Use PDF, JPEG, PNG ou WebP.",
+        )
 
     # Ensure upload directory exists
     record_dir = BILLING_UPLOADS_DIR / record_id
@@ -1421,10 +1437,8 @@ async def upload_billing_attachment(
     if record.attachment_path and Path(record.attachment_path).exists():
         Path(record.attachment_path).unlink(missing_ok=True)
 
-    # Save new file — strip path from filename to prevent path traversal
-    safe_ext = Path(file.filename).suffix.lower() if file.filename else ".bin"
-    if safe_ext not in {".pdf", ".jpg", ".jpeg", ".png", ".webp"}:
-        safe_ext = ".bin"
+    # Save new file — use the extension detected from magic bytes (not client filename)
+    safe_ext = detected_ext
     dest = record_dir / f"attachment{safe_ext}"
     dest.write_bytes(content)
 

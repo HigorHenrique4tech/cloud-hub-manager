@@ -17,9 +17,10 @@ from app.services.auth_service import (
 )
 
 
-def test_hash_password_produces_bcrypt():
+def test_hash_password_produces_bcrypt_sha256():
     hashed = hash_password("MySecret123!")
-    assert hashed.startswith("$2b$") or hashed.startswith("$2a$")
+    # bcrypt_sha256 format: $bcrypt-sha256$...
+    assert hashed.startswith("$bcrypt-sha256$")
 
 
 def test_verify_password_correct():

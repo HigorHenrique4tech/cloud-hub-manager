@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth_context import MemberContext
 from app.core.dependencies import get_db, get_workspace_member
+from app.core.url_validation import validate_webhook_url
 from app.models.db_models import NotificationChannel, NotificationDelivery
 from app.services.notification_channel_service import (
     CHANNEL_TYPES as VALID_CHANNEL_TYPES,
@@ -148,6 +149,7 @@ def _validate_config(channel_type: str, config: dict) -> None:
     if channel_type == "teams":
         if not config.get("url"):
             raise HTTPException(422, "config.url é obrigatório para canais Teams")
+        validate_webhook_url(config["url"])
     elif channel_type == "telegram":
         if not config.get("bot_token"):
             raise HTTPException(422, "config.bot_token é obrigatório para canais Telegram")

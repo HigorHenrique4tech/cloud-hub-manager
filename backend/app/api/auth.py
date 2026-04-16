@@ -14,7 +14,7 @@ from app.models.schemas import (
     MFARequiredResponse, MFAVerifyRequest, MFAToggleRequest,
 )
 from app.services.auth_service import (
-    hash_password, verify_password, create_access_token,
+    hash_password, verify_password, verify_and_rehash, create_access_token,
     create_refresh_token, validate_refresh_token, revoke_refresh_token,
     generate_otp, hash_otp, verify_otp_hash, create_mfa_token, decode_mfa_token,
 )
@@ -169,11 +169,22 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     """Login with email and password. Returns TokenResponse or MFARequiredResponse."""
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
 
-    if not user or not verify_password(payload.password, user.hashed_password):
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email ou senha incorretos",
         )
+
+    valid, new_hash = verify_and_rehash(payload.password, user.hashed_password)
+    if not valid:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Email ou senha incorretos",
+        )
+    # Transparently upgrade legacy bcrypt hashes to bcrypt_sha256
+    if new_hash:
+        user.hashed_password = new_hash
+        db.commit()
 
     # MFA check — if enabled, issue a short-lived mfa_token and send OTP
     if user.mfa_enabled:

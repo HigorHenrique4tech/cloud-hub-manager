@@ -7,7 +7,8 @@ import secrets
 from datetime import datetime, timedelta
 from typing import Optional
 
-from jose import JWTError, jwt
+import jwt as pyjwt
+from jwt.exceptions import PyJWTError
 from passlib.context import CryptContext
 from cryptography.fernet import Fernet
 from sqlalchemy.orm import Session
@@ -16,8 +17,14 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# bcrypt__truncate_error=False makes passlib silently truncate instead of raising
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto", bcrypt__truncate_error=False)
+# Use bcrypt_sha256 to eliminate the 72-byte password truncation limitation.
+# Passwords are pre-hashed with SHA-256 before bcrypt, so all characters matter.
+# Existing bcrypt-only hashes are still verified (listed as deprecated → auto-rehash on login).
+pwd_context = CryptContext(
+    schemes=["bcrypt_sha256", "bcrypt"],
+    default="bcrypt_sha256",
+    deprecated=["bcrypt"],
+)
 
 _fernet_key: Optional[bytes] = None
 
@@ -28,8 +35,24 @@ def _get_fernet() -> Fernet:
         if settings.ENCRYPTION_KEY:
             _fernet_key = settings.ENCRYPTION_KEY.encode()
         else:
-            key_bytes = hashlib.sha256(settings.SECRET_KEY.encode()).digest()
+            # Derive encryption key from SECRET_KEY using HKDF with a distinct
+            # context, so compromising the JWT secret alone does not yield the
+            # encryption key (proper key separation).
+            from cryptography.hazmat.primitives.kdf.hkdf import HKDF
+            from cryptography.hazmat.primitives import hashes as crypto_hashes
+
+            hkdf = HKDF(
+                algorithm=crypto_hashes.SHA256(),
+                length=32,
+                salt=b"cloudatlas-encryption-key-v1",
+                info=b"fernet-master-key",
+            )
+            key_bytes = hkdf.derive(settings.SECRET_KEY.encode())
             _fernet_key = base64.urlsafe_b64encode(key_bytes)
+            logger.warning(
+                "ENCRYPTION_KEY não configurada — derivando via HKDF do SECRET_KEY. "
+                "Configure uma ENCRYPTION_KEY independente em produção."
+            )
     return Fernet(_fernet_key)
 
 
@@ -43,20 +66,30 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
+def verify_and_rehash(plain_password: str, hashed_password: str) -> tuple[bool, str | None]:
+    """Verify password and return (valid, new_hash_or_none).
+    If the hash uses a deprecated scheme (plain bcrypt), returns a new
+    bcrypt_sha256 hash so the caller can persist the upgrade."""
+    valid = pwd_context.verify(plain_password, hashed_password)
+    if valid and pwd_context.needs_update(hashed_password):
+        return True, pwd_context.hash(plain_password)
+    return valid, None
+
+
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
 def create_access_token(subject: str) -> str:
     expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     payload = {"sub": subject, "exp": expire}
-    return jwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+    return pyjwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 def decode_token(token: str) -> Optional[str]:
     """Returns the subject (user id) or None if invalid."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = pyjwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         return payload.get("sub")
-    except JWTError:
+    except PyJWTError:
         return None
 
 
@@ -159,8 +192,12 @@ def generate_otp() -> str:
 
 
 def hash_otp(otp: str) -> str:
-    """SHA-256 do OTP para armazenamento seguro no DB."""
-    return hashlib.sha256(otp.encode()).hexdigest()
+    """HMAC-SHA256 do OTP usando SECRET_KEY como chave.
+    Unlike plain SHA-256, an attacker who compromises the DB cannot brute-force
+    all 1M possible OTPs without also knowing the SECRET_KEY."""
+    return hmac.new(
+        settings.SECRET_KEY.encode(), otp.encode(), hashlib.sha256
+    ).hexdigest()
 
 
 def verify_otp_hash(otp: str, stored_hash: str) -> bool:
@@ -171,7 +208,7 @@ def verify_otp_hash(otp: str, stored_hash: str) -> bool:
 def create_mfa_token(user_id: str) -> str:
     """JWT de 10 minutos com type='mfa' para identificar o fluxo pendente."""
     expire = datetime.utcnow() + timedelta(minutes=10)
-    return jwt.encode(
+    return pyjwt.encode(
         {"sub": user_id, "type": "mfa", "exp": expire},
         settings.SECRET_KEY,
         algorithm=settings.ALGORITHM,
@@ -181,11 +218,11 @@ def create_mfa_token(user_id: str) -> str:
 def decode_mfa_token(token: str) -> Optional[str]:
     """Retorna user_id ou None se inválido/expirado/tipo errado."""
     try:
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        payload = pyjwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         if payload.get("type") != "mfa":
             return None
         return payload.get("sub")
-    except JWTError:
+    except PyJWTError:
         return None
 
 

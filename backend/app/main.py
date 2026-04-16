@@ -86,10 +86,10 @@ async def inject_user_for_limiter(request: Request, call_next):
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         try:
-            from jose import jwt as jose_jwt
+            import jwt as pyjwt
             token = auth_header[7:]
-            payload = jose_jwt.decode(
-                token, settings.SECRET_KEY, algorithms=[settings.JWT_ALGORITHM]
+            payload = pyjwt.decode(
+                token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
             )
 
             class _MinimalUser:
@@ -124,12 +124,14 @@ async def csrf_protection(request: Request, call_next):
     if request.method.upper() not in _CSRF_SAFE_METHODS:
         path = request.url.path
         if path not in _CSRF_EXEMPT_PATHS and not any(path.startswith(p) for p in _CSRF_EXEMPT_PREFIXES):
+            # Require X-Requested-With header on all mutating requests.
+            # Content-Type alone is not sufficient — modern browsers allow
+            # cross-origin JSON requests via fetch().
             has_custom_header = request.headers.get("X-Requested-With")
-            has_content_type_json = "application/json" in (request.headers.get("content-type") or "")
-            if not has_custom_header and not has_content_type_json:
+            if not has_custom_header:
                 return JSONResponse(
                     status_code=403,
-                    content={"detail": "Requisição bloqueada: header de segurança ausente."},
+                    content={"detail": "Requisição bloqueada: header X-Requested-With ausente."},
                 )
     return await call_next(request)
 
@@ -140,8 +142,19 @@ async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    # CSP: restrict resource loading to same-origin; allow inline styles for Tailwind
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data: blob:; "
+        "font-src 'self'; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
     if not settings.DEBUG:
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
     return response
@@ -155,6 +168,21 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "X-Requested-With", "X-CSRF-Token"],
     expose_headers=["X-RateLimit-Limit", "X-RateLimit-Policy", "Retry-After"],
 )
+
+# ── Protect /metrics endpoint ────────────────────────────────────────────────
+@app.middleware("http")
+async def protect_metrics(request: Request, call_next):
+    if request.url.path == "/metrics":
+        # In production, require METRICS_TOKEN; in debug mode, allow freely
+        if not settings.DEBUG:
+            token = settings.METRICS_TOKEN
+            if not token:
+                return JSONResponse(status_code=404, content={"detail": "Not found"})
+            auth = request.headers.get("Authorization", "")
+            import hmac as _hmac
+            if not auth.startswith("Bearer ") or not _hmac.compare_digest(auth[7:], token):
+                return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+    return await call_next(request)
 
 # ── Prometheus metrics ───────────────────────────────────────────────────────
 from prometheus_fastapi_instrumentator import Instrumentator

@@ -22,6 +22,7 @@ from app.database import get_db
 from app.models.db_models import WebhookEndpoint, WebhookDelivery
 from app.core.dependencies import require_permission
 from app.core.auth_context import MemberContext
+from app.core.url_validation import validate_webhook_url
 from app.services.webhook_service import SUPPORTED_EVENTS, fire_event, _deliver
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,7 @@ def create_webhook(
     db: Session = Depends(get_db),
 ):
     """Create a new webhook endpoint."""
+    validate_webhook_url(payload.url)
     _validate_events(payload.events)
 
     count = db.query(WebhookEndpoint).filter(
@@ -156,6 +158,7 @@ def update_webhook(
     if payload.name is not None:
         wh.name = payload.name
     if payload.url is not None:
+        validate_webhook_url(payload.url)
         wh.url = payload.url
     if payload.events is not None:
         _validate_events(payload.events)

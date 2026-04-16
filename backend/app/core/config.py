@@ -86,6 +86,10 @@ class Settings(BaseSettings):
     BACKUP_AZURE_CONTAINER: str = "cloudatlas-backups"
     BACKUP_RETENTION_DAYS: int = 30
 
+    # Prometheus /metrics endpoint — set a bearer token to restrict access.
+    # If empty, /metrics is only accessible in DEBUG mode.
+    METRICS_TOKEN: str = ""
+
     @model_validator(mode='after')
     def validate_production_secrets(self) -> 'Settings':
         """Prevent the app from starting with insecure defaults in production."""
