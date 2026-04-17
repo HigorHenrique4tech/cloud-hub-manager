@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Save, Eye, EyeOff, Check, AlertCircle, User as UserIcon, Lock, ShieldCheck } from 'lucide-react';
+import { LogOut, Save, Eye, EyeOff, Check, AlertCircle, User as UserIcon, Lock, ShieldCheck, Mail, BadgeCheck } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
@@ -16,12 +16,28 @@ const Settings = () => {
   // ── Timers cleanup ────────────────────────────────────────
   const profileTimerRef = useRef(null);
   const pwdTimerRef = useRef(null);
+  const verifyTimerRef = useRef(null);
   useEffect(() => {
     return () => {
       clearTimeout(profileTimerRef.current);
       clearTimeout(pwdTimerRef.current);
+      clearTimeout(verifyTimerRef.current);
     };
   }, []);
+
+  // ── Email verification ─────────────────────────────────────
+  const [verifyMsg, setVerifyMsg] = useState(null);
+  const verifyMutation = useMutation({
+    mutationFn: () => authService.resendVerification(user?.email),
+    onSuccess: () => {
+      setVerifyMsg({ type: 'success', text: 'Email de verificação enviado! Verifique sua caixa de entrada.' });
+      clearTimeout(verifyTimerRef.current);
+      verifyTimerRef.current = setTimeout(() => setVerifyMsg(null), 6000);
+    },
+    onError: (err) => {
+      setVerifyMsg({ type: 'error', text: err.response?.data?.detail || 'Erro ao enviar email' });
+    },
+  });
 
   // ── Profile form state ─────────────────────────────────────
   const [name, setName] = useState(user?.name || '');
@@ -200,6 +216,66 @@ const Settings = () => {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* ── Verificação de Email ──────────────────────────── */}
+      <div className="card mb-6">
+        <div className="flex items-center gap-3 mb-5">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+            user?.is_verified ? 'bg-green-500/10' : 'bg-amber-500/10'
+          }`}>
+            {user?.is_verified
+              ? <BadgeCheck className="w-5 h-5 text-green-600 dark:text-green-400" />
+              : <Mail className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+            }
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Verificação de Email</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              {user?.is_verified ? 'Seu email está verificado' : 'Verifique seu email para acessar todos os recursos'}
+            </p>
+          </div>
+          {user?.is_verified && (
+            <span className="ml-auto inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300">
+              <Check className="w-3 h-3" />
+              Verificado
+            </span>
+          )}
+        </div>
+
+        {!user?.is_verified && (
+          <>
+            <div className="flex items-start gap-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 mb-4">
+              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <p className="text-sm text-amber-700 dark:text-amber-300">
+                Email <span className="font-medium">{user?.email}</span> ainda não foi verificado.
+                Sem verificação, você não poderá acessar funcionalidades de organização como billing, workspaces e integrações.
+              </p>
+            </div>
+
+            {verifyMsg && (
+              <div className={`flex items-center gap-2 p-3 rounded-lg mb-4 text-sm ${
+                verifyMsg.type === 'success'
+                  ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300'
+                  : 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300'
+              }`}>
+                {verifyMsg.type === 'success' ? <Check className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
+                {verifyMsg.text}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={() => verifyMutation.mutate()}
+                disabled={verifyMutation.isPending || verifyMsg?.type === 'success'}
+                className="btn-primary inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Mail className="w-4 h-4" />
+                {verifyMutation.isPending ? 'Enviando...' : 'Reenviar email de verificação'}
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Alterar Senha ─────────────────────────────────── */}
