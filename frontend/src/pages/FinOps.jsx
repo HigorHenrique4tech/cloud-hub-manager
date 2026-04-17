@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Zap, TrendingDown, History, Wallet, Bell, Mail, Clock, AlertTriangle, X } from 'lucide-react';
+import { Zap, TrendingDown, History, Wallet, Bell, Mail, Clock, AlertTriangle, X, Server } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import LoadingSpinner from '../components/common/loadingspinner';
 import PermissionGate from '../components/common/PermissionGate';
@@ -16,6 +16,7 @@ import ReportsTab from '../components/finops/ReportsTab';
 import AnomaliesTab from '../components/finops/AnomaliesTab';
 import ActionsHistoryTab from '../components/finops/ActionsHistoryTab';
 import CostTrendChart from '../components/finops/CostTrendChart';
+import ReservationsTab from '../components/finops/ReservationsTab';
 import finopsService from '../services/finopsService';
 import approvalService from '../services/approvalService';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
@@ -25,6 +26,7 @@ import { useFinOpsReports } from '../hooks/useFinOpsReports';
 
 const TABS = [
   { id: 'recommendations', label: 'Recomendações', icon: TrendingDown },
+  { id: 'reservations',    label: 'Reservas',       icon: Server },
   { id: 'budgets',         label: 'Orçamentos',     icon: Wallet },
   { id: 'reports',         label: 'Relatórios',     icon: Mail },
   { id: 'anomalies',       label: 'Anomalias',      icon: Bell },
@@ -436,6 +438,9 @@ const FinOps = () => {
               reportScheduleQ={reportScheduleQ}
               onOpenModal={() => setShowReportScheduleModal(true)}
             />
+          )}
+          {activeTab === 'reservations' && (
+            <ReservationsTab />
           )}
           {activeTab === 'anomalies' && (
             <AnomaliesTab

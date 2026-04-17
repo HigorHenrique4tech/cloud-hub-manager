@@ -392,6 +392,69 @@ def send_budget_alert_email(
     return _send_email(to_email, f"{_brand_name(branding)} — Orçamento '{budget_name}' em alerta ({pct_display})", html, sender_name=_brand_sender(branding))
 
 
+def send_cost_alert_email(
+    to_email: str,
+    user_name: str,
+    alert_name: str,
+    provider: str,
+    service: str,
+    current_value: float,
+    threshold_value: float,
+    threshold_type: str,
+    period: str,
+    branding: dict = None,
+) -> bool:
+    """Send a cost alert threshold notification email."""
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured. Cost alert '%s' not emailed.", alert_name)
+        return True
+
+    period_label = "diário" if period == "daily" else "mensal"
+    provider_label = provider.upper() if provider != "all" else "Todos os provedores"
+    service_label = f" / {service}" if service else ""
+
+    if threshold_type == "fixed":
+        threshold_label = f"${threshold_value:,.2f}"
+        current_label = f"${current_value:,.2f}"
+        detail_line = f"Gasto atual <strong>{current_label}</strong> superou o limite de <strong>{threshold_label}</strong>"
+    else:
+        threshold_label = f"{threshold_value:.1f}%"
+        current_label = f"${current_value:,.2f}"
+        detail_line = f"Variação de custo superou <strong>{threshold_label}</strong> (gasto atual: <strong>{current_label}</strong>)"
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #dc2626; margin-bottom: 8px;">Alerta de Custo Disparado</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        O alerta <strong>{alert_name}</strong> foi ativado:
+      </p>
+      <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; margin: 16px 0;">
+        <p style="color: #991b1b; font-size: 14px; margin: 0;">
+          <strong>Provedor:</strong> {provider_label}{service_label}<br/>
+          <strong>Período:</strong> {period_label.capitalize()}<br/>
+          {detail_line}
+        </p>
+      </div>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{settings.FRONTEND_URL}/costs"
+           style="display: inline-block; padding: 12px 32px; background-color: #3b82f6;
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Ver Custos
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"{_brand_name(branding)} — Alerta de custo: {alert_name}",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
 def send_report_email(
     to_email: str,
     org_name: str,

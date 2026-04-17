@@ -135,6 +135,21 @@ export const costService = {
     return response.data;
   },
 
+  // ── Cost Allocation by Tag ────────────────────────────────────────────────
+
+  getCostsByTag: async (tagKey, startDate, endDate, providers = 'all') => {
+    const params = { tag_key: tagKey, start_date: startDate, end_date: endDate, providers };
+    return (await api.get(wsUrl('/finops/costs/by-tag'), { params })).data;
+  },
+
+  listAllocationTags: async () =>
+    (await api.get(wsUrl('/finops/costs/allocation-tags'))).data,
+
+  activateAllocationTags: async (provider, accountId, tagKeys) =>
+    (await api.post(wsUrl('/finops/costs/allocation-tags/activate'), {
+      provider, account_id: accountId, tag_keys: tagKeys,
+    })).data,
+
   /**
    * Fetch combined costs for a specific workspace (explicit org + workspace IDs).
    * Used for cross-workspace cost comparison in the org settings page.

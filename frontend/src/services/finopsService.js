@@ -171,6 +171,32 @@ const finopsService = {
     const { data } = await api.get(wsUrl('/finops/cost-trend'), { params: { days } });
     return data;
   },
+
+  // ── Reservations / Savings Plans ──────────────────────────────────────────
+
+  getReservationCoverage: async (startDate, endDate) => {
+    const { data } = await api.get(wsUrl('/finops/reservations/coverage'), {
+      params: { start_date: startDate, end_date: endDate },
+    });
+    return data;
+  },
+
+  getReservationUtilization: async (startDate, endDate) => {
+    const { data } = await api.get(wsUrl('/finops/reservations/utilization'), {
+      params: { start_date: startDate, end_date: endDate },
+    });
+    return data;
+  },
+
+  generateReservationRecommendations: async () => {
+    const { data } = await api.post(wsUrl('/finops/reservations/recommendations'));
+    return data;
+  },
+
+  listReservationRecommendations: async () => {
+    const { data } = await api.get(wsUrl('/finops/reservations/recommendations'));
+    return data;
+  },
 };
 
 export default finopsService;

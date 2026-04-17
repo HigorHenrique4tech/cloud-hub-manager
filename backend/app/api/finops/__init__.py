@@ -21,6 +21,9 @@ from . import _actions        # noqa: E402, F401  — GET /actions, POST rollbac
 from . import _budgets        # noqa: E402, F401  — budgets CRUD + evaluate
 from . import _anomalies      # noqa: E402, F401  — anomaly scan/list/acknowledge
 from . import _schedules       # noqa: E402, F401  — scan-schedule + report-schedule
+from . import _alerts_eval     # noqa: E402, F401  — POST /alerts/evaluate
+from . import _cost_allocation # noqa: E402, F401  — GET /costs/by-tag, allocation-tags
+from . import _reservations    # noqa: E402, F401  — GET /reservations/coverage, utilization, recommendations
 
 # Re-export symbols that external code imports from `app.api.finops`:
 from ._helpers import _persist_findings  # noqa: E402, F401  — used by scheduler_service

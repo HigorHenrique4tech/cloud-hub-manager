@@ -6,23 +6,21 @@ import {
 import { X, Download, TrendingUp, DollarSign, FileText, Loader2 } from 'lucide-react';
 import ReportSuggestions, { generateSuggestions } from './ReportSuggestions';
 import { useBranding } from '../../contexts/BrandingContext';
+import { useCurrency } from '../../hooks/useCurrency';
 import api, { wsUrl } from '../../services/api';
-
-/* ── helpers ─────────────────────────────────────────────── */
-const fmtUSD = (v) =>
-  v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 const PROVIDER_COLORS = { aws: '#f97316', azure: '#0ea5e9', gcp: '#10b981' };
 
 /* ── sub-components ──────────────────────────────────────── */
-const ChartTooltip = ({ active, payload, label }) => {
+const ChartTooltip = ({ active, payload, label, formatter }) => {
   if (!active || !payload?.length) return null;
+  const fmt = formatter || ((v) => `$${Number(v).toFixed(2)}`);
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-lg text-sm text-gray-800">
       <p className="font-medium mb-1">{label}</p>
       {payload.map((p) => (
         <p key={p.dataKey} style={{ color: p.color }}>
-          {p.name}: {fmtUSD(p.value)}
+          {p.name}: {fmt(p.value)}
         </p>
       ))}
     </div>
@@ -32,6 +30,7 @@ const ChartTooltip = ({ active, payload, label }) => {
 /* ── Main component ──────────────────────────────────────── */
 const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days, onClose }) => {
   const branding = useBranding();
+  const { fmtCost, currencyLabel } = useCurrency();
   const [exporting, setExporting] = useState(false);
   const hasAws   = !!data?.aws;
   const hasAzure = !!data?.azure;
@@ -132,7 +131,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
             </div>
             <div className="text-right">
               <p className="text-xs uppercase tracking-widest text-primary font-semibold">{branding.platform_name}</p>
-              <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mt-1">{fmtUSD(data.total)}</p>
+              <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mt-1">{fmtCost(data.total)}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500">total no período</p>
             </div>
           </div>
@@ -140,12 +139,12 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           {/* ── Summary cards ── */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Total do Período', value: fmtUSD(metrics.total),      sub: periodLabel,                   color: 'text-primary-dark dark:text-primary-light' },
-              { label: 'Média Diária',     value: fmtUSD(metrics.avgDaily),    sub: `${days} dias`,                color: 'text-green-600 dark:text-green-400'   },
-              { label: 'Projeção Mensal',  value: fmtUSD(metrics.projection),  sub: 'baseado na média',            color: 'text-purple-600 dark:text-purple-400' },
+              { label: 'Total do Período', value: fmtCost(metrics.total),      sub: periodLabel,                   color: 'text-primary-dark dark:text-primary-light' },
+              { label: 'Média Diária',     value: fmtCost(metrics.avgDaily),    sub: `${days} dias`,                color: 'text-green-600 dark:text-green-400'   },
+              { label: 'Projeção Mensal',  value: fmtCost(metrics.projection),  sub: 'baseado na média',            color: 'text-purple-600 dark:text-purple-400' },
               {
                 label: 'Maior Serviço',
-                value: metrics.topService ? fmtUSD(metrics.topService.amount) : '—',
+                value: metrics.topService ? fmtCost(metrics.topService.amount) : '—',
                 sub:   metrics.topService?.name || '—',
                 color: 'text-orange-600 dark:text-orange-400',
               },
@@ -164,7 +163,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
               {hasAws && (
                 <div className="border border-orange-200 dark:border-orange-800 rounded-lg p-4 bg-orange-50/50 dark:bg-orange-900/10">
                   <span className="text-xs font-bold uppercase bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded">AWS</span>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtUSD(data.aws.total)}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(data.aws.total)}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                     {data.total ? ((data.aws.total / data.total) * 100).toFixed(1) : 0}% do total
                   </p>
@@ -173,7 +172,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
               {hasAzure && (
                 <div className="border border-sky-200 dark:border-sky-800 rounded-lg p-4 bg-sky-50/50 dark:bg-sky-900/10">
                   <span className="text-xs font-bold uppercase bg-sky-100 dark:bg-sky-800 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded">Azure</span>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtUSD(data.azure.total)}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(data.azure.total)}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                     {data.total ? ((data.azure.total / data.total) * 100).toFixed(1) : 0}% do total
                   </p>
@@ -185,7 +184,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                     GCP
                     {data.gcp?.estimated && <span className="font-normal normal-case text-[10px]">(estimado)</span>}
                   </span>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtUSD(data.gcp.total)}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(data.gcp.total)}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                     {data.total ? ((data.gcp.total / data.total) * 100).toFixed(1) : 0}% do total
                   </p>
@@ -206,8 +205,8 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                   <LineChart data={data.combined} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
                     <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
-                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => `$${v}`} width={55} />
-                    <Tooltip content={<ChartTooltip />} />
+                    <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => fmtCost(v)} width={65} />
+                    <Tooltip content={<ChartTooltip formatter={fmtCost} />} />
                     <Legend />
                     {hasAws   && <Line type="monotone" dataKey="aws"   name="AWS"   stroke="#f97316" strokeWidth={2} dot={false} />}
                     {hasAzure && <Line type="monotone" dataKey="azure" name="Azure" stroke="#0ea5e9" strokeWidth={2} dot={false} />}
@@ -232,9 +231,9 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={topServices.slice(0, 8)} layout="vertical" margin={{ left: 8, right: 16, top: 4, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} horizontal={false} />
-                      <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => `$${v}`} />
+                      <XAxis type="number" tick={{ fontSize: 10 }} tickFormatter={(v) => fmtCost(v)} />
                       <YAxis type="category" dataKey="name" width={130} tick={{ fontSize: 10 }} />
-                      <Tooltip content={<ChartTooltip />} />
+                      <Tooltip content={<ChartTooltip formatter={fmtCost} />} />
                       <Bar dataKey="amount" name="Custo" fill="#6366f1" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -256,7 +255,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                         <tr key={s.name} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                           <td className="px-3 py-2 text-gray-400">{i + 1}</td>
                           <td className="px-3 py-2 font-medium text-gray-800 dark:text-gray-200">{s.name}</td>
-                          <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{fmtUSD(s.amount)}</td>
+                          <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{fmtCost(s.amount)}</td>
                           <td className="px-3 py-2 text-right">
                             <div className="flex items-center justify-end gap-1.5">
                               <div className="w-12 bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
@@ -274,7 +273,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                     <tfoot className="bg-gray-50 dark:bg-gray-800 font-bold border-t border-gray-200 dark:border-gray-700">
                       <tr>
                         <td colSpan={2} className="px-3 py-2 text-gray-700 dark:text-gray-300 text-xs uppercase tracking-wide">Total</td>
-                        <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{fmtUSD(data.total)}</td>
+                        <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{fmtCost(data.total)}</td>
                         <td className="px-3 py-2 text-right text-gray-500">100%</td>
                       </tr>
                     </tfoot>
@@ -301,7 +300,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                     >
                       {pieData.map((d, i) => <Cell key={i} fill={d.color} />)}
                     </Pie>
-                    <Tooltip formatter={(v) => fmtUSD(v)} />
+                    <Tooltip formatter={(v) => [fmtCost(v)]} />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -332,20 +331,20 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                       {data.combined.map((d) => (
                         <tr key={d.date} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                           <td className="px-3 py-1.5 font-mono text-gray-700 dark:text-gray-300">{d.date}</td>
-                          {hasAws   && <td className="px-3 py-1.5 text-right font-mono text-orange-600 dark:text-orange-400">{fmtUSD(d.aws)}</td>}
-                          {hasAzure && <td className="px-3 py-1.5 text-right font-mono text-sky-600 dark:text-sky-400">{fmtUSD(d.azure)}</td>}
-                          {hasGcp   && <td className="px-3 py-1.5 text-right font-mono text-emerald-600 dark:text-emerald-400">{fmtUSD(d.gcp)}</td>}
-                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-gray-900 dark:text-gray-100">{fmtUSD(d.total)}</td>
+                          {hasAws   && <td className="px-3 py-1.5 text-right font-mono text-orange-600 dark:text-orange-400">{fmtCost(d.aws)}</td>}
+                          {hasAzure && <td className="px-3 py-1.5 text-right font-mono text-sky-600 dark:text-sky-400">{fmtCost(d.azure)}</td>}
+                          {hasGcp   && <td className="px-3 py-1.5 text-right font-mono text-emerald-600 dark:text-emerald-400">{fmtCost(d.gcp)}</td>}
+                          <td className="px-3 py-1.5 text-right font-mono font-semibold text-gray-900 dark:text-gray-100">{fmtCost(d.total)}</td>
                         </tr>
                       ))}
                     </tbody>
                     <tfoot className="bg-gray-50 dark:bg-gray-800 font-bold border-t-2 border-gray-300 dark:border-gray-600">
                       <tr>
                         <td className="px-3 py-2 text-gray-700 dark:text-gray-300 uppercase tracking-wide text-xs">Total</td>
-                        {hasAws   && <td className="px-3 py-2 text-right font-mono text-orange-700 dark:text-orange-300">{fmtUSD(data.aws?.total)}</td>}
-                        {hasAzure && <td className="px-3 py-2 text-right font-mono text-sky-700 dark:text-sky-300">{fmtUSD(data.azure?.total)}</td>}
-                        {hasGcp   && <td className="px-3 py-2 text-right font-mono text-emerald-700 dark:text-emerald-300">{fmtUSD(data.gcp?.total)}</td>}
-                        <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{fmtUSD(data.total)}</td>
+                        {hasAws   && <td className="px-3 py-2 text-right font-mono text-orange-700 dark:text-orange-300">{fmtCost(data.aws?.total)}</td>}
+                        {hasAzure && <td className="px-3 py-2 text-right font-mono text-sky-700 dark:text-sky-300">{fmtCost(data.azure?.total)}</td>}
+                        {hasGcp   && <td className="px-3 py-2 text-right font-mono text-emerald-700 dark:text-emerald-300">{fmtCost(data.gcp?.total)}</td>}
+                        <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{fmtCost(data.total)}</td>
                       </tr>
                     </tfoot>
                   </table>

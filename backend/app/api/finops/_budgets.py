@@ -170,31 +170,46 @@ async def evaluate_budgets(
         CloudAccount.is_active == True,
     ).all()
 
-    # Pre-fetch spend per provider for this workspace
-    provider_spend: dict = {}
-    for account in accounts:
-        try:
-            from app.services.auth_service import decrypt_for_account
-            creds = decrypt_for_account(db, account)
-            spend = _fetch_provider_spend(account.provider, creds)
-            if spend is not None:
-                provider_spend[account.provider] = (
-                    provider_spend.get(account.provider, 0.0) + spend
-                )
-        except Exception as exc:
-            logger.warning(f"Spend fetch failed for account {account.id}: {exc}")
+    # Pre-fetch spend per provider per period for this workspace.
+    # Different budgets may have different periods (monthly/quarterly/annual),
+    # so we cache spend keyed by (provider, period).
+    from app.services.auth_service import decrypt_for_account
+
+    _spend_cache: dict = {}  # (provider, period) -> float
+
+    def _get_spend_for(provider: str, period: str) -> float:
+        key = (provider, period)
+        if key in _spend_cache:
+            return _spend_cache[key]
+        total = 0.0
+        for account in accounts:
+            if account.provider != provider:
+                continue
+            try:
+                creds = decrypt_for_account(db, account)
+                spend = _fetch_provider_spend(account.provider, creds, period=period)
+                if spend is not None:
+                    total += spend
+            except Exception as exc:
+                logger.warning(f"Spend fetch failed for account {account.id}: {exc}")
+        _spend_cache[key] = total
+        return total
 
     now = datetime.utcnow()
     cooldown = timedelta(hours=24)
 
-    breakdown_json = _json.dumps({k: round(v, 2) for k, v in provider_spend.items()}) if provider_spend else None
-
     for budget in budgets:
+        period = budget.period or "monthly"
         if budget.provider == "all":
-            spend = sum(provider_spend.values())
-            budget.spend_breakdown = breakdown_json
+            # Fetch spend for each active provider with the budget's period
+            providers_in_ws = {a.provider for a in accounts}
+            spend_by_prov = {p: _get_spend_for(p, period) for p in providers_in_ws}
+            spend = sum(spend_by_prov.values())
+            budget.spend_breakdown = _json.dumps(
+                {k: round(v, 2) for k, v in spend_by_prov.items()}
+            ) if spend_by_prov else None
         else:
-            spend = provider_spend.get(budget.provider, 0.0)
+            spend = _get_spend_for(budget.provider, period)
 
         budget.last_spend = spend
         budget.last_evaluated_at = now

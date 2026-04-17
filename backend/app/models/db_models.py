@@ -147,6 +147,11 @@ class CloudAccount(Base):
     created_by     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    allocation_tags = Column(JSONB, nullable=True)  # list of tag keys enabled for cost allocation
+    bigquery_project = Column(String(255), nullable=True)
+    bigquery_dataset = Column(String(255), nullable=True)
+    bigquery_table   = Column(String(255), nullable=True)
+    billing_export_enabled = Column(Boolean, default=False, nullable=False)
 
     workspace = relationship("Workspace", back_populates="cloud_accounts")
 
@@ -216,6 +221,8 @@ class CostAlert(Base):
     period = Column(String(20), nullable=False)         # 'daily' | 'monthly'
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_evaluated_at = Column(DateTime, nullable=True)
+    last_triggered_at = Column(DateTime, nullable=True)
 
     user = relationship("User", foreign_keys=[user_id])
     events = relationship("AlertEvent", back_populates="alert", cascade="all, delete-orphan")

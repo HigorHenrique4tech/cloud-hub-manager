@@ -24,21 +24,26 @@ function calcDelta(current, previous) {
 }
 
 /**
- * Detect anomaly days (> 2 standard deviations from mean).
- * Returns a Set of date strings that are outliers.
+ * Detect anomaly days (> 3 standard deviations from baseline mean).
+ * Uses the same 3-sigma threshold as the backend (finops/_anomalies.py)
+ * to ensure chart markers and the Anomalies tab are consistent.
+ * Baseline = all days except the last 2 (matches backend consecutive detection).
  */
 function detectAnomalies(combined, providerFilter = 'all') {
-  if (!combined?.length || combined.length < 5) return new Set();
+  if (!combined?.length || combined.length < 7) return new Set();
   const vals = combined.map((d) =>
     providerFilter === 'all' ? (d.total || 0) : (d[providerFilter] || 0)
   );
-  const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
-  const stdDev = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length);
+  // Baseline: all except last 2 days (same as backend)
+  const baseline = vals.slice(0, -2);
+  const mean = baseline.reduce((s, v) => s + v, 0) / baseline.length;
+  const stdDev = Math.sqrt(baseline.reduce((s, v) => s + (v - mean) ** 2, 0) / baseline.length);
   if (stdDev === 0) return new Set();
 
+  const threshold = mean + 3 * stdDev;
   const anomalies = new Set();
   combined.forEach((d, i) => {
-    if (Math.abs(vals[i] - mean) > 2 * stdDev) {
+    if (vals[i] > threshold) {
       anomalies.add(d.date);
     }
   });
@@ -98,6 +103,14 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['alert-events'] });
       qc.invalidateQueries({ queryKey: ['alert-events-unread'] });
+    },
+  });
+
+  const evaluateAlerts = useMutation({
+    mutationFn: () => alertService.evaluateAlerts(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['alert-events'] });
+      qc.invalidateQueries({ queryKey: ['alerts'] });
     },
   });
 
@@ -183,5 +196,6 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
     createAlert,
     deleteAlert,
     markEventRead,
+    evaluateAlerts,
   };
 }

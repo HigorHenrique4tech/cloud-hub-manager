@@ -1131,6 +1131,18 @@ def load_report_schedules(db) -> int:
     except Exception as exc:
         logger.error(f"Failed to register backup_scan_daily job: {exc}")
 
+    # Register hourly cost alerts evaluation
+    try:
+        scheduler.add_job(
+            execute_cost_alerts_evaluation,
+            CronTrigger(minute=0),  # top of every hour
+            id="cost_alerts_evaluation_hourly",
+            replace_existing=True,
+        )
+        logger.info("Hourly cost alerts evaluation job registered")
+    except Exception as exc:
+        logger.error(f"Failed to register cost_alerts_evaluation_hourly job: {exc}")
+
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count
 
@@ -1220,5 +1232,51 @@ def _run_daily_backup_scan() -> None:
                 logger.warning("[backup_scan_daily] Error scanning account %s: %s", account.id, exc)
     except Exception as exc:
         logger.error("[backup_scan_daily] Fatal error: %s", exc)
+    finally:
+        db.close()
+
+
+def execute_cost_alerts_evaluation() -> None:
+    """
+    Hourly job: evaluate all active CostAlerts across every Pro+ workspace
+    and fire notifications when thresholds are crossed.
+    """
+    from app.database import SessionLocal
+    from app.models.db_models import CostAlert, Workspace
+    from app.services.plan_service import get_effective_plan
+    from app.models.db_models import Organization, OrganizationMember
+
+    db = SessionLocal()
+    try:
+        # Collect distinct workspace IDs that have active alerts
+        workspace_ids = [
+            row[0]
+            for row in db.query(CostAlert.workspace_id)
+            .filter(CostAlert.is_active == True)
+            .distinct()
+            .all()
+        ]
+
+        evaluated = 0
+        for ws_id in workspace_ids:
+            try:
+                # Resolve org plan — skip free workspaces
+                ws = db.query(Workspace).filter(Workspace.id == ws_id).first()
+                if not ws:
+                    continue
+                org = db.query(Organization).filter(Organization.id == ws.organization_id).first()
+                if not org or get_effective_plan(org) == "free":
+                    continue
+
+                from app.api.finops._alerts_eval import _evaluate_alerts
+                results = _evaluate_alerts(db, ws_id)
+                evaluated += len(results)
+            except Exception as exc:
+                logger.warning(f"[cost_alerts_eval] workspace {ws_id} failed: {exc}")
+
+        logger.info(f"[cost_alerts_evaluation_hourly] evaluated {evaluated} alerts across {len(workspace_ids)} workspaces")
+    except Exception as exc:
+        logger.error(f"[cost_alerts_evaluation_hourly] Fatal: {exc}")
+        db.rollback()
     finally:
         db.close()

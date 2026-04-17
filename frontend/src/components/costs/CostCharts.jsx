@@ -223,7 +223,7 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
             <ResponsiveContainer width="100%" height={260}>
               <BarChart
                 data={data.by_service
-                  .filter((s) => providerFilter === 'all' || s.name.toLowerCase().startsWith(providerFilter))
+                  .filter((s) => providerFilter === 'all' || s.name.toLowerCase().startsWith(`${providerFilter} /`))
                   .slice(0, 8)}
                 layout="vertical"
                 margin={{ left: 8, right: 16, top: 4, bottom: 0 }}

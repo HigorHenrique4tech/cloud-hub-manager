@@ -381,9 +381,27 @@ def _linear_forecast(values: list, forecast_days: int = 15) -> list:
 # ── Fetch provider spend ─────────────────────────────────────────────────────
 
 
-def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
-    """Fetch current MTD spend for a given provider using stored credentials (5-min cache)."""
-    cache_key = f"{provider}:{creds.get('access_key_id') or creds.get('tenant_id', '')}:{creds.get('subscription_id', '')}"
+def _period_start_date(period: str = "monthly") -> "date":
+    """Return the start date for a budget evaluation period.
+    monthly = 1st of current month (MTD)
+    quarterly = 1st of current quarter (QTD)
+    annual = Jan 1st of current year (YTD)
+    """
+    from datetime import date
+    today = date.today()
+    if period == "annual":
+        return today.replace(month=1, day=1)
+    if period == "quarterly":
+        quarter_month = ((today.month - 1) // 3) * 3 + 1
+        return today.replace(month=quarter_month, day=1)
+    # monthly (default)
+    return today.replace(day=1)
+
+
+def _fetch_provider_spend(provider: str, creds: dict, period: str = "monthly") -> Optional[float]:
+    """Fetch spend for a given provider based on budget period (MTD/QTD/YTD)."""
+    start = _period_start_date(period)
+    cache_key = f"{provider}:{period}:{creds.get('access_key_id') or creds.get('tenant_id', '')}:{creds.get('subscription_id', '')}"
     cached = _get_cached_spend(cache_key)
     if cached is not None:
         return cached
@@ -403,7 +421,7 @@ def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
             today = date.today()
             resp = client.get_cost_and_usage(
                 TimePeriod={
-                    "Start": today.replace(day=1).isoformat(),
+                    "Start": start.isoformat(),
                     "End": today.isoformat(),
                 },
                 Granularity="MONTHLY",
@@ -436,7 +454,7 @@ def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
                 type=ExportType.ACTUAL_COST,
                 timeframe=TimeframeType.CUSTOM,
                 time_period=QueryTimePeriod(
-                    from_property=f"{today.replace(day=1).isoformat()}T00:00:00Z",
+                    from_property=f"{start.isoformat()}T00:00:00Z",
                     to=f"{today.isoformat()}T23:59:59Z",
                 ),
                 dataset=QueryDataset(
@@ -459,7 +477,7 @@ def _fetch_provider_spend(provider: str, creds: dict) -> Optional[float]:
             )
             today = date.today()
             result = svc.get_cost_and_usage(
-                start_date=today.replace(day=1).isoformat(),
+                start_date=start.isoformat(),
                 end_date=today.isoformat(),
             )
             spend = result.get("total") if result.get("success") else None

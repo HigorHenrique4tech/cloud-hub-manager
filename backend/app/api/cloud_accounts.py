@@ -1,7 +1,10 @@
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Path, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, Dict
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.db_models import CloudAccount, Organization, Workspace
@@ -319,3 +322,128 @@ async def health_check_all_accounts(
         "accounts": results,
         "summary": {"total": len(results), "healthy": healthy, "failed": len(results) - healthy},
     }
+
+
+# ── GCP BigQuery Billing Export ───────────────────────────────────────────────
+
+
+class BigQueryExportConfig(BaseModel):
+    bigquery_project: Optional[str] = None
+    bigquery_dataset: str
+    bigquery_table: str
+
+
+@router.get("/{account_id}/bigquery-export")
+async def get_bigquery_export_config(
+    account_id: str = Path(...),
+    member: MemberContext = Depends(require_permission("accounts.view")),
+    db: Session = Depends(get_db),
+):
+    account = db.query(CloudAccount).filter(
+        CloudAccount.id == account_id,
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == "gcp",
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta GCP não encontrada.")
+    return {
+        "billing_export_enabled": account.billing_export_enabled,
+        "bigquery_project": account.bigquery_project,
+        "bigquery_dataset": account.bigquery_dataset,
+        "bigquery_table": account.bigquery_table,
+    }
+
+
+@router.post("/{account_id}/bigquery-export/test")
+async def test_bigquery_export(
+    account_id: str = Path(...),
+    payload: BigQueryExportConfig = None,
+    member: MemberContext = Depends(require_permission("accounts.view")),
+    db: Session = Depends(get_db),
+):
+    account = db.query(CloudAccount).filter(
+        CloudAccount.id == account_id,
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == "gcp",
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta GCP não encontrada.")
+
+    creds = decrypt_for_account(db, account)
+    dataset = (payload.bigquery_dataset if payload else account.bigquery_dataset) or ""
+    table = (payload.bigquery_table if payload else account.bigquery_table) or ""
+    bq_project = (payload.bigquery_project if payload else account.bigquery_project) or creds.get("project_id", "")
+
+    if not dataset or not table:
+        raise HTTPException(status_code=400, detail="Dataset e tabela são obrigatórios.")
+
+    from app.services.gcp_billing_service import GCPBillingService
+    sa_json = {
+        "type": "service_account",
+        "project_id": creds.get("project_id", ""),
+        "private_key_id": creds.get("private_key_id", ""),
+        "private_key": creds.get("private_key", ""),
+        "client_email": creds.get("client_email", ""),
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    svc = GCPBillingService(
+        service_account_json=sa_json,
+        project_id=creds.get("project_id", ""),
+        dataset=dataset,
+        table=table,
+        billing_project=bq_project,
+    )
+    result = svc.test_connection()
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=f"Falha na conexão BigQuery: {result.get('error')}")
+    return result
+
+
+@router.put("/{account_id}/bigquery-export")
+async def save_bigquery_export_config(
+    account_id: str = Path(...),
+    payload: BigQueryExportConfig = None,
+    member: MemberContext = Depends(require_permission("accounts.manage")),
+    db: Session = Depends(get_db),
+):
+    account = db.query(CloudAccount).filter(
+        CloudAccount.id == account_id,
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == "gcp",
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta GCP não encontrada.")
+
+    if payload:
+        account.bigquery_project = payload.bigquery_project
+        account.bigquery_dataset = payload.bigquery_dataset
+        account.bigquery_table = payload.bigquery_table
+        account.billing_export_enabled = bool(payload.bigquery_dataset and payload.bigquery_table)
+    db.commit()
+    db.refresh(account)
+    return {
+        "billing_export_enabled": account.billing_export_enabled,
+        "bigquery_project": account.bigquery_project,
+        "bigquery_dataset": account.bigquery_dataset,
+        "bigquery_table": account.bigquery_table,
+    }
+
+
+@router.delete("/{account_id}/bigquery-export", status_code=204)
+async def disable_bigquery_export(
+    account_id: str = Path(...),
+    member: MemberContext = Depends(require_permission("accounts.manage")),
+    db: Session = Depends(get_db),
+):
+    account = db.query(CloudAccount).filter(
+        CloudAccount.id == account_id,
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == "gcp",
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta GCP não encontrada.")
+    account.billing_export_enabled = False
+    account.bigquery_dataset = None
+    account.bigquery_table = None
+    account.bigquery_project = None
+    db.commit()

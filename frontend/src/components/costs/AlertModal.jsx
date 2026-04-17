@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-const PROVIDERS = ['aws', 'azure', 'all'];
+const PROVIDERS = ['aws', 'azure', 'gcp', 'all'];
 const PERIODS_ALERT = ['daily', 'monthly'];
 const THRESHOLD_TYPES = ['fixed', 'percentage'];
 
