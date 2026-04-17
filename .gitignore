@@ -74,3 +74,7 @@ coverage/
 Thumbs.db
 
 docker-compose.yml
+.env.example
+
+# Pentest internal docs (não versionar — relatórios contêm contexto sensível)
+implementação pentest/
