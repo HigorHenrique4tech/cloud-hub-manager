@@ -184,13 +184,14 @@ def _evaluate_alerts(db: Session, workspace_id) -> list:
         else:
             current = _get_spend(provider, period)
 
+        # Refresh from DB to avoid stale ORM cache in concurrent calls
+        db.refresh(alert)
         alert.last_evaluated_at = now
         triggered = False
 
         if alert.threshold_type == "fixed":
             triggered = current >= alert.threshold_value
         elif alert.threshold_type == "percentage":
-            prev_provider = provider if provider != "all" else "all"
             if provider == "all":
                 providers_in_ws = {a.provider for a in accounts}
                 prev = sum(_get_prev_spend(p, period) for p in providers_in_ws)
@@ -202,12 +203,35 @@ def _evaluate_alerts(db: Session, workspace_id) -> list:
             else:
                 triggered = False
 
+        # Cooldown check: use refreshed DB value + also check AlertEvent table
         already_alerted = (
             alert.last_triggered_at is not None
             and (now - alert.last_triggered_at) < _ALERT_COOLDOWN
         )
+        if not already_alerted:
+            recent_event = (
+                db.query(AlertEvent)
+                .filter(
+                    AlertEvent.alert_id == alert.id,
+                    AlertEvent.triggered_at >= now - _ALERT_COOLDOWN,
+                )
+                .first()
+            )
+            if recent_event:
+                already_alerted = True
 
         if triggered and not already_alerted:
+            # Set last_triggered_at and commit BEFORE sending notifications
+            # to prevent duplicate fires from concurrent evaluations
+            alert.last_triggered_at = now
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
+                # Another concurrent call already committed — skip
+                results.append(_alert_to_dict(alert, triggered=False, current_value=current))
+                continue
+
             # Record event
             msg = _build_alert_message(alert, current)
             event = AlertEvent(
@@ -221,6 +245,10 @@ def _evaluate_alerts(db: Session, workspace_id) -> list:
                 link_to="/costs",
             )
             db.add(event)
+            try:
+                db.commit()
+            except Exception:
+                db.rollback()
 
             # Email
             creator = db.query(User).filter(User.id == (alert.created_by or alert.user_id)).first()
@@ -253,13 +281,13 @@ def _evaluate_alerts(db: Session, workspace_id) -> list:
             # Push notification
             _push(db, workspace_id, "cost_alert", msg, "/costs")
 
-            alert.last_triggered_at = now
-
         results.append(_alert_to_dict(alert, triggered=triggered, current_value=current))
 
-    db.commit()
-    for alert in alerts:
-        db.refresh(alert)
+    # Final commit for last_evaluated_at updates
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
 
     return results
 

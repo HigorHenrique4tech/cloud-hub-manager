@@ -1138,6 +1138,8 @@ def load_report_schedules(db) -> int:
             CronTrigger(minute=0),  # top of every hour
             id="cost_alerts_evaluation_hourly",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
         logger.info("Hourly cost alerts evaluation job registered")
     except Exception as exc:
