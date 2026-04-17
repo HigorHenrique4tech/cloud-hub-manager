@@ -1,12 +1,11 @@
 import { useState } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, X, Tag } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, X } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import { SkeletonCard, SkeletonChart } from '../components/common/SkeletonLoader';
 import CostReportModal from '../components/finops/CostReportModal';
 import MetricCard from '../components/costs/MetricCard';
 import AlertModal from '../components/costs/AlertModal';
 import AlertEventsPanel from '../components/costs/AlertEventsPanel';
-import CostAllocationTab from '../components/costs/CostAllocationTab';
 import CostCharts from '../components/costs/CostCharts';
 import CostTable from '../components/costs/CostTable';
 import CostExport from '../components/costs/CostExport';
@@ -43,7 +42,6 @@ const Costs = () => {
   const [showReport, setShowReport]         = useState(false);
   const [showComparison, setShowComparison] = useState(false);
   const [drilldownService, setDrilldownService] = useState(null);
-  const [showAllocation, setShowAllocation] = useState(false);
 
   // ── Date range ─────────────────────────────────────────────────────────────
   const { days } = PERIODS[periodIdx];
@@ -183,31 +181,17 @@ const Costs = () => {
             })}
           </div>
 
-          <div className="flex items-center gap-2">
-            {/* Comparison toggle */}
-            <button
-              onClick={() => setShowComparison((v) => !v)}
-              className={`px-3 py-1 text-xs font-medium rounded-full border transition-all no-print ${
-                showComparison
-                  ? 'border-violet-400 bg-violet-500/10 text-violet-600 dark:text-violet-400'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
-            >
-              {showComparison ? 'Comparação ON' : 'Comparar período anterior'}
-            </button>
-            {/* Allocation by tag toggle */}
-            <button
-              onClick={() => setShowAllocation((v) => !v)}
-              className={`flex items-center gap-1 px-3 py-1 text-xs font-medium rounded-full border transition-all no-print ${
-                showAllocation
-                  ? 'border-emerald-400 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-              }`}
-            >
-              <Tag size={11} />
-              Alocação por Tag
-            </button>
-          </div>
+          {/* Comparison toggle */}
+          <button
+            onClick={() => setShowComparison((v) => !v)}
+            className={`px-3 py-1 text-xs font-medium rounded-full border transition-all no-print ${
+              showComparison
+                ? 'border-violet-400 bg-violet-500/10 text-violet-600 dark:text-violet-400'
+                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
+            }`}
+          >
+            {showComparison ? 'Comparação ON' : 'Comparar período anterior'}
+          </button>
         </div>
       )}
 
@@ -293,16 +277,6 @@ const Costs = () => {
         <CostHeatmap combined={data.combined} providerFilter={providerFilter} anomalies={anomalies} />
       )}
 
-      {/* Cost Allocation by Tag */}
-      {showAllocation && (
-        <div className="mt-6">
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
-            <Tag size={18} className="text-emerald-500" />
-            Alocação por Tag
-          </h2>
-          <CostAllocationTab startDate={startDate} endDate={endDate} />
-        </div>
-      )}
 
       {/* Alerts Table + Events */}
       {!isLoading && (
