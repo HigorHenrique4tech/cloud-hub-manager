@@ -89,16 +89,21 @@ def _azure_costs_by_tag(creds: dict, tag_key: str, start_date: str, end_date: st
             dataset=QueryDataset(
                 granularity="None",
                 aggregation={"totalCost": QueryAggregation(name="Cost", function="Sum")},
-                grouping=[QueryGrouping(type="TagKey", name=tag_key)],
+                grouping=[QueryGrouping(type="Tag", name=tag_key)],
             ),
         )
         result_data = client.query.usage(scope=scope, parameters=query)
-        # rows: [[cost, currency, tag_value], ...]
+        # rows: [[cost, currency, "tagKey:tagValue"], ...]
+        # Azure returns tag group as "key:value" — strip the key prefix
         breakdown = {}
         for row in (result_data.rows or []):
             cost = float(row[0]) if row else 0.0
-            tag_val = str(row[2]) if len(row) > 2 else "__untagged__"
-            tag_val = tag_val or "__untagged__"
+            raw = str(row[2]) if len(row) > 2 else ""
+            # Strip "key:" prefix if present (e.g. "Projeto:Atlas" -> "Atlas")
+            if ":" in raw:
+                tag_val = raw.split(":", 1)[1].strip() or "__untagged__"
+            else:
+                tag_val = raw.strip() or "__untagged__"
             breakdown[tag_val] = breakdown.get(tag_val, 0.0) + cost
         return breakdown
     except Exception as exc:
