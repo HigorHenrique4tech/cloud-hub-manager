@@ -14,12 +14,13 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('users', sa.Column('password_reset_token', sa.String(255), nullable=True, index=True))
+    op.add_column('users', sa.Column('password_reset_token', sa.String(255), nullable=True))
     op.add_column('users', sa.Column('password_reset_expires_at', sa.DateTime, nullable=True))
-    op.create_index('ix_users_password_reset_token', 'users', ['password_reset_token'], unique=False)
+    # Index already exists from previous model sync — skip creation to avoid DuplicateTable error
+    op.execute("CREATE INDEX IF NOT EXISTS ix_users_password_reset_token ON users (password_reset_token)")
 
 
 def downgrade():
-    op.drop_index('ix_users_password_reset_token', table_name='users')
+    op.execute("DROP INDEX IF EXISTS ix_users_password_reset_token")
     op.drop_column('users', 'password_reset_expires_at')
     op.drop_column('users', 'password_reset_token')
