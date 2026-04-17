@@ -37,7 +37,7 @@ const OrgSwitcher = () => {
 
       {open && (
         <div className="absolute left-0 mt-1 w-64 bg-white dark:bg-gray-800 rounded-xl shadow-xl
-                        border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
+                        border border-gray-200 dark:border-gray-700 z-[200] overflow-hidden">
           <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-700">
             <p className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase">Organizações</p>
           </div>

@@ -115,7 +115,7 @@ const Header = ({ onMenuToggle }) => {
   };
 
   return (
-    <header className="header-bar z-40 relative">
+    <header className="header-bar z-50 relative">
       <div className="px-5 sm:px-8 py-3.5">
         <div className="flex items-center gap-4">
           {/* Mobile menu toggle */}
