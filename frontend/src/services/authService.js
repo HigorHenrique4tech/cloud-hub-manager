@@ -83,6 +83,17 @@ const authService = {
     return data;
   },
 
+  // Password reset
+  forgotPassword: async (email) => {
+    const { data } = await api.post('/auth/forgot-password', { email });
+    return data;
+  },
+
+  resetPassword: async (token, newPassword) => {
+    const { data } = await api.post('/auth/reset-password', { token, new_password: newPassword });
+    return data;
+  },
+
   // OAuth
   googleCallback: async (code, redirectUri) => {
     const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri });

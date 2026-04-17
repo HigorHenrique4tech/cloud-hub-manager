@@ -199,6 +199,8 @@ class User(Base):
     is_admin           = Column(Boolean, default=False, nullable=False)
     is_helpdesk        = Column(Boolean, default=False, nullable=False)
     onboarding_completed = Column(Boolean, default=False, nullable=False)
+    password_reset_token      = Column(String(255), nullable=True, index=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

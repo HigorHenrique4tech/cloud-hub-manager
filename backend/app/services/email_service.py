@@ -341,6 +341,45 @@ def send_alert_email(
     return _send_email(to_email, f"{_brand_name(branding)} — Alerta: {alert_name}", html, sender_name=_brand_sender(branding))
 
 
+def send_password_reset_email(to_email: str, user_name: str, token: str, branding: dict = None) -> bool:
+    """Send a password reset link valid for 1 hour."""
+    from app.core.config import settings
+    reset_url = f"{settings.FRONTEND_URL}/reset-password?token={token}"
+
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured. Reset link: %s", reset_url)
+        return True
+
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Redefinição de senha</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        Recebemos uma solicitação para redefinir a senha da sua conta no {_brand_name(branding)}.
+        Clique no botão abaixo para criar uma nova senha:
+      </p>
+      <div style="text-align: center; margin: 32px 0;">
+        <a href="{reset_url}"
+           style="display: inline-block; padding: 12px 32px; background-color: #3b82f6;
+                  color: #ffffff; text-decoration: none; border-radius: 8px; font-weight: 600;
+                  font-size: 14px;">
+          Redefinir minha senha
+        </a>
+      </div>
+      <p style="color: #94a3b8; font-size: 12px;">
+        Se o botão não funcionar, copie e cole este link:<br/>
+        <a href="{reset_url}" style="color: #3b82f6;">{reset_url}</a>
+      </p>
+      <p style="color: #94a3b8; font-size: 12px;">
+        Este link expira em <strong>1 hora</strong>.<br/>
+        Se você não solicitou a redefinição, ignore este email — sua senha não será alterada.
+      </p>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(to_email, f"{_brand_name(branding)} — Redefinição de senha", html, sender_name=_brand_sender(branding))
+
+
 def send_budget_alert_email(
     to_email: str,
     user_name: str,

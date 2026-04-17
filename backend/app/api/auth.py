@@ -458,6 +458,63 @@ def resend_verification(payload: ResendVerificationRequest, request: Request, db
     return {"detail": "Se o email estiver cadastrado, enviaremos o link de verificação"}
 
 
+# ── Password reset ────────────────────────────────────────────────────────────
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+@router.post("/forgot-password", status_code=200)
+@limiter.limit("3/minute")
+def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Request a password reset link. Always returns 200 to avoid email enumeration."""
+    from app.services.email_service import send_password_reset_email
+
+    user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
+    if user and not user.oauth_provider:
+        token = secrets.token_urlsafe(32)
+        user.password_reset_token = token
+        user.password_reset_expires_at = datetime.utcnow() + timedelta(hours=1)
+        db.commit()
+        send_password_reset_email(user.email, user.name, token)
+
+    return {"detail": "Se o email estiver cadastrado, você receberá as instruções em breve."}
+
+
+@router.post("/reset-password", status_code=200)
+@limiter.limit("5/minute")
+def reset_password(request: Request, payload: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Apply a new password using a valid reset token."""
+    if len(payload.new_password) < 8:
+        raise HTTPException(status_code=422, detail="A senha deve ter pelo menos 8 caracteres.")
+
+    user = (
+        db.query(User)
+        .filter(
+            User.password_reset_token == payload.token,
+            User.is_active == True,
+        )
+        .first()
+    )
+
+    if not user or not user.password_reset_expires_at or user.password_reset_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Token inválido ou expirado.")
+
+    user.hashed_password = hash_password(payload.new_password)
+    user.password_reset_token = None
+    user.password_reset_expires_at = None
+    db.commit()
+
+    log_activity(db, user.id, None, "password_reset", "Senha redefinida via link de email")
+    return {"detail": "Senha redefinida com sucesso. Você já pode fazer login."}
+
+
 # ── Invitations ─────────────────────────────────────────────────────────────
 
 

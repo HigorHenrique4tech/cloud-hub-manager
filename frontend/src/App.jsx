@@ -18,6 +18,7 @@ import './styles/index.css';
 // Auth (not protected — load eagerly for fast first paint)
 import Login from './pages/login';
 import Register from './pages/register';
+import ResetPassword from './pages/ResetPassword';
 
 // Core (loaded on demand)
 const Dashboard = lazy(() => import('./pages/dashboard'));
@@ -128,6 +129,7 @@ function App() {
               <Routes>
                 <Route path="/login" element={<Login />} />
                 <Route path="/register" element={<Register />} />
+                <Route path="/reset-password" element={<ResetPassword />} />
                 <Route path="/auth/google/callback" element={<OAuthCallback provider="google" />} />
                 <Route path="/auth/github/callback" element={<OAuthCallback provider="github" />} />
                 <Route path="/auth/microsoft/callback" element={<OAuthCallback provider="microsoft" />} />

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Mail, Lock, LogIn, Eye, EyeOff, ShieldCheck, ArrowLeft, RefreshCw } from 'lucide-react';
+import { Mail, Lock, LogIn, Eye, EyeOff, ShieldCheck, ArrowLeft, RefreshCw, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
 import OAuthButtons from '../components/auth/OAuthButtons';
@@ -199,6 +199,12 @@ const Login = () => {
   const cooldownRef  = useRef(null);
   const otpInputRef  = useRef(null);
 
+  // Forgot password state
+  const [forgotEmail, setForgotEmail]   = useState('');
+  const [forgotError, setForgotError]   = useState('');
+  const [forgotSent, setForgotSent]     = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+
   const { login, loginWithTokens, user, loading: authLoading } = useAuth();
   const navigate       = useNavigate();
   const [searchParams] = useSearchParams();
@@ -296,6 +302,27 @@ const Login = () => {
     setMfaToken('');
     clearInterval(cooldownRef.current);
     setResendCooldown(0);
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotLoading(true);
+    try {
+      await authService.forgotPassword(forgotEmail);
+      setForgotSent(true);
+    } catch (err) {
+      setForgotError(err.response?.data?.detail || 'Erro ao enviar email. Tente novamente.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleBackFromForgot = () => {
+    setStep('credentials');
+    setForgotEmail('');
+    setForgotError('');
+    setForgotSent(false);
   };
 
   /* ── Shared style tokens ── */
@@ -520,6 +547,19 @@ const Login = () => {
                     </div>
                   </div>
 
+                  {/* Forgot password link */}
+                  <div style={{ textAlign: 'right', marginTop: -4 }}>
+                    <button
+                      type="button"
+                      onClick={() => { setStep('forgot'); setForgotEmail(email); }}
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: '#64748b', transition: 'color 0.2s' }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#38bdf8'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                    >
+                      Esqueci minha senha
+                    </button>
+                  </div>
+
                   {/* Submit */}
                   <button
                     type="submit"
@@ -563,7 +603,7 @@ const Login = () => {
                   </Link>
                 </p>
               </>
-            ) : (
+            ) : step === 'otp' ? (
               /* ── OTP step ── */
               <>
                 <div className="anim-fadein-1 flex flex-col items-center text-center">
@@ -673,6 +713,121 @@ const Login = () => {
                   </button>
                 </div>
               </>
+            ) : step === 'forgot' ? (
+              /* ── Forgot password step ── */
+              <>
+                <div className="anim-fadein-1 flex flex-col items-center text-center">
+                  <div style={{
+                    width: 60, height: 60, borderRadius: 16, marginBottom: 16,
+                    background: 'rgba(56,189,248,0.08)',
+                    border: '1px solid rgba(56,189,248,0.2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <Mail style={{ width: 28, height: 28, color: '#38bdf8' }} />
+                  </div>
+                  <h1 style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', marginBottom: 8, letterSpacing: '-0.3px' }}>
+                    Redefinir senha
+                  </h1>
+                  <p style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>
+                    {forgotSent
+                      ? 'Verifique seu email para continuar.'
+                      : 'Informe seu email e enviaremos um link para redefinir sua senha.'}
+                  </p>
+                </div>
+
+                {forgotSent ? (
+                  <div className="anim-fadein-2 flex flex-col items-center gap-4">
+                    <div style={{
+                      display: 'flex', alignItems: 'center', gap: 10,
+                      padding: '14px 18px', borderRadius: 10,
+                      background: 'rgba(34,197,94,0.08)',
+                      border: '1px solid rgba(34,197,94,0.25)',
+                    }}>
+                      <CheckCircle style={{ width: 18, height: 18, color: '#4ade80', flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: '#86efac' }}>
+                        Email enviado! Verifique sua caixa de entrada e o spam.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleBackFromForgot}
+                      className="flex items-center gap-1.5"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#64748b', transition: 'color 0.2s' }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#94a3b8'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                    >
+                      <ArrowLeft style={{ width: 13, height: 13 }} />
+                      Voltar ao login
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    {forgotError && (
+                      <div style={{
+                        padding: '10px 14px', borderRadius: 10, fontSize: 13,
+                        background: 'rgba(239,68,68,0.08)',
+                        border: '1px solid rgba(239,68,68,0.25)',
+                        color: '#fca5a5',
+                      }}>
+                        {forgotError}
+                      </div>
+                    )}
+
+                    <form onSubmit={handleForgotPassword} className="anim-fadein-3 flex flex-col gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label style={{ fontSize: 11, fontWeight: 500, color: '#94a3b8', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                          Email
+                        </label>
+                        <div className="relative">
+                          <Mail style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: '#64748b', pointerEvents: 'none' }} />
+                          <input
+                            type="email"
+                            required
+                            value={forgotEmail}
+                            onChange={(e) => setForgotEmail(e.target.value)}
+                            placeholder="seu@email.com"
+                            className="login-input"
+                            style={inputStyle}
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        type="submit"
+                        disabled={forgotLoading}
+                        className="login-btn-primary w-full flex items-center justify-center gap-2"
+                        style={{
+                          padding: '13px', borderRadius: 10, border: 'none',
+                          color: '#fff', fontSize: 15, fontWeight: 600, cursor: 'pointer',
+                          fontFamily: "'Plus Jakarta Sans', system-ui, sans-serif",
+                        }}
+                      >
+                        {forgotLoading ? (
+                          <span style={{ width: 18, height: 18, border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'spin 0.7s linear infinite', display: 'inline-block' }} />
+                        ) : (
+                          <Mail style={{ width: 16, height: 16 }} />
+                        )}
+                        {forgotLoading ? 'Enviando...' : 'Enviar link de redefinição'}
+                      </button>
+                    </form>
+
+                    <button
+                      type="button"
+                      onClick={handleBackFromForgot}
+                      className="flex items-center justify-center gap-1.5"
+                      style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: '#64748b', transition: 'color 0.2s' }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#94a3b8'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#64748b'}
+                    >
+                      <ArrowLeft style={{ width: 13, height: 13 }} />
+                      Voltar ao login
+                    </button>
+                  </>
+                )}
+              </>
+            ) : (
+              /* ── OTP step ── (else branch moved here) */
+              null
             )}
           </div>
         </div>
