@@ -6,6 +6,11 @@ const billingService = {
     return data;
   },
 
+  downgrade: async (slug, plan_tier) => {
+    const { data } = await api.post(`/orgs/${slug}/billing/downgrade`, { plan_tier });
+    return data;
+  },
+
   verifyPayment: async (slug, paymentId) => {
     const { data } = await api.get(`/orgs/${slug}/billing/verify/${paymentId}`);
     return data;

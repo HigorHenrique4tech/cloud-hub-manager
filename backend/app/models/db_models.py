@@ -98,6 +98,26 @@ class PendingInvitation(Base):
     inviter      = relationship("User", foreign_keys=[invited_by])
 
 
+class OrganizationAddOn(Base):
+    __tablename__ = "organization_addons"
+    __table_args__ = (
+        Index("ix_org_addon_type", "organization_id", "addon_type"),
+    )
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    addon_type      = Column(String(50), nullable=False)  # "workspace" | "user"
+    quantity        = Column(Integer, nullable=False, default=0)  # number of additional workspaces/users
+    monthly_price_cents = Column(Integer, nullable=False)  # price in centavos (R$ 60 = 6000, R$ 159 = 15900)
+    is_active       = Column(Boolean, default=True, nullable=False)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    organization = relationship("Organization")
+    creator      = relationship("User", foreign_keys=[created_by])
+
+
 class Workspace(Base):
     __tablename__ = "workspaces"
     __table_args__ = (

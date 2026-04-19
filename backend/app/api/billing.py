@@ -35,6 +35,10 @@ class CheckoutRequest(BaseModel):
     plan_tier: str
 
 
+class DowngradeRequest(BaseModel):
+    plan_tier: str
+
+
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
@@ -47,9 +51,9 @@ async def checkout(
     db: Session = Depends(get_db),
 ):
     """Create a billing on AbacatePay for plan upgrade."""
-    valid_paid_tiers = {"pro"}
+    valid_paid_tiers = {"basic", "standard", "enterprise_e1", "enterprise_e2", "enterprise_e3"}
     if payload.plan_tier not in valid_paid_tiers:
-        raise HTTPException(status_code=400, detail=f"Plano inválido para checkout. Opções: {', '.join(valid_paid_tiers)}")
+        raise HTTPException(status_code=400, detail=f"Plano inválido para checkout. Opções: {', '.join(sorted(valid_paid_tiers))}")
 
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     if org.plan_tier == payload.plan_tier:
@@ -251,4 +255,136 @@ async def abacatepay_webhook(
         db.commit()
         logger.info("AbacatePay webhook: payment %s set to %s", payment.id, status_value)
 
-    return {"received": True}
+
+# ── Downgrade Logic ──────────────────────────────────────────────────────────
+
+@router.post("/downgrade")
+@limiter.limit("5/minute")
+async def downgrade_plan(
+    request: Request,
+    payload: DowngradeRequest,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Downgrade organization plan with overage charge calculation.
+
+    If current usage exceeds new plan limits, charges overage for the difference.
+    """
+    from app.models.db_models import Workspace, OrganizationMember, CloudAccount, OrganizationAddOn
+    from app.services.plan_service import get_plan_limits
+    from datetime import datetime, timedelta
+
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    old_plan = org.plan_tier
+    new_plan = payload.plan_tier.lower()
+
+    # Validate plan
+    valid_plans = {"free", "basic", "standard", "enterprise_e1", "enterprise_e2", "enterprise_e3"}
+    if new_plan not in valid_plans:
+        raise HTTPException(status_code=400, detail=f"Plano inválido: {new_plan}")
+
+    # Can't downgrade to same plan
+    if old_plan == new_plan:
+        raise HTTPException(status_code=400, detail="Você já está neste plano")
+
+    # Get limits for both plans
+    old_limits = get_plan_limits(old_plan)
+    new_limits = get_plan_limits(new_plan)
+
+    # Count current usage
+    ws_count = db.query(Workspace).filter(
+        Workspace.organization_id == org.id,
+        Workspace.is_active == True,
+    ).count()
+    mem_count = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id,
+        OrganizationMember.is_active == True,
+    ).count()
+
+    # Count add-ons
+    ws_addons = db.query(OrganizationAddOn).filter(
+        OrganizationAddOn.organization_id == org.id,
+        OrganizationAddOn.addon_type == "workspace",
+        OrganizationAddOn.is_active == True,
+    ).first()
+    user_addons = db.query(OrganizationAddOn).filter(
+        OrganizationAddOn.organization_id == org.id,
+        OrganizationAddOn.addon_type == "user",
+        OrganizationAddOn.is_active == True,
+    ).first()
+
+    ws_addon_qty = ws_addons.quantity if ws_addons else 0
+    user_addon_qty = user_addons.quantity if user_addons else 0
+
+    # Calculate overage (usage exceeding new plan base limits)
+    old_ws_base = old_limits.get("workspaces") or 0
+    old_mem_base = old_limits.get("members") or 0
+    new_ws_base = new_limits.get("workspaces") or 0
+    new_mem_base = new_limits.get("members") or 0
+
+    ws_overage = max(0, ws_count - new_ws_base)
+    mem_overage = max(0, mem_count - new_mem_base)
+
+    # If downgrading would violate limits, charge for overage
+    overage_charge_cents = 0
+    if ws_overage > 0:
+        # Charge for workspaces that exceed new plan limit
+        # Use add-on price (R$ 60 = 6000 centavos)
+        overage_charge_cents += ws_overage * 6000
+
+    if mem_overage > 0:
+        # Charge for users that exceed new plan limit
+        # Use add-on price (R$ 159 = 15900 centavos)
+        overage_charge_cents += mem_overage * 15900
+
+    # If there's an overage charge, create a payment for it
+    payment_id = None
+    if overage_charge_cents > 0:
+        # Create overage charge payment
+        overage_payment = Payment(
+            organization_id=org.id,
+            user_id=member.user.id,
+            plan_tier=new_plan,
+            amount=overage_charge_cents,
+            status="PENDING",
+            payment_url=None,  # Overage is just recorded, not a checkout
+        )
+        db.add(overage_payment)
+        db.commit()
+        db.refresh(overage_payment)
+        payment_id = str(overage_payment.id)
+
+        logger.info(
+            "Downgrade overage: org=%s, old=%s → new=%s, ws_overage=%d, mem_overage=%d, charge_cents=%d",
+            org.id, old_plan, new_plan, ws_overage, mem_overage, overage_charge_cents,
+        )
+
+    # Apply downgrade
+    org.plan_tier = new_plan
+    db.commit()
+
+    log_activity(
+        db, member.user, "billing.downgrade", "Organization",
+        resource_id=str(org.id),
+        detail=f"{old_plan} → {new_plan}, overage_charge_cents={overage_charge_cents}",
+        provider="system",
+    )
+
+    return {
+        "detail": "Downgrade realizado com sucesso",
+        "old_plan": old_plan,
+        "new_plan": new_plan,
+        "overage_charge": {
+            "ws_overage": ws_overage,
+            "mem_overage": mem_overage,
+            "charge_cents": overage_charge_cents,
+            "charge_brl": f"R$ {overage_charge_cents / 100:.2f}",
+            "payment_id": payment_id,
+        },
+        "message": f"Downgrade para {new_plan}" + (
+            f" — Cobrança de overage: R$ {overage_charge_cents / 100:.2f}" if overage_charge_cents > 0 else ""
+        ),
+    }

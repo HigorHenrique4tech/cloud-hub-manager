@@ -11,6 +11,7 @@ from .orgs import router as orgs_router
 from .workspaces import router as workspaces_router
 from .cloud_accounts import router as cloud_accounts_router
 from .billing import router as billing_router, webhook_router as billing_webhook_router
+from .addons import router as addons_router
 from .schedules import ws_router as schedules_ws_router
 from .dashboard_config import ws_router as dashboard_config_ws_router
 from .admin import admin_router, leads_router, public_contact_router
@@ -42,6 +43,7 @@ api_router.include_router(orgs_router)
 api_router.include_router(workspaces_router)
 api_router.include_router(billing_router)
 api_router.include_router(billing_webhook_router)
+api_router.include_router(addons_router)
 
 # Admin (platform-level)
 api_router.include_router(admin_router)

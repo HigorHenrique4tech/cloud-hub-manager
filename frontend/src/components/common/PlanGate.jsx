@@ -1,7 +1,15 @@
 import { Lock } from 'lucide-react';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 
-const PLAN_ORDER = { free: 0, pro: 1, enterprise: 2, enterprise_migration: 3 };
+const PLAN_ORDER = {
+  free: 0,
+  basic: 1,
+  standard: 2,
+  enterprise_e1: 3,
+  enterprise_e2: 4,
+  enterprise_e3: 5,
+  enterprise_migration: 6,
+};
 
 /**
  * Renders children only if the org's plan_tier meets the minimum required plan.

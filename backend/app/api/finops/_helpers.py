@@ -226,7 +226,15 @@ def _get_org_plan(member: MemberContext, db: Session) -> str:
 
 def _require_plan(plan: str, minimum: str, feature: str):
     """Raises 403 if plan doesn't meet the minimum."""
-    order = {"free": 0, "pro": 1, "enterprise": 2, "enterprise_migration": 3}
+    order = {
+        "free": 0,
+        "basic": 1,
+        "standard": 2,
+        "enterprise_e1": 3,
+        "enterprise_e2": 4,
+        "enterprise_e3": 5,
+        "enterprise_migration": 6,
+    }
     if order.get(plan, 0) < order.get(minimum, 0):
         raise HTTPException(
             status_code=403,

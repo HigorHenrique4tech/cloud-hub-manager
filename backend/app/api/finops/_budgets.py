@@ -53,18 +53,20 @@ async def create_budget(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Orçamentos")
+    _require_plan(plan, "basic", "Orçamentos")
 
-    # Pro plan: max 5 budgets
-    if plan == "pro":
+    # Budget limits per plan: basic=5, standard=15, enterprise=unlimited
+    budget_limits = {"basic": 5, "standard": 15}
+    max_budgets = budget_limits.get(plan, float('inf'))
+    if max_budgets != float('inf'):
         count = db.query(FinOpsBudget).filter(
             FinOpsBudget.workspace_id == member.workspace_id,
             FinOpsBudget.is_active == True,
         ).count()
-        if count >= 5:
+        if count >= max_budgets:
             raise HTTPException(
                 status_code=403,
-                detail="Limite de 5 orçamentos atingido no plano Pro. Faça upgrade para Enterprise."
+                detail=f"Limite de {max_budgets} orçamentos atingido no plano {plan.capitalize()}. Faça upgrade para um plano superior."
             )
 
     budget = FinOpsBudget(

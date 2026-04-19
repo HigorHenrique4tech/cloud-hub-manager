@@ -11,23 +11,39 @@ from app.models.db_models import (
 
 PLAN_HIERARCHY = {
     "free": 0,
-    "pro": 1,
-    "enterprise": 2,
-    "enterprise_migration": 3,
+    "basic": 1,
+    "standard": 2,
+    "enterprise_e1": 3,
+    "enterprise_e2": 4,
+    "enterprise_e3": 5,
+    "enterprise_migration": 6,  # legacy, for backwards compat
 }
 
 # ── Plan limits ──────────────────────────────────────────────────────────────
 
 PLAN_LIMITS = {
     "free":                 {"workspaces": 2,    "cloud_accounts": 3,    "members": 3,    "managed_orgs": 0},
-    "pro":                  {"workspaces": 10,   "cloud_accounts": 20,   "members": 20,   "managed_orgs": 0},
-    "enterprise":           {"workspaces": 20,   "cloud_accounts": None, "members": None, "managed_orgs": None},
-    "enterprise_migration": {"workspaces": 20,   "cloud_accounts": None, "members": None, "managed_orgs": None},
+    "basic":                {"workspaces": 5,    "cloud_accounts": 10,   "members": 3,    "managed_orgs": 0},
+    "standard":             {"workspaces": 25,   "cloud_accounts": None, "members": 10,   "managed_orgs": 0},
+    "enterprise_e1":        {"workspaces": 50,   "cloud_accounts": None, "members": 20,   "managed_orgs": None},
+    "enterprise_e2":        {"workspaces": 100,  "cloud_accounts": None, "members": 40,   "managed_orgs": None},
+    "enterprise_e3":        {"workspaces": 200,  "cloud_accounts": None, "members": 80,   "managed_orgs": None},
+    "enterprise_migration": {"workspaces": 20,   "cloud_accounts": None, "members": None, "managed_orgs": None},  # legacy
 }
 
 PLAN_PRICES = {
-    "pro":                        49700,   # R$ 497,00 em centavos
-    "enterprise":                 249700,  # R$ 2.497,00 (base, sob consulta — apenas exibição)
+    # Base plans (monthly in centavos)
+    "basic":                      39700,   # R$ 397,00
+    "standard":                   79700,   # R$ 797,00
+    "enterprise_e1":              299700,  # R$ 2.997,00
+    "enterprise_e2":              499700,  # R$ 4.997,00
+    "enterprise_e3":              799700,  # R$ 7.997,00
+
+    # Add-ons (per unit, monthly)
+    "addon_workspace":            6000,    # R$ 60,00 per workspace
+    "addon_user":                 15900,   # R$ 159,00 per user
+
+    # Legacy migration (backward compat)
     "enterprise_migration":       474700,  # R$ 4.747,00 (Enterprise R$2.497 + Migration R$2.250)
     "migration_license_unit":     7000,    # R$ 70,00 por licença avulsa
     "enterprise_extra_org":       39700,   # R$ 397,00 por org parceira adicional
