@@ -63,7 +63,7 @@ export const useAddOns = (orgSlug) => {
   });
 
   return {
-    addOns: addOnsQuery.data || [],
+    addOns: addOnsQuery.data?.addons || [],
     isLoadingAddOns: addOnsQuery.isLoading,
     addWorkspace: addWorkspaceMutation.mutate,
     addWorkspaceLoading: addWorkspaceMutation.isPending,
