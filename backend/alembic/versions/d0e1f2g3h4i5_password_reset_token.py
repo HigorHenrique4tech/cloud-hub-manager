@@ -1,14 +1,14 @@
 """password reset token fields on users
 
 Revision ID: d0e1f2g3h4i5
-Revises: c9d0e1f2g3h4
+Revises: z6a1b2c3d4e5
 Create Date: 2026-04-17 18:30:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = 'd0e1f2g3h4i5'
-down_revision = 'c9d0e1f2g3h4'
+down_revision = 'z6a1b2c3d4e5'
 branch_labels = None
 depends_on = None
 

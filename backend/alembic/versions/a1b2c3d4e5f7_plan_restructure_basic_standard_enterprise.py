@@ -1,7 +1,7 @@
 """Restructure plans: Pro → Basic/Standard, Enterprise → E1/E2/E3
 
 Revision ID: a1b2c3d4e5f7
-Revises: z6a1b2c3d4e5
+Revises: d0e1f2g3h4i5
 Create Date: 2026-04-19 10:00:00.000000
 
 New plan tiers:
@@ -18,7 +18,7 @@ Legacy migration path:
 from alembic import op
 
 revision = 'a1b2c3d4e5f7'
-down_revision = 'z6a1b2c3d4e5'
+down_revision = 'd0e1f2g3h4i5'
 branch_labels = None
 depends_on = None
 
