@@ -1,7 +1,7 @@
 """csp_cost_preferences
 
 Revision ID: s2t3u4v5w6x7
-Revises: r1s2t3u4v5w6
+Revises: b2c3d4e5f7g8
 Create Date: 2026-04-13 13:00:00.000000
 
 """
@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = 's2t3u4v5w6x7'
-down_revision = 'r1s2t3u4v5w6'
+down_revision = 'b2c3d4e5f7g8'
 branch_labels = None
 depends_on = None
 
