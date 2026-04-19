@@ -1498,6 +1498,195 @@ const MigrationLicensesTab = () => {
 };
 
 
+/* ── Add-on Requests Tab ─────────────────────────────────────────────────── */
+
+const ADDON_STATUS = {
+  pending:  { label: 'Pendente',  icon: Clock,        cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  approved: { label: 'Aprovado',  icon: CheckCircle2, cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  rejected: { label: 'Recusado',  icon: Ban,          cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+};
+
+const AddonRequestsTab = () => {
+  const qc = useQueryClient();
+  const [filter, setFilter] = useState('pending');
+  const [reviewing, setReviewing] = useState(null);
+  const [adminNotes, setAdminNotes] = useState('');
+
+  useEscapeKey(!!reviewing, useCallback(() => setReviewing(null), []));
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin-addon-requests', filter],
+    queryFn: () => adminService.listAddonRequests(filter || undefined),
+    staleTime: 30_000,
+  });
+
+  const reviewMut = useMutation({
+    mutationFn: ({ id, action, admin_notes }) =>
+      adminService.reviewAddonRequest(id, action, admin_notes),
+    onSuccess: () => {
+      setReviewing(null);
+      setAdminNotes('');
+      qc.invalidateQueries({ queryKey: ['admin-addon-requests'] });
+    },
+  });
+
+  const requests = data?.addon_requests || [];
+
+  const handleReview = (action) => {
+    if (!reviewing) return;
+    reviewMut.mutate({ id: reviewing.id, action, admin_notes: adminNotes || undefined });
+  };
+
+  const fmtAddonType = (type) => type === 'workspace' ? 'Workspace(s)' : 'Usuário(s)';
+  const fmtPrice = (cents) => `R$ ${(cents / 100).toFixed(2).replace('.', ',')}/mês`;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2">
+        {[
+          { id: 'pending',  label: 'Pendentes' },
+          { id: 'approved', label: 'Aprovados' },
+          { id: 'rejected', label: 'Recusados' },
+          { id: '',         label: 'Todos' },
+        ].map(({ id, label }) => (
+          <button key={id} onClick={() => setFilter(id)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              filter === id
+                ? 'bg-primary text-white'
+                : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        </div>
+      ) : requests.length === 0 ? (
+        <div className="card flex flex-col items-center gap-3 py-12 text-center">
+          <Plus className="w-8 h-8 text-gray-300 dark:text-gray-600" />
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            {filter === 'pending' ? 'Nenhuma solicitação pendente.' : 'Nenhuma solicitação encontrada.'}
+          </p>
+        </div>
+      ) : (
+        <div className="card divide-y divide-gray-100 dark:divide-gray-800">
+          {requests.map((req) => {
+            const st = ADDON_STATUS[req.status] || ADDON_STATUS.pending;
+            const StIcon = st.icon;
+            return (
+              <div key={req.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${st.cls}`}>
+                        <StIcon size={12} /> {st.label}
+                      </span>
+                      <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                        {req.quantity} {fmtAddonType(req.addon_type)}
+                      </span>
+                      <span className="text-sm text-gray-400">— {fmtPrice(req.monthly_price_cents)}</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      <span>{req.org_name}</span>
+                      {req.requested_by && <><span>·</span><span>Solicitado por {req.requested_by}</span></>}
+                      <span>·</span>
+                      <span>{fmtDate(req.created_at)}</span>
+                    </div>
+                    {req.notes && (
+                      <p className="text-xs text-gray-400 mt-1 italic">"{req.notes}"</p>
+                    )}
+                    {req.admin_notes && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                        Admin: {req.admin_notes}
+                        {req.reviewed_by && <span className="text-gray-400"> — {req.reviewed_by}, {fmtDate(req.reviewed_at)}</span>}
+                      </p>
+                    )}
+                  </div>
+
+                  {req.status === 'pending' && (
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => { setReviewing(req); setAdminNotes(''); }}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white"
+                      >
+                        Aprovar
+                      </button>
+                      <button
+                        onClick={() => { setReviewing({ ...req, _reject: true }); setAdminNotes(''); }}
+                        className="px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white"
+                      >
+                        Recusar
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {reviewing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setReviewing(null)}>
+          <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">
+              {reviewing._reject ? 'Recusar' : 'Aprovar'} solicitação de add-on
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+              {reviewing.org_name} — {reviewing.quantity} {fmtAddonType(reviewing.addon_type)} ({fmtPrice(reviewing.monthly_price_cents)})
+            </p>
+
+            {!reviewing._reject && (
+              <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 mb-4 text-sm text-green-700 dark:text-green-300">
+                Ao aprovar, o add-on ficará ativo imediatamente e será cobrado no próximo ciclo de faturamento.
+              </div>
+            )}
+
+            <div className="mb-4">
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 block mb-1.5">
+                Observação do admin (opcional)
+              </label>
+              <input
+                type="text"
+                value={adminNotes}
+                onChange={(e) => setAdminNotes(e.target.value)}
+                placeholder={reviewing._reject ? 'Motivo da recusa...' : 'Observação interna...'}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+              />
+            </div>
+
+            <div className="flex gap-3">
+              <button onClick={() => setReviewing(null)}
+                className="flex-1 px-4 py-2.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleReview(reviewing._reject ? 'reject' : 'approve')}
+                disabled={reviewMut.isPending}
+                className={`flex-1 px-4 py-2.5 text-sm rounded-lg text-white font-medium disabled:opacity-50 ${
+                  reviewing._reject ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'
+                }`}
+              >
+                {reviewMut.isPending ? 'Processando...' : reviewing._reject ? 'Recusar' : 'Aprovar'}
+              </button>
+            </div>
+
+            {reviewMut.isError && (
+              <p className="mt-3 text-xs text-red-500 text-center">
+                {reviewMut.error?.response?.data?.detail || 'Erro ao processar.'}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 
 const AdminPanel = () => {
@@ -1532,6 +1721,7 @@ const AdminPanel = () => {
             { id: 'orgs',       label: 'Organizações',         icon: Building2 },
             { id: 'billing',    label: 'Faturamento',           icon: CreditCard },
             { id: 'licenses',   label: 'Licenças Migration',   icon: ArrowRightLeft },
+            { id: 'addons',     label: 'Add-ons',              icon: Plus },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -1549,6 +1739,7 @@ const AdminPanel = () => {
         {tab === 'orgs'     && <OrgsTab />}
         {tab === 'billing'  && <BillingTab orgs={allOrgs} />}
         {tab === 'licenses' && <MigrationLicensesTab />}
+        {tab === 'addons'   && <AddonRequestsTab />}
       </div>
     </Layout>
   );

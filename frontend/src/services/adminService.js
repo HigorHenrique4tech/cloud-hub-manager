@@ -94,6 +94,11 @@ const adminService = {
     api.get('/admin/migration-licenses', { params: status ? { status } : {} }).then((r) => r.data),
   reviewMigrationLicense: (id, action, admin_notes) =>
     api.put(`/admin/migration-licenses/${id}`, { action, admin_notes }).then((r) => r.data),
+  // Admin only — add-on requests
+  listAddonRequests: (status) =>
+    api.get('/admin/addon-requests', { params: status ? { status } : {} }).then((r) => r.data),
+  reviewAddonRequest: (id, action, admin_notes) =>
+    api.put(`/admin/addon-requests/${id}`, { action, admin_notes }).then((r) => r.data),
 };
 
 export default adminService;

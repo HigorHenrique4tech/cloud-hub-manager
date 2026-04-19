@@ -107,9 +107,14 @@ class OrganizationAddOn(Base):
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
     addon_type      = Column(String(50), nullable=False)  # "workspace" | "user"
-    quantity        = Column(Integer, nullable=False, default=0)  # number of additional workspaces/users
-    monthly_price_cents = Column(Integer, nullable=False)  # price in centavos (R$ 60 = 6000, R$ 159 = 15900)
+    quantity        = Column(Integer, nullable=False, default=0)
+    monthly_price_cents = Column(Integer, nullable=False)  # centavos
     is_active       = Column(Boolean, default=True, nullable=False)
+    status          = Column(String(20), nullable=False, default="pending")  # pending|approved|rejected
+    notes           = Column(Text, nullable=True)
+    admin_notes     = Column(Text, nullable=True)
+    reviewed_by     = Column(String(255), nullable=True)
+    reviewed_at     = Column(DateTime, nullable=True)
     created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
     created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

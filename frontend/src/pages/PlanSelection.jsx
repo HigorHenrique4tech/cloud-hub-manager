@@ -80,7 +80,7 @@ const plans = [
       'Branding por parceiro',
       'Add-ons: R$ 60/WS, R$ 159/usuário',
     ],
-    cta: 'Falar com vendas',
+    cta: 'Assinar E1',
     highlight: false,
   },
   {
@@ -98,7 +98,7 @@ const plans = [
       'Suporte dedicado + migração',
       'Add-ons: R$ 60/WS, R$ 159/usuário',
     ],
-    cta: 'Falar com vendas',
+    cta: 'Assinar E2',
     highlight: false,
   },
   {
@@ -116,7 +116,7 @@ const plans = [
       'SLA 99.9% + suporte 24/7',
       'Add-ons: R$ 60/WS, R$ 159/usuário',
     ],
-    cta: 'Falar com vendas',
+    cta: 'Assinar E3',
     highlight: false,
     badge: 'Melhor para MSPs',
   },

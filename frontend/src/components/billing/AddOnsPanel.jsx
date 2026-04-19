@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, Trash2, AlertCircle, Check } from 'lucide-react';
+import { Plus, Trash2, AlertCircle, Check, Clock } from 'lucide-react';
 import { useAddOns } from '../../hooks/useAddOns';
 
 const AddOnsPanel = ({ orgSlug, currentPlan, currentMembers, currentWorkspaces, maxMembers, maxWorkspaces }) => {
@@ -8,8 +8,10 @@ const AddOnsPanel = ({ orgSlug, currentPlan, currentMembers, currentWorkspaces, 
   const [userQuantity, setUserQuantity] = useState(1);
   const [message, setMessage] = useState(null);
 
-  const workspaceAddOns = addOns.filter(a => a.addon_type === 'workspace') || [];
-  const userAddOns = addOns.filter(a => a.addon_type === 'user') || [];
+  const approvedAddOns = addOns.filter(a => a.status === 'approved');
+  const pendingAddOns = addOns.filter(a => a.status === 'pending');
+  const workspaceAddOns = approvedAddOns.filter(a => a.addon_type === 'workspace');
+  const userAddOns = approvedAddOns.filter(a => a.addon_type === 'user');
 
   const totalAddOnWorkspaces = workspaceAddOns.reduce((sum, a) => sum + a.quantity, 0);
   const totalAddOnUsers = userAddOns.reduce((sum, a) => sum + a.quantity, 0);
@@ -26,7 +28,7 @@ const AddOnsPanel = ({ orgSlug, currentPlan, currentMembers, currentWorkspaces, 
     if (wsQuantity < 1) return;
     addWorkspace(wsQuantity, {
       onSuccess: () => {
-        setMessage({ type: 'success', text: `${wsQuantity} workspace(s) adicionado(s)!` });
+        setMessage({ type: 'success', text: `Solicitação de ${wsQuantity} workspace(s) enviada! Aguardando aprovação.` });
         setWsQuantity(1);
         setTimeout(() => setMessage(null), 4000);
       },
@@ -41,7 +43,7 @@ const AddOnsPanel = ({ orgSlug, currentPlan, currentMembers, currentWorkspaces, 
     if (userQuantity < 1) return;
     addUser(userQuantity, {
       onSuccess: () => {
-        setMessage({ type: 'success', text: `${userQuantity} usuário(s) adicionado(s)!` });
+        setMessage({ type: 'success', text: `Solicitação de ${userQuantity} usuário(s) enviada! Aguardando aprovação.` });
         setUserQuantity(1);
         setTimeout(() => setMessage(null), 4000);
       },
@@ -168,12 +170,43 @@ const AddOnsPanel = ({ orgSlug, currentPlan, currentMembers, currentWorkspaces, 
         </div>
       </form>
 
-      {/* Lista de add-ons ativos */}
-      {addOns.length > 0 && (
+      {/* Solicitações pendentes */}
+      {pendingAddOns.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 flex items-center gap-1.5">
+            <Clock className="w-4 h-4 text-amber-500" /> Aguardando aprovação
+          </h3>
+          <div className="space-y-2">
+            {pendingAddOns.map((addon) => (
+              <div key={addon.id} className="flex items-center justify-between p-3 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 rounded-lg">
+                <div>
+                  <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                    {addon.quantity} {addon.addon_type === 'workspace' ? 'Workspace(s)' : 'Usuário(s)'} — pendente
+                  </p>
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    R$ {(addon.monthly_price_cents / 100).toFixed(2)}/mês · Em revisão pelo administrador
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleRemoveAddOn(addon.id)}
+                  disabled={removeAddOnLoading}
+                  className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded disabled:opacity-50"
+                  title="Cancelar solicitação"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Add-ons ativos (aprovados) */}
+      {approvedAddOns.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">Add-ons ativos</h3>
           <div className="space-y-2">
-            {addOns.map((addon) => (
+            {approvedAddOns.map((addon) => (
               <div key={addon.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/30 rounded-lg">
                 <div>
                   <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
