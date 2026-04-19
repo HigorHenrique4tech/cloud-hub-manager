@@ -1,7 +1,7 @@
 """Restructure plans (Pro→Basic/Standard, Enterprise→E1/E2/E3) and add organization_addons table
 
 Revision ID: e6f7g8h9i0j1
-Revises: z6a1b2c3d4e5
+Revises: d0e1f2g3h4i5
 Create Date: 2026-04-19 10:00:00.000000
 
 Changes:
@@ -13,7 +13,7 @@ import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
 revision = 'e6f7g8h9i0j1'
-down_revision = 'z6a1b2c3d4e5'
+down_revision = 'd0e1f2g3h4i5'
 branch_labels = None
 depends_on = None
 

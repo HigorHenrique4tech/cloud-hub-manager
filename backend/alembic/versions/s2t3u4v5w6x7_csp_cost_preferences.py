@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = 's2t3u4v5w6x7'
-down_revision = 'b2c3d4e5f7g8'
+down_revision = 'r1s2t3u4v5w6'
 branch_labels = None
 depends_on = None
 
