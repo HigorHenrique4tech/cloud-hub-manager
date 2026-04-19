@@ -14,18 +14,34 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('organization_addons', sa.Column(
-        'status', sa.String(20), nullable=False, server_default='approved'
-    ))
-    op.add_column('organization_addons', sa.Column('notes', sa.Text, nullable=True))
-    op.add_column('organization_addons', sa.Column('admin_notes', sa.Text, nullable=True))
-    op.add_column('organization_addons', sa.Column('reviewed_by', sa.String(255), nullable=True))
-    op.add_column('organization_addons', sa.Column('reviewed_at', sa.DateTime, nullable=True))
-    op.create_index('ix_organization_addons_status', 'organization_addons', ['status'])
+    op.execute("""
+        ALTER TABLE organization_addons
+        ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'approved'
+    """)
+    op.execute("""
+        ALTER TABLE organization_addons
+        ADD COLUMN IF NOT EXISTS notes TEXT
+    """)
+    op.execute("""
+        ALTER TABLE organization_addons
+        ADD COLUMN IF NOT EXISTS admin_notes TEXT
+    """)
+    op.execute("""
+        ALTER TABLE organization_addons
+        ADD COLUMN IF NOT EXISTS reviewed_by VARCHAR(255)
+    """)
+    op.execute("""
+        ALTER TABLE organization_addons
+        ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMP
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS ix_organization_addons_status
+        ON organization_addons (status)
+    """)
 
 
 def downgrade():
-    op.drop_index('ix_organization_addons_status', 'organization_addons')
+    op.execute("DROP INDEX IF EXISTS ix_organization_addons_status")
     op.drop_column('organization_addons', 'reviewed_at')
     op.drop_column('organization_addons', 'reviewed_by')
     op.drop_column('organization_addons', 'admin_notes')
