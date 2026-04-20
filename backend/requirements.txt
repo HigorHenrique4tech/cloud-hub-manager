@@ -67,6 +67,7 @@ apscheduler==3.10.4
 
 # Migration worker
 celery==5.3.6
+flower==2.0.1
 exchangelib==5.2.0
 
 # Monitoring

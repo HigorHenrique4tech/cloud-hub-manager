@@ -199,15 +199,11 @@ services:
   flower:
     build:
       context: ..
-      dockerfile: infra/docker/backend.prod.Dockerfile
+      dockerfile: infra/docker/flower.Dockerfile
     container_name: cloudatlas-flower
-    command: ["celery", "-A", "app.workers.celery_app", "flower",
-              "--port=5555", "--basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}"]
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudatlas}:${POSTGRES_PASSWORD:-cloudatlas_pass}@postgres:5432/${POSTGRES_DB:-cloudatlas_db}
-      - REDIS_URL=redis://redis:6379/0
-      - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
-      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - FLOWER_BASIC_AUTH=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}
     ports:
       - "0.0.0.0:5555:5555"
     networks:
