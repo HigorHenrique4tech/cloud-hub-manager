@@ -195,6 +195,54 @@ services:
     entrypoint: ["/bin/bash", "-c", "while true; do pg-backup; sleep 86400; done"]
     restart: unless-stopped
 
+  # ── Flower (Celery monitoring + /metrics for Prometheus) ─────────────────────
+  flower:
+    build:
+      context: ..
+      dockerfile: infra/docker/backend.prod.Dockerfile
+    container_name: cloudatlas-flower
+    command: ["celery", "-A", "app.workers.celery_app", "flower",
+              "--port=5555", "--basic_auth=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}"]
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudatlas}:${POSTGRES_PASSWORD:-cloudatlas_pass}@postgres:5432/${POSTGRES_DB:-cloudatlas_db}
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-changeme-use-openssl-rand-hex-32-in-production}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
+    ports:
+      - "0.0.0.0:5555:5555"
+    networks:
+      - cloudatlas-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Redis Exporter ───────────────────────────────────────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: cloudatlas-redis-exporter
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    networks:
+      - cloudatlas-network
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Postgres Exporter ────────────────────────────────────────────────────────
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: cloudatlas-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${POSTGRES_USER:-cloudatlas}:${POSTGRES_PASSWORD:-cloudatlas_pass}@postgres:5432/${POSTGRES_DB:-cloudatlas_db}?sslmode=disable"
+    networks:
+      - cloudatlas-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   # ── Prometheus ───────────────────────────────────────────────────────────────
   prometheus:
     image: prom/prometheus:latest
@@ -203,9 +251,14 @@ services:
       - "0.0.0.0:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/metrics_token:/etc/prometheus/metrics_token:ro
       - prometheus_data:/prometheus
     networks:
       - cloudatlas-network
+    depends_on:
+      - backend
+      - redis-exporter
+      - postgres-exporter
     restart: unless-stopped
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
