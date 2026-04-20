@@ -16,7 +16,7 @@ scrape_configs:
   - job_name: 'cloudatlas-migration-worker'
     metrics_path: /metrics
     static_configs:
-      - targets: ['flower:5555']
+      - targets: ['cloudatlas-flower:5555']
         labels:
           service: 'migration-worker'
           environment: 'production'
