@@ -251,7 +251,6 @@ services:
       - "0.0.0.0:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./monitoring/metrics_token:/etc/prometheus/metrics_token:ro
       - prometheus_data:/prometheus
     networks:
       - cloudatlas-network

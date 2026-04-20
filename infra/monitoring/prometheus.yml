@@ -6,8 +6,6 @@ scrape_configs:
   # ── Backend FastAPI ───────────────────────────────────────────────────────────
   - job_name: 'cloudatlas-backend'
     metrics_path: /metrics
-    authorization:
-      credentials_file: /etc/prometheus/metrics_token
     static_configs:
       - targets: ['backend:8000']
         labels:

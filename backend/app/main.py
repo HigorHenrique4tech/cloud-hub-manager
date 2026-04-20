@@ -170,18 +170,23 @@ app.add_middleware(
 )
 
 # ── Protect /metrics endpoint ────────────────────────────────────────────────
+_DOCKER_INTERNAL_PREFIXES = ("172.", "10.", "127.")
+
 @app.middleware("http")
 async def protect_metrics(request: Request, call_next):
     if request.url.path == "/metrics":
-        # In production, require METRICS_TOKEN; in debug mode, allow freely
         if not settings.DEBUG:
-            token = settings.METRICS_TOKEN
-            if not token:
-                return JSONResponse(status_code=404, content={"detail": "Not found"})
-            auth = request.headers.get("Authorization", "")
-            import hmac as _hmac
-            if not auth.startswith("Bearer ") or not _hmac.compare_digest(auth[7:], token):
-                return JSONResponse(status_code=403, content={"detail": "Forbidden"})
+            client_ip = (request.client.host or "") if request.client else ""
+            # Allow Prometheus scraping from internal Docker/private networks without token
+            is_internal = any(client_ip.startswith(p) for p in _DOCKER_INTERNAL_PREFIXES)
+            if not is_internal:
+                token = settings.METRICS_TOKEN
+                if not token:
+                    return JSONResponse(status_code=404, content={"detail": "Not found"})
+                auth = request.headers.get("Authorization", "")
+                import hmac as _hmac
+                if not auth.startswith("Bearer ") or not _hmac.compare_digest(auth[7:], token):
+                    return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     return await call_next(request)
 
 # ── Prometheus metrics ───────────────────────────────────────────────────────
