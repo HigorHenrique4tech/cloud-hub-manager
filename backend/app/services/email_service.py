@@ -1509,3 +1509,108 @@ def send_guest_invite_email(
         html,
         sender_name=_brand_sender(branding),
     )
+
+
+def send_ticket_created_email(
+    to_email: str,
+    user_name: str,
+    ticket_number: int,
+    title: str,
+    priority: str,
+    sla_hours: int | None,
+    branding: dict = None,
+) -> bool:
+    """Confirmation email sent to the ticket creator."""
+    color = _brand_color(branding)
+    sla_line = (
+        f"Nosso SLA de primeira resposta para seu plano é de <strong>{sla_hours} horas úteis</strong>."
+        if sla_hours else "Nossa equipe responderá o mais breve possível."
+    )
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Ticket #{ticket_number} recebido</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        Recebemos seu chamado <strong>{title}</strong> (prioridade {priority}).
+      </p>
+      <p style="color: #64748b; font-size: 14px;">{sla_line}</p>
+      <div style="background: #f8fafc; border-radius: 8px; padding: 16px; margin: 16px 0; border-left: 4px solid {color};">
+        <p style="margin: 0; color: #334155; font-size: 14px;">Você pode acompanhar o andamento pelo painel.</p>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"Ticket #{ticket_number}: {title}",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
+def send_ticket_resolved_csat_email(
+    to_email: str,
+    user_name: str,
+    ticket_number: int,
+    title: str,
+    rate_url: str,
+    branding: dict = None,
+) -> bool:
+    """Invite the user to rate a resolved ticket (CSAT)."""
+    color = _brand_color(branding)
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 32px;">
+      <h2 style="color: #1e293b; margin-bottom: 8px;">Seu ticket foi resolvido</h2>
+      <p style="color: #64748b; font-size: 14px;">Olá {user_name},</p>
+      <p style="color: #64748b; font-size: 14px;">
+        Marcamos o ticket <strong>#{ticket_number} — {title}</strong> como resolvido.
+        Sua opinião ajuda muito: como foi nosso atendimento?
+      </p>
+      <div style="text-align: center; margin: 24px 0;">
+        <a href="{rate_url}" style="display:inline-block; background:{color}; color:#fff; padding:12px 24px;
+                                      border-radius:8px; text-decoration:none; font-weight:600;">
+          Avaliar atendimento
+        </a>
+      </div>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"Como foi o atendimento do ticket #{ticket_number}?",
+        html,
+        sender_name=_brand_sender(branding),
+    )
+
+
+def send_ticket_admin_notification_email(
+    to_email: str,
+    ticket_number: int,
+    title: str,
+    priority: str,
+    org_name: str,
+    plan: str,
+    sla_hours: int | None,
+    branding: dict = None,
+) -> bool:
+    """Notify the platform support inbox about a new ticket."""
+    color = _brand_color(branding)
+    sla_line = f"{sla_hours}h SLA" if sla_hours else "Sem SLA"
+    html = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 520px; margin: 0 auto; padding: 24px;">
+      <h2 style="color:{color}; margin-bottom: 8px;">Novo ticket #{ticket_number}</h2>
+      <p style="color:#334155; font-size: 14px;"><strong>{title}</strong></p>
+      <ul style="color:#64748b; font-size: 13px; line-height: 1.8;">
+        <li>Organização: {org_name}</li>
+        <li>Plano: {plan} ({sla_line})</li>
+        <li>Prioridade: {priority}</li>
+      </ul>
+      {_branded_footer(branding)}
+    </div>
+    """
+    return _send_email(
+        to_email,
+        f"[Suporte] #{ticket_number} — {title}",
+        html,
+        sender_name=_brand_sender(branding),
+    )

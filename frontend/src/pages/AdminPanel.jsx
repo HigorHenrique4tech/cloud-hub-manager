@@ -8,6 +8,7 @@ import {
   History, FileDown, RefreshCw, Power, PowerOff, StickyNote, Save,
   Server, Cloud, Activity, BarChart2, LayoutGrid, Settings, Zap,
   TrendingUp, ChevronLeft, CheckSquare, Square, Bell, ArrowRightLeft,
+  Headphones, Gauge, MessageCircle, Star, Tag,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import { useEscapeKey } from '../hooks/useEscapeKey';
@@ -1687,6 +1688,352 @@ const AddonRequestsTab = () => {
 };
 
 
+/* ── Support Tab ─────────────────────────────────────────────────────────── */
+
+const SupportTab = () => {
+  const qc = useQueryClient();
+  const [view, setView] = useState('kpis'); // kpis | config | macros | agents
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 flex-wrap">
+        {[
+          { id: 'kpis',   label: 'KPIs',         icon: Gauge },
+          { id: 'config', label: 'Configuração', icon: Settings },
+          { id: 'macros', label: 'Respostas prontas', icon: MessageCircle },
+          { id: 'agents', label: 'Agentes',      icon: Users },
+        ].map(({ id, label, icon: Icon }) => (
+          <button key={id} onClick={() => setView(id)}
+            className={`flex items-center gap-2 px-3 py-2 text-sm rounded-lg transition-colors ${
+              view === id
+                ? 'bg-primary text-white'
+                : 'bg-gray-100 dark:bg-gray-700/30 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700/50'
+            }`}>
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {view === 'kpis'   && <SupportKPIsView />}
+      {view === 'config' && <SupportConfigView />}
+      {view === 'macros' && <SupportMacrosView />}
+      {view === 'agents' && <SupportAgentsView />}
+    </div>
+  );
+};
+
+const SupportKPIsView = () => {
+  const [days, setDays] = useState(30);
+  const { data, isLoading } = useQuery({
+    queryKey: ['support-kpis', days],
+    queryFn: () => adminService.getSupportKPIs(days),
+  });
+
+  if (isLoading) return <div className="card"><Loader2 className="animate-spin" /></div>;
+  const k = data || {};
+
+  const Stat = ({ label, value, hint, color = 'text-gray-900 dark:text-gray-100' }) => (
+    <div className="card">
+      <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+      <p className={`text-2xl font-bold mt-1 ${color}`}>{value ?? '—'}</p>
+      {hint && <p className="text-xs text-gray-400 mt-1">{hint}</p>}
+    </div>
+  );
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <label className="text-sm text-gray-600 dark:text-gray-300">Período:</label>
+        <select value={days} onChange={(e) => setDays(Number(e.target.value))}
+          className="input text-sm">
+          <option value={7}>7 dias</option>
+          <option value={30}>30 dias</option>
+          <option value={90}>90 dias</option>
+        </select>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Stat label="Total tickets" value={k.total} />
+        <Stat label="Abertos" value={k.open} color="text-amber-600 dark:text-amber-400" />
+        <Stat label="Resolvidos" value={k.resolved} color="text-green-600 dark:text-green-400" />
+        <Stat label="SLA compliance"
+          value={k.sla_compliance_pct != null ? `${k.sla_compliance_pct.toFixed(1)}%` : '—'}
+          color={k.sla_compliance_pct != null && k.sla_compliance_pct < 85 ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400'}
+        />
+        <Stat label="1ª resposta média"
+          value={k.avg_first_response_hours != null ? `${k.avg_first_response_hours.toFixed(1)}h` : '—'} />
+        <Stat label="CSAT"
+          value={k.csat_avg != null ? `${k.csat_avg.toFixed(2)} / 5` : '—'}
+          hint={k.csat_count ? `${k.csat_count} avaliações` : 'Sem avaliações'} />
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="card">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Por categoria</h3>
+          {Object.entries(k.by_category || {}).length === 0 ? (
+            <p className="text-sm text-gray-500">Sem dados</p>
+          ) : (
+            <ul className="text-sm space-y-1">
+              {Object.entries(k.by_category || {}).map(([c, n]) => (
+                <li key={c} className="flex justify-between text-gray-700 dark:text-gray-300">
+                  <span>{c}</span><span className="font-semibold">{n}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <div className="card">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Por prioridade</h3>
+          {Object.entries(k.by_priority || {}).length === 0 ? (
+            <p className="text-sm text-gray-500">Sem dados</p>
+          ) : (
+            <ul className="text-sm space-y-1">
+              {Object.entries(k.by_priority || {}).map(([p, n]) => (
+                <li key={p} className="flex justify-between text-gray-700 dark:text-gray-300">
+                  <span>{p}</span><span className="font-semibold">{n}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">Top agentes</h3>
+        {(k.top_agents || []).length === 0 ? (
+          <p className="text-sm text-gray-500">Nenhum ticket atribuído</p>
+        ) : (
+          <ul className="text-sm space-y-1">
+            {(k.top_agents || []).map((a) => (
+              <li key={a.name} className="flex justify-between text-gray-700 dark:text-gray-300">
+                <span>{a.name}</span><span className="font-semibold">{a.tickets}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const SupportConfigView = () => {
+  const qc = useQueryClient();
+  const { data, isLoading } = useQuery({
+    queryKey: ['support-config'],
+    queryFn: () => adminService.getSupportConfig(),
+  });
+  const [form, setForm] = useState(null);
+  const [saved, setSaved] = useState(false);
+
+  if (data && !form) setForm(data);
+
+  const mut = useMutation({
+    mutationFn: (payload) => adminService.updateSupportConfig(payload),
+    onSuccess: (d) => { setForm(d); qc.invalidateQueries(['support-config']); setSaved(true); setTimeout(() => setSaved(false), 2500); },
+  });
+
+  if (isLoading || !form) return <div className="card"><Loader2 className="animate-spin" /></div>;
+
+  return (
+    <div className="card space-y-4 max-w-2xl">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          Email que recebe novos tickets
+        </label>
+        <input type="email" className="input w-full"
+          value={form.inbox_email || ''}
+          onChange={(e) => setForm({ ...form, inbox_email: e.target.value })}
+          placeholder="suporte@suaempresa.com" />
+        <p className="text-xs text-gray-500 mt-1">
+          Receberá notificação sempre que um novo chamado for aberto.
+        </p>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expediente início</label>
+          <input type="number" min="0" max="23" className="input w-full"
+            value={form.business_hours_start}
+            onChange={(e) => setForm({ ...form, business_hours_start: Number(e.target.value) })} />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Expediente fim</label>
+          <input type="number" min="1" max="24" className="input w-full"
+            value={form.business_hours_end}
+            onChange={(e) => setForm({ ...form, business_hours_end: Number(e.target.value) })} />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          Dias úteis (1=seg ... 7=dom)
+        </label>
+        <input type="text" className="input w-full"
+          value={form.business_days}
+          onChange={(e) => setForm({ ...form, business_days: e.target.value })}
+          placeholder="1,2,3,4,5" />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          Webhook Slack (opcional)
+        </label>
+        <input type="text" className="input w-full"
+          value={form.slack_webhook_url || ''}
+          onChange={(e) => setForm({ ...form, slack_webhook_url: e.target.value })}
+          placeholder="https://hooks.slack.com/..." />
+      </div>
+
+      <div className="space-y-2">
+        {[
+          ['auto_reply_enabled',     'Enviar confirmação automática ao cliente'],
+          ['notify_on_new_ticket',   'Notificar email de suporte em novos tickets'],
+          ['notify_on_sla_risk',     'Alertar quando SLA estiver em risco'],
+          ['notify_on_escalation',   'Alertar em escalações'],
+          ['csat_enabled',           'Pedir avaliação (CSAT) após resolução'],
+        ].map(([key, label]) => (
+          <label key={key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" checked={!!form[key]}
+              onChange={(e) => setForm({ ...form, [key]: e.target.checked })} />
+            {label}
+          </label>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2 pt-2">
+        <button onClick={() => mut.mutate(form)} disabled={mut.isLoading}
+          className="btn-primary inline-flex items-center gap-2">
+          <Save size={14} /> {mut.isLoading ? 'Salvando...' : 'Salvar'}
+        </button>
+        {saved && <span className="text-sm text-green-600">Salvo!</span>}
+      </div>
+    </div>
+  );
+};
+
+const SupportMacrosView = () => {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['support-macros'],
+    queryFn: () => adminService.listSupportMacros(),
+  });
+  const [editing, setEditing] = useState(null);
+  const macros = data?.macros || [];
+
+  const save = useMutation({
+    mutationFn: (m) => m.id ? adminService.updateSupportMacro(m.id, m) : adminService.createSupportMacro(m),
+    onSuccess: () => { qc.invalidateQueries(['support-macros']); setEditing(null); },
+  });
+  const del = useMutation({
+    mutationFn: (id) => adminService.deleteSupportMacro(id),
+    onSuccess: () => qc.invalidateQueries(['support-macros']),
+  });
+
+  return (
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <button onClick={() => setEditing({ title: '', category: '', content: '', shortcut: '', is_active: true })}
+          className="btn-primary inline-flex items-center gap-2">
+          <Plus size={14} /> Nova resposta
+        </button>
+      </div>
+
+      {macros.length === 0 ? (
+        <div className="card text-center text-sm text-gray-500 py-8">Nenhuma resposta cadastrada</div>
+      ) : (
+        <div className="space-y-2">
+          {macros.map((m) => (
+            <div key={m.id} className="card flex justify-between items-start">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="font-medium text-gray-900 dark:text-gray-100">{m.title}</p>
+                  {m.category && <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded">{m.category}</span>}
+                  {m.shortcut && <span className="text-xs text-blue-600">/{m.shortcut}</span>}
+                </div>
+                <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{m.content}</p>
+              </div>
+              <div className="flex gap-1 ml-4">
+                <button onClick={() => setEditing(m)} className="p-2 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                  <Pencil size={14} />
+                </button>
+                <button onClick={() => confirm('Excluir?') && del.mutate(m.id)}
+                  className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditing(null)}>
+          <div className="card max-w-lg w-full space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+              {editing.id ? 'Editar resposta' : 'Nova resposta'}
+            </h3>
+            <input className="input w-full" placeholder="Título"
+              value={editing.title} onChange={(e) => setEditing({ ...editing, title: e.target.value })} />
+            <div className="grid grid-cols-2 gap-2">
+              <input className="input" placeholder="Categoria (opcional)"
+                value={editing.category || ''} onChange={(e) => setEditing({ ...editing, category: e.target.value })} />
+              <input className="input" placeholder="Atalho (ex: olá)"
+                value={editing.shortcut || ''} onChange={(e) => setEditing({ ...editing, shortcut: e.target.value })} />
+            </div>
+            <textarea className="input w-full" rows={6} placeholder="Conteúdo"
+              value={editing.content} onChange={(e) => setEditing({ ...editing, content: e.target.value })} />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setEditing(null)} className="btn-secondary">Cancelar</button>
+              <button onClick={() => save.mutate(editing)} disabled={!editing.title || !editing.content}
+                className="btn-primary">Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SupportAgentsView = () => {
+  const qc = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['support-agents'],
+    queryFn: () => adminService.listSupportAgents(),
+  });
+  const toggle = useMutation({
+    mutationFn: ({ id, v }) => adminService.setSupportAgentRole(id, v),
+    onSuccess: () => qc.invalidateQueries(['support-agents']),
+  });
+
+  return (
+    <div className="card">
+      <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Agentes de suporte</h3>
+      <p className="text-xs text-gray-500 mb-3">Admins e helpdesk já têm acesso. Marque aqui outros usuários.</p>
+      <div className="space-y-2">
+        {(data?.agents || []).map((u) => (
+          <div key={u.id} className="flex items-center justify-between p-2 rounded bg-gray-50 dark:bg-gray-700/30">
+            <div>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{u.name}</p>
+              <p className="text-xs text-gray-500">{u.email}</p>
+            </div>
+            <div className="flex items-center gap-2 text-xs">
+              {u.is_admin && <span className="badge bg-purple-100 text-purple-700 px-2 py-0.5 rounded">admin</span>}
+              {u.is_helpdesk && <span className="badge bg-blue-100 text-blue-700 px-2 py-0.5 rounded">helpdesk</span>}
+              <label className="flex items-center gap-1 cursor-pointer">
+                <input type="checkbox" checked={u.is_support_agent}
+                  disabled={u.is_admin || u.is_helpdesk}
+                  onChange={(e) => toggle.mutate({ id: u.id, v: e.target.checked })} />
+                <span className="text-gray-600 dark:text-gray-400">agente</span>
+              </label>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+
 /* ── Main Page ───────────────────────────────────────────────────────────── */
 
 const AdminPanel = () => {
@@ -1722,6 +2069,7 @@ const AdminPanel = () => {
             { id: 'billing',    label: 'Faturamento',           icon: CreditCard },
             { id: 'licenses',   label: 'Licenças Migration',   icon: ArrowRightLeft },
             { id: 'addons',     label: 'Add-ons',              icon: Plus },
+            { id: 'support',    label: 'Suporte',              icon: Headphones },
           ].map(({ id, label, icon: Icon }) => (
             <button key={id} onClick={() => setTab(id)}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
@@ -1740,6 +2088,7 @@ const AdminPanel = () => {
         {tab === 'billing'  && <BillingTab orgs={allOrgs} />}
         {tab === 'licenses' && <MigrationLicensesTab />}
         {tab === 'addons'   && <AddonRequestsTab />}
+        {tab === 'support'  && <SupportTab />}
       </div>
     </Layout>
   );

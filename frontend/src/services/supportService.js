@@ -47,6 +47,23 @@ const supportService = {
 
   adminAddMessage: (ticketId, data) =>
     api.post(`/admin/tickets/${ticketId}/messages`, data).then((r) => r.data),
+
+  adminAssign: (ticketId, assignedTo) =>
+    api.patch(`/admin/tickets/${ticketId}/assign`, { assigned_to: assignedTo }).then((r) => r.data),
+
+  adminUpdateTags: (ticketId, tags) =>
+    api.patch(`/admin/tickets/${ticketId}/tags`, { tags }).then((r) => r.data),
+
+  rate: (ticketId, rating, comment = null) =>
+    api.post(orgUrl(`/tickets/${ticketId}/rate`), { rating, comment }).then((r) => r.data),
+
+  // Macros available for agents
+  listMacros: (category = null) =>
+    api.get('/admin/support/macros', { params: category ? { category } : {} }).then((r) => r.data),
+
+  // Agents list (for assignment dropdown)
+  listAgents: () =>
+    api.get('/admin/support/agents').then((r) => r.data),
 };
 
 export default supportService;

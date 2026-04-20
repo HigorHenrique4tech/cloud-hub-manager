@@ -21,7 +21,11 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.dependencies import get_current_user, get_current_helpdesk
 from app.database import get_db
-from app.models.db_models import Organization, OrganizationMember, Ticket, TicketMessage, User, Workspace
+from app.models.db_models import Organization, OrganizationMember, Ticket, TicketMessage, TicketRating, User, Workspace
+from app.services.plan_service import get_effective_plan
+from app.services import plan_sla
+from app.services import email_service
+from app.services.branding_service import get_branding
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +51,19 @@ class StatusUpdate(BaseModel):
 
 class PriorityUpdate(BaseModel):
     priority: str
+
+
+class AssignUpdate(BaseModel):
+    assigned_to: Optional[str] = None
+
+
+class TagsUpdate(BaseModel):
+    tags: list[str]
+
+
+class RatingCreate(BaseModel):
+    rating: int
+    comment: Optional[str] = None
 
 
 # ── Serializers ───────────────────────────────────────────────────────────────
@@ -85,7 +102,22 @@ def _ticket_dict(t: Ticket, include_messages: bool = False, include_org: bool = 
         "created_at": t.created_at.isoformat() if t.created_at else None,
         "updated_at": t.updated_at.isoformat() if t.updated_at else None,
         "resolved_at": t.resolved_at.isoformat() if t.resolved_at else None,
+        "sla_first_response_hours": t.sla_first_response_hours,
+        "sla_deadline": t.sla_deadline.isoformat() if t.sla_deadline else None,
+        "first_response_at": t.first_response_at.isoformat() if t.first_response_at else None,
+        "sla_breached": bool(t.sla_breached),
+        "escalated_at": t.escalated_at.isoformat() if t.escalated_at else None,
+        "tags": t.tags or [],
+        "plan_at_creation": t.plan_at_creation,
         "creator": _sender_dict(t.creator),
+        "assignee": _sender_dict(t.assignee),
+        "rating": (
+            {
+                "rating": t.rating.rating,
+                "comment": t.rating.comment,
+                "rated_at": t.rating.rated_at.isoformat() if t.rating.rated_at else None,
+            } if t.rating else None
+        ),
         "workspace": {
             "id": str(t.workspace.id),
             "name": t.workspace.name,
@@ -196,6 +228,13 @@ def create_ticket(
     org = _get_org_or_404(org_slug, db)
     _assert_member(org, user, db)
 
+    plan = get_effective_plan(org)
+    if not plan_sla.has_support_access(plan):
+        raise HTTPException(
+            status_code=403,
+            detail="Seu plano atual não inclui suporte. Faça upgrade para abrir tickets.",
+        )
+
     valid_categories = {"billing", "technical", "feature_request", "other"}
     valid_priorities = {"low", "normal", "high", "urgent"}
     if payload.category not in valid_categories:
@@ -215,6 +254,10 @@ def create_ticket(
 
     ticket_number = _next_ticket_number(db)
 
+    sla_hours = plan_sla.sla_hours_for(plan, payload.priority)
+    now = datetime.utcnow()
+    sla_deadline = plan_sla.compute_sla_deadline(db, now, sla_hours) if sla_hours else None
+
     ticket = Ticket(
         ticket_number=ticket_number,
         organization_id=org.id,
@@ -223,6 +266,9 @@ def create_ticket(
         title=payload.title,
         category=payload.category,
         priority=payload.priority,
+        plan_at_creation=plan,
+        sla_first_response_hours=sla_hours,
+        sla_deadline=sla_deadline,
     )
     db.add(ticket)
     db.flush()
@@ -236,6 +282,24 @@ def create_ticket(
     db.add(msg)
     db.commit()
     db.refresh(ticket)
+
+    # Notifications (best-effort)
+    try:
+        cfg = plan_sla.get_config(db)
+        branding = get_branding(org, db)
+        if cfg.auto_reply_enabled:
+            email_service.send_ticket_created_email(
+                user.email, user.name, ticket_number, payload.title,
+                payload.priority, sla_hours, branding=branding,
+            )
+        if cfg.notify_on_new_ticket and cfg.inbox_email:
+            email_service.send_ticket_admin_notification_email(
+                cfg.inbox_email, ticket_number, payload.title, payload.priority,
+                org.name, plan, sla_hours, branding=branding,
+            )
+    except Exception as e:
+        logger.warning("Support notifications failed: %s", e)
+
     return _ticket_dict(ticket)
 
 
@@ -448,12 +512,30 @@ def admin_update_status(
     if payload.status not in valid:
         raise HTTPException(status_code=400, detail=f"Status inválido. Válidos: {valid}")
 
+    was_resolved = ticket.status in ("resolved", "closed")
     ticket.status = payload.status
     ticket.updated_at = datetime.utcnow()
     if payload.status in ("resolved", "closed"):
         ticket.resolved_at = datetime.utcnow()
 
     db.commit()
+
+    # CSAT on first resolve
+    try:
+        if payload.status == "resolved" and not was_resolved:
+            cfg = plan_sla.get_config(db)
+            if cfg.csat_enabled and ticket.creator and ticket.creator.email:
+                org = ticket.organization
+                branding = get_branding(org, db) if org else None
+                rate_url = f"/tickets/{ticket.id}?rate=1"
+                email_service.send_ticket_resolved_csat_email(
+                    ticket.creator.email, ticket.creator.name,
+                    ticket.ticket_number, ticket.title, rate_url,
+                    branding=branding,
+                )
+    except Exception as e:
+        logger.warning("CSAT email failed: %s", e)
+
     return {"status": ticket.status}
 
 
@@ -500,11 +582,93 @@ def admin_add_message(
     ticket.updated_at = datetime.utcnow()
     if not payload.is_internal:
         ticket.status = "waiting_client"
+        if ticket.first_response_at is None:
+            ticket.first_response_at = datetime.utcnow()
 
     db.commit()
     db.refresh(msg)
     db.refresh(msg.sender)
     return _msg_dict(msg)
+
+
+@admin_support_router.patch("/{ticket_id}/assign")
+def admin_assign_ticket(
+    ticket_id: UUID,
+    payload: AssignUpdate,
+    _: User = Depends(get_current_helpdesk),
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket não encontrado")
+
+    if payload.assigned_to:
+        agent = db.query(User).filter(User.id == payload.assigned_to).first()
+        if not agent or not (agent.is_admin or agent.is_helpdesk or agent.is_support_agent):
+            raise HTTPException(status_code=400, detail="Usuário não é agente de suporte")
+        ticket.assigned_to = agent.id
+    else:
+        ticket.assigned_to = None
+
+    ticket.updated_at = datetime.utcnow()
+    db.commit()
+    return {"assigned_to": str(ticket.assigned_to) if ticket.assigned_to else None}
+
+
+@admin_support_router.patch("/{ticket_id}/tags")
+def admin_update_tags(
+    ticket_id: UUID,
+    payload: TagsUpdate,
+    _: User = Depends(get_current_helpdesk),
+    db: Session = Depends(get_db),
+):
+    ticket = db.query(Ticket).filter(Ticket.id == ticket_id).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket não encontrado")
+    ticket.tags = [str(t).strip() for t in payload.tags if str(t).strip()]
+    ticket.updated_at = datetime.utcnow()
+    db.commit()
+    return {"tags": ticket.tags}
+
+
+@org_router.post("/{ticket_id}/rate")
+def rate_ticket(
+    org_slug: str,
+    ticket_id: UUID,
+    payload: RatingCreate,
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    org = _get_org_or_404(org_slug, db)
+    _assert_member(org, user, db)
+
+    ticket = db.query(Ticket).filter(
+        Ticket.id == ticket_id,
+        Ticket.organization_id == org.id,
+        Ticket.creator_id == user.id,
+    ).first()
+    if not ticket:
+        raise HTTPException(status_code=404, detail="Ticket não encontrado")
+    if ticket.status not in ("resolved", "closed"):
+        raise HTTPException(status_code=400, detail="Ticket ainda não foi resolvido")
+    if not 1 <= payload.rating <= 5:
+        raise HTTPException(status_code=400, detail="Avaliação deve ser entre 1 e 5")
+
+    existing = db.query(TicketRating).filter(TicketRating.ticket_id == ticket_id).first()
+    if existing:
+        existing.rating = payload.rating
+        existing.comment = payload.comment
+        existing.rated_by = user.id
+        existing.rated_at = datetime.utcnow()
+    else:
+        db.add(TicketRating(
+            ticket_id=ticket_id,
+            rating=payload.rating,
+            comment=payload.comment,
+            rated_by=user.id,
+        ))
+    db.commit()
+    return {"ok": True, "rating": payload.rating}
 
 
 @admin_support_router.get("/{ticket_id}/messages")

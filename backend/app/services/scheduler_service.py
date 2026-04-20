@@ -1145,8 +1145,91 @@ def load_report_schedules(db) -> int:
     except Exception as exc:
         logger.error(f"Failed to register cost_alerts_evaluation_hourly job: {exc}")
 
+    # Register SLA breach scan (every 15 minutes)
+    try:
+        scheduler.add_job(
+            _run_sla_scan,
+            IntervalTrigger(minutes=15),
+            id="support_sla_scan",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("Support SLA scan job registered (every 15 min)")
+    except Exception as exc:
+        logger.error(f"Failed to register support_sla_scan job: {exc}")
+
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count
+
+
+def _run_sla_scan() -> None:
+    """Mark SLA breaches and notify for at-risk tickets."""
+    from app.database import SessionLocal
+    from app.models.db_models import Ticket, SupportConfig, User
+    from app.services.notification_service import push_notification
+    from datetime import datetime, timedelta
+
+    db = SessionLocal()
+    try:
+        now = datetime.utcnow()
+        cfg = db.query(SupportConfig).filter(SupportConfig.id == 1).first()
+
+        # 1) Mark breached tickets that haven't been marked yet
+        breached = db.query(Ticket).filter(
+            Ticket.sla_deadline.isnot(None),
+            Ticket.sla_deadline < now,
+            Ticket.sla_breached == False,
+            Ticket.first_response_at.is_(None),
+            Ticket.status.in_(["open", "in_progress"]),
+        ).all()
+        for t in breached:
+            t.sla_breached = True
+            t.escalated_at = t.escalated_at or now
+            if t.workspace_id:
+                try:
+                    push_notification(
+                        db,
+                        workspace_id=t.workspace_id,
+                        type="support_sla_breach",
+                        message=f"SLA estourado no ticket #{t.ticket_number}: {t.title}",
+                    )
+                except Exception:
+                    pass
+
+        # 2) At-risk tickets (< 1h left) — notify once via escalated_at marker
+        if cfg is None or cfg.notify_on_sla_risk:
+            soon = now + timedelta(hours=1)
+            at_risk = db.query(Ticket).filter(
+                Ticket.sla_deadline.isnot(None),
+                Ticket.sla_deadline <= soon,
+                Ticket.sla_deadline > now,
+                Ticket.first_response_at.is_(None),
+                Ticket.sla_breached == False,
+                Ticket.escalated_at.is_(None),
+                Ticket.status.in_(["open", "in_progress"]),
+            ).all()
+            for t in at_risk:
+                t.escalated_at = now
+                if t.workspace_id:
+                    try:
+                        push_notification(
+                            db,
+                            workspace_id=t.workspace_id,
+                            type="support_sla_risk",
+                            message=f"SLA em risco no ticket #{t.ticket_number}: resta menos de 1h",
+                        )
+                    except Exception:
+                        pass
+
+        db.commit()
+        if breached:
+            logger.info(f"SLA scan: marked {len(breached)} breaches")
+    except Exception as e:
+        logger.error(f"SLA scan failed: {e}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 def get_report_next_run(schedule_id: str) -> Optional[str]:

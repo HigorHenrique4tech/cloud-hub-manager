@@ -223,6 +223,7 @@ class User(Base):
     mfa_otp_attempts   = Column(Integer, default=0, nullable=False)
     is_admin           = Column(Boolean, default=False, nullable=False)
     is_helpdesk        = Column(Boolean, default=False, nullable=False)
+    is_support_agent   = Column(Boolean, default=False, nullable=False)
     onboarding_completed = Column(Boolean, default=False, nullable=False)
     password_reset_token      = Column(String(255), nullable=True, index=True)
     password_reset_expires_at = Column(DateTime, nullable=True)
@@ -790,10 +791,22 @@ class Ticket(Base):
     updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     resolved_at     = Column(DateTime, nullable=True)
 
+    # SLA / assignment / escalation
+    assigned_to              = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    sla_first_response_hours = Column(Integer, nullable=True)
+    sla_deadline             = Column(DateTime, nullable=True, index=True)
+    first_response_at        = Column(DateTime, nullable=True)
+    sla_breached             = Column(Boolean, nullable=False, default=False)
+    escalated_at             = Column(DateTime, nullable=True)
+    tags                     = Column(JSONB, nullable=True)
+    plan_at_creation         = Column(String(50), nullable=True)
+
     organization = relationship("Organization")
     workspace    = relationship("Workspace")
     creator      = relationship("User", foreign_keys=[creator_id])
+    assignee     = relationship("User", foreign_keys=[assigned_to])
     messages     = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan")
+    rating       = relationship("TicketRating", back_populates="ticket", uselist=False, cascade="all, delete-orphan")
 
 
 class TicketMessage(Base):
@@ -808,6 +821,53 @@ class TicketMessage(Base):
 
     ticket = relationship("Ticket", back_populates="messages")
     sender = relationship("User", foreign_keys=[sender_id])
+
+
+class SupportConfig(Base):
+    __tablename__ = "support_configs"
+
+    id                      = Column(Integer, primary_key=True, default=1)
+    inbox_email             = Column(String(255), nullable=True)
+    auto_reply_enabled      = Column(Boolean, nullable=False, default=True)
+    notify_on_new_ticket    = Column(Boolean, nullable=False, default=True)
+    notify_on_sla_risk      = Column(Boolean, nullable=False, default=True)
+    notify_on_escalation    = Column(Boolean, nullable=False, default=True)
+    business_hours_start    = Column(Integer, nullable=False, default=9)
+    business_hours_end      = Column(Integer, nullable=False, default=18)
+    business_days           = Column(String(20), nullable=False, default="1,2,3,4,5")
+    slack_webhook_url       = Column(String(500), nullable=True)
+    csat_enabled            = Column(Boolean, nullable=False, default=True)
+    updated_at              = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class SupportMacro(Base):
+    __tablename__ = "support_macros"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title      = Column(String(200), nullable=False)
+    category   = Column(String(50), nullable=True, index=True)
+    content    = Column(Text, nullable=False)
+    shortcut   = Column(String(50), nullable=True)
+    is_active  = Column(Boolean, nullable=False, default=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class TicketRating(Base):
+    __tablename__ = "ticket_ratings"
+
+    id        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, unique=True)
+    rating    = Column(Integer, nullable=False)  # 1-5
+    comment   = Column(Text, nullable=True)
+    rated_by  = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    rated_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    ticket = relationship("Ticket", back_populates="rating")
+    rater  = relationship("User", foreign_keys=[rated_by])
 
 
 class BackgroundTask(Base):

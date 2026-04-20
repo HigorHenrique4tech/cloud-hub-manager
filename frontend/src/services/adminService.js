@@ -99,6 +99,23 @@ const adminService = {
     api.get('/admin/addon-requests', { params: status ? { status } : {} }).then((r) => r.data),
   reviewAddonRequest: (id, action, admin_notes) =>
     api.put(`/admin/addon-requests/${id}`, { action, admin_notes }).then((r) => r.data),
+  // Admin only — support system
+  getSupportConfig: () => api.get('/admin/support/config').then((r) => r.data),
+  updateSupportConfig: (data) => api.put('/admin/support/config', data).then((r) => r.data),
+  listSupportMacros: (category) =>
+    api.get('/admin/support/macros', { params: category ? { category } : {} }).then((r) => r.data),
+  createSupportMacro: (data) => api.post('/admin/support/macros', data).then((r) => r.data),
+  updateSupportMacro: (id, data) => api.put(`/admin/support/macros/${id}`, data).then((r) => r.data),
+  deleteSupportMacro: (id) => api.delete(`/admin/support/macros/${id}`).then((r) => r.data),
+  getSupportKPIs: (days = 30) =>
+    api.get('/admin/support/kpis', { params: { days } }).then((r) => r.data),
+  listSupportAgents: () => api.get('/admin/support/agents').then((r) => r.data),
+  setSupportAgentRole: (userId, is_support_agent) =>
+    api.patch(`/admin/support/agents/${userId}`, { is_support_agent }).then((r) => r.data),
+  assignTicket: (ticketId, assignedTo) =>
+    api.patch(`/admin/tickets/${ticketId}/assign`, { assigned_to: assignedTo }).then((r) => r.data),
+  updateTicketTags: (ticketId, tags) =>
+    api.patch(`/admin/tickets/${ticketId}/tags`, { tags }).then((r) => r.data),
 };
 
 export default adminService;
