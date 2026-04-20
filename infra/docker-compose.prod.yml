@@ -204,6 +204,11 @@ services:
     environment:
       - CELERY_BROKER_URL=redis://redis:6379/0
       - FLOWER_BASIC_AUTH=${FLOWER_USER:-admin}:${FLOWER_PASSWORD:-admin}
+      - SECRET_KEY=${SECRET_KEY}
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cloudatlas}:${POSTGRES_PASSWORD:-cloudatlas_pass}@postgres:5432/${POSTGRES_DB:-cloudatlas_db}
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=False
     ports:
       - "0.0.0.0:5555:5555"
     networks:
