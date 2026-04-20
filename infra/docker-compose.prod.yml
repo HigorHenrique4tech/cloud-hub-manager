@@ -199,6 +199,8 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: cloudatlas-prometheus
+    ports:
+      - "0.0.0.0:9090:9090"
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -215,6 +217,8 @@ services:
   grafana:
     image: grafana/grafana:latest
     container_name: cloudatlas-grafana
+    ports:
+      - "0.0.0.0:3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_USER:-admin}
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
