@@ -822,7 +822,7 @@ async def list_managed_orgs(
 ):
     """List partner orgs managed by this Enterprise master org."""
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    if master_org.org_type not in ("master", "standalone") or master_org.plan_tier not in ("enterprise", "enterprise_migration"):
+    if master_org.org_type != "master" or master_org.plan_tier not in ("enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"):
         raise HTTPException(status_code=403, detail="Apenas organizações Enterprise podem gerenciar parceiros.")
 
     q = db.query(Organization).filter(Organization.parent_org_id == master_org.id)
@@ -866,7 +866,7 @@ async def managed_orgs_summary(
     """Consolidated stats across all partner orgs (Enterprise master only)."""
     from app.models.db_models import Workspace, CloudAccount, OrganizationMember
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    if master_org.plan_tier not in ("enterprise", "enterprise_migration"):
+    if master_org.plan_tier not in ("enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"):
         raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
 
     child_orgs = db.query(Organization).filter(
@@ -948,7 +948,7 @@ async def managed_orgs_widget_summary(
 ):
     """Lightweight summary for dashboard MSP widget."""
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    if master_org.plan_tier not in ("enterprise", "enterprise_migration") or master_org.org_type not in ("master", "standalone"):
+    if master_org.plan_tier not in ("enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration") or master_org.org_type not in ("master", "standalone"):
         raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
 
     child_orgs = db.query(Organization).filter(
@@ -993,7 +993,7 @@ async def batch_suspend_partners(
 ):
     """Suspend multiple partner orgs at once."""
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    if master_org.plan_tier not in ("enterprise", "enterprise_migration"):
+    if master_org.plan_tier not in ("enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"):
         raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
 
     updated = []
@@ -1024,7 +1024,7 @@ async def batch_activate_partners(
 ):
     """Reactivate multiple partner orgs at once."""
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    if master_org.plan_tier not in ("enterprise", "enterprise_migration"):
+    if master_org.plan_tier not in ("enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"):
         raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
 
     updated = []
@@ -1055,7 +1055,7 @@ async def create_managed_org(
 ):
     """Create a partner org under this Enterprise master. Caller auto-added as owner."""
     master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
-    if master_org.plan_tier not in ("enterprise", "enterprise_migration"):
+    if master_org.plan_tier not in ("enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"):
         raise HTTPException(status_code=403, detail="Criação de organizações parceiras requer plano Enterprise.")
 
     allowed, current, max_orgs = check_managed_org_limit(db, master_org.id, master_org.plan_tier)
@@ -1079,7 +1079,7 @@ async def create_managed_org(
     partner_org = Organization(
         name=payload.name,
         slug=slug,
-        plan_tier="enterprise",
+        plan_tier="enterprise_e1",
         org_type="partner",
         parent_org_id=master_org.id,
     )

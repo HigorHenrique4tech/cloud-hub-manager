@@ -27,13 +27,22 @@ const LEAD_STATUS = {
 
 const PLAN_BADGE = {
   free:                 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
-  pro:                  'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  enterprise:           'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500',
+  basic:                'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-400',
+  standard:             'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  enterprise_e1:        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-500',
+  enterprise_e2:        'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-500',
+  enterprise_e3:        'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400',
   enterprise_migration: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
 };
 
 const PLAN_LABEL = {
-  free: 'Free', pro: 'Pro', enterprise: 'Enterprise', enterprise_migration: 'Enterprise + Migration',
+  free:                 'Free',
+  basic:                'Basic',
+  standard:             'Standard',
+  enterprise_e1:        'Enterprise E1',
+  enterprise_e2:        'Enterprise E2',
+  enterprise_e3:        'Enterprise E3',
+  enterprise_migration: 'Enterprise + Migration',
 };
 
 const BILLING_STATUS = {
@@ -363,9 +372,12 @@ const OrgsTab = () => {
                 {openMenu === org.id && (
                   <div className="absolute right-0 top-8 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg min-w-[130px]">
                     {[
-                      { value: 'free', label: 'Free' },
-                      { value: 'pro', label: 'Pro' },
-                      { value: 'enterprise', label: 'Enterprise' },
+                      { value: 'free',                 label: 'Free' },
+                      { value: 'basic',                label: 'Basic' },
+                      { value: 'standard',             label: 'Standard' },
+                      { value: 'enterprise_e1',        label: 'Enterprise E1' },
+                      { value: 'enterprise_e2',        label: 'Enterprise E2' },
+                      { value: 'enterprise_e3',        label: 'Enterprise E3' },
                       { value: 'enterprise_migration', label: 'Enterprise + Migration' },
                     ].map(({ value, label }) => (
                       <button key={value} onClick={() => { setOpenMenu(null); setConfirmChange({ slug: org.slug, name: org.name, plan: value, current: org.plan_tier }); }}

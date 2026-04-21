@@ -3,8 +3,11 @@ import { Building2, ChevronDown, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 
+const ENTERPRISE_PLANS = ['enterprise_e1', 'enterprise_e2', 'enterprise_e3', 'enterprise_migration'];
+
 const OrgSwitcher = () => {
   const { orgs, currentOrg, switchOrg } = useOrgWorkspace();
+  const canCreateOrg = currentOrg?.org_type === 'master' && ENTERPRISE_PLANS.includes(currentOrg?.effective_plan);
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   const navigate = useNavigate();
@@ -61,15 +64,17 @@ const OrgSwitcher = () => {
               </li>
             ))}
           </ul>
-          <div className="border-t border-gray-100 dark:border-gray-700">
-            <button
-              onClick={() => { setOpen(false); navigate('/org/managed'); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-gray-50 dark:hover:bg-gray-700/50"
-            >
-              <Plus className="w-4 h-4" />
-              Criar organização
-            </button>
-          </div>
+          {canCreateOrg && (
+            <div className="border-t border-gray-100 dark:border-gray-700">
+              <button
+                onClick={() => { setOpen(false); navigate('/org/managed'); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-primary hover:bg-gray-50 dark:hover:bg-gray-700/50"
+              >
+                <Plus className="w-4 h-4" />
+                Criar organização
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
