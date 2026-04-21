@@ -45,6 +45,9 @@ const supportService = {
 
   adminAddMessage: (ticketId, data) =>
     api.post(`/admin/tickets/${ticketId}/messages`, data).then((r) => r.data),
+
+  listMacros: () =>
+    api.get('/admin/support/macros').then((r) => r.data),
 };
 
 export default supportService;

@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import authService from '../services/authService';
+import orgService from '../services/orgService';
 
 const AuthContext = createContext(null);
 
@@ -14,9 +15,16 @@ export const AuthProvider = ({ children }) => {
         try {
           const me = await authService.getMe();
           setUser(me);
-          // Persist org slug from hub if not set
-          if (!localStorage.getItem('selectedOrg') && me.organizations?.length) {
-            localStorage.setItem('selectedOrg', me.organizations[0].slug);
+          // Auto-set selectedOrg from user's first membership if not already set
+          if (!localStorage.getItem('selectedOrg')) {
+            try {
+              const { organizations } = await orgService.listMyOrgs();
+              if (organizations?.length) {
+                localStorage.setItem('selectedOrg', organizations[0].slug);
+              }
+            } catch {
+              // ignore — user may not belong to any org
+            }
           }
         } catch {
           localStorage.removeItem('desk_token');
@@ -34,12 +42,19 @@ export const AuthProvider = ({ children }) => {
     if (data.mfa_required) return data;
     localStorage.setItem('desk_token', data.access_token);
     if (data.refresh_token) localStorage.setItem('desk_refreshToken', data.refresh_token);
-    // Also set selectedOrg from first org if available
-    if (data.user?.organizations?.length && !localStorage.getItem('selectedOrg')) {
-      localStorage.setItem('selectedOrg', data.user.organizations[0].slug);
-    }
     setToken(data.access_token);
     setUser(data.user);
+    // Auto-set selectedOrg after login
+    if (!localStorage.getItem('selectedOrg')) {
+      try {
+        const { organizations } = await orgService.listMyOrgs();
+        if (organizations?.length) {
+          localStorage.setItem('selectedOrg', organizations[0].slug);
+        }
+      } catch {
+        // ignore
+      }
+    }
     return data;
   };
 

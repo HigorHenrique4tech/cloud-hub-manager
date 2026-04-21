@@ -253,6 +253,28 @@ def me(current_user: User = Depends(get_current_user)):
     return UserResponse.model_validate(current_user)
 
 
+@router.get("/my-orgs")
+def my_orgs(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    """List organizations the current user belongs to."""
+    memberships = (
+        db.query(OrganizationMember)
+        .filter(OrganizationMember.user_id == current_user.id, OrganizationMember.is_active == True)
+        .all()
+    )
+    return {
+        "organizations": [
+            {
+                "id": str(m.organization_id),
+                "slug": m.organization.slug,
+                "name": m.organization.name,
+                "role": m.role,
+            }
+            for m in memberships
+            if m.organization
+        ]
+    }
+
+
 @router.put("/me", response_model=UserResponse)
 def update_profile(
     payload: UserUpdate,

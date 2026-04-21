@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -46,11 +46,21 @@ function StatusBadge({ status }) {
 }
 
 function NewTicketModal({ onClose, onCreated }) {
-  const orgSlug = localStorage.getItem('selectedOrg');
+  const [orgSlug, setOrgSlug] = useState(() => localStorage.getItem('selectedOrg'));
   const [form, setForm] = useState({
     title: '', category: 'technical', priority: 'normal', message: '', workspace_id: '',
   });
   const [error, setError] = useState('');
+
+  // If selectedOrg wasn't set at mount, poll localStorage briefly until it is
+  useEffect(() => {
+    if (orgSlug) return;
+    const timer = setInterval(() => {
+      const slug = localStorage.getItem('selectedOrg');
+      if (slug) { setOrgSlug(slug); clearInterval(timer); }
+    }, 300);
+    return () => clearInterval(timer);
+  }, [orgSlug]);
 
   const workspacesQ = useQuery({
     queryKey: ['workspaces', orgSlug],
@@ -147,10 +157,21 @@ const Support = () => {
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
+  const [orgSlug, setOrgSlug] = useState(() => localStorage.getItem('selectedOrg'));
+
+  useEffect(() => {
+    if (orgSlug) return;
+    const timer = setInterval(() => {
+      const slug = localStorage.getItem('selectedOrg');
+      if (slug) { setOrgSlug(slug); clearInterval(timer); }
+    }, 300);
+    return () => clearInterval(timer);
+  }, [orgSlug]);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['support-tickets', statusFilter],
+    queryKey: ['support-tickets', statusFilter, orgSlug],
     queryFn: () => supportService.list(statusFilter ? { status: statusFilter } : {}),
+    enabled: !!orgSlug,
   });
 
   const tickets = data?.tickets || [];

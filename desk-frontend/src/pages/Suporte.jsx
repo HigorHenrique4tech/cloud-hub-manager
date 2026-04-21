@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   LifeBuoy, Search, Send, ShieldCheck, User, Loader2, AlertTriangle,
   Clock, Tag, Layers, Building2, ChevronRight, Lock, RefreshCw,
-  CheckCircle, Circle, AlertCircle, XCircle, StickyNote, X,
+  CheckCircle, Circle, AlertCircle, XCircle, StickyNote, X, BookOpen, ChevronDown,
 } from 'lucide-react';
 import DeskSidebar from '../components/layout/DeskSidebar';
 import supportService from '../services/supportService';
@@ -89,8 +89,15 @@ function TicketDetailPanel({ ticket, onClose, currentUser }) {
   const [reply, setReply] = useState('');
   const [isInternal, setIsInternal] = useState(false);
   const [replyError, setReplyError] = useState('');
+  const [showMacros, setShowMacros] = useState(false);
   const messagesEndRef = useRef(null);
   const prevMsgCount = useRef(0);
+
+  const { data: macrosData } = useQuery({
+    queryKey: ['admin-support-macros'],
+    queryFn: () => supportService.listMacros(),
+  });
+  const macros = macrosData?.macros || [];
 
   const { data: messagesData } = useQuery({
     queryKey: ['admin-ticket-messages', ticket.id],
@@ -186,6 +193,28 @@ function TicketDetailPanel({ ticket, onClose, currentUser }) {
       </div>
 
       <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 space-y-2">
+        {/* Macro picker dropdown */}
+        {macros.length > 0 && (
+          <div className="relative">
+            <button onClick={() => setShowMacros((v) => !v)}
+              className="flex items-center gap-1.5 px-2 py-1 rounded border border-gray-200 dark:border-gray-600 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+              <BookOpen className="w-3.5 h-3.5" />
+              Macros
+              <ChevronDown className={`w-3 h-3 transition-transform ${showMacros ? 'rotate-180' : ''}`} />
+            </button>
+            {showMacros && (
+              <div className="absolute bottom-full left-0 mb-1 w-72 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 max-h-48 overflow-y-auto">
+                {macros.map((macro) => (
+                  <button key={macro.id} onClick={() => { setReply((prev) => prev ? prev + '\n\n' + macro.content : macro.content); setShowMacros(false); }}
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border-b border-gray-100 dark:border-gray-700/50 last:border-0">
+                    <p className="font-medium text-gray-800 dark:text-gray-200">{macro.title}</p>
+                    {macro.shortcut && <p className="text-gray-400 dark:text-gray-500 mt-0.5">/{macro.shortcut}</p>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <textarea value={reply} onChange={(e) => setReply(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) handleSend(); }}
           rows={3} placeholder={isInternal ? 'Nota interna...' : 'Responder ao cliente... (Ctrl+Enter)'}
