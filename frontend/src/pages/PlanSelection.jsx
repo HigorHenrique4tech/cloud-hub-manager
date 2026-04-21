@@ -11,22 +11,6 @@ import adminService from '../services/adminService';
 
 const plans = [
   {
-    id: 'free',
-    name: 'Free',
-    price: 'R$ 0',
-    period: '/mês',
-    description: 'Ideal para explorar a plataforma e projetos pessoais.',
-    features: [
-      '2 Workspaces',
-      '3 Contas Cloud',
-      '3 Membros por org',
-      'AWS, Azure e GCP',
-      'Histórico de custos',
-    ],
-    cta: 'Começar grátis',
-    highlight: false,
-  },
-  {
     id: 'basic',
     name: 'Basic',
     price: 'R$ 397',
@@ -301,22 +285,12 @@ const PlanSelection = () => {
     setLoading(planId);
     setError('');
     try {
-      if (planId === 'free') {
-        await orgService.updatePlan(currentOrg.slug, planId);
-        await refreshOrgs();
-        if (inviteToken) {
-          navigate(`/invite/${inviteToken}`);
-        } else {
-          navigate('/');
-        }
-      } else {
-        // Paid plan: create checkout via AbacatePay
-        const result = await billingService.checkout(currentOrg.slug, planId);
-        if (result.payment_url) {
-          localStorage.setItem('pending_payment_id', result.payment_id);
-          localStorage.setItem('pending_payment_org', currentOrg.slug);
-          window.location.href = result.payment_url;
-        }
+      // Paid plan: create checkout via AbacatePay
+      const result = await billingService.checkout(currentOrg.slug, planId);
+      if (result.payment_url) {
+        localStorage.setItem('pending_payment_id', result.payment_id);
+        localStorage.setItem('pending_payment_org', currentOrg.slug);
+        window.location.href = result.payment_url;
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao processar. Tente novamente.');
@@ -362,7 +336,7 @@ const PlanSelection = () => {
 
         <h1 className="text-3xl font-bold text-white mb-3">Escolha seu plano</h1>
         <p className="text-gray-400 text-sm max-w-md mx-auto">
-          Comece grátis e escale conforme sua necessidade. Todos os planos incluem acesso a AWS, Azure e GCP.
+          Escale conforme sua necessidade. Todos os planos incluem acesso a AWS, Azure e GCP.
         </p>
       </div>
 
@@ -376,18 +350,18 @@ const PlanSelection = () => {
 
       {/* Plan cards */}
       <div className="flex-1 flex items-start justify-center px-4 py-10">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl w-full">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 max-w-7xl w-full">
           {plans.map((plan) => (
             <div
               key={plan.id}
-              className={`relative rounded-2xl border p-6 flex flex-col transition-all duration-200 ${
+              className={`relative rounded-2xl border p-5 flex flex-col transition-all duration-200 ${
                 plan.highlight
                   ? 'bg-gray-800/80 border-primary shadow-lg shadow-primary/10 scale-[1.02]'
                   : 'bg-gray-800/50 border-gray-700 hover:border-gray-500'
               }`}
             >
               {plan.badge && (
-                <div className="absolute -top-3 left-1/2 -translate-x-1/2">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 whitespace-nowrap">
                   <span className="inline-flex items-center gap-1 px-3 py-1 bg-primary text-white text-xs font-semibold rounded-full">
                     <Sparkles className="w-3 h-3" />
                     {plan.badge}
@@ -395,22 +369,22 @@ const PlanSelection = () => {
                 </div>
               )}
 
-              <div className="mb-4">
-                <h3 className="text-lg font-semibold text-white mb-1">{plan.name}</h3>
-                <p className="text-xs text-gray-400">{plan.description}</p>
+              <div className="mb-3">
+                <h3 className="text-base font-semibold text-white mb-1">{plan.name}</h3>
+                <p className="text-xs text-gray-400 leading-snug">{plan.description}</p>
               </div>
 
-              <div className="mb-6">
-                <span className="text-3xl font-bold text-white">{plan.price}</span>
+              <div className="mb-4">
+                <span className="text-2xl font-bold text-white">{plan.price}</span>
                 {plan.period && (
-                  <span className="text-sm text-gray-400">{plan.period}</span>
+                  <span className="text-xs text-gray-400">{plan.period}</span>
                 )}
               </div>
 
-              <ul className="space-y-3 mb-8 flex-1">
+              <ul className="space-y-2 mb-6 flex-1">
                 {plan.features.map((feature) => (
-                  <li key={feature} className="flex items-center gap-2.5 text-sm text-gray-300">
-                    <Check className="w-4 h-4 text-primary flex-shrink-0" />
+                  <li key={feature} className="flex items-start gap-2 text-xs text-gray-300">
+                    <Check className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5" />
                     {feature}
                   </li>
                 ))}
