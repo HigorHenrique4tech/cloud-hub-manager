@@ -66,9 +66,8 @@ const Billing = () => {
   const [selectedDowngradePlan, setSelectedDowngradePlan] = useState(null);
   const qc = useQueryClient();
 
-  const AVAILABLE_DOWNGRADE_PLANS = ['free', 'basic', 'standard', 'enterprise_e1', 'enterprise_e2', 'enterprise_e3'];
+  const AVAILABLE_DOWNGRADE_PLANS = ['basic', 'standard', 'enterprise_e1', 'enterprise_e2', 'enterprise_e3'];
   const planLabels = {
-    free: 'Free',
     basic: 'Basic - R$ 397/mês',
     standard: 'Standard - R$ 797/mês',
     enterprise_e1: 'Enterprise E1 - R$ 2.997/mês',
@@ -175,7 +174,7 @@ const Billing = () => {
                 {AVAILABLE_DOWNGRADE_PLANS.map((p) => {
                   const isCurrentPlan = p === effectivePlan;
                   const isDowngrade = PLAN_INFO[p] && PLAN_INFO[effectivePlan] &&
-                    (p === 'free' || PLAN_INFO[p].price < PLAN_INFO[effectivePlan].price);
+                    PLAN_INFO[p].price < PLAN_INFO[effectivePlan].price;
                   if (isCurrentPlan || (PLAN_INFO[p] && PLAN_INFO[effectivePlan] && PLAN_INFO[p].price >= PLAN_INFO[effectivePlan].price)) return null;
 
                   return (

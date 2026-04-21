@@ -15,6 +15,7 @@ import MemberDetailDrawer from '../components/org/MemberDetailDrawer';
 import orgService from '../services/orgService';
 import WorkspaceCostComparison from '../components/workspace/WorkspaceCostComparison';
 import WhiteLabelSettings from '../components/org/WhiteLabelSettings';
+import AccessDenied from '../components/common/AccessDenied';
 
 const ROLE_BADGE = {
   owner:    'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300',
@@ -147,6 +148,16 @@ const OrgSettings = () => {
   };
 
   if (!currentOrg) return null;
+
+  if (!['owner', 'admin', 'billing'].includes(currentOrg.role)) {
+    return (
+      <AccessDenied
+        title="Acesso restrito"
+        message="Você não tem permissão para acessar as configurações da organização."
+        hint={`Sua função atual é "${currentOrg.role}". Apenas proprietários, administradores e responsáveis financeiros podem acessar esta área.`}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

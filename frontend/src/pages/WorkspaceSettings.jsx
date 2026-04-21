@@ -12,6 +12,7 @@ import CloudAccountsSection from '../components/workspace/CloudAccountsSection';
 import WorkspaceDangerZone from '../components/workspace/WorkspaceDangerZone';
 import orgService from '../services/orgService';
 import reportService from '../services/reportService';
+import AccessDenied from '../components/common/AccessDenied';
 
 // ── Executive Report Section ──────────────────────────────────────────────────
 
@@ -371,6 +372,17 @@ const WorkspaceSettings = () => {
   });
 
   if (!currentOrg || !currentWorkspace) return null;
+
+  const canAccessSettings = ['owner', 'admin'].includes(currentOrg.role);
+  if (!canAccessSettings) {
+    return (
+      <AccessDenied
+        title="Acesso restrito"
+        message="Você não tem permissão para acessar as configurações do workspace."
+        hint={`Sua função atual é "${currentOrg.role}". Apenas proprietários e administradores podem gerenciar configurações.`}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

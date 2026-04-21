@@ -185,8 +185,12 @@ const Sidebar = ({ mobileOpen, onClose }) => {
           <PermissionGate permission="costs.view">
             <NavItem to="/billing" label="Faturamento" icon={CreditCard} />
           </PermissionGate>
-          <NavItem to="/org/settings" label="Organização" icon={Building2} />
-          <NavItem to="/workspace/settings" label="Workspace" icon={Layers} />
+          {['owner', 'admin', 'billing'].includes(currentOrg?.role) && (
+            <NavItem to="/org/settings" label="Organização" icon={Building2} />
+          )}
+          {['owner', 'admin'].includes(currentOrg?.role) && (
+            <NavItem to="/workspace/settings" label="Workspace" icon={Layers} />
+          )}
           {isEnterprise && (isMasterOrg || currentOrg?.org_type === 'standalone') && (
             <NavItem to="/org/managed" label="Orgs Gerenciadas" icon={Network} />
           )}
