@@ -84,6 +84,7 @@ services:
       - SMTP_FROM=${SMTP_FROM:-noreply@cloudatlas.io}
       - SMTP_USE_TLS=${SMTP_USE_TLS:-True}
       - FRONTEND_URL=${FRONTEND_URL:-https://cloudatlas.app.br}
+      - DESK_URL=${DESK_URL:-https://desk.cloudatlas.app.br}
       # OAuth (SSO)
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}

@@ -48,6 +48,12 @@ const supportService = {
 
   listMacros: () =>
     api.get('/admin/support/macros').then((r) => r.data),
+
+  rate: (ticketId, rating, comment = '') => {
+    const orgSlug = localStorage.getItem('selectedOrg');
+    if (!orgSlug) throw new Error('Organização não selecionada');
+    return api.post(`/orgs/${orgSlug}/tickets/${ticketId}/rate`, { rating, comment }).then((r) => r.data);
+  },
 };
 
 export default supportService;

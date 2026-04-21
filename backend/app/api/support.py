@@ -19,6 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import settings
 from app.core.dependencies import get_current_user, get_current_helpdesk
 from app.database import get_db
 from app.models.db_models import Organization, OrganizationMember, Ticket, TicketMessage, TicketRating, User, Workspace
@@ -527,7 +528,7 @@ def admin_update_status(
             if cfg.csat_enabled and ticket.creator and ticket.creator.email:
                 org = ticket.organization
                 branding = get_branding(org, db) if org else None
-                rate_url = f"/tickets/{ticket.id}?rate=1"
+                rate_url = f"{settings.DESK_URL.rstrip('/')}/ticket/{ticket.id}?rate=1"
                 email_service.send_ticket_resolved_csat_email(
                     ticket.creator.email, ticket.creator.name,
                     ticket.ticket_number, ticket.title, rate_url,

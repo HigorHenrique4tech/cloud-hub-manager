@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     SMTP_FROM: str = "noreply@cloudatlas.io"
     SMTP_USE_TLS: bool = True
     FRONTEND_URL: str = "http://localhost:3000"
+    DESK_URL: str = "http://localhost:3001"
 
     # OAuth (SSO)
     GOOGLE_CLIENT_ID: str = ""

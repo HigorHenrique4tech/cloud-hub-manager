@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Send, ShieldCheck, User, AlertTriangle,
-  Clock, Tag, Zap, Layers, RefreshCw,
+  Clock, Tag, Zap, Layers, RefreshCw, Star, X,
 } from 'lucide-react';
 import DeskLayout from '../components/layout/DeskLayout';
 import supportService from '../services/supportService';
@@ -138,15 +138,82 @@ function TicketSidebar({ ticket }) {
   );
 }
 
+function CSATModal({ ticketId, ticketNumber, onClose }) {
+  const qc = useQueryClient();
+  const [rating, setRating] = useState(0);
+  const [hover, setHover] = useState(0);
+  const [comment, setComment] = useState('');
+  const [done, setDone] = useState(false);
+
+  const mut = useMutation({
+    mutationFn: () => supportService.rate(ticketId, rating, comment),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['ticket', ticketId] });
+      setDone(true);
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 shadow-2xl w-full max-w-sm">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 dark:border-gray-700">
+          <h2 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Avaliar atendimento</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"><X className="w-4 h-4" /></button>
+        </div>
+        {done ? (
+          <div className="px-5 py-8 text-center space-y-2">
+            <Star className="w-10 h-10 text-yellow-400 mx-auto fill-yellow-400" />
+            <p className="font-medium text-gray-900 dark:text-gray-100">Obrigado pela avaliação!</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Seu feedback nos ajuda a melhorar.</p>
+            <button onClick={onClose} className="mt-3 px-4 py-1.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 transition-colors">Fechar</button>
+          </div>
+        ) : (
+          <div className="px-5 py-5 space-y-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400">Ticket <strong>#{ticketNumber}</strong> — como foi o nosso atendimento?</p>
+            <div className="flex justify-center gap-2">
+              {[1, 2, 3, 4, 5].map((s) => (
+                <button key={s} onClick={() => setRating(s)} onMouseEnter={() => setHover(s)} onMouseLeave={() => setHover(0)}
+                  className="transition-transform hover:scale-110">
+                  <Star className={`w-8 h-8 transition-colors ${s <= (hover || rating) ? 'text-yellow-400 fill-yellow-400' : 'text-gray-300 dark:text-gray-600'}`} />
+                </button>
+              ))}
+            </div>
+            <textarea value={comment} onChange={(e) => setComment(e.target.value)} rows={2}
+              placeholder="Comentário opcional..."
+              className="w-full rounded-lg border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary resize-none" />
+            <div className="flex justify-end gap-2">
+              <button onClick={onClose} className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">Cancelar</button>
+              <button onClick={() => mut.mutate()} disabled={!rating || mut.isPending}
+                className="px-4 py-1.5 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+                {mut.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                Enviar
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const TicketDetails = () => {
   const { ticketId } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useAuth();
   const [reply, setReply] = useState('');
   const [error, setError] = useState('');
+  const [showCSAT, setShowCSAT] = useState(() => searchParams.get('rate') === '1');
   const messagesEndRef = useRef(null);
   const prevMsgCount = useRef(0);
+
+  useEffect(() => {
+    if (searchParams.get('rate') === '1') {
+      setShowCSAT(true);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { data: ticket, isLoading } = useQuery({
     queryKey: ['ticket', ticketId],
@@ -201,6 +268,7 @@ const TicketDetails = () => {
 
   return (
     <DeskLayout>
+      {showCSAT && ticket && <CSATModal ticketId={ticket.id} ticketNumber={ticket.ticket_number} onClose={() => setShowCSAT(false)} />}
       <div className="max-w-6xl mx-auto space-y-4">
         <div className="flex items-center gap-3">
           <button onClick={() => navigate('/')} className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 transition-colors">
@@ -257,7 +325,26 @@ const TicketDetails = () => {
               </div>
             )}
           </div>
-          <TicketSidebar ticket={ticket} />
+          <div className="flex flex-col gap-4">
+            <TicketSidebar ticket={ticket} />
+            {(ticket.status === 'resolved' || ticket.status === 'closed') && !ticket.rating && (
+              <button onClick={() => setShowCSAT(true)}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 rounded-lg border-2 border-yellow-300 dark:border-yellow-700 bg-yellow-50 dark:bg-yellow-900/10 text-yellow-700 dark:text-yellow-400 text-sm font-semibold hover:bg-yellow-100 dark:hover:bg-yellow-900/20 transition-colors">
+                <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                Avaliar atendimento
+              </button>
+            )}
+            {ticket.rating && (
+              <div className="card p-3 text-center">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Sua avaliação</p>
+                <div className="flex justify-center gap-0.5">
+                  {[1,2,3,4,5].map((s) => (
+                    <Star key={s} className={`w-5 h-5 ${s <= ticket.rating.rating ? 'text-yellow-400 fill-yellow-400' : 'text-gray-200 dark:text-gray-600'}`} />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </DeskLayout>
