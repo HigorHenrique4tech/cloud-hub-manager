@@ -63,12 +63,12 @@ function DelegationSection({ mailbox }) {
 
   const addMut = useMutation({
     mutationFn: () => m365Service.addMailboxDelegate(mailbox.id, { delegate_upn: addUpn, permission_type: addType }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['m365-mbx-delegates', mailbox.id] }); setAddUpn(''); },
+    onSuccess: () => { delegatesQ.refetch(); setAddUpn(''); },
   });
 
   const removeMut = useMutation({
     mutationFn: ({ permType, upn }) => m365Service.removeMailboxDelegate(mailbox.id, permType, upn),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-mbx-delegates', mailbox.id] }),
+    onSuccess: () => delegatesQ.refetch(),
   });
 
   const delegates = delegatesQ.data || {};

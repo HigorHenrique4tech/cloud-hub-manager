@@ -160,7 +160,7 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
     // Sparkline data (last 14 days of daily totals)
     const sparkline = combined.slice(-14).map((d) => d.total || 0);
 
-    return { total, avgDaily, projection, topService, deltaTotal, deltaAvgDay, sparkline, combined };
+    return { total, avgDaily, projection, topService, deltaTotal, deltaAvgDay, sparkline, combined, awsTotal, azureTotal, gcpTotal };
   }, [data, prevData, displayCurrency, exchangeRate]);
 
   // ── Anomaly detection ────────────────────────────────────────────────────

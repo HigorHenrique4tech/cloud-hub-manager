@@ -35,6 +35,15 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
   const hasAws   = !!data?.aws;
   const hasAzure = !!data?.azure;
   const hasGcp   = !!data?.gcp;
+
+  // Use normalized totals from metrics (currency-converted) rather than raw data values
+  const awsTotal   = metrics?.awsTotal   ?? data?.aws?.total   ?? 0;
+  const azureTotal = metrics?.azureTotal ?? data?.azure?.total ?? 0;
+  const gcpTotal   = metrics?.gcpTotal   ?? data?.gcp?.total   ?? 0;
+  const grandTotal = metrics?.total      ?? data?.total        ?? 0;
+
+  // Use normalized daily combined from metrics
+  const combinedData = metrics?.combined?.length ? metrics.combined : (data?.combined || []);
   const generatedAt = new Date().toLocaleString('pt-BR');
 
   const suggestions = useMemo(() => generateSuggestions(data, days), [data, days]);
@@ -43,15 +52,15 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
   const topServices = useMemo(() =>
     (data.by_service || []).slice(0, 10).map((s) => ({
       ...s,
-      pct: data.total ? +((s.amount / data.total) * 100).toFixed(1) : 0,
-    })), [data]);
+      pct: grandTotal ? +((s.amount / grandTotal) * 100).toFixed(1) : 0,
+    })), [data, grandTotal]);
 
   const pieData = useMemo(() =>
     [
-      hasAws   && { name: 'AWS',   value: data.aws?.total   || 0, color: PROVIDER_COLORS.aws   },
-      hasAzure && { name: 'Azure', value: data.azure?.total || 0, color: PROVIDER_COLORS.azure },
-      hasGcp   && { name: 'GCP',   value: data.gcp?.total   || 0, color: PROVIDER_COLORS.gcp   },
-    ].filter(Boolean).filter((d) => d.value > 0), [data, hasAws, hasAzure, hasGcp]);
+      hasAws   && { name: 'AWS',   value: awsTotal,   color: PROVIDER_COLORS.aws   },
+      hasAzure && { name: 'Azure', value: azureTotal, color: PROVIDER_COLORS.azure },
+      hasGcp   && { name: 'GCP',   value: gcpTotal,   color: PROVIDER_COLORS.gcp   },
+    ].filter(Boolean).filter((d) => d.value > 0), [awsTotal, azureTotal, gcpTotal, hasAws, hasAzure, hasGcp]);
 
   const downloadPdf = async () => {
     if (exporting) return;
@@ -131,7 +140,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
             </div>
             <div className="text-right">
               <p className="text-xs uppercase tracking-widest text-primary font-semibold">{branding.platform_name}</p>
-              <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mt-1">{fmtCost(data.total)}</p>
+              <p className="text-3xl font-extrabold text-gray-900 dark:text-gray-100 mt-1">{fmtCost(grandTotal)}</p>
               <p className="text-xs text-gray-400 dark:text-gray-500">total no período</p>
             </div>
           </div>
@@ -163,18 +172,18 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
               {hasAws && (
                 <div className="border border-orange-200 dark:border-orange-800 rounded-lg p-4 bg-orange-50/50 dark:bg-orange-900/10">
                   <span className="text-xs font-bold uppercase bg-orange-100 dark:bg-orange-800 text-orange-700 dark:text-orange-300 px-2 py-0.5 rounded">AWS</span>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(data.aws.total)}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(awsTotal)}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                    {data.total ? ((data.aws.total / data.total) * 100).toFixed(1) : 0}% do total
+                    {grandTotal ? ((awsTotal / grandTotal) * 100).toFixed(1) : 0}% do total
                   </p>
                 </div>
               )}
               {hasAzure && (
                 <div className="border border-sky-200 dark:border-sky-800 rounded-lg p-4 bg-sky-50/50 dark:bg-sky-900/10">
                   <span className="text-xs font-bold uppercase bg-sky-100 dark:bg-sky-800 text-sky-700 dark:text-sky-300 px-2 py-0.5 rounded">Azure</span>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(data.azure.total)}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(azureTotal)}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                    {data.total ? ((data.azure.total / data.total) * 100).toFixed(1) : 0}% do total
+                    {grandTotal ? ((azureTotal / grandTotal) * 100).toFixed(1) : 0}% do total
                   </p>
                 </div>
               )}
@@ -184,9 +193,9 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                     GCP
                     {data.gcp?.estimated && <span className="font-normal normal-case text-[10px]">(estimado)</span>}
                   </span>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(data.gcp.total)}</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-2">{fmtCost(gcpTotal)}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                    {data.total ? ((data.gcp.total / data.total) * 100).toFixed(1) : 0}% do total
+                    {grandTotal ? ((gcpTotal / grandTotal) * 100).toFixed(1) : 0}% do total
                   </p>
                 </div>
               )}
@@ -194,7 +203,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           )}
 
           {/* ── Daily trend chart ── */}
-          {data.combined?.length > 0 && (
+          {combinedData.length > 0 && (
             <div>
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4 text-primary" />
@@ -202,7 +211,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
               </h2>
               <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4 bg-gray-50/30 dark:bg-gray-800/30">
                 <ResponsiveContainer width="100%" height={220}>
-                  <LineChart data={data.combined} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+                  <LineChart data={combinedData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" opacity={0.5} />
                     <XAxis dataKey="date" tick={{ fontSize: 10 }} tickFormatter={(v) => v.slice(5)} />
                     <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => fmtCost(v)} width={65} />
@@ -312,7 +321,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
           <ReportSuggestions suggestions={suggestions} totalSaving={totalSaving} />
 
           {/* ── Daily data table ── */}
-          {data.combined?.length > 0 && (
+          {combinedData.length > 0 && (
             <div>
               <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-3">Dados Diários Completos</h2>
               <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -328,7 +337,7 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800 bg-white dark:bg-gray-900">
-                      {data.combined.map((d) => (
+                      {combinedData.map((d) => (
                         <tr key={d.date} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                           <td className="px-3 py-1.5 font-mono text-gray-700 dark:text-gray-300">{d.date}</td>
                           {hasAws   && <td className="px-3 py-1.5 text-right font-mono text-orange-600 dark:text-orange-400">{fmtCost(d.aws)}</td>}
@@ -341,10 +350,10 @@ const CostReportModal = ({ data, metrics, startDate, endDate, periodLabel, days,
                     <tfoot className="bg-gray-50 dark:bg-gray-800 font-bold border-t-2 border-gray-300 dark:border-gray-600">
                       <tr>
                         <td className="px-3 py-2 text-gray-700 dark:text-gray-300 uppercase tracking-wide text-xs">Total</td>
-                        {hasAws   && <td className="px-3 py-2 text-right font-mono text-orange-700 dark:text-orange-300">{fmtCost(data.aws?.total)}</td>}
-                        {hasAzure && <td className="px-3 py-2 text-right font-mono text-sky-700 dark:text-sky-300">{fmtCost(data.azure?.total)}</td>}
-                        {hasGcp   && <td className="px-3 py-2 text-right font-mono text-emerald-700 dark:text-emerald-300">{fmtCost(data.gcp?.total)}</td>}
-                        <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{fmtCost(data.total)}</td>
+                        {hasAws   && <td className="px-3 py-2 text-right font-mono text-orange-700 dark:text-orange-300">{fmtCost(awsTotal)}</td>}
+                        {hasAzure && <td className="px-3 py-2 text-right font-mono text-sky-700 dark:text-sky-300">{fmtCost(azureTotal)}</td>}
+                        {hasGcp   && <td className="px-3 py-2 text-right font-mono text-emerald-700 dark:text-emerald-300">{fmtCost(gcpTotal)}</td>}
+                        <td className="px-3 py-2 text-right font-mono text-gray-900 dark:text-gray-100">{fmtCost(grandTotal)}</td>
                       </tr>
                     </tfoot>
                   </table>
