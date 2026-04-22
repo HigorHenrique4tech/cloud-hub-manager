@@ -692,6 +692,13 @@ def _oauth_login_or_register(
         db.refresh(user)
         action = "auth.oauth_register"
 
+        # Send welcome email for new SSO registrations
+        try:
+            from app.services.email_service import send_welcome_email
+            send_welcome_email(user.email, user.name or user.email)
+        except Exception as exc:
+            logger.warning("Failed to send SSO welcome email to %s: %s", user.email, exc)
+
     _ensure_personal_org(db, user)
     db.refresh(user)
 
