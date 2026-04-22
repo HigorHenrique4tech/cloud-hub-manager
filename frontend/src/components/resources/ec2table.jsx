@@ -1,7 +1,25 @@
-import { Play, Square, Trash2, Loader2 } from 'lucide-react';
+import { Play, Square, Trash2, Loader2, MapPin } from 'lucide-react';
 import StatusBadge from '../common/statusbadge';
 import { formatDate } from '../../utils/formatters';
 import PermissionGate from '../common/PermissionGate';
+
+// ── Região colors ──────────────────────────────────────────────────────────
+const REGION_COLORS = {
+  'us-east-1': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  'us-west-1': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  'us-west-2': 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400',
+  'eu-west-1': 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  'eu-central-1': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  'ap-southeast-1': 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  'ap-northeast-1': 'bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-400',
+  'sa-east-1': 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+};
+
+function getRegionColor(az) {
+  if (!az) return 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+  const region = az.slice(0, -1);
+  return REGION_COLORS[region] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400';
+}
 
 const EC2Table = ({ instances = [], onStart, onStop, onDelete, onRowClick, loading = false, selectedIds, onToggleSelect, onToggleAll, pendingOps }) => {
   if (!instances || instances.length === 0) {
@@ -101,8 +119,15 @@ const EC2Table = ({ instances = [], onStart, onStop, onDelete, onRowClick, loadi
                   {instance.public_ip || '-'}
                 </div>
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                {instance.availability_zone || 'N/A'}
+              <td className="px-6 py-4 whitespace-nowrap">
+                {instance.availability_zone ? (
+                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${getRegionColor(instance.availability_zone)}`}>
+                    <MapPin size={10} />
+                    {instance.availability_zone}
+                  </span>
+                ) : (
+                  <span className="text-sm text-gray-500 dark:text-gray-400">N/A</span>
+                )}
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                 {formatDate(instance.launch_time)}

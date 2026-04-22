@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { HardDrive, Plus, Trash2, AlertCircle, RefreshCw, CheckCircle, XCircle } from 'lucide-react';
+import { HardDrive, Plus, Trash2, AlertCircle, RefreshCw, CheckCircle, XCircle, Search, X } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import EmptyState from '../../components/common/emptystate';
@@ -14,6 +15,10 @@ const GCS_CLASSES = ['STANDARD', 'NEARLINE', 'COLDLINE', 'ARCHIVE'];
 
 const GcpStorage = () => {
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const q = (searchParams.get('q') || '').toLowerCase();
+  const [searchValue, setSearchValue] = useState(q);
   const [toDelete, setToDelete] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: '', location: 'US', storage_class: 'STANDARD' });
@@ -76,6 +81,10 @@ const GcpStorage = () => {
     );
   }
 
+  const filtered = isLoading ? [] : buckets.filter(b =>
+    !q || b.name?.toLowerCase().includes(q) || b.location?.toLowerCase().includes(q) || b.storage_class?.toLowerCase().includes(q)
+  );
+
   return (
     <Layout>
       <div className="flex items-center justify-between mb-6">
@@ -108,6 +117,39 @@ const GcpStorage = () => {
         <div className="flex items-center gap-3 p-4 mb-4 bg-red-50 dark:bg-red-900/20 rounded-lg text-red-700 dark:text-red-300">
           <AlertCircle className="w-5 h-5 flex-shrink-0" />
           <span>{error.message || 'Erro ao carregar buckets'}</span>
+        </div>
+      )}
+
+      {!isLoading && buckets.length > 0 && (
+        <div className="mb-6 relative w-80">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                navigate(searchValue ? `?q=${encodeURIComponent(searchValue)}` : '');
+              }
+              if (e.key === 'Escape') {
+                setSearchValue('');
+                navigate('');
+              }
+            }}
+            placeholder="Buscar por nome, localização ou classe..."
+            className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
+          {searchValue && (
+            <button
+              onClick={() => {
+                setSearchValue('');
+                navigate('');
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+            >
+              <X size={14} className="text-gray-400" />
+            </button>
+          )}
         </div>
       )}
 
@@ -172,11 +214,11 @@ const GcpStorage = () => {
       <div className="card overflow-hidden">
         {isLoading ? (
           <SkeletonTable rows={5} cols={5} />
-        ) : buckets.length === 0 ? (
+        ) : filtered.length === 0 ? (
           <EmptyState
             icon={HardDrive}
             title="Nenhum bucket encontrado"
-            description="Crie um bucket para começar a usar o Cloud Storage."
+            description={q ? `Nenhum bucket corresponde a "${q}".` : "Crie um bucket para começar a usar o Cloud Storage."}
           />
         ) : (
           <div className="overflow-x-auto">
@@ -192,7 +234,7 @@ const GcpStorage = () => {
                 </tr>
               </thead>
               <tbody>
-                {buckets.map((b) => (
+                {filtered.map((b) => (
                   <tr key={b.name} className="border-b border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/30">
                     <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100">{b.name}</td>
                     <td className="py-3 px-4 text-gray-500 dark:text-gray-400 text-xs font-mono">{b.location}</td>
