@@ -147,7 +147,7 @@ const CreateRDSForm = forwardRef(function CreateRDSForm({ form, setForm }, ref) 
           {['io1', 'gp3'].includes(form.storage_type) && (
             <div>
               <label className={labelCls}>IOPS</label>
-              <input type="number" className={inputCls} value={form.iops || ''} onChange={(e) => set('iops', +e.target.value)} />
+              <input type="number" className={inputCls} value={form.iops ?? ''} onChange={(e) => set('iops', e.target.value ? +e.target.value : null)} />
             </div>
           )}
         </div>

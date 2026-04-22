@@ -30,8 +30,8 @@ const defaultVolume = () => ({
   device_name: '/dev/sda1',
   volume_size_gb: 20,
   volume_type: 'gp3',
-  iops: '',
-  throughput: '',
+  iops: null,
+  throughput: null,
   delete_on_termination: true,
   encrypted: false,
 });
@@ -244,13 +244,13 @@ const CreateEC2Form = forwardRef(function CreateEC2Form({ form, setForm }, ref) 
                 {['io1', 'io2', 'gp3'].includes(vol.volume_type) && (
                   <div>
                     <label className={labelCls}>IOPS</label>
-                    <input type="number" className={inputCls} value={vol.iops} onChange={(e) => updateVolume(i, 'iops', +e.target.value)} />
+                    <input type="number" className={inputCls} value={vol.iops ?? ''} onChange={(e) => updateVolume(i, 'iops', e.target.value ? +e.target.value : null)} />
                   </div>
                 )}
                 {vol.volume_type === 'gp3' && (
                   <div>
                     <label className={labelCls}>Throughput (MiB/s)</label>
-                    <input type="number" className={inputCls} value={vol.throughput} onChange={(e) => updateVolume(i, 'throughput', +e.target.value)} />
+                    <input type="number" className={inputCls} value={vol.throughput ?? ''} onChange={(e) => updateVolume(i, 'throughput', e.target.value ? +e.target.value : null)} />
                   </div>
                 )}
               </div>
