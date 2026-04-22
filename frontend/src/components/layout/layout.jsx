@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ShieldOff, X, Mail, MessageCircle, Clock } from 'lucide-react';
+import { ShieldOff, X, Mail, MessageCircle, Clock, MailCheck, RefreshCw } from 'lucide-react';
+import authService from '../../services/authService';
 import Header from './header';
 import Sidebar from './sidebar';
 import AzureSecondarySidebar from './AzureSecondarySidebar';
@@ -82,6 +83,64 @@ const SupportModal = ({ onClose }) => (
   </div>
 );
 
+const UnverifiedScreen = () => {
+  const [resending, setResending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState('');
+  const { user } = useAuth();
+
+  const handleResend = async () => {
+    setResending(true);
+    setError('');
+    try {
+      await authService.resendVerification(user?.email);
+      setSent(true);
+    } catch {
+      setError('Não foi possível reenviar. Tente novamente em instantes.');
+    } finally {
+      setResending(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 flex items-center justify-center p-6">
+      <div className="max-w-md w-full text-center space-y-4">
+        <div className="mx-auto w-16 h-16 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+          <MailCheck className="w-8 h-8 text-amber-500" />
+        </div>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-white">Verifique seu e-mail</h1>
+        <p className="text-gray-600 dark:text-gray-400 text-sm leading-relaxed">
+          Enviamos um link de verificação para <strong className="text-gray-800 dark:text-gray-200">{user?.email}</strong>.
+          Acesse sua caixa de entrada e clique no link para liberar o acesso à plataforma.
+        </p>
+
+        {sent ? (
+          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-700 dark:text-green-400 text-sm">
+            <MailCheck className="w-4 h-4" /> E-mail reenviado com sucesso!
+          </div>
+        ) : (
+          <button
+            onClick={handleResend}
+            disabled={resending}
+            className="inline-flex items-center gap-2 mt-2 px-5 py-2.5 bg-primary text-white rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-60"
+          >
+            <RefreshCw className={`w-4 h-4 ${resending ? 'animate-spin' : ''}`} />
+            {resending ? 'Reenviando...' : 'Reenviar e-mail de verificação'}
+          </button>
+        )}
+
+        {error && (
+          <p className="text-red-500 text-xs">{error}</p>
+        )}
+
+        <p className="text-xs text-gray-400 dark:text-gray-500 pt-2">
+          Não recebeu? Verifique a pasta de spam ou aguarde alguns minutos.
+        </p>
+      </div>
+    </div>
+  );
+};
+
 const SuspendedScreen = () => {
   const [showSupport, setShowSupport] = useState(false);
   return (
@@ -119,6 +178,11 @@ const Layout = ({ children }) => {
 
   // Close sidebar on route change (mobile)
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
+
+  // If user is authenticated but email not verified, show verification screen
+  if (!loading && user && !user.is_verified) {
+    return <UnverifiedScreen />;
+  }
 
   // If user is authenticated but has no org (all suspended), show blocked screen
   if (!loading && user && !currentOrg) {
