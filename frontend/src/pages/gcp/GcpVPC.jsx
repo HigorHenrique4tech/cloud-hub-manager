@@ -299,7 +299,7 @@ const GcpVPC = () => {
   const [formError, setFormError] = useState('');
   const [detailTarget, setDetailTarget] = useState(null);
 
-  const { data: networks = [], isLoading, error, refetch } = useQuery({
+  const { data: networks = [], isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['gcp-networks'],
     queryFn: () => gcpService.listNetworks(),
     retry: false,
@@ -372,10 +372,11 @@ const GcpVPC = () => {
         <div className="flex items-center gap-2">
           <button
             onClick={() => refetch()}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+            disabled={isRefetching || isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            Atualizar
           </button>
           <PermissionGate permission="resources.create">
             <button

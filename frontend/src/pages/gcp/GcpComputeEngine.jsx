@@ -44,7 +44,7 @@ const GcpComputeEngine = () => {
 
   const hasPending = Object.keys(actionLoading).length > 0;
 
-  const { data: instances = [], isLoading, error, refetch } = useQuery({
+  const { data: instances = [], isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['gcp-instances'],
     queryFn: () => gcpService.listInstances(),
     retry: false,
@@ -145,10 +145,10 @@ const GcpComputeEngine = () => {
         </div>
         <button
           onClick={() => refetch()}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary-dark disabled:opacity-50"
+          disabled={isRefetching || isLoading}
+          className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
         >
-          <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
           Atualizar
         </button>
       </div>

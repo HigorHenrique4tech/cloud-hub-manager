@@ -28,7 +28,7 @@ const GcpFunctions = () => {
   const [toDelete, setToDelete] = useState(null);
   const [region, setRegion] = useState('us-central1');
 
-  const { data: functions = [], isLoading, error, refetch } = useQuery({
+  const { data: functions = [], isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['gcp-functions', region],
     queryFn: () => gcpService.listFunctions(region),
     retry: false,
@@ -94,10 +94,10 @@ const GcpFunctions = () => {
           </select>
           <button
             onClick={() => refetch()}
-            disabled={isLoading}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg text-white bg-primary hover:bg-primary/90 disabled:opacity-50"
+            disabled={isRefetching || isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
             Atualizar
           </button>
         </div>

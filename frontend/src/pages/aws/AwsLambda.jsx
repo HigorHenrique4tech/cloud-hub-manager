@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus, Trash2, Zap } from 'lucide-react';
+import { AlertCircle, Plus, Trash2, Zap, RefreshCw } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import SkeletonTable from '../../components/common/SkeletonTable';
@@ -28,7 +28,7 @@ const AwsLambda = () => {
   const [detailTarget, setDetailTarget] = useState(null);
   const formRef = useRef();
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['aws-lambda'],
     queryFn: () => awsService.listLambdaFunctions(),
     retry: false,
@@ -81,14 +81,24 @@ const AwsLambda = () => {
             {isLoading ? 'Carregando...' : `Região: ${data?.region || 'N/A'} · ${fns.length} função(ões)${q ? ` · filtrado por "${q}"` : ''}`}
           </p>
         </div>
-        <PermissionGate permission="resources.create">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            onClick={() => refetch()}
+            disabled={isRefetching || isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
           >
-            <Plus className="w-4 h-4" /> Criar Função
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            Atualizar
           </button>
-        </PermissionGate>
+          <PermissionGate permission="resources.create">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Criar Função
+            </button>
+          </PermissionGate>
+        </div>
       </div>
 
       <div className="card">

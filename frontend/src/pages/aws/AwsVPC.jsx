@@ -1,7 +1,7 @@
 import { useState, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus, Trash2, Network, Link2, Unlink, Monitor, ChevronDown, ChevronUp, CheckCircle } from 'lucide-react';
+import { AlertCircle, Plus, Trash2, Network, Link2, Unlink, Monitor, ChevronDown, ChevronUp, CheckCircle, RefreshCw } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
@@ -329,7 +329,7 @@ const AwsVPC = () => {
   const [detailTarget, setDetailTarget] = useState(null);
   const formRef = useRef();
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['aws-vpc'],
     queryFn: () => awsService.listVPCs(),
     retry: false,
@@ -377,12 +377,22 @@ const AwsVPC = () => {
             Região: {data?.region || 'N/A'} · {vpcs.length} VPC(s){q && ` · filtrado por "${q}"`}
           </p>
         </div>
-        <PermissionGate permission="resources.create">
-          <button onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors">
-            <Plus className="w-4 h-4" /> Criar VPC
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => refetch()}
+            disabled={isRefetching || isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            Atualizar
           </button>
-        </PermissionGate>
+          <PermissionGate permission="resources.create">
+            <button onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors">
+              <Plus className="w-4 h-4" /> Criar VPC
+            </button>
+          </PermissionGate>
+        </div>
       </div>
 
       <div className="card overflow-x-auto">

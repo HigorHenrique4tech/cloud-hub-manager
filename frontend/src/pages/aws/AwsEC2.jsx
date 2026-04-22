@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useToast } from '../../contexts/ToastContext';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { AlertCircle, Plus, Server, Search, X } from 'lucide-react';
+import { AlertCircle, Plus, Server, Search, X, RefreshCw } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
 import SkeletonTable from '../../components/common/SkeletonTable';
@@ -46,7 +46,7 @@ const AwsEC2 = () => {
   const [batchErrors, setBatchErrors] = useState([]);
   const [detailTarget, setDetailTarget] = useState(null);
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['aws-ec2'],
     queryFn: () => awsService.listEC2Instances(),
     retry: false,
@@ -187,14 +187,24 @@ const AwsEC2 = () => {
             {isLoading ? 'Carregando...' : `Região: ${data?.region || 'N/A'} · ${instances.length} instância(s)${q ? ` · filtrado por "${q}"` : ''}`}
           </p>
         </div>
-        <PermissionGate permission="resources.create">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            onClick={() => refetch()}
+            disabled={isRefetching || isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
           >
-            <Plus className="w-4 h-4" /> Criar Instância
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            Atualizar
           </button>
-        </PermissionGate>
+          <PermissionGate permission="resources.create">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Criar Instância
+            </button>
+          </PermissionGate>
+        </div>
       </div>
 
       {/* Search bar */}
