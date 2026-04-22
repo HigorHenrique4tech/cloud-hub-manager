@@ -85,6 +85,9 @@ class UserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str
+    phone: Optional[str] = None
+    company_name: Optional[str] = None
+    cnpj: Optional[str] = None
 
     @field_validator('password')
     @classmethod
@@ -132,6 +135,7 @@ class TokenResponse(BaseModel):
     refresh_token: Optional[str] = None
     token_type: str = "bearer"
     user: UserResponse
+    needs_company_info: bool = False
 
 
 # ── MFA schemas ─────────────────────────────────────────────────────────────

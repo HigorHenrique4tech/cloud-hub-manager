@@ -204,7 +204,7 @@ const Register = () => {
     setLoading(true);
     try {
       await register(form.name, form.email, form.password);
-      navigate('/select-plan');
+      navigate('/complete-profile', { replace: true });
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao criar conta');
     } finally {

@@ -90,6 +90,7 @@ const InviteAccept = lazy(() => import('./pages/InviteAccept'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const VerifyCallback = lazy(() => import('./pages/VerifyCallback'));
 const OAuthCallback = lazy(() => import('./pages/OAuthCallback'));
+const CompanyInfoStep = lazy(() => import('./components/auth/CompanyInfoStep'));
 
 // ── Route loading fallback ────────────────────────────────────────────────────
 const RouteFallback = () => (
@@ -133,6 +134,7 @@ function App() {
                 <Route path="/auth/google/callback" element={<OAuthCallback provider="google" />} />
                 <Route path="/auth/github/callback" element={<OAuthCallback provider="github" />} />
                 <Route path="/auth/microsoft/callback" element={<OAuthCallback provider="microsoft" />} />
+                <Route path="/complete-profile" element={<CompanyInfoStep />} />
                 <Route path="/invite/:token" element={<InviteAccept />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/verify/:token" element={<VerifyCallback />} />

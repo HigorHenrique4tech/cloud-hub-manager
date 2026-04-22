@@ -42,6 +42,10 @@ export default function OAuthCallback({ provider }) {
           window.location.href = `https://desk.cloudatlas.app.br/auth/callback?token=${data.access_token}&refresh=${data.refresh_token || ''}`;
           return;
         }
+        if (data.needs_company_info) {
+          navigate('/complete-profile', { replace: true });
+          return;
+        }
         navigate('/', { replace: true });
       } catch (err) {
         if (!cancelled) {

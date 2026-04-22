@@ -46,6 +46,8 @@ class Organization(Base):
     # ── CSP Cost Management ──────────────────────────────────────────────────
     cost_source_preference = Column(String(30), nullable=False, default="auto")  # auto | cost_management | partner_center | estimated
     cost_markup_pct        = Column(Float, nullable=False, default=0)             # % markup sobre custo partner (CSP)
+    phone            = Column(String(30), nullable=True)
+    cnpj             = Column(String(18), nullable=True)
     created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -225,6 +227,9 @@ class User(Base):
     is_helpdesk        = Column(Boolean, default=False, nullable=False)
     is_support_agent   = Column(Boolean, default=False, nullable=False)
     onboarding_completed = Column(Boolean, default=False, nullable=False)
+    phone              = Column(String(30), nullable=True)
+    company_name       = Column(String(255), nullable=True)
+    cnpj               = Column(String(18), nullable=True)
     password_reset_token      = Column(String(255), nullable=True, index=True)
     password_reset_expires_at = Column(DateTime, nullable=True)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)

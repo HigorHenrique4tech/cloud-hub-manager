@@ -83,6 +83,17 @@ const authService = {
     return data;
   },
 
+  updateCompanyInfo: async (payload) => {
+    const { data } = await api.put('/auth/me/company-info', payload);
+    return data;
+  },
+
+  validateCnpj: async (cnpj) => {
+    const digits = cnpj.replace(/\D/g, '');
+    const { data } = await api.get(`/auth/cnpj/${digits}`);
+    return data;
+  },
+
   // Password reset
   forgotPassword: async (email) => {
     const { data } = await api.post('/auth/forgot-password', { email });

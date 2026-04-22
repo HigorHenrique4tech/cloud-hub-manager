@@ -1,6 +1,9 @@
 import logging
+import re as _re
 import secrets
+import time
 from datetime import datetime, timedelta
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr
@@ -86,10 +89,13 @@ def _ensure_personal_org(db: Session, user: User) -> Organization:
         slug = f"{slug_base}-{counter}"
         counter += 1
 
+    org_name = user.company_name if user.company_name else f"Personal – {user.name}"
     org = Organization(
-        name=f"Personal – {user.name}",
+        name=org_name,
         slug=slug,
         trial_ends_at=datetime.utcnow() + timedelta(days=30),
+        phone=user.phone,
+        cnpj=user.cnpj,
     )
     db.add(org)
     db.flush()
@@ -135,6 +141,9 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         hashed_password=hash_password(payload.password),
         is_verified=False,
         verification_token=verification_token,
+        phone=payload.phone,
+        company_name=payload.company_name,
+        cnpj=payload.cnpj,
     )
     db.add(user)
     db.commit()
@@ -156,10 +165,12 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         user_agent=request.headers.get("user-agent"),
         ip_address=request.client.host if request.client else None,
     )
+    needs_info = not payload.company_name
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         user=UserResponse.model_validate(user),
+        needs_company_info=needs_info,
     )
 
 
@@ -297,6 +308,90 @@ def update_profile(
     db.commit()
     db.refresh(current_user)
     return UserResponse.model_validate(current_user)
+
+
+# ── Company Info ──────────────────────────────────────────────────────────────
+
+class CompanyInfoPayload(BaseModel):
+    name: str | None = None
+    phone: str | None = None
+    company_name: str | None = None
+    cnpj: str | None = None
+
+
+@router.put("/me/company-info", response_model=UserResponse)
+def update_company_info(
+    payload: CompanyInfoPayload,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Save company name, CNPJ, and phone collected after registration."""
+    if payload.name is not None:
+        current_user.name = payload.name
+    if payload.phone is not None:
+        current_user.phone = payload.phone
+    if payload.company_name is not None:
+        current_user.company_name = payload.company_name
+    if payload.cnpj is not None:
+        current_user.cnpj = payload.cnpj
+
+    db.commit()
+
+    # Update personal org with the new info
+    org = _ensure_personal_org(db, current_user)
+    if payload.company_name:
+        org.name = payload.company_name
+    if payload.phone:
+        org.phone = payload.phone
+    if payload.cnpj:
+        org.cnpj = payload.cnpj
+    db.commit()
+    db.refresh(current_user)
+    return UserResponse.model_validate(current_user)
+
+
+# ── CNPJ Lookup (public) ──────────────────────────────────────────────────────
+
+_cnpj_cache: dict = {}
+_CNPJ_TTL = 600  # 10 minutes
+
+
+@router.get("/cnpj/{cnpj}")
+async def lookup_cnpj(cnpj: str):
+    """Validate and look up a Brazilian CNPJ via BrasilAPI. Public endpoint."""
+    digits = _re.sub(r"\D", "", cnpj)
+    if len(digits) != 14:
+        raise HTTPException(status_code=400, detail="CNPJ deve ter 14 dígitos")
+
+    now = time.time()
+    cached = _cnpj_cache.get(digits)
+    if cached and now - cached["ts"] < _CNPJ_TTL:
+        if cached.get("error"):
+            raise HTTPException(status_code=404, detail="CNPJ não encontrado ou inválido")
+        return cached["data"]
+
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(f"https://brasilapi.com.br/api/cnpj/v1/{digits}")
+        if resp.status_code == 404:
+            _cnpj_cache[digits] = {"ts": now, "error": True}
+            raise HTTPException(status_code=404, detail="CNPJ não encontrado ou inválido")
+        resp.raise_for_status()
+        raw = resp.json()
+        result = {
+            "cnpj": digits,
+            "razao_social": raw.get("razao_social", ""),
+            "nome_fantasia": raw.get("nome_fantasia", ""),
+            "situacao_cadastral": raw.get("descricao_situacao_cadastral", ""),
+            "uf": raw.get("uf", ""),
+            "municipio": raw.get("municipio", ""),
+        }
+        _cnpj_cache[digits] = {"ts": now, "data": result}
+        return result
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=502, detail="Falha ao consultar a Receita Federal. Tente novamente.")
 
 
 @router.put("/me/password")
@@ -664,6 +759,7 @@ def _oauth_login_or_register(
     if not user:
         user = db.query(User).filter(User.email == email, User.is_active == True).first()
 
+    is_new_user = False
     if user:
         # Link OAuth if not yet linked
         if not user.oauth_provider:
@@ -691,16 +787,17 @@ def _oauth_login_or_register(
         db.commit()
         db.refresh(user)
         action = "auth.oauth_register"
+        is_new_user = True
 
-        # Send welcome email for new SSO registrations
+    _ensure_personal_org(db, user)
+    db.refresh(user)
+
+    if is_new_user:
         try:
             from app.services.email_service import send_welcome_email
             send_welcome_email(user.email, user.name or user.email)
         except Exception as exc:
             logger.warning("Failed to send SSO welcome email to %s: %s", user.email, exc)
-
-    _ensure_personal_org(db, user)
-    db.refresh(user)
 
     log_activity(
         db, user, action, "User",
@@ -720,6 +817,7 @@ def _oauth_login_or_register(
         access_token=access_token,
         refresh_token=refresh_token,
         user=UserResponse.model_validate(user),
+        needs_company_info=is_new_user,
     )
 
 
