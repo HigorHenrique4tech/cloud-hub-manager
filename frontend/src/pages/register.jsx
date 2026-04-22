@@ -199,14 +199,23 @@ const Register = () => {
     e.preventDefault();
     setError('');
     if (form.password !== form.confirm) { setError('As senhas não coincidem'); return; }
-    if (form.password.length < 6) { setError('A senha deve ter pelo menos 6 caracteres'); return; }
+    if (form.password.length < 8) { setError('A senha deve ter pelo menos 8 caracteres'); return; }
     if (form.password.length > 72) { setError('A senha deve ter no máximo 72 caracteres'); return; }
+    if (!/[a-z]/.test(form.password)) { setError('A senha deve conter pelo menos uma letra minúscula'); return; }
+    if (!/[A-Z]/.test(form.password)) { setError('A senha deve conter pelo menos uma letra maiúscula'); return; }
+    if (!/\d/.test(form.password)) { setError('A senha deve conter pelo menos um número'); return; }
+    if (!/[!@#$%^&*(),.?":{}|<>\-_=+[\]\\;'`~/]/.test(form.password)) { setError('A senha deve conter pelo menos um caractere especial (!@#$%...)'); return; }
     setLoading(true);
     try {
       await register(form.name, form.email, form.password);
       navigate('/complete-profile', { replace: true });
     } catch (err) {
-      setError(err.response?.data?.detail || 'Erro ao criar conta');
+      const detail = err.response?.data?.detail;
+      if (Array.isArray(detail)) {
+        setError(detail.map(e => e.msg?.replace(/^Value error,\s*/i, '') || String(e)).join(' • '));
+      } else {
+        setError(detail || 'Erro ao criar conta');
+      }
     } finally {
       setLoading(false);
     }
@@ -393,7 +402,7 @@ const Register = () => {
                     required
                     value={form.password}
                     onChange={handleChange}
-                    placeholder="Mínimo 6 caracteres"
+                    placeholder="Mín. 8 chars, maiúscula, número, símbolo"
                     className="reg-input"
                     style={{ ...inputStyle, paddingRight: 42 }}
                   />
