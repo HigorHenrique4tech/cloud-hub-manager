@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Server, Play, Square, Cloud, ChevronRight, AlertCircle, RefreshCw } from 'lucide-react';
-import StatsCard from '../statscard';
 import awsService from '../../../services/awsservices';
 import azureService from '../../../services/azureservices';
 import gcpService from '../../../services/gcpService';
@@ -123,29 +122,44 @@ const StatsWidget = () => {
     return gcpInstances.length;
   };
 
+  const stats = [
+    { label: 'Total de VMs', value: totalVMs,   icon: Server, tone: 'text-primary bg-primary/10' },
+    { label: 'Em Execução',  value: runningVMs, icon: Play,   tone: 'text-success bg-success/10' },
+    { label: 'Paradas',      value: stoppedVMs, icon: Square, tone: 'text-danger bg-danger/10' },
+    { label: 'Clouds',       value: cloudCount, icon: Cloud,  tone: 'text-primary bg-primary/10' },
+  ];
+
   return (
     <div className="space-y-5">
-      {/* Stat Cards */}
+      {/* Stat Strip — compact horizontal with dividers */}
       {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="card p-0 divide-y sm:divide-y-0 sm:divide-x divide-gray-200 dark:divide-gray-700 flex flex-col sm:flex-row">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="card p-4 animate-pulse">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-gray-200 dark:bg-gray-700 rounded-lg" />
-                <div className="flex-1">
-                  <div className="h-3 w-20 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
-                  <div className="h-6 w-12 bg-gray-200 dark:bg-gray-700 rounded" />
-                </div>
+            <div key={i} className="flex-1 flex items-center gap-3 px-5 py-3.5">
+              <div className="skeleton w-9 h-9 rounded-lg" />
+              <div className="flex-1 space-y-1.5">
+                <div className="skeleton h-3 w-20" />
+                <div className="skeleton h-5 w-12" />
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          <StatsCard title="Total de VMs" value={totalVMs}   icon={Server} color="primary" />
-          <StatsCard title="Em Execução"  value={runningVMs} icon={Play}   color="success" />
-          <StatsCard title="Paradas"      value={stoppedVMs} icon={Square} color="danger"  />
-          <StatsCard title="Clouds"       value={cloudCount} icon={Cloud}  color="primary" />
+        <div className="card p-0 overflow-hidden divide-y sm:divide-y-0 sm:divide-x divide-gray-200 dark:divide-gray-700 flex flex-col sm:flex-row">
+          {stats.map(({ label, value, icon: Icon, tone }) => (
+            <div
+              key={label}
+              className="flex-1 flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-gray-50/70 dark:hover:bg-gray-700/30"
+            >
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${tone}`}>
+                <Icon className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400 font-medium truncate">{label}</p>
+                <p className="text-xl font-semibold text-gray-900 dark:text-gray-100 leading-tight tabular-nums">{value}</p>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

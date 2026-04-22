@@ -49,28 +49,47 @@ const WIDGET_COMPONENTS = {
   msp_health: <MspHealthWidget />,
 };
 
+/* ── Bento layout: col-span rules por widget (12-col grid) ─── */
+const WIDGET_SPAN = {
+  stats:      'col-span-12',
+  cost:       'col-span-12 xl:col-span-8',
+  finops:     'col-span-12 md:col-span-6 xl:col-span-4',
+  alerts:     'col-span-12 md:col-span-6 xl:col-span-4',
+  schedules:  'col-span-12 md:col-span-6 xl:col-span-4',
+  msp_health: 'col-span-12 md:col-span-6 xl:col-span-4',
+  activity:   'col-span-12',
+};
+
 /* ── Empty state ──────────────────────────────────────────── */
 const EmptyWorkspaceState = () => {
   const navigate = useNavigate();
   return (
     <Layout>
-      <div className="flex flex-col items-center justify-center py-20 text-center">
-        <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mb-5">
-          <Cloud className="w-8 h-8 text-primary" />
+      <div className="flex items-center justify-center py-16">
+        <div className="relative max-w-lg w-full text-center px-6 py-12 rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm overflow-hidden">
+          {/* Soft gradient backdrop */}
+          <div className="absolute inset-0 pointer-events-none opacity-60 dark:opacity-30"
+               style={{ background: 'radial-gradient(ellipse at top, rgba(30,111,217,0.12), transparent 70%)' }} />
+
+          <div className="relative">
+            <div className="mx-auto w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/15 to-accent/15 flex items-center justify-center mb-5 ring-1 ring-primary/20">
+              <Cloud className="w-9 h-9 text-primary" strokeWidth={1.5} />
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              Conecte sua primeira cloud
+            </h2>
+            <p className="text-gray-500 dark:text-gray-400 text-sm max-w-sm mx-auto mb-7 leading-relaxed">
+              Adicione credenciais AWS, Azure ou GCP para começar a monitorar recursos, custos e automações neste workspace.
+            </p>
+            <button
+              onClick={() => navigate('/workspace/settings')}
+              className="btn-primary-gradient inline-flex items-center gap-2"
+            >
+              <Settings className="w-4 h-4" />
+              Configurar Workspace
+            </button>
+          </div>
         </div>
-        <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-200 mb-2">
-          Nenhuma conta cloud configurada
-        </h2>
-        <p className="text-gray-500 dark:text-gray-400 text-sm max-w-md mb-6">
-          Este workspace não possui contas AWS ou Azure. Adicione suas credenciais cloud para começar a monitorar recursos e custos.
-        </p>
-        <button
-          onClick={() => navigate('/workspace/settings')}
-          className="flex items-center gap-2 px-5 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors"
-        >
-          <Settings className="w-4 h-4" />
-          Configurar Workspace
-        </button>
       </div>
     </Layout>
   );
@@ -174,11 +193,14 @@ const DashboardInner = () => {
         </div>
       </div>
 
-      {/* Draggable widgets */}
+      {/* Draggable widgets — bento grid */}
       {isLoadingProviders ? (
-        <div className="space-y-5">
+        <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-min">
           {visibleWidgets.map((w) => (
-            <div key={w.id} className="card animate-pulse space-y-3 min-h-[120px]">
+            <div
+              key={w.id}
+              className={`card space-y-3 min-h-[140px] ${WIDGET_SPAN[w.id] || 'col-span-12'}`}
+            >
               <div className="flex items-center gap-3">
                 <div className="skeleton h-8 w-8 rounded-lg" />
                 <div className="skeleton h-4 w-32" />
@@ -198,12 +220,13 @@ const DashboardInner = () => {
             items={visibleWidgets.map((w) => w.id)}
             strategy={rectSortingStrategy}
           >
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            <div className="grid grid-cols-12 gap-4 lg:gap-6 auto-rows-min">
               {visibleWidgets.map((w) => (
-                <SortableWidget key={w.id} id={w.id} className={
-                  /* Stats and Activity widgets span full width — they have wide tables */
-                  ['stats', 'activity'].includes(w.id) ? 'xl:col-span-2' : ''
-                }>
+                <SortableWidget
+                  key={w.id}
+                  id={w.id}
+                  className={WIDGET_SPAN[w.id] || 'col-span-12'}
+                >
                   <WidgetErrorBoundary name={WIDGET_NAMES[w.id] || w.id}>
                     {WIDGET_COMPONENTS[w.id]}
                   </WidgetErrorBoundary>

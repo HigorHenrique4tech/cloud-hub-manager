@@ -61,13 +61,13 @@ const WorkspaceSwitcher = () => {
           {canManage && (
             <div className="border-t border-gray-100 dark:border-gray-700 flex">
               <button
-                onClick={() => { setOpen(false); navigate('/settings/workspace'); }}
+                onClick={() => { setOpen(false); navigate('/workspace/settings'); }}
                 className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50"
               >
                 <Settings className="w-3.5 h-3.5" /> Gerenciar
               </button>
               <button
-                onClick={() => { setOpen(false); navigate('/settings/workspace/new'); }}
+                onClick={() => { setOpen(false); navigate('/workspace/settings'); }}
                 className="flex-1 flex items-center justify-center gap-1 px-3 py-2 text-xs text-primary hover:bg-gray-50 dark:hover:bg-gray-700/50"
               >
                 <Plus className="w-3.5 h-3.5" /> Novo

@@ -4,17 +4,29 @@ import {
 } from 'recharts';
 import { TrendingUp, AlertCircle, RefreshCw } from 'lucide-react';
 import costService from '../../../services/costService';
+import orgService from '../../../services/orgService';
 import { useOrgWorkspace } from '../../../contexts/OrgWorkspaceContext';
-import { useCurrency } from '../../../hooks/useCurrency';
+import { fmtBRL, fmtUSD } from '../../../utils/formatters';
 
-const today  = new Date();
-const end30  = today.toISOString().slice(0, 10);
+const today   = new Date();
+const end30   = today.toISOString().slice(0, 10);
 const start30 = new Date(today.getTime() - 30 * 86400000).toISOString().slice(0, 10);
 
 const CostWidget = () => {
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
-  const { fmtCost, currency, rate } = useCurrency();
   const wsReady = !!currentOrg && !!currentWorkspace;
+  const slug = currentOrg?.slug;
+
+  // Always fetch exchange rate so we can convert USD → BRL regardless of user's display setting
+  const { data: rateData } = useQuery({
+    queryKey: ['exchange-rate', slug],
+    queryFn: () => orgService.getExchangeRate(slug),
+    enabled: !!slug,
+    staleTime: 60 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
+  const rate = rateData?.exchange_rate_brl || rateData?.bcb_rate || null;
 
   const { data: rawData, isLoading, isError, refetch } = useQuery({
     queryKey: ['dashboard-costs', start30, end30],
@@ -24,30 +36,32 @@ const CostWidget = () => {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Normalize cost values to display currency
+  // Always normalize to BRL. Cloud values come in USD by default.
+  const toBRL = (v, srcCurrency = 'USD') => {
+    if (!v) return 0;
+    const src = (srcCurrency || 'USD').toUpperCase();
+    if (src === 'BRL') return v;
+    if (src === 'USD' && rate) return v * rate;
+    return v; // fallback: no rate yet, keep as-is
+  };
+
+  const fmt = (v) => rate ? fmtBRL(v) : fmtUSD(v);
+
   const data = rawData ? (() => {
     const cs = rawData.currencies || {};
-    const norm = (v, p) => {
-      if (!v) return 0;
-      const src = cs[p] || 'USD';
-      if (src === currency) return v;
-      if (src === 'USD' && currency === 'BRL' && rate) return v * rate;
-      if (src === 'BRL' && currency === 'USD' && rate) return v / rate;
-      return v;
-    };
-    const awsT = norm(rawData.aws?.total, 'aws');
-    const azureT = norm(rawData.azure?.total, 'azure');
-    const gcpT = norm(rawData.gcp?.total, 'gcp');
+    const awsT   = toBRL(rawData.aws?.total,   cs.aws);
+    const azureT = toBRL(rawData.azure?.total,  cs.azure);
+    const gcpT   = toBRL(rawData.gcp?.total,    cs.gcp);
     return {
       ...rawData,
-      aws: rawData.aws ? { ...rawData.aws, total: awsT } : null,
+      aws:   rawData.aws   ? { ...rawData.aws,   total: awsT }   : null,
       azure: rawData.azure ? { ...rawData.azure, total: azureT } : null,
-      gcp: rawData.gcp ? { ...rawData.gcp, total: gcpT } : null,
+      gcp:   rawData.gcp   ? { ...rawData.gcp,   total: gcpT }   : null,
       total: awsT + azureT + gcpT,
       combined: (rawData.combined || []).map(d => {
-        const a = norm(d.aws || 0, 'aws');
-        const az = norm(d.azure || 0, 'azure');
-        const g = norm(d.gcp || 0, 'gcp');
+        const a  = toBRL(d.aws   || 0, cs.aws);
+        const az = toBRL(d.azure || 0, cs.azure);
+        const g  = toBRL(d.gcp  || 0, cs.gcp);
         return { ...d, aws: a, azure: az, gcp: g, total: a + az + g };
       }),
     };
@@ -63,7 +77,7 @@ const CostWidget = () => {
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-primary" />
-          Cost Forecast
+          Previsão de Custos
         </h2>
         <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">30d</span>
       </div>
@@ -94,7 +108,7 @@ const CostWidget = () => {
       ) : (
         <div className="flex-1 flex flex-col">
           <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-0.5">
-            {fmtCost(data?.total, currency)}
+            {fmt(data?.total)}
           </p>
           <p className="text-xs text-gray-400 mb-4">{start30} → {end30}</p>
 
@@ -120,7 +134,7 @@ const CostWidget = () => {
                     color: '#f9fafb',
                   }}
                   labelStyle={{ color: '#d1d5db', marginBottom: 2 }}
-                  formatter={(v, name) => [fmtCost(v, currency), name]}
+                  formatter={(v, name) => [fmt(v), name]}
                 />
                 {hasAws   && <Line type="monotone" dataKey="aws"   name="AWS"   stroke="#f97316" strokeWidth={2} dot={false} />}
                 {hasAzure && <Line type="monotone" dataKey="azure" name="Azure" stroke="#0ea5e9" strokeWidth={2} dot={false} />}
@@ -133,24 +147,24 @@ const CostWidget = () => {
           <div className="flex flex-wrap gap-2 mt-4">
             <span className="inline-flex items-center gap-1.5 text-xs bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 px-3 py-1 rounded-full font-medium">
               <span className="w-2 h-2 rounded-full bg-purple-500 flex-shrink-0" />
-              Total {fmtCost(data?.total, currency)}
+              Total {fmt(data?.total)}
             </span>
             {hasAws && (
               <span className="inline-flex items-center gap-1.5 text-xs bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 px-3 py-1 rounded-full font-medium">
                 <span className="w-2 h-2 rounded-full bg-orange-500 flex-shrink-0" />
-                AWS {fmtCost(data?.aws?.total, currency)}
+                AWS {fmt(data?.aws?.total)}
               </span>
             )}
             {hasAzure && (
               <span className="inline-flex items-center gap-1.5 text-xs bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-300 px-3 py-1 rounded-full font-medium">
                 <span className="w-2 h-2 rounded-full bg-sky-500 flex-shrink-0" />
-                Azure {fmtCost(data?.azure?.total, currency)}
+                Azure {fmt(data?.azure?.total)}
               </span>
             )}
             {hasGcp && (
               <span className="inline-flex items-center gap-1.5 text-xs bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 px-3 py-1 rounded-full font-medium">
                 <span className="w-2 h-2 rounded-full bg-green-500 flex-shrink-0" />
-                GCP {fmtCost(data?.gcp?.total, currency)}
+                GCP {fmt(data?.gcp?.total)}
               </span>
             )}
           </div>
