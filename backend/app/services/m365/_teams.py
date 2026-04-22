@@ -85,14 +85,27 @@ class TeamsMixin:
             )
         return result
 
-    def create_team(self, display_name: str, description: str = "", visibility: str = "Private") -> dict:
-        """Create a new Microsoft Team."""
-        return self._post("/teams", {
+    def create_team(self, display_name: str, description: str = "", visibility: str = "Private", owner_id: str = "") -> dict:
+        """Create a new Microsoft Team.
+
+        Graph API with app-only permissions requires at least one owner in the
+        members array, otherwise it returns 400 "A team owner must be provided".
+        """
+        payload = {
             "template@odata.bind": "https://graph.microsoft.com/v1.0/teamsTemplates('standard')",
             "displayName": display_name,
             "description": description,
             "visibility": visibility,
-        })
+        }
+        if owner_id:
+            payload["members"] = [
+                {
+                    "@odata.type": "#microsoft.graph.aadUserConversationMember",
+                    "roles": ["owner"],
+                    "user@odata.bind": f"https://graph.microsoft.com/v1.0/users('{owner_id}')",
+                }
+            ]
+        return self._post("/teams", payload)
 
     def update_team(self, team_id: str, settings: dict) -> dict:
         """Update team settings (displayName, description, visibility)."""

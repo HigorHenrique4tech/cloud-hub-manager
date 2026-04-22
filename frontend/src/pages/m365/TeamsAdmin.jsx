@@ -57,12 +57,15 @@ function TeamModal({ team, onClose }) {
   useEscapeKey(true, onClose);
   const qc = useQueryClient();
   const isEdit = !!team;
-  // team uses camelCase: displayName, description, visibility
   const [form, setForm] = useState({
     display_name: team?.displayName || '',
     description: team?.description || '',
     visibility: team?.visibility || 'Private',
+    owner_id: '',
   });
+
+  const usersQ = useQuery({ queryKey: ['m365-users'], queryFn: m365Service.getUsers, staleTime: 300_000, retry: false, enabled: !isEdit });
+  const users = usersQ.data?.users || [];
 
   const mut = useMutation({
     mutationFn: () => isEdit
@@ -73,6 +76,8 @@ function TeamModal({ team, onClose }) {
       onClose();
     },
   });
+
+  const canSubmit = form.display_name.trim() && (isEdit || form.owner_id);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
@@ -97,10 +102,22 @@ function TeamModal({ team, onClose }) {
               <option value="Public">Público</option>
             </select>
           </div>
+          {!isEdit && (
+            <div>
+              <label className={labelCls}>Owner do Time *</label>
+              <select className={inputCls} value={form.owner_id} onChange={e => setForm(f => ({ ...f, owner_id: e.target.value }))}>
+                <option value="">Selecione o owner...</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.displayName} ({u.userPrincipalName})</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-400 mt-1">Obrigatório: a API do Graph exige um owner ao criar um time.</p>
+            </div>
+          )}
         </div>
         <div className="px-5 pb-5">
-          {mut.isError && <p className="text-xs text-red-500 mb-2">{mut.error?.response?.data?.detail || 'Erro ao salvar.'}</p>}
-          <button onClick={() => mut.mutate()} disabled={mut.isPending || !form.display_name.trim()} className={`${btnPrimary} w-full justify-center`}>
+          {mut.isError && <p className="text-xs text-red-500 mb-2">{typeof mut.error?.response?.data?.detail === 'string' ? mut.error.response.data.detail : 'Erro ao salvar.'}</p>}
+          <button onClick={() => mut.mutate()} disabled={mut.isPending || !canSubmit} className={`${btnPrimary} w-full justify-center`}>
             {mut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : isEdit ? 'Salvar' : 'Criar Time'}
           </button>
         </div>
@@ -407,8 +424,8 @@ function AddMemberModal({ teamId, onClose }) {
   const [role, setRole] = useState('member');
 
   const usersQ = useQuery({ queryKey: ['m365-users'], queryFn: m365Service.getUsers, staleTime: 300_000, retry: false });
-  // get_users() returns camelCase: displayName, userPrincipalName
-  const users = usersQ.data || [];
+  // get_users() endpoint returns {users: [...]}
+  const users = usersQ.data?.users || [];
 
   const mut = useMutation({
     mutationFn: () => m365Service.addTeamMember(teamId, userId, role === 'owner' ? ['owner'] : []),

@@ -85,7 +85,7 @@ async def ws_m365_create_team(
     _require_enterprise(plan, "Teams Admin")
     try:
         svc = _get_service_or_404(db, member.workspace_id)
-        result = await _run(svc.create_team, body.display_name, body.description, body.visibility)
+        result = await _run(svc.create_team, body.display_name, body.description, body.visibility, body.owner_id)
         cache_delete(f"m365:{member.workspace_id}:teams")
         return result
     except M365AuthError as exc:

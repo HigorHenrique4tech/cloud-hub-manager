@@ -49,6 +49,7 @@ class CreateTeamRequest(BaseModel):
     display_name: str
     description: str = ""
     visibility: str = "Private"     # "Private" | "Public"
+    owner_id: str = ""              # required for app-only auth (Graph API)
 
 
 class UpdateTeamRequest(BaseModel):
