@@ -268,7 +268,19 @@ const AwsEC2 = () => {
       <CreateResourceModal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
-        onSubmit={() => createInstance(form)}
+        onSubmit={() => {
+          const toIntOrNull = (v) => (v === '' || v == null || Number.isNaN(+v) ? null : +v);
+          const payload = {
+            ...form,
+            volumes: (form.volumes || []).map((v) => ({
+              ...v,
+              volume_size_gb: toIntOrNull(v.volume_size_gb) ?? 20,
+              iops: toIntOrNull(v.iops),
+              throughput: toIntOrNull(v.throughput),
+            })),
+          };
+          createInstance(payload);
+        }}
         onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Instância EC2"
         isLoading={creating}

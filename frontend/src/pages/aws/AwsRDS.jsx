@@ -196,7 +196,14 @@ const AwsRDS = () => {
       <CreateResourceModal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
-        onSubmit={() => createInstance(form)}
+        onSubmit={() => {
+          const toIntOrNull = (v) => (v === '' || v == null || Number.isNaN(+v) ? null : +v);
+          createInstance({
+            ...form,
+            allocated_storage_gb: toIntOrNull(form.allocated_storage_gb ?? form.allocated_storage) ?? 20,
+            iops: toIntOrNull(form.iops),
+          });
+        }}
         onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Instância RDS"
         isLoading={creating}
