@@ -373,7 +373,7 @@ async def lookup_cnpj(cnpj: str):
     try:
         async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(f"https://brasilapi.com.br/api/cnpj/v1/{digits}")
-        if resp.status_code == 404:
+        if resp.status_code in (400, 404):
             _cnpj_cache[digits] = {"ts": now, "error": True}
             raise HTTPException(status_code=404, detail="CNPJ não encontrado ou inválido")
         resp.raise_for_status()
