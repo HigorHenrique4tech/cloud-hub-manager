@@ -47,6 +47,7 @@ const CreateEC2Form = forwardRef(function CreateEC2Form({ form, setForm }, ref) 
   const [amiSearch, setAmiSearch] = useState('');
   const [apiInstanceTypes, setApiInstanceTypes] = useState([]);
   const [keyPairs, setKeyPairs] = useState([]);
+  const [vpcs, setVpcs] = useState([]);
   const [securityGroups, setSecurityGroups] = useState([]);
   const [subnets, setSubnets] = useState([]);
   const [iamRoles, setIamRoles] = useState([]);
@@ -66,10 +67,19 @@ const CreateEC2Form = forwardRef(function CreateEC2Form({ form, setForm }, ref) 
   useEffect(() => {
     load('types', awsService.listInstanceTypes).then((d) => d?.instance_types?.length && setApiInstanceTypes(d.instance_types));
     load('keys', awsService.listKeyPairs).then((d) => d && setKeyPairs(d.key_pairs || []));
-    load('sgs', awsService.listSecurityGroups).then((d) => d && setSecurityGroups(d.security_groups || []));
-    load('subnets', awsService.listSubnets).then((d) => d && setSubnets(d.subnets || []));
+    load('vpcs', awsService.listVPCs).then((d) => d && setVpcs(d.vpcs || []));
     load('roles', awsService.listIAMRoles).then((d) => d && setIamRoles(d.roles || []));
   }, []);
+
+  useEffect(() => {
+    if (!form.vpc_id) {
+      setSubnets([]);
+      setSecurityGroups([]);
+      return;
+    }
+    load('sgs', () => awsService.listSecurityGroups(form.vpc_id)).then((d) => d && setSecurityGroups(d.security_groups || []));
+    load('subnets', () => awsService.listSubnets(form.vpc_id)).then((d) => d && setSubnets(d.subnets || []));
+  }, [form.vpc_id]);
 
   useEffect(() => {
     const t = setTimeout(() => {
@@ -166,14 +176,25 @@ const CreateEC2Form = forwardRef(function CreateEC2Form({ form, setForm }, ref) 
           </select>
         </div>
         <div>
-          <label className={labelCls}>Subnet</label>
-          <select className={inputCls} value={form.subnet_id || ''} onChange={(e) => set('subnet_id', e.target.value)}>
-            <option value="">Padrão</option>
-            {subnets.map((s) => (
-              <option key={s.id} value={s.id}>{s.name || s.id} — {s.cidr} ({s.az})</option>
+          <label className={labelCls}>VPC *</label>
+          <select className={inputCls} value={form.vpc_id || ''} onChange={(e) => { set('vpc_id', e.target.value); set('subnet_id', ''); set('security_group_ids', []); }}>
+            <option value="">Selecione uma VPC</option>
+            {vpcs.map((v) => (
+              <option key={v.id} value={v.id}>{v.name || v.id} — {v.cidr}</option>
             ))}
           </select>
         </div>
+        {form.vpc_id && (
+          <div>
+            <label className={labelCls}>Subnet</label>
+            <select className={inputCls} value={form.subnet_id || ''} onChange={(e) => set('subnet_id', e.target.value)}>
+              <option value="">Padrão</option>
+              {subnets.map((s) => (
+                <option key={s.id} value={s.id}>{s.name || s.id} — {s.cidr} ({s.az})</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className={labelCls}>Security Groups</label>
           <div className="space-y-1 max-h-36 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-2">

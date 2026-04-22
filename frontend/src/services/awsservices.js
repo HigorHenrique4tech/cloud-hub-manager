@@ -16,8 +16,8 @@ export const awsService = {
   listAMIs: async (search = '') => (await api.get(wsUrl('/aws/ec2/amis'), { params: { search } })).data,
   listInstanceTypes: async () => (await api.get(wsUrl('/aws/ec2/instance-types'))).data,
   listKeyPairs: async () => (await api.get(wsUrl('/aws/ec2/key-pairs'))).data,
-  listSecurityGroups: async () => (await api.get(wsUrl('/aws/ec2/security-groups'))).data,
-  listSubnets: async () => (await api.get(wsUrl('/aws/ec2/subnets'))).data,
+  listSecurityGroups: async (vpc_id) => (await api.get(wsUrl('/aws/ec2/security-groups'), { params: vpc_id ? { vpc_id } : {} })).data,
+  listSubnets: async (vpc_id) => (await api.get(wsUrl('/aws/ec2/subnets'), { params: vpc_id ? { vpc_id } : {} })).data,
   listAvailabilityZones: async () => (await api.get(wsUrl('/aws/ec2/availability-zones'))).data,
 
   // VPC

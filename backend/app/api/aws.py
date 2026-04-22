@@ -218,20 +218,28 @@ async def ws_list_key_pairs(
 
 @ws_router.get("/ec2/security-groups")
 async def ws_list_security_groups(
+    vpc_id: str = None,
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await _run(svc.list_security_groups)
+    result = await _run(svc.list_security_groups)
+    if vpc_id and result.get('security_groups'):
+        result['security_groups'] = [sg for sg in result['security_groups'] if sg.get('vpc_id') == vpc_id]
+    return result
 
 
 @ws_router.get("/ec2/subnets")
 async def ws_list_subnets(
+    vpc_id: str = None,
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await _run(svc.list_subnets)
+    result = await _run(svc.list_subnets)
+    if vpc_id and result.get('subnets'):
+        result['subnets'] = [subnet for subnet in result['subnets'] if subnet.get('vpc_id') == vpc_id]
+    return result
 
 
 @ws_router.get("/ec2/availability-zones")

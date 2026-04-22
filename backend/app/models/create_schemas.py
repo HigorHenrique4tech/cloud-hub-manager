@@ -22,6 +22,7 @@ class CreateEC2Request(BaseModel):
     name: str
     image_id: str
     instance_type: str = "t3.micro"
+    vpc_id: Optional[str] = None
     key_name: Optional[str] = None
     security_group_ids: List[str] = []
     subnet_id: Optional[str] = None
