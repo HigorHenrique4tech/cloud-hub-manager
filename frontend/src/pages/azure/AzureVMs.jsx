@@ -298,7 +298,7 @@ const AzureVMs = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createVM(form)}
-        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Virtual Machine"
         isLoading={creating}
         error={createError}

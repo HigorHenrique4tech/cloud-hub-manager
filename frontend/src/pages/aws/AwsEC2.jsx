@@ -269,7 +269,7 @@ const AwsEC2 = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createInstance(form)}
-        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Instância EC2"
         isLoading={creating}
         error={createError}

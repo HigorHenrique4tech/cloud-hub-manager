@@ -159,7 +159,7 @@ const AwsLambda = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createFunction(form)}
-        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Função Lambda"
         isLoading={creating}
         error={createError}

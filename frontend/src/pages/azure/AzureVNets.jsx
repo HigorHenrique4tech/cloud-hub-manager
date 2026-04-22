@@ -640,7 +640,7 @@ const AzureVNets = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createVNet(form)}
-        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Virtual Network"
         isLoading={creating}
         error={createError}

@@ -196,7 +196,7 @@ const AzureStorage = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createStorage(form)}
-        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Storage Account"
         isLoading={creating}
         error={createError}

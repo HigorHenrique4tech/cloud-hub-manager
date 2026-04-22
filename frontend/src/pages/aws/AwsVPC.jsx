@@ -428,7 +428,7 @@ const AwsVPC = () => {
       <CreateResourceModal isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createVPC(form)}
-        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid ?? true; }}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar VPC" isLoading={creating} error={createError} success={createSuccess}
         templateBar={<TemplateBar provider="aws" resourceType="vpc" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}>
         <CreateVPCForm ref={formRef} form={form} setForm={setForm} />
