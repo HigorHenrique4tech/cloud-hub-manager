@@ -53,7 +53,7 @@ def rollback_action(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Desfazer ação")
+    _require_plan(plan, "standard", "Desfazer ação")
 
     action = db.query(FinOpsAction).filter(
         FinOpsAction.id == action_id,

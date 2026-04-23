@@ -48,7 +48,7 @@ def upsert_scan_schedule(
     db: Session = Depends(get_db),
 ):
     """Create or update the FinOps auto-scan schedule. Pro-only."""
-    _require_plan(_get_org_plan(member, db), "pro", "Análise automática agendada")
+    _require_plan(_get_org_plan(member, db), "standard", "Análise automática agendada")
 
     import re
     if not re.match(r"^\d{2}:\d{2}$", payload.schedule_time):
@@ -105,7 +105,7 @@ def delete_scan_schedule(
     db: Session = Depends(get_db),
 ):
     """Remove the FinOps auto-scan schedule. Pro-only."""
-    _require_plan(_get_org_plan(member, db), "pro", "Análise automática agendada")
+    _require_plan(_get_org_plan(member, db), "standard", "Análise automática agendada")
 
     sched = db.query(FinOpsScanSchedule).filter(
         FinOpsScanSchedule.workspace_id == member.workspace_id,
@@ -149,7 +149,7 @@ def upsert_report_schedule(
     """Create or update the report schedule for this workspace. Pro-only."""
     import re
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Relatórios automáticos")
+    _require_plan(plan, "standard", "Relatórios automáticos")
 
     if payload.schedule_type not in ("weekly", "monthly"):
         raise HTTPException(status_code=422, detail="schedule_type must be 'weekly' or 'monthly'")

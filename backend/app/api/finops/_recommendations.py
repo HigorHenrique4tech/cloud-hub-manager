@@ -156,7 +156,7 @@ def request_recommendation_approval(
     Called by the frontend when the user clicks 'Solicitar Aprovação'.
     """
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Solicitar aprovação")
+    _require_plan(plan, "standard", "Solicitar aprovação")
 
     rec = db.query(FinOpsRecommendation).filter(
         FinOpsRecommendation.id == rec_id,
@@ -206,7 +206,7 @@ def apply_recommendation(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Aplicar recomendações")
+    _require_plan(plan, "standard", "Aplicar recomendações")
 
     rec = db.query(FinOpsRecommendation).filter(
         FinOpsRecommendation.id == rec_id,
@@ -415,7 +415,7 @@ async def bulk_dismiss_recommendations(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Bulk dismiss")
+    _require_plan(plan, "standard", "Bulk dismiss")
 
     dismissed = 0
     not_found: List[str] = []
@@ -453,7 +453,7 @@ def bulk_apply_recommendations(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Bulk apply")
+    _require_plan(plan, "standard", "Bulk apply")
 
     applied = 0
     failed: List[dict] = []

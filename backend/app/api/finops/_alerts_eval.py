@@ -332,7 +332,7 @@ async def evaluate_alerts(
 ):
     """Manually trigger alert evaluation for all active alerts in this workspace."""
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Alertas automáticos")
+    _require_plan(plan, "standard", "Alertas automáticos")
 
     try:
         results = _evaluate_alerts(db, member.workspace_id)

@@ -7,7 +7,8 @@ const TrialBanner = () => {
   const { currentOrg } = useOrgWorkspace();
   const trial = currentOrg?.trial;
 
-  if (!trial?.trial_active || currentOrg?.plan_tier !== 'free') return null;
+  // Only show while trial is actively running on a free-tier org
+  if (!trial?.trial_active || (currentOrg?.plan_tier || 'free') !== 'free') return null;
 
   const days = trial.days_remaining;
   const urgent = days <= 7;
@@ -25,10 +26,10 @@ const TrialBanner = () => {
         <Clock className="w-4 h-4" />
         <span>
           {days === 0
-            ? 'Último dia do seu trial Pro!'
+            ? 'Último dia do seu trial!'
             : days === 1
-              ? 'Seu trial Pro termina amanhã'
-              : `Seu trial Pro termina em ${days} dias`}
+              ? 'Seu trial termina amanhã'
+              : `Seu trial termina em ${days} dias`}
         </span>
       </div>
       <button
@@ -41,7 +42,7 @@ const TrialBanner = () => {
               : 'bg-white text-primary hover:bg-gray-100'
         }`}
       >
-        Fazer upgrade
+        Assinar agora
         <ArrowRight className="w-3 h-3" />
       </button>
     </div>

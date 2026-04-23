@@ -10,7 +10,7 @@ import WebhookCard from '../components/webhooks/WebhookCard';
 import webhookService from '../services/webhookService';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 
-const PLAN_ORDER = { free: 0, pro: 1, enterprise: 2, enterprise_migration: 3 };
+const PLAN_ORDER = { free: 0, basic: 1, standard: 2, enterprise_e1: 3, enterprise_e2: 4, enterprise_e3: 5, enterprise_migration: 6 };
 
 const Webhooks = () => {
   const { currentOrg, currentWorkspace } = useOrgWorkspace();

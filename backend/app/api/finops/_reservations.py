@@ -325,7 +325,7 @@ async def get_reservation_coverage(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Análise de Reservas")
+    _require_plan(plan, "standard", "Análise de Reservas")
 
     today = date.today()
     if not end_date:
@@ -361,7 +361,7 @@ async def get_reservation_utilization(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Análise de Reservas")
+    _require_plan(plan, "standard", "Análise de Reservas")
 
     today = date.today()
     if not end_date:
@@ -394,7 +394,7 @@ async def generate_reservation_recommendations(
 ):
     """Generate and persist RI/SP/CUD recommendations for all cloud accounts."""
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Recomendações de Reservas")
+    _require_plan(plan, "standard", "Recomendações de Reservas")
 
     accounts = db.query(CloudAccount).filter(
         CloudAccount.workspace_id == member.workspace_id,
@@ -427,7 +427,7 @@ async def list_reservation_recommendations(
 ):
     """List existing RI/SP/CUD recommendations."""
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Recomendações de Reservas")
+    _require_plan(plan, "standard", "Recomendações de Reservas")
 
     recs = (
         db.query(FinOpsRecommendation)

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { ShieldOff, X, Mail, MessageCircle, Clock, MailCheck, RefreshCw } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { ShieldOff, X, Mail, MessageCircle, Clock, MailCheck, RefreshCw, CalendarX, ArrowRight } from 'lucide-react';
 import authService from '../../services/authService';
 import Header from './header';
 import Sidebar from './sidebar';
@@ -166,6 +166,66 @@ const SuspendedScreen = () => {
   );
 };
 
+const TrialExpiredScreen = ({ org }) => {
+  const navigate = useNavigate();
+  const [showSupport, setShowSupport] = useState(false);
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center p-6">
+      <div className="max-w-lg w-full text-center space-y-6">
+        {/* Icon */}
+        <div className="mx-auto w-20 h-20 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+          <CalendarX className="w-10 h-10 text-amber-500" />
+        </div>
+
+        {/* Title */}
+        <div className="space-y-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Seu trial expirou</h1>
+          <p className="text-gray-500 dark:text-gray-400 text-sm leading-relaxed">
+            O período de avaliação gratuita da organização <strong className="text-gray-700 dark:text-gray-200">{org?.name}</strong> chegou ao fim.
+            Para continuar usando o Cloud Atlas, escolha um plano.
+          </p>
+        </div>
+
+        {/* Plans CTA */}
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-6 space-y-4 text-left shadow-sm">
+          <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">O que você perde sem um plano ativo:</p>
+          <ul className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+            {[
+              'Gerenciamento de recursos AWS, Azure e GCP',
+              'Agendamentos e automações',
+              'FinOps e análise de custos',
+              'Webhooks e integrações',
+              'Suporte técnico',
+            ].map((item) => (
+              <li key={item} className="flex items-center gap-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 flex-shrink-0" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <button
+            onClick={() => navigate('/billing')}
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 bg-primary hover:bg-primary/90 text-white rounded-xl text-sm font-semibold transition-colors shadow"
+          >
+            Ver planos e preços <ArrowRight className="w-4 h-4" />
+          </button>
+          <button
+            onClick={() => setShowSupport(true)}
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-xl text-sm font-medium transition-colors"
+          >
+            <MessageCircle className="w-4 h-4" /> Falar com suporte
+          </button>
+        </div>
+      </div>
+      {showSupport && <SupportModal onClose={() => setShowSupport(false)} />}
+    </div>
+  );
+};
+
 const Layout = ({ children }) => {
   const { pathname } = useLocation();
   const { currentOrg, currentWorkspace, loading } = useOrgWorkspace();
@@ -187,6 +247,16 @@ const Layout = ({ children }) => {
   // If user is authenticated but has no org (all suspended), show blocked screen
   if (!loading && user && !currentOrg) {
     return <SuspendedScreen />;
+  }
+
+  // Trial expired: org has_trial, trial is no longer active, plan is still free, and not on billing page
+  const trialExpired =
+    currentOrg?.trial?.has_trial &&
+    !currentOrg?.trial?.trial_active &&
+    (currentOrg?.plan_tier || 'free') === 'free';
+
+  if (!loading && trialExpired && pathname !== '/billing') {
+    return <TrialExpiredScreen org={currentOrg} />;
   }
 
   return (

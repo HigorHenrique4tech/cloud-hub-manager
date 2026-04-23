@@ -32,7 +32,7 @@ async def list_budgets(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Orçamentos")
+    _require_plan(plan, "standard", "Orçamentos")
 
     budgets = (
         db.query(FinOpsBudget)
@@ -92,7 +92,7 @@ async def update_budget(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Orçamentos")
+    _require_plan(plan, "standard", "Orçamentos")
 
     budget = db.query(FinOpsBudget).filter(
         FinOpsBudget.id == budget_id,
@@ -122,7 +122,7 @@ async def delete_budget(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Orçamentos")
+    _require_plan(plan, "standard", "Orçamentos")
 
     budget = db.query(FinOpsBudget).filter(
         FinOpsBudget.id == budget_id,
@@ -149,7 +149,7 @@ async def evaluate_budgets(
     Returns the updated list of budgets.  Pro-only.
     """
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Orçamentos")
+    _require_plan(plan, "standard", "Orçamentos")
 
     from datetime import date
     from app.services.email_service import send_budget_alert_email

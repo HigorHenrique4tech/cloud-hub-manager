@@ -20,7 +20,7 @@ const PLAN_ORDER = {
  *     <button>Aplicar</button>
  *   </PlanGate>
  */
-const PlanGate = ({ minPlan = 'pro', feature = '', children, inline = false }) => {
+const PlanGate = ({ minPlan = 'basic', feature = '', children, inline = false }) => {
   const { currentOrg } = useOrgWorkspace();
   const plan = (currentOrg?.effective_plan || currentOrg?.plan_tier || 'free').toLowerCase();
 

@@ -181,7 +181,7 @@ async def costs_by_tag(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Alocação por tag")
+    _require_plan(plan, "standard", "Alocação por tag")
 
     provider_filter = (
         [p.strip() for p in providers.split(",") if p.strip()]
@@ -255,7 +255,7 @@ async def list_allocation_tags(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Alocação por tag")
+    _require_plan(plan, "standard", "Alocação por tag")
 
     accounts = (
         db.query(CloudAccount)
@@ -294,7 +294,7 @@ async def activate_allocation_tags(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Alocação por tag")
+    _require_plan(plan, "standard", "Alocação por tag")
 
     query = db.query(CloudAccount).filter(
         CloudAccount.workspace_id == member.workspace_id,

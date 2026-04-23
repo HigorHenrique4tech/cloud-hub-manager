@@ -222,7 +222,7 @@ async def trigger_anomaly_scan(
 ):
     """On-demand anomaly scan for the current workspace."""
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Scan de anomalias")
+    _require_plan(plan, "standard", "Scan de anomalias")
     background_tasks.add_task(_run_anomaly_scan_bg, member.workspace_id)
     return {"message": "Scan de anomalias iniciado.", "status": "queued"}
 
@@ -236,7 +236,7 @@ async def list_anomalies(
     db: Session = Depends(get_db),
 ):
     plan = _get_org_plan(member, db)
-    _require_plan(plan, "pro", "Detecção de anomalias")
+    _require_plan(plan, "standard", "Detecção de anomalias")
 
     q = db.query(FinOpsAnomaly).filter(FinOpsAnomaly.workspace_id == member.workspace_id)
     if provider:

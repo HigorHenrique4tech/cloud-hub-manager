@@ -57,13 +57,13 @@ PLAN_PRICES = {
 
 def get_effective_plan(org: Organization) -> str:
     """Return the effective plan considering trial status.
-    Trial active + free tier → 'pro'.  Pro/Enterprise → as-is.
+    Trial active + free tier → 'standard'.  Paid plans → as-is.
     """
     plan = (org.plan_tier or "free").lower()
     if plan != "free":
         return plan
     if org.trial_ends_at and org.trial_ends_at > datetime.utcnow():
-        return "pro"
+        return "standard"
     return "free"
 
 
