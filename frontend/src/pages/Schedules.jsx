@@ -605,7 +605,7 @@ function PoliciesTab({ isPro }) {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Políticas de automação avaliadas a cada 15 minutos.
         </p>
-        <PermissionGate permission="resources.manage">
+        <PermissionGate permission="schedules.manage">
           <button onClick={() => { setEditTarget(null); setShowModal(true); }}
             className="flex items-center gap-2 rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-dark transition-colors">
             <Plus className="w-4 h-4" /> Nova Política
@@ -766,7 +766,7 @@ function SchedulesTab({ isPro, schedules, isLoading, error, onEdit, onCreate }) 
             Use o FinOps para detectar candidatos automaticamente, ou clique em{' '}
             <span className="text-gray-700 dark:text-gray-300">"Novo"</span> para criar manualmente.
           </p>
-          <PermissionGate permission="resources.start_stop">
+          <PermissionGate permission="schedules.manage">
             <button
               onClick={onCreate}
               className="mt-1 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-white hover:bg-primary-dark transition-colors"
@@ -869,7 +869,7 @@ const Schedules = () => {
           </div>
 
           {activeTab === 'schedules' && (
-            <PermissionGate permission="resources.start_stop">
+            <PermissionGate permission="schedules.manage">
               <button
                 onClick={openCreate}
                 disabled={!isPro}

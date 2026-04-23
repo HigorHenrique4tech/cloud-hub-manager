@@ -175,7 +175,7 @@ export default function ScheduleCard({ schedule: s, onEdit, onShowHistory }) {
 
           {/* Actions */}
           <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
-            <PermissionGate permission="resources.start_stop">
+            <PermissionGate permission="schedules.manage">
               <button
                 onClick={() => toggleMut.mutate()}
                 disabled={toggleMut.isPending}

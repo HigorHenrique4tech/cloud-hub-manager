@@ -212,7 +212,7 @@ ws_router = APIRouter(
 async def list_schedules(
     provider: Optional[str] = None,
     is_enabled: Optional[bool] = None,
-    member: MemberContext = Depends(require_permission("resources.view")),
+    member: MemberContext = Depends(require_permission("schedules.view")),
     db: Session = Depends(get_db),
 ):
     """List scheduled actions for the workspace."""
@@ -233,7 +233,7 @@ async def list_schedules(
 @ws_router.post("", response_model=dict, status_code=201)
 async def create_schedule(
     payload: ScheduleCreate,
-    member: MemberContext = Depends(require_permission("resources.start_stop")),
+    member: MemberContext = Depends(require_permission("schedules.manage")),
     db: Session = Depends(get_db),
 ):
     """Create a new scheduled action and register it in APScheduler."""
@@ -281,7 +281,7 @@ async def create_schedule(
 async def update_schedule(
     schedule_id: UUID,
     payload: ScheduleUpdate,
-    member: MemberContext = Depends(require_permission("resources.start_stop")),
+    member: MemberContext = Depends(require_permission("schedules.manage")),
     db: Session = Depends(get_db),
 ):
     """Update a scheduled action and sync APScheduler."""
@@ -328,7 +328,7 @@ async def update_schedule(
 @ws_router.delete("/{schedule_id}", status_code=204)
 async def delete_schedule(
     schedule_id: UUID,
-    member: MemberContext = Depends(require_permission("resources.start_stop")),
+    member: MemberContext = Depends(require_permission("schedules.manage")),
     db: Session = Depends(get_db),
 ):
     """Delete a scheduled action and remove it from APScheduler."""
@@ -360,7 +360,7 @@ async def delete_schedule(
 async def run_now(
     schedule_id: UUID,
     background_tasks: BackgroundTasks,
-    member: MemberContext = Depends(require_permission("resources.start_stop")),
+    member: MemberContext = Depends(require_permission("schedules.manage")),
     db: Session = Depends(get_db),
 ):
     """Manually trigger a scheduled action immediately (runs in background)."""
@@ -394,7 +394,7 @@ async def run_now(
 async def list_schedule_runs(
     schedule_id: UUID,
     limit: int = 50,
-    member: MemberContext = Depends(require_permission("resources.view")),
+    member: MemberContext = Depends(require_permission("schedules.view")),
     db: Session = Depends(get_db),
 ):
     """List execution history for a specific schedule."""

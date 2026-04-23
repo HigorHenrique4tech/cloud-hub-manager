@@ -34,9 +34,10 @@ const ROLE_PERMISSIONS = {
     'accounts.view',
     'resources.view', 'resources.create', 'resources.start_stop', 'resources.manage',
     'costs.view',
-    'alerts.view',
+    'alerts.view', 'alerts.manage',
     'logs.view',
     'finops.view', 'finops.recommend',
+    'schedules.view', 'schedules.manage',
     'templates.view', 'templates.manage',
     'webhooks.view', 'webhooks.manage',
     'm365.view', 'm365.manage',
@@ -50,17 +51,19 @@ const ROLE_PERMISSIONS = {
     'alerts.view',
     'logs.view',
     'finops.view',
+    'schedules.view',
     'templates.view',
     'webhooks.view',
     'm365.view',
   ]),
 
-  // billing: cost/finance focus + alert management
+  // billing: cost/finance focus + alert management + budget management
   billing: new Set([
     'costs.view',
     'alerts.view', 'alerts.manage',
     'logs.view',
-    'finops.view', 'finops.recommend',
+    'finops.view', 'finops.recommend', 'finops.budget',
+    'schedules.view',
     'templates.view',
     'm365.view',
   ]),

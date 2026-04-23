@@ -50,6 +50,10 @@ class Permission(str, Enum):
     FINOPS_EXECUTE   = "finops.execute"   # apply / dismiss / rollback actions
     FINOPS_BUDGET    = "finops.budget"    # create / edit budgets
 
+    # Schedules
+    SCHEDULES_VIEW   = "schedules.view"   # list schedules and run history
+    SCHEDULES_MANAGE = "schedules.manage" # create / edit / delete / run schedules
+
     # Resource Templates
     TEMPLATES_VIEW   = "templates.view"   # see and load templates
     TEMPLATES_MANAGE = "templates.manage" # create / edit / delete templates
@@ -83,9 +87,12 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.RESOURCES_MANAGE,
         Permission.COSTS_VIEW,
         Permission.ALERTS_VIEW,
+        Permission.ALERTS_MANAGE,
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
         Permission.FINOPS_RECOMMEND,
+        Permission.SCHEDULES_VIEW,
+        Permission.SCHEDULES_MANAGE,
         Permission.TEMPLATES_VIEW,
         Permission.TEMPLATES_MANAGE,
         Permission.WEBHOOKS_VIEW,
@@ -101,6 +108,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.ALERTS_VIEW,
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
+        Permission.SCHEDULES_VIEW,
         Permission.TEMPLATES_VIEW,
         Permission.WEBHOOKS_VIEW,
         Permission.M365_VIEW,
@@ -113,6 +121,8 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.LOGS_VIEW,
         Permission.FINOPS_VIEW,
         Permission.FINOPS_RECOMMEND,
+        Permission.FINOPS_BUDGET,
+        Permission.SCHEDULES_VIEW,
         Permission.TEMPLATES_VIEW,
         Permission.M365_VIEW,
     },
