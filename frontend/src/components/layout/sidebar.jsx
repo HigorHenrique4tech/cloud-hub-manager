@@ -112,7 +112,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   const { isMasterOrg, currentOrg } = useOrgWorkspace();
   const { user } = useAuth();
   const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
-  const isEnterprise = effectivePlan === 'enterprise' || effectivePlan === 'enterprise_migration';
+  const isEnterprise = ['enterprise_e1', 'enterprise_e2', 'enterprise_e3', 'enterprise_migration'].includes(effectivePlan);
 
   const pendingCountQ = useQuery({
     queryKey: ['approvals-count'],
@@ -191,7 +191,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
           {['owner', 'admin'].includes(currentOrg?.role) && (
             <NavItem to="/workspace/settings" label="Workspace" icon={Layers} />
           )}
-          {isEnterprise && (isMasterOrg || currentOrg?.org_type === 'standalone') && (
+          {isEnterprise && isMasterOrg && (
             <NavItem to="/org/managed" label="Orgs Gerenciadas" icon={Network} />
           )}
           {user?.is_admin && (
