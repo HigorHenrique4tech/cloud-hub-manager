@@ -1530,79 +1530,26 @@ const ProjectDetail = ({ projectId, onBack }) => {
 
 // ── Migration Upsell (plan gate) ─────────────────────────────────────────────
 
-const MigrationUpsell = ({ effectivePlan }) => {
-  const isEnterprise = effectivePlan === 'enterprise' || effectivePlan === 'enterprise_migration';
-  return (
-    <Layout>
-      <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
-        <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-6">
-          <Lock className="w-10 h-10 text-blue-400" />
-        </div>
-        <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Migration365</h2>
-        <p className="text-gray-500 dark:text-gray-400 max-w-md mb-8">
-          {isEnterprise
-            ? 'Seu plano Enterprise permite adquirir licenças avulsas de migração a R$ 70,00 por usuário. Cada licença inclui e-mail, OneDrive, SharePoint e Teams.'
-            : 'Migre caixas de e-mail, OneDrive, SharePoint e Teams para o Microsoft 365. Disponível para planos Enterprise e Enterprise + Migration.'}
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-2xl">
-          {/* Enterprise + Migration bundle */}
-          <div className="card p-6 border-2 border-blue-500 dark:border-blue-400 relative">
-            <div className="absolute -top-3 left-4 px-2 bg-blue-500 text-white text-xs font-bold rounded-full py-0.5">
-              RECOMENDADO
-            </div>
-            <div className="flex items-center gap-2 mb-3">
-              <Infinity className="w-5 h-5 text-blue-500" />
-              <h3 className="font-bold text-gray-900 dark:text-gray-100">Enterprise + Migration</h3>
-            </div>
-            <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-              R$ 4.747<span className="text-base font-normal text-gray-400">/mês</span>
-            </p>
-            <p className="text-xs text-gray-400 mb-4">R$ 2.497 (Enterprise) + R$ 2.250 (Migration)</p>
-            <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-2 mb-6">
-              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Migrações ilimitadas</li>
-              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> E-mail + OneDrive + SharePoint + Teams</li>
-              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Ideal para MSPs (50+ usuários/mês)</li>
-              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Tudo do plano Enterprise incluso</li>
-            </ul>
-            <Link to="/billing" className="block w-full px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg text-center">
-              Fazer upgrade
-            </Link>
-          </div>
-
-          {/* Per-license */}
-          <div className="card p-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Package className="w-5 h-5 text-purple-500" />
-              <h3 className="font-bold text-gray-900 dark:text-gray-100">Licenças Avulsas</h3>
-            </div>
-            <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">
-              R$ 70<span className="text-base font-normal text-gray-400">/usuário</span>
-            </p>
-            <p className="text-xs text-gray-400 mb-4">Requer plano Enterprise ativo</p>
-            <ul className="text-sm text-gray-600 dark:text-gray-300 space-y-2 mb-6">
-              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Pague por usuário migrado</li>
-              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Escopo completo por licença</li>
-              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Ideal para migrações pontuais</li>
-              <li className="flex items-start gap-2"><CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" /> Compre sob demanda</li>
-            </ul>
-            {isEnterprise ? (
-              <p className="text-xs text-center text-gray-400">Compre licenças na página de migração após ativar o acesso</p>
-            ) : (
-              <Link to="/billing" className="block w-full px-4 py-2.5 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg text-center">
-                Upgrade para Enterprise
-              </Link>
-            )}
-          </div>
-        </div>
-
-        <p className="text-xs text-gray-400 mt-6">
-          Break-even: ~32 usuários/mês. Acima disso, o bundle compensa.
-        </p>
+const MigrationUpsell = () => (
+  <Layout>
+    <div className="flex flex-col items-center justify-center min-h-[60vh] text-center px-4">
+      <div className="w-20 h-20 rounded-2xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-6">
+        <Lock className="w-10 h-10 text-blue-400" />
       </div>
-    </Layout>
-  );
-};
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-2">Migration365</h2>
+      <p className="text-gray-500 dark:text-gray-400 max-w-md mb-8">
+        Este recurso não está disponível no seu plano atual. Entre em contato com o suporte para
+        habilitar o Migration365 na sua organização.
+      </p>
+      <a
+        href="mailto:suporte@cloudatlas.app.br?subject=Habilitar%20Migration365"
+        className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors"
+      >
+        Falar com o suporte
+      </a>
+    </div>
+  </Layout>
+);
 
 // ── License Dashboard Panel ──────────────────────────────────────────────────
 
@@ -1844,7 +1791,7 @@ const Migration365 = () => {
 
   // Gate: requires at least Enterprise
   if (!hasEnterprise) {
-    return <MigrationUpsell effectivePlan={effectivePlan} />;
+    return <MigrationUpsell />;
   }
 
   // If projectId in URL, show detail
