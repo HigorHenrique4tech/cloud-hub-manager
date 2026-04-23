@@ -94,20 +94,52 @@ def get_plan_price(plan_tier: str) -> int:
 # ── Limit checks ─────────────────────────────────────────────────────────────
 
 
+_ENTERPRISE_TIERS = {"enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration", "enterprise"}
+
+
+def _count_consolidated_workspaces(db: Session, master_org_id) -> int:
+    """Count workspaces in the master org plus all its partner orgs."""
+    partner_ids = [
+        row[0] for row in db.query(Organization.id).filter(Organization.parent_org_id == master_org_id).all()
+    ]
+    all_ids = [master_org_id] + partner_ids
+    return db.query(Workspace).filter(
+        Workspace.organization_id.in_(all_ids),
+        Workspace.is_active == True,
+    ).count()
+
+
 def check_workspace_limit(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> tuple:
     """Returns (allowed, current_count, max_count).
-    Partner and master/enterprise orgs always allow creation (charge extra above base).
+    For master orgs: counts workspaces across master + all partners against the master plan limit.
+    For partner orgs: resolves to the master org limit and checks consolidated usage.
     """
+    if org_type == "partner":
+        # Look up the master org and check against its consolidated limit
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        if org and org.parent_org_id:
+            master = db.query(Organization).filter(Organization.id == org.parent_org_id).first()
+            if master and master.plan_tier in _ENTERPRISE_TIERS:
+                max_ws = get_plan_limits(master.plan_tier)["workspaces"]
+                total = _count_consolidated_workspaces(db, master.id)
+                if max_ws is None:
+                    return (True, total, None)
+                return (total < max_ws, total, max_ws)
+        # Fallback: no master found, use partner base
+        current = db.query(Workspace).filter(Workspace.organization_id == org_id, Workspace.is_active == True).count()
+        return (True, current, PLAN_PRICES.get("partner_base_workspaces", 10))
+
+    if org_type == "master" and plan_tier in _ENTERPRISE_TIERS:
+        max_ws = get_plan_limits(plan_tier)["workspaces"]
+        total = _count_consolidated_workspaces(db, org_id)
+        if max_ws is None:
+            return (True, total, None)
+        return (total < max_ws, total, max_ws)
+
     current = db.query(Workspace).filter(
         Workspace.organization_id == org_id,
         Workspace.is_active == True,
     ).count()
-    if org_type == "partner":
-        base = PLAN_PRICES.get("partner_base_workspaces", 10)
-        return (True, current, base)
-    if org_type == "master" and plan_tier in ("enterprise", "enterprise_migration"):
-        base = get_plan_limits(plan_tier)["workspaces"] or 20
-        return (True, current, base)
     limits = get_plan_limits(plan_tier)
     max_ws = limits["workspaces"]
     if max_ws is None:
@@ -161,14 +193,27 @@ def check_managed_org_limit(db: Session, org_id, plan_tier: str) -> tuple:
 def get_org_usage(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> dict:
     """Return usage and limits for an organization."""
     limits = dict(get_plan_limits(plan_tier))
-    if org_type == "master" and plan_tier in ("enterprise", "enterprise_migration"):
-        limits["workspaces"] = PLAN_PRICES.get("enterprise_base_workspaces", 20)
+    if org_type == "master" and plan_tier in _ENTERPRISE_TIERS:
+        # Workspace limit = plan limit; usage = master + all partners consolidated
+        limits["workspaces"] = get_plan_limits(plan_tier)["workspaces"]
+        ws_count = _count_consolidated_workspaces(db, org_id)
     elif org_type == "partner":
-        limits["workspaces"] = PLAN_PRICES.get("partner_base_workspaces", 10)
-    ws_count = db.query(Workspace).filter(
-        Workspace.organization_id == org_id,
-        Workspace.is_active == True,
-    ).count()
+        # Partner shows its own workspaces; limit comes from master's plan
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        if org and org.parent_org_id:
+            master = db.query(Organization).filter(Organization.id == org.parent_org_id).first()
+            if master:
+                limits["workspaces"] = get_plan_limits(master.plan_tier)["workspaces"]
+                ws_count = _count_consolidated_workspaces(db, master.id)
+            else:
+                ws_count = db.query(Workspace).filter(Workspace.organization_id == org_id, Workspace.is_active == True).count()
+        else:
+            ws_count = db.query(Workspace).filter(Workspace.organization_id == org_id, Workspace.is_active == True).count()
+    else:
+        ws_count = db.query(Workspace).filter(
+            Workspace.organization_id == org_id,
+            Workspace.is_active == True,
+        ).count()
     acc_count = (
         db.query(CloudAccount)
         .join(Workspace, CloudAccount.workspace_id == Workspace.id)

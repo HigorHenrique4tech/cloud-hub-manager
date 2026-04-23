@@ -1,7 +1,5 @@
 import { TrendingDown, Zap, BarChart3, AlertTriangle } from 'lucide-react';
-
-const fmtUSD = (v) =>
-  v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+import { useCurrency } from '../../hooks/useCurrency';
 
 const KpiCard = ({ icon: Icon, label, value, sub, color }) => {
   const colors = {
@@ -33,6 +31,8 @@ const KpiCard = ({ icon: Icon, label, value, sub, color }) => {
  *   scanning — boolean
  */
 const WasteSummary = ({ summary, onScan, scanning }) => {
+  const { fmtCost } = useCurrency();
+
   if (!summary) return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 animate-pulse">
       {[...Array(4)].map((_, i) => (
@@ -73,14 +73,14 @@ const WasteSummary = ({ summary, onScan, scanning }) => {
         <KpiCard
           icon={TrendingDown}
           label="Economia Potencial"
-          value={fmtUSD(potential_saving_monthly)}
+          value={fmtCost(potential_saving_monthly)}
           sub={`${recommendations?.pending ?? 0} recomendações pendentes`}
           color="green"
         />
         <KpiCard
           icon={Zap}
           label="Economia Realizada (30d)"
-          value={fmtUSD(realized_saving_30d)}
+          value={fmtCost(realized_saving_30d)}
           sub="Ações aplicadas"
           color="blue"
         />

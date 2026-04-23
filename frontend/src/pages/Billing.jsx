@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { Crown, ArrowUpRight, CreditCard, Building2, ChevronDown } from 'lucide-react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Crown, ArrowUpRight, CreditCard, Building2 } from 'lucide-react';
 import { useState } from 'react';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import billingService from '../services/billingService';
@@ -62,18 +62,7 @@ const Billing = () => {
   const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
   const isEnterprise = effectivePlan.startsWith('enterprise');
   const trial = currentOrg?.trial || {};
-  const [downgradeOpen, setDowngradeOpen] = useState(false);
-  const [selectedDowngradePlan, setSelectedDowngradePlan] = useState(null);
   const qc = useQueryClient();
-
-  const AVAILABLE_DOWNGRADE_PLANS = ['basic', 'standard', 'enterprise_e1', 'enterprise_e2', 'enterprise_e3'];
-  const planLabels = {
-    basic: 'Basic - R$ 397/mês',
-    standard: 'Standard - R$ 797/mês',
-    enterprise_e1: 'Enterprise E1 - R$ 2.997/mês',
-    enterprise_e2: 'Enterprise E2 - R$ 4.997/mês',
-    enterprise_e3: 'Enterprise E3 - R$ 7.997/mês',
-  };
 
   const { data: usageData, isLoading: usageLoading } = useQuery({
     queryKey: ['org-usage', slug],
@@ -94,15 +83,6 @@ const Billing = () => {
     retry: false,
   });
 
-  const downgradeMutation = useMutation({
-    mutationFn: (plan) => billingService.downgrade(slug, plan),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['org-usage', slug] });
-      refreshOrgs();
-      setDowngradeOpen(false);
-      setSelectedDowngradePlan(null);
-    },
-  });
 
   const plan = PLAN_INFO[effectivePlan] || PLAN_INFO.free;
   const usage = usageData?.usage || {};
@@ -146,16 +126,6 @@ const Billing = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              {effectivePlan !== 'free' && (
-                <button
-                  onClick={() => setDowngradeOpen(!downgradeOpen)}
-                  className="flex items-center gap-1.5 px-4 py-2 text-gray-600 dark:text-gray-400 text-sm font-medium rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                  title="Fazer downgrade de plano"
-                >
-                  Downgrade
-                  <ChevronDown className={`w-4 h-4 transition-transform ${downgradeOpen ? 'rotate-180' : ''}`} />
-                </button>
-              )}
               <button
                 onClick={() => navigate('/select-plan')}
                 className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
@@ -166,49 +136,6 @@ const Billing = () => {
             </div>
           </div>
 
-          {/* Downgrade dropdown */}
-          {downgradeOpen && (
-            <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-              <p className="text-sm text-gray-700 dark:text-gray-300 font-medium mb-3">Selecione o novo plano:</p>
-              <div className="space-y-2">
-                {AVAILABLE_DOWNGRADE_PLANS.map((p) => {
-                  const isCurrentPlan = p === effectivePlan;
-                  const isDowngrade = PLAN_INFO[p] && PLAN_INFO[effectivePlan] &&
-                    PLAN_INFO[p].price < PLAN_INFO[effectivePlan].price;
-                  if (isCurrentPlan || (PLAN_INFO[p] && PLAN_INFO[effectivePlan] && PLAN_INFO[p].price >= PLAN_INFO[effectivePlan].price)) return null;
-
-                  return (
-                    <button
-                      key={p}
-                      onClick={() => setSelectedDowngradePlan(p)}
-                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
-                        selectedDowngradePlan === p
-                          ? 'bg-primary/10 border border-primary text-primary dark:bg-primary/20'
-                          : 'hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300'
-                      }`}
-                    >
-                      {planLabels[p]}
-                    </button>
-                  );
-                })}
-              </div>
-
-              {selectedDowngradePlan && (
-                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                  <p className="text-sm text-amber-700 dark:text-amber-400 mb-3">
-                    ⚠️ Se seu uso exceder os limites do novo plano, você será cobrado por extras.
-                  </p>
-                  <button
-                    onClick={() => downgradeMutation.mutate(selectedDowngradePlan)}
-                    disabled={downgradeMutation.isPending}
-                    className="w-full px-4 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-                  >
-                    {downgradeMutation.isPending ? 'Processando...' : `Confirmar downgrade para ${planLabels[selectedDowngradePlan]}`}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
         </div>
 
         {/* Trial info */}

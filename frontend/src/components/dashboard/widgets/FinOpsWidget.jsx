@@ -3,13 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { Zap, ChevronRight, TrendingDown, AlertTriangle, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
 import finopsService from '../../../services/finopsService';
 import { useOrgWorkspace } from '../../../contexts/OrgWorkspaceContext';
-import { fmtUSD } from '../../../utils/formatters';
+import { useCurrency } from '../../../hooks/useCurrency';
 
 const PLAN_ORDER = { free: 0, pro: 1, enterprise: 2, enterprise_migration: 3 };
 
 const FinOpsWidget = () => {
   const navigate = useNavigate();
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
+  const { fmtCost } = useCurrency();
   const plan = (currentOrg?.effective_plan || currentOrg?.plan_tier || 'free').toLowerCase();
   const isPro = (PLAN_ORDER[plan] ?? 0) >= 1;
   const wsReady = !!currentOrg && !!currentWorkspace;
@@ -81,7 +82,7 @@ const FinOpsWidget = () => {
                 <p className="text-xs text-green-600 dark:text-green-400 font-medium">Economia potencial</p>
               </div>
               <p className="text-lg font-bold text-green-700 dark:text-green-300">
-                {fmtUSD(data?.potential_saving_monthly)}<span className="text-xs font-normal text-green-600 dark:text-green-500">/mês</span>
+                {fmtCost(data?.potential_saving_monthly)}<span className="text-xs font-normal text-green-600 dark:text-green-500">/mês</span>
               </p>
             </div>
 
@@ -116,7 +117,7 @@ const FinOpsWidget = () => {
                 <p className="text-xs text-purple-600 dark:text-purple-400 font-medium">Economia realizada</p>
               </div>
               <p className="text-lg font-bold text-purple-700 dark:text-purple-300">
-                {fmtUSD(data?.realized_saving_30d)}
+                {fmtCost(data?.realized_saving_30d)}
                 <span className="text-xs font-normal text-purple-600 dark:text-purple-500 ml-1">30d</span>
               </p>
             </div>

@@ -1,9 +1,7 @@
 import { CheckCircle2, XCircle, RotateCcw, AlertTriangle } from 'lucide-react';
 import PermissionGate from '../common/PermissionGate';
 import PlanGate from '../common/PlanGate';
-
-const fmtUSD = (v) =>
-  v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+import { useCurrency } from '../../hooks/useCurrency';
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
@@ -36,6 +34,7 @@ const TYPE_LABEL = {
  *   planTier      — string
  */
 const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 'free' }) => {
+  const { fmtCost } = useCurrency();
   const planOk = ['pro', 'enterprise'].includes((planTier || 'free').toLowerCase());
 
   if (actions.length === 0) {
@@ -73,7 +72,7 @@ const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 
             <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
               {TYPE_LABEL[action.action_type] || action.action_type}
               {action.estimated_saving > 0 && (
-                <span className="ml-2 text-green-600 dark:text-green-400 font-medium">→ {fmtUSD(action.estimated_saving)}/mês economizado</span>
+                <span className="ml-2 text-green-600 dark:text-green-400 font-medium">→ {fmtCost(action.estimated_saving)}/mês economizado</span>
               )}
             </p>
 

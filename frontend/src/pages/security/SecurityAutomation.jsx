@@ -1103,9 +1103,7 @@ export default function SecurityAutomation() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState(irId ? 'ir' : 'events');
 
-  const isPro = ['enterprise', 'enterprise_migration'].includes(
-    currentOrg?.effective_plan || currentOrg?.plan_tier
-  );
+  const isPro = (currentOrg?.effective_plan || currentOrg?.plan_tier || '').startsWith('enterprise');
 
   // isMasterUser = true se o usuário pertence a uma org master, independente
   // do workspace que está gerenciando no momento (ex: gerenciando workspace de cliente)
