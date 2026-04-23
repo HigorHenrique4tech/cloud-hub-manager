@@ -14,6 +14,8 @@ const adminService = {
   listOrgs: () => api.get('/admin/orgs').then((r) => r.data),
   setOrgPlan: (slug, plan_tier) =>
     api.put(`/admin/orgs/${slug}/plan`, { plan_tier }).then((r) => r.data),
+  setOrgType: (slug, org_type) =>
+    api.put(`/admin/orgs/${slug}/org-type`, { org_type }).then((r) => r.data),
   getOrgMetrics: (slug) =>
     api.get(`/admin/orgs/${slug}/metrics`).then((r) => r.data),
   suspendOrg: (slug, suspend, reason) =>

@@ -266,7 +266,9 @@ const OrgsTab = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState('');
   const [openMenu, setOpenMenu] = useState(null);
+  const [openTypeMenu, setOpenTypeMenu] = useState(null);
   const [confirmChange, setConfirmChange] = useState(null);
+  const [confirmTypeChange, setConfirmTypeChange] = useState(null);
   const [confirmSuspend, setConfirmSuspend] = useState(null);
   const [suspendReason, setSuspendReason] = useState('');
   const [collapsed, setCollapsed] = useState(new Set());
@@ -275,6 +277,7 @@ const OrgsTab = () => {
   const [notesValue, setNotesValue] = useState('');
 
   useEscapeKey(!!confirmChange, useCallback(() => setConfirmChange(null), []));
+  useEscapeKey(!!confirmTypeChange, useCallback(() => setConfirmTypeChange(null), []));
   useEscapeKey(!!confirmSuspend, useCallback(() => { setConfirmSuspend(null); setSuspendReason(''); }, []));
   useEscapeKey(!!editingNotes, useCallback(() => setEditingNotes(null), []));
 
@@ -286,6 +289,11 @@ const OrgsTab = () => {
   const planMut = useMutation({
     mutationFn: ({ slug, plan_tier }) => adminService.setOrgPlan(slug, plan_tier),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-orgs'] }); setOpenMenu(null); setConfirmChange(null); },
+  });
+
+  const typeMut = useMutation({
+    mutationFn: ({ slug, org_type }) => adminService.setOrgType(slug, org_type),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['admin-orgs'] }); setOpenTypeMenu(null); setConfirmTypeChange(null); },
   });
 
   const suspendMut = useMutation({
@@ -390,6 +398,29 @@ const OrgsTab = () => {
                 )}
               </div>
 
+              {/* Org type menu */}
+              <div className="relative">
+                <button onClick={() => setOpenTypeMenu(openTypeMenu === org.id ? null : org.id)}
+                  className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1 transition-colors">
+                  Tipo <ChevronDown size={11} />
+                </button>
+                {openTypeMenu === org.id && (
+                  <div className="absolute right-0 top-8 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg min-w-[130px]">
+                    {[
+                      { value: 'standalone', label: 'Standalone' },
+                      { value: 'master',     label: 'Master (MSP)' },
+                      { value: 'partner',    label: 'Partner' },
+                    ].map(({ value, label }) => (
+                      <button key={value} onClick={() => { setOpenTypeMenu(null); setConfirmTypeChange({ slug: org.slug, name: org.name, type: value, current: org.org_type }); }}
+                        disabled={org.org_type === value}
+                        className="w-full text-left px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 first:rounded-t-lg last:rounded-b-lg flex items-center gap-2">
+                        {org.org_type === value && <Check size={11} />}{label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Suspend / reactivate */}
               <button
                 onClick={() => { setConfirmSuspend(org); setSuspendReason(org.suspended_reason || ''); }}
@@ -488,6 +519,35 @@ const OrgsTab = () => {
               <button onClick={() => planMut.mutate({ slug: confirmChange.slug, plan_tier: confirmChange.plan })} disabled={planMut.isPending}
                 className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
                 {planMut.isPending ? 'Alterando…' : 'Confirmar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm org type change */}
+      {confirmTypeChange && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-2xl p-6 space-y-4">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">Confirmar alteração de tipo</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">
+              Alterar <strong>{confirmTypeChange.name}</strong> de <span className="font-medium capitalize">{confirmTypeChange.current}</span> para <span className="font-medium capitalize">{confirmTypeChange.type}</span>?
+            </p>
+            {confirmTypeChange.type === 'master' && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+                Orgs <strong>master</strong> podem criar e gerenciar organizações parceiras (MSP).
+              </p>
+            )}
+            {confirmTypeChange.type === 'partner' && (
+              <p className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2">
+                Orgs <strong>partner</strong> são gerenciadas por uma org master. Certifique-se de vincular ao master correto.
+              </p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button onClick={() => setConfirmTypeChange(null)} className="px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white transition-colors">Cancelar</button>
+              <button onClick={() => typeMut.mutate({ slug: confirmTypeChange.slug, org_type: confirmTypeChange.type })} disabled={typeMut.isPending}
+                className="px-4 py-2 rounded-lg bg-primary text-white text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                {typeMut.isPending ? 'Alterando…' : 'Confirmar'}
               </button>
             </div>
           </div>

@@ -44,7 +44,11 @@ class LeadStatusUpdate(BaseModel):
 
 
 class OrgPlanUpdate(BaseModel):
-    plan_tier: str  # free | pro | enterprise
+    plan_tier: str  # free | basic | standard | enterprise_e1/e2/e3 | enterprise_migration
+
+
+class OrgTypeUpdate(BaseModel):
+    org_type: str  # standalone | master | partner
 
 
 # ── Router: public contact form (no auth — landing page) ──────────────────────
@@ -275,6 +279,44 @@ def admin_set_org_plan(
         "slug": org.slug,
         "name": org.name,
         "plan_tier": org.plan_tier,
+    }
+
+
+@admin_router.put("/orgs/{org_slug}/org-type")
+def admin_set_org_type(
+    org_slug: str,
+    payload: OrgTypeUpdate,
+    admin: User = Depends(get_current_admin),
+    db: Session = Depends(get_db),
+):
+    """Change the org_type of any org. Admin only."""
+    valid_types = {"standalone", "master", "partner"}
+    if payload.org_type not in valid_types:
+        raise HTTPException(status_code=400, detail=f"Tipo inválido. Use: {', '.join(sorted(valid_types))}")
+
+    org = db.query(Organization).filter(Organization.slug == org_slug).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    old_type = org.org_type
+    org.org_type = payload.org_type
+    db.commit()
+
+    log_activity(
+        db, admin, "admin.set_org_type", "Organization",
+        resource_id=str(org.id),
+        resource_name=org.name,
+        detail=f"{old_type} → {payload.org_type}",
+        provider="system",
+    )
+
+    logger.info("Admin %s set org %s type: %s → %s", admin.email, org_slug, old_type, payload.org_type)
+
+    return {
+        "id": str(org.id),
+        "slug": org.slug,
+        "name": org.name,
+        "org_type": org.org_type,
     }
 
 
