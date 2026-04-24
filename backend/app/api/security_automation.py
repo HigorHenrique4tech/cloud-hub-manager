@@ -453,7 +453,7 @@ def upsert_pc_config(
         raise HTTPException(403, "Apenas admins e owners podem configurar o Partner Center.")
 
     from app.services.auth_service import get_org_fernet
-    fernet = get_org_fernet(db, member.organization)
+    fernet = get_org_fernet(db, member.organization_id)
     creds_json = json.dumps({"client_id": body.client_id, "client_secret": body.client_secret})
     encrypted = fernet.encrypt(creds_json.encode()).decode()
 
