@@ -462,20 +462,18 @@ const Login = () => {
                 {/* Provider cards */}
                 <div className="anim-fadein-2 grid grid-cols-4 gap-2">
                   {[
-                    { label: 'AWS',   img: '/aws.png',           bg: '#1a1008', iconBg: 'rgba(249,115,22,0.18)', border: '#f97316', color: '#fb923c' },
-                    { label: 'Azure', img: '/azure.png',         bg: '#080f1a', iconBg: 'rgba(56,189,248,0.18)',  border: '#38bdf8', color: '#7dd3fc' },
-                    { label: 'GCP',   img: '/google-cloud.png',  bg: '#081210', iconBg: 'rgba(52,211,153,0.18)',  border: '#34d399', color: '#6ee7b7' },
-                    { label: 'M365',  img: '/microsoft-365.png', bg: '#0e0818', iconBg: 'rgba(167,139,250,0.18)', border: '#a78bfa', color: '#c4b5fd' },
-                  ].map(({ label, img, bg, iconBg, border, color }) => (
+                    { label: 'AWS',   img: '/aws.png',           bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.25)' },
+                    { label: 'Azure', img: '/azure.png',         bg: 'rgba(56,189,248,0.08)', border: 'rgba(56,189,248,0.25)' },
+                    { label: 'GCP',   img: '/google-cloud.png',  bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.25)' },
+                    { label: 'M365',  img: '/microsoft-365.png', bg: 'rgba(147,112,219,0.08)', border: 'rgba(147,112,219,0.25)' },
+                  ].map(({ label, img, bg, border }) => (
                     <div
                       key={label}
-                      className="flex flex-col items-center gap-2 py-3 px-1 rounded-xl"
-                      style={{ background: bg, border: `1px solid ${border}33`, boxShadow: `0 0 12px ${border}18` }}
+                      className="flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl"
+                      style={{ background: bg, border: `1px solid ${border}` }}
                     >
-                      <div style={{ width: 38, height: 38, borderRadius: 10, background: iconBg, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                        <img src={img} alt={label} style={{ width: 26, height: 26, objectFit: 'contain', filter: 'brightness(1.15)' }} />
-                      </div>
-                      <span style={{ fontSize: 10, fontWeight: 700, color, letterSpacing: '0.5px' }}>{label}</span>
+                      <img src={img} alt={label} style={{ width: 32, height: 32, objectFit: 'contain' }} />
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.3px' }}>{label}</span>
                     </div>
                   ))}
                 </div>
