@@ -916,7 +916,7 @@ async def managed_orgs_summary(
 
     # ── Master org workspace add-on cost ────────────────────────────────────
     master_ws_count = db.query(Workspace).filter(
-        Workspace.organization_id == org.id,
+        Workspace.organization_id == master_org.id,
         Workspace.is_active == True,
     ).count()
     master_base_ws = PLAN_PRICES.get("enterprise_base_workspaces", 20)
