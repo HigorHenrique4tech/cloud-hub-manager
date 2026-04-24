@@ -331,8 +331,7 @@ def decrypt_pc_credentials(db, workspace_id) -> dict | None:
         return None
 
     try:
-        org = ws.organization
-        fernet = get_org_fernet(db, org)
+        fernet = get_org_fernet(db, ws.organization_id)
         raw = fernet.decrypt(cfg.encrypted_credentials.encode()).decode()
         creds = json.loads(raw)
         creds["partner_tenant_id"] = cfg.partner_tenant_id
