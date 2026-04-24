@@ -459,25 +459,22 @@ const Login = () => {
                   <p style={{ fontSize: 14, color: '#64748b' }}>Entre com suas credenciais para continuar</p>
                 </div>
 
-                {/* Provider badges */}
-                <div className="anim-fadein-2 flex flex-wrap gap-2">
+                {/* Provider cards */}
+                <div className="anim-fadein-2 grid grid-cols-4 gap-2">
                   {[
-                    { label: 'AWS',   color: '#f97316', border: 'rgba(249,115,22,0.3)',  bg: 'rgba(249,115,22,0.07)'  },
-                    { label: 'Azure', color: '#38bdf8', border: 'rgba(56,189,248,0.3)',  bg: 'rgba(56,189,248,0.07)'  },
-                    { label: 'GCP',   color: '#ef4444', border: 'rgba(239,68,68,0.3)',   bg: 'rgba(239,68,68,0.07)'   },
-                    { label: 'M365',  color: '#d4a017', border: 'rgba(212,160,23,0.3)',  bg: 'rgba(212,160,23,0.07)'  },
-                  ].map(({ label, color, border, bg }) => (
-                    <span
+                    { label: 'AWS',   img: '/aws.png',           bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.25)' },
+                    { label: 'Azure', img: '/azure.png',         bg: 'rgba(56,189,248,0.08)', border: 'rgba(56,189,248,0.25)' },
+                    { label: 'GCP',   img: '/google-cloud.png',  bg: 'rgba(52,211,153,0.08)', border: 'rgba(52,211,153,0.25)' },
+                    { label: 'M365',  img: '/microsoft-365.png', bg: 'rgba(147,112,219,0.08)', border: 'rgba(147,112,219,0.25)' },
+                  ].map(({ label, img, bg, border }) => (
+                    <div
                       key={label}
-                      className="flex items-center gap-1.5"
-                      style={{
-                        padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 500,
-                        letterSpacing: '0.3px', color, border: `1px solid ${border}`, background: bg,
-                      }}
+                      className="flex flex-col items-center gap-1.5 py-2.5 px-1 rounded-xl"
+                      style={{ background: bg, border: `1px solid ${border}` }}
                     >
-                      <span style={{ width: 5, height: 5, borderRadius: '50%', background: color, flexShrink: 0 }} />
-                      {label}
-                    </span>
+                      <img src={img} alt={label} style={{ width: 28, height: 28, objectFit: 'contain' }} />
+                      <span style={{ fontSize: 10, fontWeight: 600, color: '#94a3b8', letterSpacing: '0.3px' }}>{label}</span>
+                    </div>
                   ))}
                 </div>
 
