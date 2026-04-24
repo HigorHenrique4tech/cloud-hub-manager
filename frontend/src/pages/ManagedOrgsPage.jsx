@@ -6,7 +6,8 @@ import {
   AlertTriangle, Grid3x3, CheckCircle, XCircle, PlusCircle, Pencil,
   StickyNote, Search, ArrowUpDown, Ban, Palette, RefreshCw,
   ChevronLeft, ChevronRight, CheckSquare, Square, Power, PowerOff,
-  Store, Link2, ShieldCheck, AlertCircle, Check, RefreshCcw,
+  Store, Link2, ShieldCheck, AlertCircle, Check, RefreshCcw, Shield,
+  Globe, CalendarClock, Package, Activity, CreditCard, Zap,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
@@ -527,12 +528,312 @@ const M365TenantsTab = ({ orgSlug, onAccess }) => {
   );
 };
 
+/* ── Customer Detail Drawer ──────────────────────────────────────────────── */
+
+const SUB_TABS = ['Visão Geral', 'Assinaturas', 'GDAP'];
+
+const fmtSubDate = (d) => d
+  ? new Date(d).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
+  : '—';
+
+function isAzure(sub) {
+  const n = (sub.offer_name || '').toLowerCase();
+  return n.includes('azure') || sub.unit_type === 'Usage-Based';
+}
+
+function SubStatusBadge({ status }) {
+  const active = status === 'active';
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-full ${
+      active
+        ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+        : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+    }`}>
+      {active ? <CheckCircle size={10} /> : <XCircle size={10} />}
+      {active ? 'Ativo' : status === 'suspended' ? 'Suspenso' : status}
+    </span>
+  );
+}
+
+function SubscriptionRow({ sub }) {
+  return (
+    <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 dark:border-gray-700/60 last:border-0">
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{sub.offer_name || sub.friendly_name}</p>
+        {sub.friendly_name && sub.friendly_name !== sub.offer_name && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{sub.friendly_name}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-3 flex-shrink-0 text-right">
+        {!isAzure(sub) && (
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+            {sub.quantity} {sub.unit_type === 'Licenses' ? 'licença' : 'seat'}{sub.quantity !== 1 ? 's' : ''}
+          </span>
+        )}
+        <div className="text-right">
+          <SubStatusBadge status={sub.status} />
+          {sub.commitment_end_date && (
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5">
+              Renova {fmtSubDate(sub.commitment_end_date)}
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const OverviewTab = ({ customer, subs, relQ }) => {
+  const azure = (subs || []).filter(isAzure);
+  const m365 = (subs || []).filter(s => !isAzure(s));
+  const activeCount = (subs || []).filter(s => s.status === 'active').length;
+  const suspendedCount = (subs || []).filter(s => s.status === 'suspended').length;
+  const gdapActive = (relQ?.data?.relationships || []).filter(r => r.status === 'active' && r.customer?.tenantId === customer.tenant_id).length;
+
+  const stats = [
+    { label: 'Assinaturas ativas', value: activeCount, icon: CheckCircle, color: 'text-green-500' },
+    { label: 'Suspensas', value: suspendedCount, icon: XCircle, color: 'text-red-500' },
+    { label: 'Licenças M365', value: m365.reduce((a, s) => a + (s.quantity || 0), 0), icon: Package, color: 'text-blue-500' },
+    { label: 'GDAP ativo', value: gdapActive, icon: Shield, color: 'text-purple-500' },
+  ];
+
+  return (
+    <div className="space-y-5">
+      {/* Customer info */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4 space-y-2.5">
+        {[
+          { label: 'Domínio', value: customer.domain, icon: Globe },
+          { label: 'Tenant ID', value: customer.tenant_id, icon: Building2, mono: true },
+          { label: 'País', value: customer.country || '—', icon: Globe },
+          { label: 'Relacionamento', value: customer.relationship_to_partner || '—', icon: Link2 },
+        ].map(({ label, value, icon: Icon, mono }) => value && (
+          <div key={label} className="flex items-center gap-3">
+            <Icon size={13} className="text-gray-400 dark:text-gray-500 flex-shrink-0" />
+            <span className="text-xs text-gray-500 dark:text-gray-400 w-24 flex-shrink-0">{label}</span>
+            <span className={`text-xs text-gray-800 dark:text-gray-200 truncate ${mono ? 'font-mono' : 'font-medium'}`}>{value}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3">
+        {stats.map(({ label, value, icon: Icon, color }) => (
+          <div key={label} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-3 flex items-center gap-3">
+            <div className={`w-8 h-8 rounded-lg flex items-center justify-center bg-gray-100 dark:bg-gray-700`}>
+              <Icon size={16} className={color} />
+            </div>
+            <div>
+              <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{value}</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">{label}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Azure plans summary */}
+      {azure.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Zap size={11} /> Azure ({azure.length})
+          </p>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-4 divide-y divide-gray-100 dark:divide-gray-700/60">
+            {azure.map(s => <SubscriptionRow key={s.id} sub={s} />)}
+          </div>
+        </div>
+      )}
+
+      {/* M365 plans summary */}
+      {m365.length > 0 && (
+        <div>
+          <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2 flex items-center gap-1.5">
+            <Package size={11} /> Microsoft 365 ({m365.length})
+          </p>
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-4 divide-y divide-gray-100 dark:divide-gray-700/60">
+            {m365.slice(0, 5).map(s => <SubscriptionRow key={s.id} sub={s} />)}
+            {m365.length > 5 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 py-2 text-center">
+                +{m365.length - 5} assinaturas — veja na aba Assinaturas
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const SubscriptionsTab = ({ subs, loading }) => {
+  const [filter, setFilter] = useState('all');
+
+  if (loading) return <div className="flex justify-center py-10"><LoadingSpinner /></div>;
+  if (!subs || subs.length === 0) return (
+    <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+      <Package size={36} className="mb-3 opacity-20" />
+      <p className="text-sm">Nenhuma assinatura encontrada</p>
+    </div>
+  );
+
+  const azure = subs.filter(isAzure);
+  const m365 = subs.filter(s => !isAzure(s));
+  const visible = filter === 'azure' ? azure : filter === 'm365' ? m365 : subs;
+  const activeCount = subs.filter(s => s.status === 'active').length;
+  const suspendedCount = subs.filter(s => s.status === 'suspended').length;
+
+  return (
+    <div className="space-y-4">
+      {/* Summary row */}
+      <div className="flex items-center gap-3 text-sm">
+        <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
+          <CheckCircle size={13} /> {activeCount} ativa{activeCount !== 1 ? 's' : ''}
+        </span>
+        {suspendedCount > 0 && (
+          <span className="flex items-center gap-1 text-red-500 font-medium">
+            <XCircle size={13} /> {suspendedCount} suspensa{suspendedCount !== 1 ? 's' : ''}
+          </span>
+        )}
+        <span className="text-gray-400 dark:text-gray-500 text-xs ml-auto">{subs.length} total</span>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex gap-1">
+        {[
+          { key: 'all', label: `Todas (${subs.length})` },
+          { key: 'm365', label: `M365 (${m365.length})` },
+          { key: 'azure', label: `Azure (${azure.length})` },
+        ].map(({ key, label }) => (
+          <button key={key} onClick={() => setFilter(key)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+              filter === key
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+            }`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-4 divide-y divide-gray-100 dark:divide-gray-700/60">
+        {visible.length === 0 ? (
+          <p className="text-sm text-center text-gray-400 dark:text-gray-500 py-6">Nenhuma assinatura nesta categoria</p>
+        ) : (
+          visible.map(s => <SubscriptionRow key={s.id} sub={s} />)
+        )}
+      </div>
+
+      {/* Expiring soon */}
+      {(() => {
+        const soon = subs.filter(s => {
+          if (!s.commitment_end_date) return false;
+          const diff = new Date(s.commitment_end_date) - new Date();
+          return diff > 0 && diff < 45 * 24 * 60 * 60 * 1000;
+        });
+        if (soon.length === 0) return null;
+        return (
+          <div className="rounded-lg border border-amber-400/40 bg-amber-50 dark:bg-amber-900/10 px-4 py-3">
+            <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 flex items-center gap-1.5 mb-2">
+              <CalendarClock size={12} /> {soon.length} renovação{soon.length !== 1 ? 'ões' : ''} em até 45 dias
+            </p>
+            {soon.map(s => (
+              <p key={s.id} className="text-xs text-amber-700 dark:text-amber-300">
+                · {s.offer_name} — {fmtSubDate(s.commitment_end_date)}
+              </p>
+            ))}
+          </div>
+        );
+      })()}
+    </div>
+  );
+};
+
+const CustomerDetailDrawer = ({ customer, workspaceId, orgSlug, onClose }) => {
+  useEscapeKey(true, onClose);
+  const [tab, setTab] = useState(0);
+
+  const subsQ = useQuery({
+    queryKey: ['pc-subs', orgSlug, workspaceId, customer.id],
+    queryFn: () => orgService.pcGetSubscriptions(orgSlug, workspaceId, customer.id),
+    enabled: Boolean(customer.id),
+    staleTime: 5 * 60_000,
+  });
+
+  const relQ = useQuery({
+    queryKey: ['m365', 'gdap', 'relationships', workspaceId],
+    queryFn: m365Service.getGdapRelationships,
+    staleTime: 30_000,
+  });
+
+  const subs = subsQ.data?.subscriptions || [];
+  const initials = customer.name
+    ? customer.name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase()
+    : '?';
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col bg-white dark:bg-gray-900 shadow-2xl border-l border-gray-200 dark:border-gray-700">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600 text-white font-bold text-sm flex-shrink-0">
+              {initials}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">{customer.name}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{customer.domain}</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 px-6">
+          {SUB_TABS.map((t, i) => (
+            <button key={t} onClick={() => setTab(i)}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                tab === i
+                  ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}>
+              {t}
+              {i === 1 && subs.length > 0 && (
+                <span className={`ml-1.5 text-[11px] px-1.5 py-0.5 rounded-full ${tab === i ? 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400' : 'bg-gray-100 dark:bg-gray-700 text-gray-500'}`}>
+                  {subs.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {tab === 0 && (
+            <OverviewTab customer={customer} subs={subsQ.isLoading ? null : subs} relQ={relQ} />
+          )}
+          {tab === 1 && (
+            <SubscriptionsTab subs={subs} loading={subsQ.isLoading} />
+          )}
+          {tab === 2 && (
+            <GdapPanel
+              workspaceId={workspaceId}
+              customerTenantId={customer.tenant_id}
+              customerDisplayName={customer.name}
+            />
+          )}
+        </div>
+      </div>
+    </>
+  );
+};
+
 /* ── Partner Center Tab ──────────────────────────────────────────────────── */
 
 const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
   const qc = useQueryClient();
-  const [pcSubTab, setPcSubTab] = useState(0); // 0=Clientes, 1=GDAP
   const [selected, setSelected] = useState(new Set());
+  const [gdapCustomer, setGdapCustomer] = useState(null);
 
   const statusQ = useQuery({
     queryKey: ['pc-status', orgSlug, workspaceId],
@@ -619,7 +920,6 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
 
   const customers = customersQ.data?.customers || [];
   const syncedCount = customers.filter((c) => c.synced).length;
-  const selectedArr = [...selected];
 
   const toggleSelect = (id) => setSelected((prev) => {
     const next = new Set(prev);
@@ -635,26 +935,15 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
 
   return (
     <div className="space-y-4">
-      {/* Sub-tabs */}
-      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
-        {['Clientes', 'GDAP'].map((tab, i) => (
-          <button
-            key={tab}
-            onClick={() => setPcSubTab(i)}
-            className={`px-4 py-2 text-sm font-medium rounded-t-lg transition-colors ${
-              pcSubTab === i
-                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
-                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {pcSubTab === 0 ? (
-        <>
-          {/* Stats bar */}
+      {gdapCustomer && (
+        <CustomerDetailDrawer
+          customer={gdapCustomer}
+          workspaceId={workspaceId}
+          orgSlug={orgSlug}
+          onClose={() => setGdapCustomer(null)}
+        />
+      )}
+      {/* Stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm">
           <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
@@ -764,8 +1053,10 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{c.name}</p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{c.id}</p>
+                    <button onClick={() => setGdapCustomer(c)} className="text-left group">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{c.name}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono">{c.id}</p>
+                    </button>
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{c.domain || '—'}</td>
                   <td className="px-4 py-3 text-xs font-mono text-gray-400 dark:text-gray-500">
@@ -782,25 +1073,30 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    {!c.synced && (
+                    <div className="flex items-center justify-end gap-3">
+                      {!c.synced && (
+                        <button
+                          onClick={() => importMut.mutate(c)}
+                          disabled={importMut.isPending}
+                          className="text-xs font-medium text-primary-dark dark:text-primary-light hover:underline disabled:opacity-50"
+                        >
+                          Importar
+                        </button>
+                      )}
                       <button
-                        onClick={() => importMut.mutate(c)}
-                        disabled={importMut.isPending}
-                        className="text-xs font-medium text-primary-dark dark:text-primary-light hover:underline disabled:opacity-50"
+                        onClick={() => setGdapCustomer(c)}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors"
+                        title="Ver detalhes do cliente"
                       >
-                        Importar
+                        <Activity size={11} /> Detalhes
                       </button>
-                    )}
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      )}
-        </>
-      ) : (
-        <GdapPanel workspaceId={workspaceId} />
       )}
     </div>
   );

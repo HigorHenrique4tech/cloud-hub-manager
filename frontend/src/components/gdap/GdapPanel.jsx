@@ -524,7 +524,7 @@ function TerminateModal({ rel, onClose, onConfirmed }) {
   );
 }
 
-export default function GdapPanel({ workspaceId }) {
+export default function GdapPanel({ workspaceId, customerTenantId = null, customerDisplayName = null }) {
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState(0);
   const [showCreate, setShowCreate] = useState(false);
@@ -542,9 +542,15 @@ export default function GdapPanel({ workspaceId }) {
     queryKey: ['m365', 'gdap', 'customers', workspaceId],
     queryFn: m365Service.getGdapCustomers,
     refetchInterval: 60000,
+    enabled: !customerTenantId,
   });
 
-  const relationships = relQ.data?.relationships || [];
+  const allRelationships = relQ.data?.relationships || [];
+
+  // Filter by customer if context is provided
+  const relationships = customerTenantId
+    ? allRelationships.filter(r => r.customer?.tenantId === customerTenantId)
+    : allRelationships;
 
   const filtered = relationships.filter(rel => {
     const status = resolveStatus(rel);
@@ -563,7 +569,11 @@ export default function GdapPanel({ workspaceId }) {
   ];
 
   const openCreate = (customer = null) => {
-    setCreateCustomer(customer);
+    // If we have a customer context from props, always pre-fill it
+    const preCustomer = customer || (customerTenantId
+      ? { id: customerTenantId, displayName: customerDisplayName || customerTenantId }
+      : null);
+    setCreateCustomer(preCustomer);
     setShowCreate(true);
   };
 
@@ -589,18 +599,17 @@ export default function GdapPanel({ workspaceId }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
-          Gerenciar delegações de acesso com tenants de clientes
+          {customerTenantId
+            ? `Relações GDAP — ${customerDisplayName || customerTenantId}`
+            : 'Gerenciar delegações de acesso com tenants de clientes'}
         </p>
         <div className="flex items-center gap-2">
           <button
-            onClick={() => {
-              qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'relationships'] });
-              qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'customers'] });
-            }}
-            disabled={relQ.isFetching || cusQ.isFetching}
+            onClick={() => qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'relationships'] })}
+            disabled={relQ.isFetching}
             className="inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${relQ.isFetching || cusQ.isFetching ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`w-4 h-4 mr-2 ${relQ.isFetching ? 'animate-spin' : ''}`} />
             Atualizar
           </button>
           <button
