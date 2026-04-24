@@ -39,6 +39,7 @@ const migrationApi = {
                       api.post(wsUrl('/migration/test-connection'), { migration_type, source_config }).then(r => r.data),
   resolveSpSite:    (project_id, url, side = 'source') =>
                       api.post(wsUrl('/migration/resolve-sharepoint-site'), { project_id, url, side }).then(r => r.data),
+  getMailboxLedger: (pid, mid)      => api.get(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}/ledger`)).then(r => r.data),
   getLicenseSummary: ()             => api.get(wsUrl('/migration/license-summary')).then(r => r.data),
   requestLicenses:  (data)         => api.post(wsUrl('/migration/licenses/request'), data).then(r => r.data),
   getLicenseHistory: ()             => api.get(wsUrl('/migration/licenses/history')).then(r => r.data),
@@ -863,6 +864,147 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
   );
 };
 
+// ── Mailbox Ledger Drawer ─────────────────────────────────────────────────────
+
+const MailboxLedgerDrawer = ({ projectId, mb, onClose }) => {
+  const [page, setPage] = useState(1);
+  const [search, setSearch] = useState('');
+  const PER_PAGE = 50;
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['mb-ledger', projectId, mb.id],
+    queryFn: () => migrationApi.getMailboxLedger(projectId, mb.id),
+    staleTime: 60_000,
+  });
+
+  const entries = data?.entries || [];
+  const filtered = search
+    ? entries.filter(e =>
+        (e.uid || e.message_id || '').toLowerCase().includes(search.toLowerCase()) ||
+        (e.folder || '').toLowerCase().includes(search.toLowerCase())
+      )
+    : entries;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+
+  const copied   = entries.filter(e => e.status === 'copied' || e.status === 'verified').length;
+  const verified = entries.filter(e => e.status === 'verified').length;
+  const failed   = entries.filter(e => e.status === 'failed').length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1" />
+      <div
+        className="w-full max-w-2xl bg-white dark:bg-gray-900 shadow-2xl flex flex-col h-full"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Ledger — {mb.source_email}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{entries.length} mensagens auditadas</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-4 gap-3 px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+          {[
+            { label: 'Total',      value: entries.length, color: 'text-gray-700 dark:text-gray-300' },
+            { label: 'Copiadas',   value: copied,         color: 'text-green-600 dark:text-green-400' },
+            { label: 'Verificadas',value: verified,       color: 'text-cyan-600 dark:text-cyan-400' },
+            { label: 'Falhas',     value: failed,         color: 'text-red-500' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="text-center">
+              <p className={`text-lg font-bold ${color}`}>{value}</p>
+              <p className="text-xs text-gray-400">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
+              placeholder="Buscar por pasta ou UID..."
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {isLoading ? (
+            <div className="flex items-center gap-3 p-6">
+              <RefreshCw className="w-4 h-4 text-gray-400 animate-spin" />
+              <p className="text-sm text-gray-500">Carregando ledger...</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center gap-2 py-12 text-center">
+              <FileText className="w-8 h-8 text-gray-300 dark:text-gray-600" />
+              <p className="text-sm text-gray-500">Nenhuma entrada encontrada.</p>
+            </div>
+          ) : (
+            <table className="w-full text-xs">
+              <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800/80 backdrop-blur">
+                <tr className="text-left text-gray-500 dark:text-gray-400">
+                  <th className="px-4 py-2.5 font-medium">Pasta</th>
+                  <th className="px-4 py-2.5 font-medium">UID / Message-ID</th>
+                  <th className="px-4 py-2.5 font-medium">Status</th>
+                  <th className="px-4 py-2.5 font-medium">Tamanho</th>
+                  <th className="px-4 py-2.5 font-medium">Copiado em</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                {paged.map((entry, i) => {
+                  const uid = entry.uid || entry.message_id || '—';
+                  return (
+                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <td className="px-4 py-2 text-gray-600 dark:text-gray-400 font-mono truncate max-w-[120px]" title={entry.folder}>{entry.folder || '—'}</td>
+                      <td className="px-4 py-2 text-gray-500 font-mono truncate max-w-[160px]" title={uid}>
+                        {uid.length > 22 ? `${uid.slice(0, 22)}…` : uid}
+                      </td>
+                      <td className="px-4 py-2">
+                        <span className={`font-medium ${
+                          entry.status === 'verified' ? 'text-cyan-600 dark:text-cyan-400' :
+                          entry.status === 'copied'   ? 'text-green-600 dark:text-green-400' :
+                          entry.status === 'failed'   ? 'text-red-500' :
+                          'text-gray-500'
+                        }`}>
+                          {entry.status === 'copied' ? 'Copiada' : entry.status === 'verified' ? 'Verificada' : entry.status === 'failed' ? 'Falha' : entry.status || '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-gray-400">
+                        {entry.size_bytes ? `${(entry.size_bytes / 1024).toFixed(0)} KB` : '—'}
+                      </td>
+                      <td className="px-4 py-2 text-gray-400">
+                        {entry.copied_at ? new Date(entry.copied_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {filtered.length > PER_PAGE && (
+          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-200 dark:border-gray-700">
+            <p className="text-xs text-gray-500">{(page - 1) * PER_PAGE + 1}–{Math.min(page * PER_PAGE, filtered.length)} de {filtered.length}</p>
+            <div className="flex gap-1">
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 disabled:opacity-40">Anterior</button>
+              <span className="px-3 py-1 text-xs text-gray-500">{page}/{totalPages}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                className="px-2.5 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 disabled:opacity-40">Próximo</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // ── Project Detail ─────────────────────────────────────────────────────────────
 
 const ProjectDetail = ({ projectId, onBack }) => {
@@ -878,6 +1020,13 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const [showConfirmStart, setShowConfirmStart] = useState(false);
   const [mbPage, setMbPage] = useState(1);
   const [logFilter, setLogFilter] = useState('all');
+  const [mbStatusFilter, setMbStatusFilter] = useState('all');
+  const [selectedMbs, setSelectedMbs] = useState(new Set());
+  const [ledgerMb, setLedgerMb] = useState(null);
+  const [logSearch, setLogSearch] = useState('');
+  const [logMailboxFilter, setLogMailboxFilter] = useState('all');
+  const [batchRetryPending, setBatchRetryPending] = useState(false);
+  const [batchDeletePending, setBatchDeletePending] = useState(false);
 
   // Polling enquanto a migração está ativa. react-query v5: o callback de
   // refetchInterval recebe um objeto Query — o data fica em query.state.data.
@@ -973,6 +1122,29 @@ const ProjectDetail = ({ projectId, onBack }) => {
     },
   });
 
+  const handleBatchRetry = async () => {
+    setBatchRetryPending(true);
+    try {
+      await Promise.all([...selectedMbs].map(mid => migrationApi.retryMailbox(projectId, mid)));
+      setSelectedMbs(new Set());
+      qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
+      qc.invalidateQueries({ queryKey: ['migration-project', projectId] });
+    } finally {
+      setBatchRetryPending(false);
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    setBatchDeletePending(true);
+    try {
+      await Promise.all([...selectedMbs].map(mid => migrationApi.deleteMailbox(projectId, mid)));
+      setSelectedMbs(new Set());
+      qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
+    } finally {
+      setBatchDeletePending(false);
+    }
+  };
+
   const MAILBOX_STATUS = {
     pending:   { label: 'Aguardando', color: 'text-gray-500' },
     running:   { label: 'Migrando',   color: 'text-blue-500' },
@@ -1005,9 +1177,11 @@ const ProjectDetail = ({ projectId, onBack }) => {
   };
 
   const MB_PER_PAGE = 50;
-  const filteredMailboxes = mailboxes.filter(m =>
-    !mbSearch || m.source_email.includes(mbSearch) || (m.display_name || '').toLowerCase().includes(mbSearch.toLowerCase())
-  );
+  const filteredMailboxes = mailboxes.filter(m => {
+    const matchSearch = !mbSearch || m.source_email.includes(mbSearch) || (m.display_name || '').toLowerCase().includes(mbSearch.toLowerCase());
+    const matchStatus = mbStatusFilter === 'all' || m.status === mbStatusFilter;
+    return matchSearch && matchStatus;
+  });
   const totalMbPages = Math.max(1, Math.ceil(filteredMailboxes.length / MB_PER_PAGE));
   const paginatedMailboxes = filteredMailboxes.slice((mbPage - 1) * MB_PER_PAGE, mbPage * MB_PER_PAGE);
 
@@ -1212,7 +1386,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
-                type="text" value={mbSearch} onChange={e => setMbSearch(e.target.value)}
+                type="text" value={mbSearch} onChange={e => { setMbSearch(e.target.value); setMbPage(1); }}
                 placeholder={isFileType ? "Buscar por identificador ou nome..." : "Buscar por e-mail ou nome..."}
                 className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
@@ -1221,6 +1395,30 @@ const ProjectDetail = ({ projectId, onBack }) => {
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
               <Plus className="w-4 h-4" /> Adicionar
             </button>
+          </div>
+
+          {/* Status filter pills */}
+          <div className="flex items-center gap-1.5 flex-wrap px-4 py-2.5 border-b border-gray-100 dark:border-gray-800">
+            {[
+              { id: 'all',       label: 'Todas' },
+              { id: 'pending',   label: 'Aguardando' },
+              { id: 'running',   label: 'Migrando' },
+              { id: 'completed', label: 'Concluídas' },
+              { id: 'failed',    label: 'Com falha' },
+              { id: 'paused',    label: 'Pausadas' },
+            ].map(f => {
+              const cnt = f.id === 'all' ? mailboxes.length : mailboxes.filter(m => m.status === f.id).length;
+              return (
+                <button key={f.id} onClick={() => { setMbStatusFilter(f.id); setMbPage(1); setSelectedMbs(new Set()); }}
+                  className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
+                    mbStatusFilter === f.id
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                      : 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800'
+                  }`}>
+                  {f.label}{cnt > 0 ? <span className="ml-1 opacity-60">({cnt})</span> : null}
+                </button>
+              );
+            })}
           </div>
           {filteredMailboxes.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
@@ -1236,6 +1434,17 @@ const ProjectDetail = ({ projectId, onBack }) => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-gray-500 dark:text-gray-400 border-b border-gray-100 dark:border-gray-800">
+                    <th className="pl-4 pr-2 py-3">
+                      <input type="checkbox"
+                        checked={paginatedMailboxes.length > 0 && paginatedMailboxes.every(m => selectedMbs.has(m.id))}
+                        onChange={e => {
+                          const next = new Set(selectedMbs);
+                          paginatedMailboxes.forEach(m => e.target.checked ? next.add(m.id) : next.delete(m.id));
+                          setSelectedMbs(next);
+                        }}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                    </th>
                     <th className="px-4 py-3 font-medium">{isFileType ? (project.migration_type === 'onedrive_to_onedrive' ? 'Usuário (UPN)' : 'Site ID') : 'Origem'}</th>
                     <th className="px-4 py-3 font-medium">{isFileType ? 'Destino' : 'Destino'}</th>
                     <th className="px-4 py-3 font-medium">Status / Fase</th>
@@ -1248,7 +1457,19 @@ const ProjectDetail = ({ projectId, onBack }) => {
                   {paginatedMailboxes.map(mb => {
                     const mbCfg = MAILBOX_STATUS[mb.status] || MAILBOX_STATUS.pending;
                     return (
-                      <tr key={mb.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <tr key={mb.id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${selectedMbs.has(mb.id) ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
+                        <td className="pl-4 pr-2 py-3">
+                          <input type="checkbox"
+                            checked={selectedMbs.has(mb.id)}
+                            onChange={e => {
+                              const next = new Set(selectedMbs);
+                              e.target.checked ? next.add(mb.id) : next.delete(mb.id);
+                              setSelectedMbs(next);
+                            }}
+                            onClick={e => e.stopPropagation()}
+                            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <p className="font-medium text-gray-800 dark:text-gray-200">{mb.source_email}</p>
                           {mb.display_name && <p className="text-xs text-gray-400">{mb.display_name}</p>}
@@ -1304,12 +1525,11 @@ const ProjectDetail = ({ projectId, onBack }) => {
                               className="absolute right-4 top-8 z-20 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg py-1"
                               onClick={e => e.stopPropagation()}
                             >
-                              {/* Ver ledger — abre aba de logs filtrada */}
                               <button
-                                onClick={() => { setTab('logs'); setMbMenuOpen(null); }}
+                                onClick={() => { setLedgerMb(mb); setMbMenuOpen(null); }}
                                 className="w-full flex items-center gap-2 px-3 py-2 text-xs text-left text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
                               >
-                                <FileText className="w-3.5 h-3.5" /> Ver logs
+                                <FileText className="w-3.5 h-3.5" /> Ver ledger
                               </button>
                               {mb.status === 'running' && (
                                 <button
@@ -1373,16 +1593,48 @@ const ProjectDetail = ({ projectId, onBack }) => {
               </div>
             </div>
           )}
+
+          {/* Batch action bar */}
+          {selectedMbs.size > 0 && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border-t border-blue-200 dark:border-blue-800 rounded-b-xl">
+              <span className="text-xs font-medium text-blue-700 dark:text-blue-300">{selectedMbs.size} selecionada(s)</span>
+              <button onClick={() => setSelectedMbs(new Set())} className="text-xs text-blue-600 dark:text-blue-400 hover:underline">
+                Limpar
+              </button>
+              <div className="flex-1" />
+              <button
+                onClick={handleBatchRetry}
+                disabled={batchRetryPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${batchRetryPending ? 'animate-spin' : ''}`} /> Retentar selecionadas
+              </button>
+              <button
+                onClick={handleBatchDelete}
+                disabled={batchDeletePending || project.status === 'running'}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-600 hover:bg-red-700 text-white disabled:opacity-50"
+              >
+                <Trash2 className="w-3.5 h-3.5" /> Remover selecionadas
+              </button>
+            </div>
+          )}
         </div>
       )}
 
       {/* Logs tab */}
       {tab === 'logs' && (() => {
-        const filteredLogs = logFilter === 'all' ? logs : logs.filter(l => l.level === logFilter);
+        const filteredLogs = logs.filter(l => {
+          const matchLevel = logFilter === 'all' || l.level === logFilter;
+          const matchSearch = !logSearch || (l.message || '').toLowerCase().includes(logSearch.toLowerCase());
+          const matchMb = logMailboxFilter === 'all' ||
+            (l.mailbox_id && l.mailbox_id === logMailboxFilter) ||
+            (!l.mailbox_id && mailboxes.find(m => m.id === logMailboxFilter && (l.message || '').includes(m.source_email)));
+          return matchLevel && matchSearch && matchMb;
+        });
         return (
         <div className="card">
           {/* Log filter bar */}
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 border-b border-gray-200 dark:border-gray-700">
             {[
               { id: 'all',     label: 'Todos' },
               { id: 'info',    label: 'Info' },
@@ -1402,6 +1654,32 @@ const ProjectDetail = ({ projectId, onBack }) => {
                 })()}
               </button>
             ))}
+
+            <div className="flex-1" />
+
+            {/* Mailbox filter */}
+            {mailboxes.length > 0 && (
+              <select
+                value={logMailboxFilter}
+                onChange={e => setLogMailboxFilter(e.target.value)}
+                className="text-xs border border-gray-300 dark:border-gray-600 rounded-lg px-2 py-1.5 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">Todas as caixas</option>
+                {mailboxes.map(m => (
+                  <option key={m.id} value={m.id}>{m.source_email}</option>
+                ))}
+              </select>
+            )}
+
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
+              <input
+                value={logSearch} onChange={e => setLogSearch(e.target.value)}
+                placeholder="Buscar mensagem..."
+                className="pl-8 pr-3 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-48"
+              />
+            </div>
           </div>
           <div className="divide-y divide-gray-50 dark:divide-gray-800">
           {filteredLogs.length === 0 ? (
@@ -1429,6 +1707,11 @@ const ProjectDetail = ({ projectId, onBack }) => {
         </div>
         );
       })()}
+
+      {/* Mailbox Ledger Drawer */}
+      {ledgerMb && (
+        <MailboxLedgerDrawer projectId={projectId} mb={ledgerMb} onClose={() => setLedgerMb(null)} />
+      )}
 
       {/* Confirm start modal */}
       {showConfirmStart && (
@@ -1885,27 +2168,57 @@ const Migration365 = () => {
           {projects.map(project => {
             const typeCfg = MIGRATION_TYPES.find(t => t.id === project.migration_type);
             const TypeIcon = typeCfg?.icon || ArrowRightLeft;
+            const isFile = isFileMigration(project.migration_type);
+            const itemUnit = isFile ? 'itens' : 'caixas';
             return (
               <div key={project.id}
                 className="flex items-center gap-4 p-5 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer transition-colors"
                 onClick={() => navigate(`/m365/migration/${project.id}`)}>
-                <div className={`w-10 h-10 rounded-xl bg-gray-100 dark:bg-gray-800 flex items-center justify-center flex-shrink-0`}>
+
+                {/* Type icon */}
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${
+                  typeCfg?.color === 'text-blue-500'   ? 'bg-blue-50 dark:bg-blue-900/20' :
+                  typeCfg?.color === 'text-purple-500' ? 'bg-purple-50 dark:bg-purple-900/20' :
+                  typeCfg?.color === 'text-green-500'  ? 'bg-green-50 dark:bg-green-900/20' :
+                  typeCfg?.color === 'text-sky-500'    ? 'bg-sky-50 dark:bg-sky-900/20' :
+                  typeCfg?.color === 'text-teal-500'   ? 'bg-teal-50 dark:bg-teal-900/20' :
+                  'bg-gray-100 dark:bg-gray-800'
+                }`}>
                   <TypeIcon className={`w-5 h-5 ${typeCfg?.color || 'text-gray-400'}`} />
                 </div>
+
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
                     <p className="text-sm font-semibold text-gray-800 dark:text-gray-200 truncate">{project.name}</p>
                     <StatusBadge status={project.status} />
+                    {project.status === 'running' && project.eta_seconds && (
+                      <span className="inline-flex items-center gap-1 text-xs text-blue-500 font-medium">
+                        <Clock className="w-3 h-3" /> {fmtEta(project.eta_seconds)}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-3">
-                    <p className="text-xs text-gray-400">{TYPE_LABELS[project.migration_type]}</p>
-                    {project.source_label && <p className="text-xs text-gray-400">· {project.source_label}</p>}
-                    <p className="text-xs text-gray-400">· {project.mailbox_count} {isFileMigration(project.migration_type) ? 'itens' : 'caixas'}</p>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs text-gray-400">{TYPE_LABELS[project.migration_type]}</span>
+                    {project.source_label && (
+                      <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded font-mono">{project.source_label}</span>
+                    )}
+                    <span className="text-xs text-gray-400">
+                      {project.mailbox_count > 0 && project.status !== 'draft'
+                        ? `${project.completed_count}/${project.mailbox_count} ${itemUnit}`
+                        : `${project.mailbox_count} ${itemUnit}`}
+                    </span>
+                    {project.failed_count > 0 && (
+                      <span className="text-xs text-red-500 font-medium">{project.failed_count} com falha</span>
+                    )}
                   </div>
                   {project.mailbox_count > 0 && project.status !== 'draft' && (
-                    <ProgressBar value={project.progress} className="mt-2 max-w-xs" />
+                    <div className="mt-2 max-w-xs flex items-center gap-2">
+                      <ProgressBar value={project.progress} className="flex-1" />
+                      <span className="text-xs text-gray-400 tabular-nums">{project.progress}%</span>
+                    </div>
                   )}
                 </div>
+
                 <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
                   <p className="text-xs text-gray-400 hidden md:block">
                     {project.created_at ? new Date(project.created_at).toLocaleDateString('pt-BR') : ''}
