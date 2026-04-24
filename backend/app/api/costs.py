@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
 from app.database import get_db
-from app.models.db_models import CloudAccount, Workspace
+from app.models.db_models import CloudAccount, Organization, Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +47,15 @@ def get_cost_source(
         .first()
     )
 
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    org_name = org.name if org else ""
+    org_pref = org.cost_source_preference if org else None
+
     if not account:
         return {
             "source": None,
             "reason": "Nenhuma conta Azure configurada",
-            "organization": member.organization.name,
+            "organization": org_name,
         }
 
     detection = CostFacadeService.detect_cost_source(
@@ -63,8 +67,8 @@ def get_cost_source(
         "reason": detection.get("reason"),
         "offer_id": detection.get("offer_id"),
         "fallback_to": detection.get("fallback_to"),
-        "organization": member.organization.name,
-        "cost_source_preference": member.organization.cost_source_preference,
+        "organization": org_name,
+        "cost_source_preference": org_pref,
     }
 
 

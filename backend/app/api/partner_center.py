@@ -28,9 +28,12 @@ ws_router = APIRouter(
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _check_enterprise(member: MemberContext):
+def _check_enterprise(member: MemberContext, db: Session):
     from app.services.plan_service import get_effective_plan
-    plan = get_effective_plan(member.organization)
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+    plan = get_effective_plan(org)
     if plan not in ("enterprise", "enterprise_migration"):
         raise HTTPException(403, "Partner Center requer plano Enterprise.")
 
@@ -79,7 +82,7 @@ def get_status(
     db: Session = Depends(get_db),
 ):
     """Verifica se o Partner Center está configurado e testa o token."""
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     cfg = (db.query(PartnerCenterConfig)
            .filter(PartnerCenterConfig.workspace_id == member.workspace_id)
            .first())
@@ -117,7 +120,7 @@ def list_customers(
     db: Session = Depends(get_db),
 ):
     """Lista todos os clientes CSP do partner."""
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     creds = _get_creds(db, member.workspace_id)
 
     try:
@@ -152,7 +155,7 @@ def get_customer_subscriptions(
     db: Session = Depends(get_db),
 ):
     """Lista assinaturas de um cliente específico."""
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     creds = _get_creds(db, member.workspace_id)
 
     try:
@@ -179,7 +182,7 @@ def import_customer(
     Importa um cliente CSP como organização parceira.
     Se já existir uma org com esse partner_center_id, atualiza o nome.
     """
-    _check_enterprise(member)
+    _check_enterprise(member, db)
 
     master_org = member.organization
     if master_org.org_type not in ("master", "standalone"):
@@ -243,7 +246,7 @@ def sync_customers(
     Sincroniza uma lista de clientes CSP como orgs parceiras em lote.
     Busca detalhes de cada customer_id na PC API e importa/atualiza.
     """
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     creds = _get_creds(db, member.workspace_id)
 
     try:
