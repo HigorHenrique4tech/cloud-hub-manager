@@ -20,7 +20,7 @@
 
 <link rel="icon" href="assets/cloudatlas.png">
 
-<!-- Schema.org JSON-LD -->
+<!-- Schema.org JSON-LD: SoftwareApplication -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -31,17 +31,51 @@
   "applicationCategory": "BusinessApplication",
   "operatingSystem": "Web",
   "offers": [
+    { "@type": "Offer", "price": "397",  "priceCurrency": "BRL", "name": "Basic" },
+    { "@type": "Offer", "price": "797",  "priceCurrency": "BRL", "name": "Standard" },
+    { "@type": "Offer", "price": "2997", "priceCurrency": "BRL", "name": "Enterprise E1" },
+    { "@type": "Offer", "price": "4997", "priceCurrency": "BRL", "name": "Enterprise E2" },
+    { "@type": "Offer", "price": "7997", "priceCurrency": "BRL", "name": "Enterprise E3" },
+    { "@type": "Offer", "price": "4747", "priceCurrency": "BRL", "name": "Enterprise + Migration365" }
+  ]
+}
+</script>
+
+<!-- Schema.org JSON-LD: FAQ (rich snippets) -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
     {
-      "@type": "Offer",
-      "price": "0",
-      "priceCurrency": "BRL",
-      "name": "Gratuito"
+      "@type": "Question",
+      "name": "O CloudAtlas acessa meus dados sensíveis?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Não. O CloudAtlas utiliza credenciais read-only por padrão e nunca armazena dados de negócio. As credenciais são criptografadas com Fernet (AES-128) e cada organização tem sua própria chave derivada via HKDF." }
     },
     {
-      "@type": "Offer",
-      "price": "497",
-      "priceCurrency": "BRL",
-      "name": "Pro"
+      "@type": "Question",
+      "name": "Preciso instalar algo na minha infraestrutura?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Não. O CloudAtlas é 100% SaaS. Basta conectar suas contas via credenciais (Access Keys, Service Principal, Service Account) e começar a usar imediatamente." }
+    },
+    {
+      "@type": "Question",
+      "name": "Quais clouds são suportadas?",
+      "acceptedAnswer": { "@type": "Answer", "text": "AWS, Microsoft Azure, Google Cloud Platform e Microsoft 365. Novas integrações são adicionadas regularmente." }
+    },
+    {
+      "@type": "Question",
+      "name": "Posso testar antes de pagar?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Sim. Toda conta nova recebe 30 dias grátis do plano Standard, com acesso completo a FinOps, agendamentos, webhooks e relatórios. Ao fim do trial, escolha o plano ideal ou cancele sem cobrança." }
+    },
+    {
+      "@type": "Question",
+      "name": "Como funciona o Migration365?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Migration365 oferece 7 engines de migração: IMAP, Exchange (EWS), Google Workspace, Tenant-to-Tenant M365, OneDrive, SharePoint e Microsoft Teams Chat. Disponível a partir de R$ 70 por licença avulsa ou no bundle Enterprise + Migration por R$ 4.747/mês com migrações ilimitadas." }
+    },
+    {
+      "@type": "Question",
+      "name": "Posso personalizar a plataforma com minha marca (White Label)?",
+      "acceptedAnswer": { "@type": "Answer", "text": "Sim. Planos Enterprise E1, E2 e E3 incluem White Label completo: logotipo, favicon, cores, nome da plataforma, emails transacionais com sua marca e domínio próprio." }
     }
   ]
 }
@@ -125,7 +159,7 @@
   .nav-links {
     display: flex;
     align-items: center;
-    gap: 32px;
+    gap: 26px;
   }
 
   .nav-link {
@@ -281,6 +315,67 @@
     background: rgba(26,111,219,0.08);
   }
 
+  /* ── HERO DASHBOARD MOCKUP ── */
+  .hero-mockup {
+    position: relative;
+    margin: 64px auto 0;
+    max-width: 960px; width: 100%;
+    aspect-ratio: 960 / 560;
+    border-radius: 16px;
+    background: linear-gradient(180deg, #0d1526 0%, #0a1020 100%);
+    border: 1px solid rgba(59,143,245,0.25);
+    box-shadow:
+      0 30px 90px rgba(0,0,0,0.5),
+      0 0 80px rgba(26,111,219,0.18),
+      inset 0 1px 0 rgba(255,255,255,0.06);
+    overflow: hidden;
+    animation: fadeInUp 0.9s 0.45s ease both;
+  }
+  .hero-mockup::before {
+    /* glass reflection */
+    content: '';
+    position: absolute; inset: 0;
+    background: linear-gradient(135deg, rgba(255,255,255,0.04) 0%, transparent 50%);
+    pointer-events: none;
+    z-index: 3;
+  }
+  .hero-mockup svg { display: block; width: 100%; height: 100%; }
+
+  .hero-mockup .mk-path-chart {
+    stroke-dasharray: 1200;
+    stroke-dashoffset: 1200;
+    animation: mkDraw 2.4s 0.6s ease-out forwards;
+  }
+  @keyframes mkDraw { to { stroke-dashoffset: 0; } }
+
+  .hero-mockup .mk-bar {
+    transform-origin: bottom;
+    transform: scaleY(0);
+    animation: mkGrow 0.6s ease-out forwards;
+  }
+  @keyframes mkGrow { to { transform: scaleY(1); } }
+
+  .hero-mockup .mk-stat-value {
+    opacity: 0;
+    animation: mkFade 0.6s ease-out forwards;
+  }
+  @keyframes mkFade { to { opacity: 1; } }
+
+  .hero-mockup .mk-pulse-dot {
+    animation: mkPulse 1.8s ease-in-out infinite;
+  }
+  @keyframes mkPulse {
+    0%, 100% { opacity: 1; r: 4; }
+    50%      { opacity: 0.3; r: 6; }
+  }
+
+  /* mobile: simplify mockup */
+  @media (max-width: 768px) {
+    .hero-mockup { aspect-ratio: 480 / 420; max-width: 420px; }
+    .hero-mockup .mk-sidebar { display: none; }
+    .hero-mockup .mk-main    { transform: translateX(-16%) scale(1.16); transform-origin: left center; }
+  }
+
   /* Cloud logos strip */
   .cloud-strip {
     margin-top: 64px;
@@ -361,7 +456,14 @@
     transition: border-color 0.3s;
   }
   .pain-card:hover { border-color: rgba(26,111,219,0.5); }
-  .pain-icon { font-size: 1.8rem; margin-bottom: 14px; }
+  .pain-icon {
+    width: 44px; height: 44px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 10px;
+    background: rgba(248,113,113,0.1);
+    border: 1px solid rgba(248,113,113,0.25);
+    margin-bottom: 14px;
+  }
   .pain-card h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 8px; }
   .pain-card p { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
 
@@ -406,6 +508,27 @@
 
   .feature-card h3 { font-size: 1.1rem; font-weight: 700; margin-bottom: 10px; }
   .feature-card p { font-size: 0.9rem; color: var(--muted); line-height: 1.7; }
+
+  /* Icon SVGs inside cards */
+  .feature-icon svg, .pain-icon svg {
+    width: 24px; height: 24px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .audience-avatar svg {
+    width: 26px; height: 26px;
+    stroke: currentColor;
+    fill: none;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .feature-icon { color: var(--blue-light); }
+  .pain-icon { color: #f87171; }
+  .audience-avatar { color: #f0f4ff; }
 
   /* ── WHO IT'S FOR ── */
   .audience {
@@ -475,6 +598,210 @@
     margin-bottom: 8px;
   }
   .stat-label { font-size: 0.85rem; color: var(--muted); }
+
+  /* ── SECURITY ── */
+  .security {
+    padding: 100px 24px;
+    background: var(--bg);
+    position: relative;
+  }
+  .security::before {
+    content: '';
+    position: absolute;
+    top: 30%; right: 8%;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(26,111,219,0.08), transparent 70%);
+    pointer-events: none;
+  }
+  .security-inner {
+    max-width: 1160px; margin: 0 auto;
+    position: relative; z-index: 1;
+  }
+  .security-header { text-align: center; margin-bottom: 64px; }
+  .security-sub {
+    color: var(--muted); font-size: 1rem;
+    max-width: 560px; margin: 16px auto 0;
+    line-height: 1.7;
+  }
+  .security-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .security-col {
+    background: linear-gradient(180deg, rgba(26,111,219,0.04), transparent 60%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 32px 28px;
+    transition: all 0.35s;
+  }
+  .security-col:hover {
+    border-color: rgba(59,143,245,0.35);
+    transform: translateY(-3px);
+  }
+  .security-col-header {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 20px;
+  }
+  .security-col-icon {
+    width: 44px; height: 44px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, rgba(26,111,219,0.25), rgba(14,165,233,0.15));
+    border: 1px solid rgba(59,143,245,0.3);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--blue-light);
+  }
+  .security-col-icon svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; }
+  .security-col h3 {
+    font-size: 1rem; font-weight: 700;
+    color: var(--white);
+  }
+  .security-col ul {
+    list-style: none;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .security-col li {
+    display: flex; align-items: flex-start; gap: 12px;
+    font-size: 0.88rem; color: var(--muted);
+    line-height: 1.55;
+  }
+  .security-col li svg {
+    width: 16px; height: 16px; flex-shrink: 0;
+    stroke: var(--blue-light); fill: none; stroke-width: 2;
+    margin-top: 2px;
+  }
+  .security-col li strong {
+    color: var(--white); font-weight: 600;
+  }
+  @media (max-width: 900px) {
+    .security-grid { grid-template-columns: 1fr; max-width: 480px; margin: 0 auto; }
+  }
+
+  /* ── MIGRATION365 ── */
+  .migration {
+    padding: 100px 24px;
+    background: linear-gradient(180deg, var(--bg2), var(--bg) 70%);
+    border-top: 1px solid var(--border);
+    position: relative;
+    overflow: hidden;
+  }
+  .migration::before {
+    content: '';
+    position: absolute;
+    top: -20%; left: 50%; transform: translateX(-50%);
+    width: 800px; height: 600px;
+    background: radial-gradient(ellipse, rgba(139,92,246,0.08), transparent 60%);
+    pointer-events: none;
+  }
+  .migration-inner {
+    max-width: 1160px; margin: 0 auto;
+    position: relative; z-index: 1;
+  }
+  .migration-header { text-align: center; margin-bottom: 48px; }
+  .migration-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(139,92,246,0.15);
+    border: 1px solid rgba(139,92,246,0.35);
+    border-radius: 50px; padding: 6px 16px;
+    font-size: 0.8rem; color: #a78bfa;
+    margin-bottom: 20px; letter-spacing: 0.05em;
+  }
+  .migration-badge::before { content: '\2728'; }
+  .migration-sub {
+    color: var(--muted); font-size: 1rem;
+    max-width: 620px; margin: 20px auto 0;
+    line-height: 1.7;
+  }
+
+  .migration-flow {
+    display: flex; align-items: center; justify-content: center;
+    gap: 36px; margin: 56px 0 48px;
+    flex-wrap: wrap;
+  }
+  .migration-flow-sources,
+  .migration-flow-target {
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .migration-flow-item {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 20px;
+    font-size: 0.85rem;
+    color: var(--white);
+    display: flex; align-items: center; gap: 10px;
+    min-width: 200px;
+  }
+  .migration-flow-item::before {
+    content: ''; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--blue-light); flex-shrink: 0;
+  }
+  .migration-flow-target .migration-flow-item {
+    border-color: rgba(14,165,233,0.5);
+    box-shadow: 0 0 30px rgba(14,165,233,0.2);
+  }
+  .migration-flow-target .migration-flow-item::before { background: #0ea5e9; }
+  .migration-flow-arrow {
+    display: flex; align-items: center;
+    color: var(--blue-light);
+  }
+  .migration-flow-arrow svg { width: 64px; height: 24px; fill: none; stroke: currentColor; stroke-width: 2; }
+  .migration-flow-arrow path { stroke-dasharray: 4 4; animation: mkFlow 1.6s linear infinite; }
+  @keyframes mkFlow { to { stroke-dashoffset: -16; } }
+
+  .migration-engines {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .migration-engine {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px 22px;
+    transition: all 0.3s;
+  }
+  .migration-engine:hover {
+    border-color: rgba(139,92,246,0.4);
+    transform: translateY(-2px);
+  }
+  .migration-engine-title {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700; font-size: 0.95rem;
+    color: var(--white);
+    margin-bottom: 8px;
+  }
+  .migration-engine-title svg { width: 16px; height: 16px; stroke: #a78bfa; fill: none; stroke-width: 2; }
+  .migration-engine p { font-size: 0.82rem; color: var(--muted); line-height: 1.55; }
+
+  .migration-benefits {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px; margin-top: 40px;
+    background: rgba(26,111,219,0.05);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px 32px;
+  }
+  .migration-benefit {
+    display: flex; align-items: flex-start; gap: 10px;
+    font-size: 0.88rem; color: var(--muted);
+    line-height: 1.55;
+  }
+  .migration-benefit svg { width: 18px; height: 18px; stroke: #10b981; fill: none; stroke-width: 2.2; flex-shrink: 0; margin-top: 1px; }
+  .migration-benefit strong { color: var(--white); font-weight: 600; }
+
+  .migration-cta {
+    display: flex; gap: 14px; justify-content: center; flex-wrap: wrap;
+    margin-top: 40px;
+  }
+  .migration-pricing-inline {
+    text-align: center; margin-top: 20px;
+    font-size: 0.85rem; color: var(--muted);
+  }
+  .migration-pricing-inline strong { color: var(--blue-light); }
 
   /* ── HOW IT WORKS ── */
   .how {
@@ -607,39 +934,64 @@
     background: linear-gradient(90deg, transparent, var(--blue-light), transparent);
     opacity: 0.2;
   }
-  .pricing-inner { max-width: 1100px; margin: 0 auto; }
+  .pricing-inner { max-width: 1280px; margin: 0 auto; }
   .pricing-sub {
     color: var(--muted); font-size: 1rem;
-    max-width: 520px; margin: 16px auto 64px;
+    max-width: 560px; margin: 16px auto 56px;
     line-height: 1.7;
   }
 
+  .pricing-tier-label {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--blue-light);
+    text-align: left;
+    margin: 40px 0 16px;
+    padding-left: 4px;
+    opacity: 0.9;
+  }
+  .pricing-tier-label:first-child { margin-top: 0; }
+
   .pricing-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: 24px;
-    align-items: center;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    align-items: stretch;
   }
 
   .pricing-card {
     background: var(--card-bg);
     border: 1px solid var(--border);
     border-radius: 20px;
-    padding: 40px 32px;
+    padding: 32px 26px;
     text-align: left;
     transition: all 0.35s;
     position: relative;
+    display: flex;
+    flex-direction: column;
   }
   .pricing-card:hover {
     transform: translateY(-4px);
     box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+    border-color: rgba(26,111,219,0.35);
   }
 
   .pricing-card.featured {
     border-color: var(--blue);
-    box-shadow: 0 0 40px var(--blue-glow);
-    padding: 48px 32px;
+    box-shadow: 0 0 50px var(--blue-glow);
+    padding: 40px 28px;
     z-index: 1;
+    background: linear-gradient(180deg, rgba(26,111,219,0.08), var(--card-bg) 40%);
+  }
+
+  .pricing-card-tagline {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin-bottom: 18px;
+    min-height: 36px;
+    line-height: 1.5;
   }
 
   .pricing-badge {
@@ -1159,6 +1511,12 @@
     }
   }
 
+  @media (min-width: 769px) and (max-width: 1100px) {
+    .pricing-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
   /* ── Scroll offset for fixed navbar ── */
   section[id] {
     scroll-margin-top: 80px;
@@ -1182,11 +1540,45 @@
   .nav-overlay.active {
     display: block;
   }
+
+  /* ── ACCESSIBILITY: respect prefers-reduced-motion ── */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    .particles, .hero-grid { display: none; }
+    .reveal { opacity: 1 !important; transform: none !important; }
+    .hero-mockup .mk-path-chart { stroke-dashoffset: 0; }
+    .hero-mockup .mk-bar { transform: scaleY(1); }
+    .hero-mockup .mk-stat-value,
+    .hero-mockup .mk-pulse-dot { opacity: 1; }
+    .migration-flow-arrow path { animation: none; stroke-dasharray: 0; }
+  }
+
+  /* ── Text contrast improvement for small sizes ── */
+  .footer-link, .footer-made, .pricing-card-tagline,
+  .pricing-period, .stat-label, .migration-benefit,
+  .security-col li, .migration-engine p {
+    color: #b8c5e0;
+  }
+
+  /* Scroll progress bar */
+  .scroll-progress {
+    position: fixed; top: 0; left: 0;
+    height: 2px; width: 0%;
+    background: linear-gradient(90deg, var(--blue), #0ea5e9);
+    z-index: 200;
+    transition: width 0.1s ease-out;
+    box-shadow: 0 0 8px var(--blue-glow);
+  }
 </style>
 </head>
 <body>
 
 <a href="#main-content" class="skip-link">Pular para o conteúdo</a>
+<div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
 
 <!-- NAVBAR -->
 <nav>
@@ -1197,7 +1589,8 @@
 
   <div class="nav-links" id="navLinks">
     <a href="#features" class="nav-link">Funcionalidades</a>
-    <a href="#ecosystem" class="nav-link">Ecosistema</a>
+    <a href="#security" class="nav-link">Segurança</a>
+    <a href="#migration" class="nav-link">Migration365</a>
     <a href="#pricing" class="nav-link">Preços</a>
     <a href="#faq" class="nav-link">FAQ</a>
     <a href="#contato" class="nav-link">Contato</a>
@@ -1217,7 +1610,7 @@
   <div class="hero-grid"></div>
   <div class="particles" id="particles"></div>
 
-  <div class="hero-badge">Novo: Microsoft 365 Admin integrado</div>
+  <div class="hero-badge">✨ Novo: Migration365 — migre M365, Google Workspace e IMAP</div>
 
   <h1>
     Todas as suas clouds.<br>
@@ -1225,14 +1618,183 @@
   </h1>
 
   <p class="hero-sub">
-    Controle custos, monitore segurança e automatize operações de AWS, Azure, GCP e Microsoft 365 &mdash; tudo em um único painel, sem alternar entre consoles.
+    Controle custos, monitore segurança e automatize operações de AWS, Azure, GCP e Microsoft 365 &mdash; tudo em um único painel. <strong style="color:var(--white);">Teste grátis por 30 dias</strong>, sem cartão.
   </p>
 
   <div class="hero-actions">
     <a href="https://hub.cloudatlas.app.br" class="btn-primary">
-      Começar agora &rarr;
+      Começar trial grátis &rarr;
     </a>
     <a href="#features" class="btn-secondary">Ver funcionalidades</a>
+  </div>
+
+  <!-- Dashboard mockup -->
+  <div class="hero-mockup" aria-hidden="true">
+    <svg viewBox="0 0 960 560" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Painel CloudAtlas">
+      <defs>
+        <linearGradient id="mk-grad-chart" x1="0" x2="1" y1="0" y2="0">
+          <stop offset="0%"  stop-color="#3b8ff5"/>
+          <stop offset="100%" stop-color="#0ea5e9"/>
+        </linearGradient>
+        <linearGradient id="mk-grad-fill" x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%"  stop-color="#1a6fdb" stop-opacity="0.35"/>
+          <stop offset="100%" stop-color="#1a6fdb" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="mk-grad-card" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#11192c"/>
+          <stop offset="100%" stop-color="#0d1526"/>
+        </linearGradient>
+      </defs>
+
+      <!-- Sidebar -->
+      <g class="mk-sidebar">
+        <rect x="0" y="0" width="160" height="560" fill="#0a1020"/>
+        <rect x="160" y="0" width="1" height="560" fill="rgba(59,143,245,0.15)"/>
+        <!-- Logo -->
+        <circle cx="28" cy="32" r="10" fill="url(#mk-grad-chart)"/>
+        <rect x="46" y="27" width="70" height="10" rx="2" fill="#f0f4ff" opacity="0.9"/>
+        <!-- Nav items -->
+        <g font-family="Outfit, sans-serif" font-size="11" fill="#9eaed0">
+          <rect x="12" y="72"  width="136" height="32" rx="8" fill="rgba(26,111,219,0.18)"/>
+          <rect x="24" y="85"  width="14" height="6" rx="1.5" fill="#3b8ff5"/>
+          <text x="46"  y="92"  fill="#f0f4ff">Dashboard</text>
+
+          <rect x="24" y="125" width="14" height="6" rx="1.5" fill="#5a6a8c"/>
+          <text x="46"  y="132" >Recursos</text>
+
+          <rect x="24" y="165" width="14" height="6" rx="1.5" fill="#5a6a8c"/>
+          <text x="46"  y="172" >FinOps</text>
+
+          <rect x="24" y="205" width="14" height="6" rx="1.5" fill="#5a6a8c"/>
+          <text x="46"  y="212" >Agendamentos</text>
+
+          <rect x="24" y="245" width="14" height="6" rx="1.5" fill="#5a6a8c"/>
+          <text x="46"  y="252" >Segurança</text>
+
+          <rect x="24" y="285" width="14" height="6" rx="1.5" fill="#5a6a8c"/>
+          <text x="46"  y="292" >M365</text>
+        </g>
+      </g>
+
+      <!-- Main -->
+      <g class="mk-main">
+        <!-- Topbar -->
+        <rect x="161" y="0" width="799" height="48" fill="#0c1220"/>
+        <rect x="161" y="48" width="799" height="1" fill="rgba(59,143,245,0.1)"/>
+        <rect x="181" y="18" width="180" height="14" rx="4" fill="#11192c"/>
+        <text x="193" y="29" font-family="Outfit" font-size="10" fill="#6d7fa0">Workspace: Produção BR</text>
+        <circle cx="920" cy="24" r="10" fill="#1a6fdb" opacity="0.8"/>
+
+        <!-- Stat cards -->
+        <g transform="translate(184, 70)">
+          <!-- Card 1: Custo mensal -->
+          <rect x="0"  y="0" width="180" height="96" rx="12" fill="url(#mk-grad-card)" stroke="rgba(59,143,245,0.2)"/>
+          <text x="16" y="24" font-family="Outfit" font-size="10" fill="#7a8bab">Custo mensal</text>
+          <text x="16" y="56" class="mk-stat-value" font-family="Space Grotesk" font-size="22" font-weight="700" fill="#f0f4ff" style="animation-delay:0.3s">R$ 47.820</text>
+          <text x="16" y="78" font-family="Outfit" font-size="9" fill="#10b981">↓ 12% vs mês anterior</text>
+
+          <!-- Card 2: Recursos -->
+          <rect x="196" y="0" width="180" height="96" rx="12" fill="url(#mk-grad-card)" stroke="rgba(59,143,245,0.2)"/>
+          <text x="212" y="24" font-family="Outfit" font-size="10" fill="#7a8bab">Recursos ativos</text>
+          <text x="212" y="56" class="mk-stat-value" font-family="Space Grotesk" font-size="22" font-weight="700" fill="#f0f4ff" style="animation-delay:0.5s">284</text>
+          <text x="212" y="78" font-family="Outfit" font-size="9" fill="#9eaed0">AWS · Azure · GCP</text>
+
+          <!-- Card 3: Economia -->
+          <rect x="392" y="0" width="180" height="96" rx="12" fill="url(#mk-grad-card)" stroke="rgba(59,143,245,0.2)"/>
+          <text x="408" y="24" font-family="Outfit" font-size="10" fill="#7a8bab">Economia potencial</text>
+          <text x="408" y="56" class="mk-stat-value" font-family="Space Grotesk" font-size="22" font-weight="700" fill="#10b981" style="animation-delay:0.7s">R$ 8.140</text>
+          <text x="408" y="78" font-family="Outfit" font-size="9" fill="#9eaed0">12 recomendações</text>
+
+          <!-- Card 4: Alertas -->
+          <rect x="588" y="0" width="188" height="96" rx="12" fill="url(#mk-grad-card)" stroke="rgba(59,143,245,0.2)"/>
+          <text x="604" y="24" font-family="Outfit" font-size="10" fill="#7a8bab">Alertas abertos</text>
+          <text x="604" y="56" class="mk-stat-value" font-family="Space Grotesk" font-size="22" font-weight="700" fill="#f59e0b" style="animation-delay:0.9s">3</text>
+          <circle class="mk-pulse-dot" cx="760" cy="52" r="4" fill="#f59e0b"/>
+          <text x="604" y="78" font-family="Outfit" font-size="9" fill="#9eaed0">2 críticos · 1 warning</text>
+        </g>
+
+        <!-- Cost chart -->
+        <g transform="translate(184, 190)">
+          <rect x="0" y="0" width="572" height="200" rx="12" fill="url(#mk-grad-card)" stroke="rgba(59,143,245,0.15)"/>
+          <text x="16" y="24" font-family="Space Grotesk" font-size="12" font-weight="600" fill="#f0f4ff">Custos últimos 30 dias</text>
+          <text x="16" y="40" font-family="Outfit" font-size="9" fill="#7a8bab">AWS + Azure + GCP</text>
+          <!-- Axis -->
+          <line x1="40"  y1="170" x2="560" y2="170" stroke="rgba(158,174,208,0.15)"/>
+          <line x1="40"  y1="140" x2="560" y2="140" stroke="rgba(158,174,208,0.08)" stroke-dasharray="2 4"/>
+          <line x1="40"  y1="110" x2="560" y2="110" stroke="rgba(158,174,208,0.08)" stroke-dasharray="2 4"/>
+          <line x1="40"  y1="80"  x2="560" y2="80"  stroke="rgba(158,174,208,0.08)" stroke-dasharray="2 4"/>
+          <!-- Area fill -->
+          <path d="M 40 140 L 100 120 L 160 128 L 220 98 L 280 105 L 340 85 L 400 92 L 460 70 L 520 78 L 560 60 L 560 170 L 40 170 Z"
+                fill="url(#mk-grad-fill)"/>
+          <!-- Line -->
+          <path class="mk-path-chart" d="M 40 140 L 100 120 L 160 128 L 220 98 L 280 105 L 340 85 L 400 92 L 460 70 L 520 78 L 560 60"
+                fill="none" stroke="url(#mk-grad-chart)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Points -->
+          <circle cx="100" cy="120" r="3" fill="#3b8ff5"/>
+          <circle cx="220" cy="98"  r="3" fill="#3b8ff5"/>
+          <circle cx="340" cy="85"  r="3" fill="#3b8ff5"/>
+          <circle cx="460" cy="70"  r="3" fill="#3b8ff5"/>
+          <circle cx="560" cy="60"  r="4" fill="#0ea5e9" stroke="#0a1020" stroke-width="2"/>
+        </g>
+
+        <!-- Right panel: cloud breakdown -->
+        <g transform="translate(772, 190)">
+          <rect x="0" y="0" width="172" height="200" rx="12" fill="url(#mk-grad-card)" stroke="rgba(59,143,245,0.15)"/>
+          <text x="16" y="24" font-family="Space Grotesk" font-size="11" font-weight="600" fill="#f0f4ff">Por provedor</text>
+          <!-- AWS -->
+          <text x="16" y="52" font-family="Outfit" font-size="9" fill="#9eaed0">AWS</text>
+          <text x="156" y="52" font-family="Outfit" font-size="9" fill="#f0f4ff" text-anchor="end">58%</text>
+          <rect x="16" y="58" width="140" height="5" rx="2.5" fill="rgba(255,153,0,0.18)"/>
+          <rect class="mk-bar" x="16" y="58" width="81"  height="5" rx="2.5" fill="#ff9900" style="animation-delay:1s"/>
+          <!-- Azure -->
+          <text x="16" y="84" font-family="Outfit" font-size="9" fill="#9eaed0">Azure</text>
+          <text x="156" y="84" font-family="Outfit" font-size="9" fill="#f0f4ff" text-anchor="end">27%</text>
+          <rect x="16" y="90" width="140" height="5" rx="2.5" fill="rgba(0,120,212,0.18)"/>
+          <rect class="mk-bar" x="16" y="90" width="38"  height="5" rx="2.5" fill="#0078d4" style="animation-delay:1.15s"/>
+          <!-- GCP -->
+          <text x="16" y="116" font-family="Outfit" font-size="9" fill="#9eaed0">GCP</text>
+          <text x="156" y="116" font-family="Outfit" font-size="9" fill="#f0f4ff" text-anchor="end">15%</text>
+          <rect x="16" y="122" width="140" height="5" rx="2.5" fill="rgba(66,133,244,0.18)"/>
+          <rect class="mk-bar" x="16" y="122" width="21"  height="5" rx="2.5" fill="#4285f4" style="animation-delay:1.3s"/>
+
+          <!-- Savings badge -->
+          <rect x="16" y="148" width="140" height="40" rx="8" fill="rgba(16,185,129,0.12)" stroke="rgba(16,185,129,0.3)"/>
+          <text x="28" y="166" font-family="Outfit" font-size="8" fill="#10b981">FinOps ativo</text>
+          <text x="28" y="180" font-family="Space Grotesk" font-size="11" font-weight="700" fill="#10b981">-25% custos</text>
+        </g>
+
+        <!-- Resource table -->
+        <g transform="translate(184, 410)">
+          <rect x="0" y="0" width="760" height="126" rx="12" fill="url(#mk-grad-card)" stroke="rgba(59,143,245,0.15)"/>
+          <text x="16" y="24" font-family="Space Grotesk" font-size="11" font-weight="600" fill="#f0f4ff">Recursos</text>
+          <line x1="0" y1="40" x2="760" y2="40" stroke="rgba(158,174,208,0.1)"/>
+
+          <!-- Row 1 -->
+          <rect x="16" y="52" width="12" height="12" rx="2" fill="#ff9900"/>
+          <text x="36" y="62" font-family="Outfit" font-size="10" fill="#f0f4ff">web-prod-01</text>
+          <text x="200" y="62" font-family="Outfit" font-size="9" fill="#9eaed0">t3.large · AWS</text>
+          <rect x="440" y="52" width="58" height="14" rx="7" fill="rgba(16,185,129,0.18)"/>
+          <text x="469" y="62" font-family="Outfit" font-size="8" fill="#10b981" text-anchor="middle">running</text>
+          <text x="700" y="62" font-family="Outfit" font-size="9" fill="#f0f4ff" text-anchor="end">R$ 1.240/mês</text>
+
+          <!-- Row 2 -->
+          <rect x="16" y="78" width="12" height="12" rx="2" fill="#0078d4"/>
+          <text x="36" y="88" font-family="Outfit" font-size="10" fill="#f0f4ff">db-replica-02</text>
+          <text x="200" y="88" font-family="Outfit" font-size="9" fill="#9eaed0">D4s v3 · Azure</text>
+          <rect x="440" y="78" width="58" height="14" rx="7" fill="rgba(16,185,129,0.18)"/>
+          <text x="469" y="88" font-family="Outfit" font-size="8" fill="#10b981" text-anchor="middle">running</text>
+          <text x="700" y="88" font-family="Outfit" font-size="9" fill="#f0f4ff" text-anchor="end">R$ 2.890/mês</text>
+
+          <!-- Row 3 -->
+          <rect x="16" y="104" width="12" height="12" rx="2" fill="#4285f4"/>
+          <text x="36" y="114" font-family="Outfit" font-size="10" fill="#f0f4ff">analytics-gcp-01</text>
+          <text x="200" y="114" font-family="Outfit" font-size="9" fill="#9eaed0">n2-standard-8 · GCP</text>
+          <rect x="440" y="104" width="62" height="14" rx="7" fill="rgba(245,158,11,0.18)"/>
+          <text x="471" y="114" font-family="Outfit" font-size="8" fill="#f59e0b" text-anchor="middle">idle 72h</text>
+          <text x="700" y="114" font-family="Outfit" font-size="9" fill="#f0f4ff" text-anchor="end">R$ 1.820/mês</text>
+        </g>
+      </g>
+    </svg>
   </div>
 
   <div class="cloud-strip">
@@ -1255,22 +1817,30 @@
 
   <div class="problem-grid">
     <div class="pain-card reveal">
-      <div class="pain-icon">&#x1F500;</div>
+      <div class="pain-icon">
+        <svg viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+      </div>
       <h4>Múltiplos consoles</h4>
       <p>Sua equipe perde horas alternando entre AWS Console, Azure Portal, GCP Cloud Console e admin do M365.</p>
     </div>
     <div class="pain-card reveal reveal-delay-1">
-      <div class="pain-icon">&#x1F4B8;</div>
+      <div class="pain-icon">
+        <svg viewBox="0 0 24 24"><polyline points="23 18 13.5 8.5 8.5 13.5 1 6"/><polyline points="17 18 23 18 23 12"/></svg>
+      </div>
       <h4>Custos invisíveis</h4>
       <p>Recursos esquecidos, instâncias ociosas e gastos não monitorados inflam a fatura no fim do mês.</p>
     </div>
     <div class="pain-card reveal reveal-delay-2">
-      <div class="pain-icon">&#x1F513;</div>
+      <div class="pain-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
       <h4>Riscos de segurança</h4>
       <p>Sem visibilidade centralizada, vulnerabilidades passam despercebidas e auditorias viram pesadelo.</p>
     </div>
     <div class="pain-card reveal reveal-delay-3">
-      <div class="pain-icon">&#x1F3E2;</div>
+      <div class="pain-icon">
+        <svg viewBox="0 0 24 24"><path d="M3 21h18M6 21V5a2 2 0 012-2h8a2 2 0 012 2v16M10 9h4M10 13h4M10 17h4"/></svg>
+      </div>
       <h4>Gestão de clientes manual</h4>
       <p>MSPs e times de TI perdem tempo gerenciando organizações clientes de forma separada e sem padrão.</p>
     </div>
@@ -1286,37 +1856,49 @@
 
   <div class="features-grid">
     <div class="feature-card reveal">
-      <div class="feature-icon">&#x1F5FA;&#xFE0F;</div>
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>
+      </div>
       <h3>Painel Unificado Multi-Cloud</h3>
       <p>Visualize e gerencie todos os seus recursos de AWS, Azure, GCP e M365 em uma única interface intuitiva. Fim da alternância entre consoles.</p>
     </div>
 
     <div class="feature-card reveal reveal-delay-1">
-      <div class="feature-icon">&#x1F4B0;</div>
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24"><path d="M21 12V7H5a2 2 0 010-4h14v4"/><path d="M3 5v14a2 2 0 002 2h16v-5"/><path d="M18 12a2 2 0 000 4h4v-4h-4z"/></svg>
+      </div>
       <h3>FinOps &amp; Controle de Custos</h3>
       <p>Monitore gastos em tempo real, identifique desperdícios, defina budgets e receba alertas antes que a fatura estoure. Reduza custos com dados concretos.</p>
     </div>
 
     <div class="feature-card reveal reveal-delay-2">
-      <div class="feature-icon">&#x1F512;</div>
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+      </div>
       <h3>Monitoramento de Segurança</h3>
       <p>Acompanhe a postura de segurança de toda a sua infraestrutura cloud. Identifique riscos, gaps de compliance e responda a incidentes mais rápido.</p>
     </div>
 
     <div class="feature-card reveal">
-      <div class="feature-icon">&#x23F0;</div>
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
       <h3>Automação de Agendamentos</h3>
       <p>Programe o start e stop automático de recursos. Elimine custos com máquinas rodando fora do horário de uso sem nenhum esforço operacional.</p>
     </div>
 
     <div class="feature-card reveal reveal-delay-1">
-      <div class="feature-icon">&#x1F3E2;</div>
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="5" r="3"/><circle cx="5" cy="19" r="3"/><circle cx="19" cy="19" r="3"/><line x1="12" y1="8" x2="12" y2="14"/><path d="M12 14l-5 3M12 14l5 3"/></svg>
+      </div>
       <h3>Gestão Multi-Organização</h3>
       <p>Ideal para MSPs e times de TI internos. Administre múltiplos clientes ou unidades de negócio com isolamento, controle e visibilidade total.</p>
     </div>
 
     <div class="feature-card reveal reveal-delay-2">
-      <div class="feature-icon">&#x1F4CA;</div>
+      <div class="feature-icon">
+        <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/><line x1="3" y1="20" x2="21" y2="20"/></svg>
+      </div>
       <h3>Relatórios e Dashboards</h3>
       <p>Gere relatórios executivos e técnicos com um clique. Apresente valor para stakeholders com dados claros de custo, performance e segurança.</p>
     </div>
@@ -1365,6 +1947,103 @@
   </div>
 </section>
 
+<!-- SECURITY -->
+<section class="security" id="security">
+  <div class="security-inner">
+    <div class="security-header">
+      <span class="section-label reveal">Segurança em primeiro lugar</span>
+      <h2 class="section-title reveal reveal-delay-1">Infraestrutura de nível enterprise desde o plano Basic</h2>
+      <p class="security-sub reveal reveal-delay-2">Criptografia por organização, RBAC granular, proteções contra SSRF/CSRF e auditoria completa &mdash; por padrão, em todos os planos.</p>
+    </div>
+
+    <div class="security-grid">
+      <!-- Column 1: Data & Credentials -->
+      <div class="security-col reveal">
+        <div class="security-col-header">
+          <div class="security-col-icon">
+            <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+          </div>
+          <h3>Dados e credenciais</h3>
+        </div>
+        <ul>
+          <li>
+            <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+            <span><strong>Fernet (AES-128)</strong> com chave exclusiva por organização</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.778-7.778zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            <span>Derivação <strong>HKDF</strong> a partir da chave mestra do sistema</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span>Credenciais cloud em modo <strong>read-only</strong> por padrão</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+            <span>Zero armazenamento de dados de negócio dos clientes</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Column 2: Access & Identity -->
+      <div class="security-col reveal reveal-delay-1">
+        <div class="security-col-header">
+          <div class="security-col-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <h3>Acesso e identidade</h3>
+        </div>
+        <ul>
+          <li>
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>RBAC granular: <strong>6 roles</strong> e <strong>25 permissões</strong></span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
+            <span>MFA via OTP (HMAC-SHA256, expira em 5min)</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+            <span>SSO: <strong>Google, Microsoft, GitHub</strong> (OAuth 2.0)</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <span>Rate limiting: login 5/min, registro 3/min, reset 3/min</span>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Column 3: Infrastructure & Compliance -->
+      <div class="security-col reveal reveal-delay-2">
+        <div class="security-col-header">
+          <div class="security-col-icon">
+            <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+          </div>
+          <h3>Infraestrutura e compliance</h3>
+        </div>
+        <ul>
+          <li>
+            <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
+            <span>Dados hospedados no <strong>Brasil</strong> &mdash; LGPD-ready</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+            <span><strong>SSRF protection</strong>: bloqueia IPs privados e metadata endpoints</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
+            <span>Headers <strong>CSP, HSTS, CSRF</strong> e cookie hardening</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span>Audit logs completos em <strong>6 tabelas temporais</strong></span>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- WHO IT'S FOR -->
 <section class="audience">
   <div class="audience-inner">
@@ -1375,31 +2054,39 @@
 
     <div class="audience-grid">
       <div class="audience-card reveal">
-        <div class="audience-avatar">&#x1F454;</div>
+        <div class="audience-avatar">
+          <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2"/></svg>
+        </div>
         <h3>CTOs &amp; CIOs</h3>
         <p>Tenha visibilidade executiva real de custos, segurança e operações cloud. Tome decisões estratégicas com dados consolidados em um único lugar.</p>
         <a href="https://hub.cloudatlas.app.br" class="audience-cta">Ver dashboard executivo &rarr;</a>
       </div>
 
       <div class="audience-card reveal reveal-delay-1">
-        <div class="audience-avatar">&#x2699;&#xFE0F;</div>
+        <div class="audience-avatar">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+        </div>
         <h3>Times de DevOps &amp; Cloud</h3>
         <p>Automatize tarefas repetitivas, gerencie recursos com eficiência e pare de perder tempo navegando em múltiplos consoles durante o dia.</p>
         <a href="https://hub.cloudatlas.app.br" class="audience-cta">Começar a automatizar &rarr;</a>
       </div>
 
       <div class="audience-card reveal reveal-delay-2">
-        <div class="audience-avatar">&#x1F3E2;</div>
+        <div class="audience-avatar">
+          <svg viewBox="0 0 24 24"><rect x="2" y="2" width="6" height="6" rx="1"/><rect x="16" y="2" width="6" height="6" rx="1"/><rect x="9" y="16" width="6" height="6" rx="1"/><path d="M5 8v4h14v-4"/><line x1="12" y1="12" x2="12" y2="16"/></svg>
+        </div>
         <h3>MSPs &amp; Provedores de TI</h3>
         <p>Gerencie todos os seus clientes de uma plataforma centralizada. Entregue mais valor com menos overhead operacional e relatórios profissionais.</p>
         <a href="#pricing" class="audience-cta">Conhecer plano Enterprise &rarr;</a>
       </div>
 
       <div class="audience-card reveal reveal-delay-3">
-        <div class="audience-avatar">&#x1F680;</div>
+        <div class="audience-avatar">
+          <svg viewBox="0 0 24 24"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/></svg>
+        </div>
         <h3>Startups em Crescimento</h3>
         <p>Escale sua infraestrutura com controle. Evite surpresas na fatura, mantenha a segurança em dia e foque no que importa: crescer.</p>
-        <a href="https://hub.cloudatlas.app.br" class="audience-cta">Testar gratuitamente &rarr;</a>
+        <a href="https://hub.cloudatlas.app.br" class="audience-cta">Testar grátis por 30 dias &rarr;</a>
       </div>
     </div>
   </div>
@@ -1493,70 +2180,238 @@
   </div>
 </section>
 
+<!-- MIGRATION365 -->
+<section class="migration" id="migration">
+  <div class="migration-inner">
+    <div class="migration-header">
+      <span class="migration-badge reveal">Novo módulo</span>
+      <h2 class="section-title reveal reveal-delay-1">Migração de e-mails, arquivos e chats</h2>
+      <p class="migration-sub reveal reveal-delay-2">Consolide tudo no Microsoft 365 com <strong style="color:var(--white);">zero downtime</strong> e preservando metadata. Disponível avulso a R$ 70/licença ou ilimitado no plano Enterprise + Migration.</p>
+    </div>
+
+    <!-- Visual flow -->
+    <div class="migration-flow reveal reveal-delay-1">
+      <div class="migration-flow-sources">
+        <div class="migration-flow-item">Gmail / Google Workspace</div>
+        <div class="migration-flow-item">Exchange / IMAP</div>
+        <div class="migration-flow-item">M365 (outro tenant)</div>
+      </div>
+      <div class="migration-flow-arrow">
+        <svg viewBox="0 0 64 24"><path d="M4 12h50M48 6l8 6-8 6"/></svg>
+      </div>
+      <div class="migration-flow-target">
+        <div class="migration-flow-item">Microsoft 365 &mdash; destino único</div>
+      </div>
+    </div>
+
+    <!-- Engines grid -->
+    <div class="migration-engines">
+      <div class="migration-engine reveal">
+        <div class="migration-engine-title">
+          <svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 8l8 5 8-5"/></svg>
+          IMAP
+        </div>
+        <p>Qualquer provedor via IMAP &mdash; Zimbra, Zoho, hosting compartilhado, cPanel.</p>
+      </div>
+      <div class="migration-engine reveal">
+        <div class="migration-engine-title">
+          <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/></svg>
+          Exchange (EWS)
+        </div>
+        <p>Exchange on-premises e hosted via Exchange Web Services.</p>
+      </div>
+      <div class="migration-engine reveal">
+        <div class="migration-engine-title">
+          <svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          Google Workspace
+        </div>
+        <p>Gmail + Drive via Google API com retenção de labels e pastas.</p>
+      </div>
+      <div class="migration-engine reveal reveal-delay-1">
+        <div class="migration-engine-title">
+          <svg viewBox="0 0 24 24"><path d="M16 3h5v5M4 20L21 3M21 16v5h-5M4 4l5 5"/></svg>
+          Tenant-to-Tenant
+        </div>
+        <p>M365 origem → M365 destino. Ideal para fusões, aquisições e rebranding.</p>
+      </div>
+      <div class="migration-engine reveal reveal-delay-1">
+        <div class="migration-engine-title">
+          <svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 109 20h9a5 5 0 000-10z"/></svg>
+          OneDrive
+        </div>
+        <p>Arquivos pessoais com preservação de permissões e versões.</p>
+      </div>
+      <div class="migration-engine reveal reveal-delay-1">
+        <div class="migration-engine-title">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          SharePoint
+        </div>
+        <p>Sites, bibliotecas e metadata completo (colunas customizadas, content types).</p>
+      </div>
+      <div class="migration-engine reveal reveal-delay-2">
+        <div class="migration-engine-title">
+          <svg viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
+          Microsoft Teams
+        </div>
+        <p>Histórico de chats, canais e menções entre organizações.</p>
+      </div>
+    </div>
+
+    <!-- Benefits -->
+    <div class="migration-benefits reveal">
+      <div class="migration-benefit">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        <span><strong>Delta sync</strong>: migre em lotes sem interromper o trabalho dos usuários</span>
+      </div>
+      <div class="migration-benefit">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        <span><strong>Preserva metadata</strong>: datas, flags, pastas, permissões e anexos</span>
+      </div>
+      <div class="migration-benefit">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        <span><strong>Retry automático</strong> em caixas com milhões de itens</span>
+      </div>
+      <div class="migration-benefit">
+        <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+        <span><strong>Dashboard em tempo real</strong> com progresso por usuário</span>
+      </div>
+    </div>
+
+    <!-- CTA -->
+    <div class="migration-cta reveal">
+      <a href="#pricing" class="btn-primary">Ver planos com Migration365 &rarr;</a>
+      <a href="#contato" class="btn-secondary">Falar com especialista</a>
+    </div>
+    <p class="migration-pricing-inline reveal">
+      A partir de <strong>R$ 70/licença avulsa</strong> ou <strong>R$ 4.747/mês</strong> (ilimitado)
+    </p>
+  </div>
+</section>
+
 <!-- PRICING -->
 <section class="pricing" id="pricing">
   <div class="pricing-inner">
     <span class="section-label reveal">Planos e preços</span>
     <h2 class="section-title reveal reveal-delay-1">Escolha o plano ideal para sua operação</h2>
-    <p class="pricing-sub reveal reveal-delay-2">Comece gratuitamente e escale conforme sua necessidade. Sem surpresas, sem contratos longos.</p>
+    <p class="pricing-sub reveal reveal-delay-2">Todos os planos começam com <strong style="color:var(--blue-light)">30 dias de Standard grátis</strong>, sem cartão. Cancele a qualquer momento.</p>
 
+    <div class="pricing-tier-label reveal">— Essenciais —</div>
     <div class="pricing-grid">
-      <!-- Gratuito -->
+      <!-- Basic -->
       <div class="pricing-card reveal">
-        <h3>Gratuito</h3>
-        <div class="pricing-price">R$ 0</div>
-        <div class="pricing-period">Grátis para sempre</div>
+        <h3>Basic</h3>
+        <div class="pricing-price">R$ 397 <span>/mês</span></div>
+        <div class="pricing-card-tagline">Pequenos times começando com multi-cloud.</div>
         <ul class="pricing-features">
-          <li>2 workspaces</li>
-          <li>3 contas cloud (AWS, Azure, GCP)</li>
+          <li>5 workspaces</li>
+          <li>10 contas cloud (AWS, Azure, GCP)</li>
           <li>3 membros por organização</li>
-          <li>Histórico de custos</li>
-          <li>Dashboard completo</li>
+          <li>Dashboard multi-cloud completo</li>
+          <li>Histórico e análise de custos</li>
+          <li>Agendamentos automáticos</li>
         </ul>
-        <a href="https://hub.cloudatlas.app.br" class="pricing-cta pricing-cta-secondary">Começar grátis</a>
+        <a href="https://hub.cloudatlas.app.br" class="pricing-cta pricing-cta-secondary">Começar trial</a>
       </div>
 
-      <!-- Pro -->
+      <!-- Standard (featured) -->
       <div class="pricing-card featured reveal reveal-delay-1">
-        <div class="pricing-badge">Recomendado</div>
-        <h3>Pro</h3>
-        <div class="pricing-price">R$ 497 <span>/mês</span></div>
-        <div class="pricing-period">Cobrado mensalmente</div>
+        <div class="pricing-badge">Mais popular</div>
+        <h3>Standard</h3>
+        <div class="pricing-price">R$ 797 <span>/mês</span></div>
+        <div class="pricing-card-tagline">Operações consolidadas com FinOps e automações.</div>
         <ul class="pricing-features">
-          <li>10 workspaces</li>
-          <li>20 contas cloud</li>
-          <li>20 membros por organização</li>
-          <li>FinOps completo</li>
-          <li>Agendamentos automáticos</li>
+          <li>25 workspaces</li>
+          <li>Contas cloud ilimitadas</li>
+          <li>10 membros por organização</li>
+          <li>FinOps completo (recomendações + budgets)</li>
+          <li>Detecção de anomalias de custo</li>
           <li>Webhooks e integrações</li>
           <li>Relatórios agendados</li>
-          <li>Detecção de anomalias</li>
+          <li>Security Automation</li>
         </ul>
-        <a href="https://hub.cloudatlas.app.br" class="pricing-cta pricing-cta-primary">Assinar Pro</a>
+        <a href="https://hub.cloudatlas.app.br" class="pricing-cta pricing-cta-primary">Começar trial grátis</a>
       </div>
 
-      <!-- Enterprise -->
+      <!-- Enterprise E1 -->
       <div class="pricing-card reveal reveal-delay-2">
-        <h3>Enterprise</h3>
-        <div class="pricing-price">R$ 2.497 <span>/mês</span></div>
-        <div class="pricing-period">+ add-ons por organização</div>
+        <h3>Enterprise E1</h3>
+        <div class="pricing-price">R$ 2.997 <span>/mês</span></div>
+        <div class="pricing-card-tagline">Multi-organização para MSPs e empresas médias.</div>
         <ul class="pricing-features">
-          <li>20 Workspaces incluídos (+R$ 290/extra)</li>
-          <li>Contas cloud ilimitadas</li>
-          <li>Membros ilimitados</li>
-          <li>Gestão de clientes (MSP)</li>
-          <li>Multi-organização</li>
-          <li>Microsoft 365 Admin (Exchange, SharePoint, Teams)</li>
+          <li>50 workspaces</li>
+          <li>20 membros por organização</li>
+          <li>Gestão Multi-Org (MSP)</li>
+          <li>Microsoft 365 Admin</li>
           <li>White Label / marca personalizada</li>
           <li>API &amp; Webhooks avançados</li>
-          <li>Suporte dedicado com SLA</li>
+          <li>Suporte prioritário</li>
         </ul>
         <a href="#contato" class="pricing-cta pricing-cta-secondary">Falar com vendas</a>
       </div>
     </div>
 
+    <div class="pricing-tier-label reveal">— Enterprise —</div>
+    <div class="pricing-grid">
+      <!-- Enterprise E2 -->
+      <div class="pricing-card reveal">
+        <h3>Enterprise E2</h3>
+        <div class="pricing-price">R$ 4.997 <span>/mês</span></div>
+        <div class="pricing-card-tagline">Operações de alto volume com SLA garantido.</div>
+        <ul class="pricing-features">
+          <li>100 workspaces</li>
+          <li>40 membros por organização</li>
+          <li>Tudo do E1 incluído</li>
+          <li>SLA contratual</li>
+          <li>Onboarding dedicado</li>
+        </ul>
+        <a href="#contato" class="pricing-cta pricing-cta-secondary">Falar com vendas</a>
+      </div>
+
+      <!-- Enterprise E3 -->
+      <div class="pricing-card reveal reveal-delay-1">
+        <h3>Enterprise E3</h3>
+        <div class="pricing-price">R$ 7.997 <span>/mês</span></div>
+        <div class="pricing-card-tagline">Grandes corporações e MSPs escalados.</div>
+        <ul class="pricing-features">
+          <li>200 workspaces</li>
+          <li>80 membros por organização</li>
+          <li>Tudo do E2 incluído</li>
+          <li>SLA 99.95% + CSM dedicado</li>
+          <li>Auditoria trimestral de segurança</li>
+        </ul>
+        <a href="#contato" class="pricing-cta pricing-cta-secondary">Falar com vendas</a>
+      </div>
+
+      <!-- Enterprise + Migration -->
+      <div class="pricing-card reveal reveal-delay-2" style="border-color: rgba(14,165,233,0.35);">
+        <div class="pricing-badge" style="background: linear-gradient(135deg, #0ea5e9, #8b5cf6);">Inclui Migration365</div>
+        <h3>Enterprise + Migration</h3>
+        <div class="pricing-price">R$ 4.747 <span>/mês</span></div>
+        <div class="pricing-card-tagline">Enterprise + migrações M365 ilimitadas.</div>
+        <ul class="pricing-features">
+          <li>20 workspaces</li>
+          <li>Membros ilimitados</li>
+          <li>Migrações ilimitadas (7 engines)</li>
+          <li>IMAP, Exchange, Google, T2T, OneDrive, SharePoint, Teams</li>
+          <li>Todos os recursos Enterprise</li>
+        </ul>
+        <a href="#migration" class="pricing-cta pricing-cta-secondary">Ver Migration365</a>
+      </div>
+    </div>
+
+    <!-- Add-ons -->
+    <div class="reveal" style="margin-top:40px; padding: 28px 32px; background: rgba(26,111,219,0.05); border: 1px solid var(--border); border-radius: 16px; text-align: left;">
+      <p style="font-family:'Space Grotesk',sans-serif; font-weight:600; color:var(--white); margin-bottom:12px; font-size:0.95rem;">Add-ons disponíveis em todos os planos</p>
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; font-size: 0.85rem; color: var(--muted);">
+        <div><strong style="color:var(--blue-light);">R$ 60/mês</strong> · workspace extra</div>
+        <div><strong style="color:var(--blue-light);">R$ 159/mês</strong> · usuário extra</div>
+        <div><strong style="color:var(--blue-light);">R$ 290/mês</strong> · workspace MSP extra</div>
+        <div><strong style="color:var(--blue-light);">R$ 70/licença</strong> · Migration365 avulso</div>
+      </div>
+    </div>
+
     <p class="reveal" style="text-align:center; margin-top:24px; font-size:0.88rem; color:var(--muted);">
-      &#127873; Todos os planos incluem <strong style="color:var(--blue-light)">30 dias de trial Pro</strong> gratuito &mdash; sem cartão de crédito.
+      🎁 Teste qualquer plano com <strong style="color:var(--blue-light)">30 dias grátis de Standard</strong> — sem cartão. Ao fim do trial, escolha o plano ideal ou cancele sem custo.
     </p>
   </div>
 </section>
@@ -1605,7 +2460,7 @@
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>Sim! Toda conta nova recebe <strong>30 dias grátis do plano Pro</strong>, com acesso completo a FinOps, agendamentos, webhooks e relatórios. Depois do trial, você pode continuar no plano Gratuito (2 workspaces, 3 contas cloud, 3 membros) ou fazer upgrade.</p>
+          <p>Sim! Toda conta nova recebe <strong>30 dias grátis do plano Standard</strong>, com acesso completo a FinOps, agendamentos, webhooks e relatórios. Ao fim do trial, escolha o plano ideal ou cancele sem cobrança &mdash; não há cobrança automática.</p>
         </div>
       </div>
 
@@ -1615,7 +2470,7 @@
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>O módulo FinOps analisa seus custos em todas as clouds, identifica recursos ociosos, sugere otimizações e permite configurar budgets com alertas automáticos.</p>
+          <p>O módulo FinOps analisa seus custos em todas as clouds, identifica recursos ociosos, sugere otimizações e permite configurar budgets com alertas automáticos. Inclui detecção de anomalias, relatórios agendados e aplicação de ações diretamente pela plataforma.</p>
         </div>
       </div>
 
@@ -1625,7 +2480,37 @@
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>Sim. Com o plano Enterprise, você pode gerenciar múltiplas organizações de forma isolada, gerar relatórios por cliente e escalar sem limites.</p>
+          <p>Sim. Os planos Enterprise (E1, E2, E3) incluem Multi-Org para MSPs: uma organização master gerencia múltiplas organizações parceiras com isolamento total de dados, white label por cliente e relatórios consolidados ou individuais.</p>
+        </div>
+      </div>
+
+      <div class="faq-item reveal">
+        <button class="faq-question" aria-expanded="false">
+          Como funciona o Migration365?
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>O Migration365 oferece <strong>7 engines de migração</strong>: IMAP (qualquer provedor), Exchange (EWS), Google Workspace (Gmail + Drive), Tenant-to-Tenant (M365 → M365), OneDrive, SharePoint e Microsoft Teams Chat. Disponível a partir de <strong>R$ 70 por licença avulsa</strong> ou no bundle <strong>Enterprise + Migration por R$ 4.747/mês</strong> com migrações ilimitadas.</p>
+        </div>
+      </div>
+
+      <div class="faq-item reveal reveal-delay-1">
+        <button class="faq-question" aria-expanded="false">
+          Posso personalizar a plataforma com minha marca? (White Label)
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Sim. Os planos Enterprise (E1, E2, E3) incluem White Label completo: logotipo, favicon, cores primárias, nome da plataforma, emails transacionais com sua marca e até domínio próprio. MSPs podem configurar branding diferente para cada cliente parceiro.</p>
+        </div>
+      </div>
+
+      <div class="faq-item reveal reveal-delay-2">
+        <button class="faq-question" aria-expanded="false">
+          Vocês suportam cobrança e exibição em dólar?
+          <span class="faq-toggle">+</span>
+        </button>
+        <div class="faq-answer">
+          <p>Sim. Cada organização pode alternar entre BRL e USD na interface. A cotação é atualizada automaticamente via Banco Central do Brasil (ou manualmente se preferir). Valores de custo cloud, relatórios e orçamentos FinOps são convertidos em tempo real.</p>
         </div>
       </div>
     </div>
@@ -1715,13 +2600,22 @@
 
   <div class="footer-links">
     <a href="#features" class="footer-link">Funcionalidades</a>
+    <a href="#security" class="footer-link">Segurança</a>
+    <a href="#migration" class="footer-link">Migration365</a>
     <a href="#pricing" class="footer-link">Preços</a>
     <a href="#faq" class="footer-link">FAQ</a>
     <a href="#contato" class="footer-link">Contato</a>
+    <a href="/termos" class="footer-link">Termos</a>
+    <a href="/privacidade" class="footer-link">Privacidade</a>
+    <a href="/lgpd" class="footer-link">LGPD</a>
   </div>
 
   <div class="footer-right">
     <a href="https://hub.cloudatlas.app.br" class="footer-link">cloudatlas.app.br &rarr;</a>
+    <a href="https://status.cloudatlas.app.br" class="footer-link" style="display:inline-flex; align-items:center; gap:6px;">
+      <span style="width:8px; height:8px; border-radius:50%; background:#10b981; box-shadow:0 0 8px #10b981;"></span>
+      Todos os sistemas operacionais
+    </a>
     <p>&copy; <script>document.write(new Date().getFullYear())</script> CloudAtlas &mdash; Gestão Multi-Cloud Centralizada</p>
     <span class="footer-made">Feito com &#9729;&#65039; no Brasil</span>
   </div>
@@ -1754,20 +2648,30 @@
 
   // ── Navbar scroll effect ──
   var navEl = document.querySelector('nav');
+  var progressEl = document.getElementById('scrollProgress');
   window.addEventListener('scroll', function() {
     navEl.classList.toggle('scrolled', window.scrollY > 60);
+    if (progressEl) {
+      var docHeight = document.documentElement.scrollHeight - window.innerHeight;
+      var pct = docHeight > 0 ? (window.scrollY / docHeight) * 100 : 0;
+      progressEl.style.width = pct + '%';
+    }
   }, { passive: true });
 
-  // ── Particles ──
+  // ── Particles (respect reduced-motion and mobile perf) ──
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const container = document.getElementById('particles');
-  for (let i = 0; i < 30; i++) {
-    const p = document.createElement('div');
-    p.className = 'particle';
-    p.style.left = Math.random() * 100 + '%';
-    p.style.animationDuration = (Math.random() * 15 + 10) + 's';
-    p.style.animationDelay = (Math.random() * 15) + 's';
-    p.style.width = p.style.height = (Math.random() * 2 + 1) + 'px';
-    container.appendChild(p);
+  if (container && !reducedMotion) {
+    const particleCount = window.innerWidth < 768 ? 12 : 30;
+    for (let i = 0; i < particleCount; i++) {
+      const p = document.createElement('div');
+      p.className = 'particle';
+      p.style.left = Math.random() * 100 + '%';
+      p.style.animationDuration = (Math.random() * 15 + 10) + 's';
+      p.style.animationDelay = (Math.random() * 15) + 's';
+      p.style.width = p.style.height = (Math.random() * 2 + 1) + 'px';
+      container.appendChild(p);
+    }
   }
 
   // ── Scroll reveal ──

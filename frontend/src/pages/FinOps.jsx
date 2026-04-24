@@ -238,16 +238,23 @@ const FinOps = () => {
   };
 
   const handlePrintPDF = () => {
+    const esc = (v) => String(v ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
     const items = recsQ.data?.items ?? [];
     const rows = items.map((r) => `
       <tr>
-        <td>${r.provider?.toUpperCase() ?? ''}</td>
-        <td>${r.resource_name || r.resource_id}</td>
-        <td>${r.resource_type}</td>
-        <td>${r.recommendation_type}</td>
-        <td>${r.severity}</td>
+        <td>${esc(r.provider?.toUpperCase())}</td>
+        <td>${esc(r.resource_name || r.resource_id)}</td>
+        <td>${esc(r.resource_type)}</td>
+        <td>${esc(r.recommendation_type)}</td>
+        <td>${esc(r.severity)}</td>
         <td>$${Number(r.estimated_saving_monthly ?? 0).toFixed(2)}</td>
-        <td>${r.status}</td>
+        <td>${esc(r.status)}</td>
       </tr>`).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"/>
       <title>FinOps — Recomendações</title>
