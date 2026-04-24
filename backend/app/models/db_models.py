@@ -1183,3 +1183,60 @@ class IncidentResponse(Base):
     workspace    = relationship("Workspace")
     requester    = relationship("User", foreign_keys=[triggered_by])
     approver     = relationship("User", foreign_keys=[approved_by])
+
+
+# ── Knowledge Base (help center) ────────────────────────────────────────────
+
+
+class KBCategory(Base):
+    __tablename__ = "kb_categories"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name        = Column(String(120), nullable=False)
+    slug        = Column(String(120), unique=True, nullable=False, index=True)
+    icon        = Column(String(40), nullable=True)   # Lucide icon name
+    description = Column(Text, nullable=True)
+    order       = Column(Integer, nullable=False, default=0)
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    articles = relationship("KBArticle", back_populates="category", cascade="all, delete-orphan")
+
+
+class KBArticle(Base):
+    __tablename__ = "kb_articles"
+    __table_args__ = (
+        Index("ix_kb_articles_category_order", "category_id", "order"),
+    )
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category_id   = Column(UUID(as_uuid=True), ForeignKey("kb_categories.id", ondelete="CASCADE"), nullable=False, index=True)
+    title         = Column(String(200), nullable=False)
+    slug          = Column(String(200), unique=True, nullable=False, index=True)
+    summary       = Column(String(400), nullable=True)
+    content       = Column(Text, nullable=False, default="")
+    order         = Column(Integer, nullable=False, default=0)
+    is_published  = Column(Boolean, nullable=False, default=True)
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    category = relationship("KBCategory", back_populates="articles")
+    videos   = relationship("KBArticleVideo", back_populates="article", cascade="all, delete-orphan", order_by="KBArticleVideo.order")
+    author   = relationship("User", foreign_keys=[created_by_id])
+
+
+class KBArticleVideo(Base):
+    __tablename__ = "kb_article_videos"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    article_id        = Column(UUID(as_uuid=True), ForeignKey("kb_articles.id", ondelete="CASCADE"), nullable=False, index=True)
+    title             = Column(String(200), nullable=True)
+    s3_key            = Column(String(500), nullable=False)
+    content_type      = Column(String(80), nullable=True)
+    size_bytes        = Column(Integer, nullable=True)
+    duration_seconds  = Column(Integer, nullable=True)
+    thumbnail_s3_key  = Column(String(500), nullable=True)
+    order             = Column(Integer, nullable=False, default=0)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    article = relationship("KBArticle", back_populates="videos")

@@ -74,6 +74,11 @@ const M365Audit = lazy(() => import('./pages/m365/Audit'));
 const Migration365 = lazy(() => import('./pages/m365/Migration365'));
 const SecurityAutomation = lazy(() => import('./pages/security/SecurityAutomation'));
 
+// Knowledge Base
+const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
+const KnowledgeArticle = lazy(() => import('./pages/KnowledgeArticle'));
+const KnowledgeAdmin = lazy(() => import('./pages/KnowledgeAdmin'));
+
 // Multi-tenant & Admin
 const OrgSettings = lazy(() => import('./pages/OrgSettings'));
 const WorkspaceSettings = lazy(() => import('./pages/WorkspaceSettings'));
@@ -198,6 +203,9 @@ function App() {
                 <Route path="/org/settings" element={<PR><OrgSettings /></PR>} />
                 <Route path="/org/managed" element={<PR><ManagedOrgsPage /></PR>} />
                 <Route path="/admin" element={<PR><AdminPanel /></PR>} />
+                <Route path="/admin/knowledge" element={<PR><KnowledgeAdmin /></PR>} />
+                <Route path="/knowledge" element={<PR><KnowledgeBase /></PR>} />
+                <Route path="/knowledge/:slug" element={<PR><KnowledgeArticle /></PR>} />
                 <Route path="/workspace/settings" element={<PR><WorkspaceSettings /></PR>} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

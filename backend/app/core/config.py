@@ -91,6 +91,14 @@ class Settings(BaseSettings):
     # If empty, /metrics is only accessible in DEBUG mode.
     METRICS_TOKEN: str = ""
 
+    # Knowledge Base storage (Azure Blob Storage)
+    KB_AZURE_STORAGE_ACCOUNT: str = ""
+    KB_AZURE_STORAGE_KEY: str = ""
+    KB_AZURE_CONTAINER: str = "knowledge-base"
+    KB_UPLOAD_MAX_MB: int = 500
+    KB_PRESIGN_GET_EXPIRE_SECONDS: int = 3600  # 1h
+    KB_PRESIGN_PUT_EXPIRE_SECONDS: int = 900   # 15min
+
     @model_validator(mode='after')
     def validate_production_secrets(self) -> 'Settings':
         """Prevent the app from starting with insecure defaults in production."""

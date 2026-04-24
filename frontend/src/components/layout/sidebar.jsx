@@ -4,6 +4,7 @@ import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
   ShieldCheck, Bell, PackageSearch, GitPullRequestArrow, ChevronDown,
+  BookOpen,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AwsIcon, AzureIcon, GcpIcon, M365Icon } from '../common/CloudProviderIcons';
@@ -178,6 +179,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
           <PermissionGate permission="resources.manage">
             <NavItem to="/security/automation" label="Segurança" icon={ShieldCheck} />
           </PermissionGate>
+          <NavItem to="/knowledge" label="Base de Conhecimento" icon={BookOpen} />
         </NavSection>
 
         {/* ── Conta / Org ── */}
