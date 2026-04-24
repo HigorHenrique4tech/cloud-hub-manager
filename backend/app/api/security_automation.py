@@ -43,9 +43,13 @@ APPROVER_ROLES = {"owner", "admin"}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _check_enterprise(member: MemberContext):
+def _check_enterprise(member: MemberContext, db: Session):
     from app.services.plan_service import get_effective_plan
-    plan = get_effective_plan(member.organization)
+    from app.models.db_models import Organization
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+    plan = get_effective_plan(org)
     if plan not in ("enterprise", "enterprise_migration"):
         raise HTTPException(
             status_code=403,
@@ -146,7 +150,7 @@ def list_events(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     q = db.query(SecurityEvent).filter(
         SecurityEvent.workspace_id == member.workspace_id
     )
@@ -172,7 +176,7 @@ def get_event(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     ev = db.query(SecurityEvent).filter(
         SecurityEvent.id == event_id,
         SecurityEvent.workspace_id == member.workspace_id,
@@ -192,7 +196,7 @@ def dismiss_event(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     ev = db.query(SecurityEvent).filter(
         SecurityEvent.id == event_id,
         SecurityEvent.workspace_id == member.workspace_id,
@@ -216,7 +220,7 @@ def execute_event_action(
     db: Session = Depends(get_db),
 ):
     """Executa uma ação de contenção manualmente para um evento específico."""
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     if not _is_approver(member, db):
         raise HTTPException(403, "Apenas admins e owners podem executar ações de segurança.")
 
@@ -281,7 +285,7 @@ def trigger_scan(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     background_tasks.add_task(run_security_scan, str(member.workspace_id))
     return {"message": "Scan de segurança iniciado em background."}
 
@@ -293,7 +297,7 @@ def list_playbooks(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     playbooks = get_active_playbooks(db, member.workspace_id)
     return {"playbooks": [{"name": k, **v} for k, v in playbooks.items()]}
 
@@ -305,7 +309,7 @@ def update_playbook(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     if not _is_approver(member, db):
         raise HTTPException(403, "Apenas admins e owners podem editar playbooks.")
 
@@ -370,7 +374,7 @@ def list_audit(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     q = (db.query(SecurityAction)
          .filter(SecurityAction.workspace_id == member.workspace_id)
          .order_by(SecurityAction.executed_at.desc()))
@@ -387,7 +391,7 @@ def get_settings(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     from app.services.scheduler_service import scheduler
     job_id = f"security_scan_{member.workspace_id}"
     job = scheduler.get_job(job_id)
@@ -404,7 +408,7 @@ def update_settings(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     if not _is_approver(member, db):
         raise HTTPException(403, "Apenas admins e owners podem alterar configurações.")
 
@@ -423,7 +427,7 @@ def get_pc_config(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     cfg = (db.query(PartnerCenterConfig)
            .filter(PartnerCenterConfig.workspace_id == member.workspace_id)
            .first())
@@ -444,7 +448,7 @@ def upsert_pc_config(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     if not _is_approver(member, db):
         raise HTTPException(403, "Apenas admins e owners podem configurar o Partner Center.")
 
@@ -487,7 +491,7 @@ def list_customer_subs(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     from app.services.partner_center_service import (
         decrypt_pc_credentials, get_partner_center_token, list_customer_subscriptions,
     )
@@ -511,7 +515,7 @@ def suspend_sub(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     if not _is_approver(member, db):
         raise HTTPException(403, "Apenas admins e owners podem suspender assinaturas.")
 
@@ -546,7 +550,7 @@ def reactivate_sub(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     if not _is_approver(member, db):
         raise HTTPException(403, "Apenas admins e owners podem reativar assinaturas.")
 
@@ -583,7 +587,7 @@ def list_ir(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     q = db.query(IncidentResponse).filter(
         IncidentResponse.workspace_id == member.workspace_id
     )
@@ -603,7 +607,7 @@ def list_ir_templates(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     return {
         "templates": [
             get_template_preview(t) for t in TEMPLATES
@@ -617,7 +621,7 @@ def create_ir(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     try:
         ir = create_incident_response(
             db=db,
@@ -652,7 +656,7 @@ def get_ir(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     ir = db.query(IncidentResponse).filter(
         IncidentResponse.id == ir_id,
         IncidentResponse.workspace_id == member.workspace_id,
@@ -670,7 +674,7 @@ def approve_ir(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     if not _is_approver(member, db):
         raise HTTPException(403, "Apenas admins e owners podem aprovar respostas a incidente.")
 
@@ -714,7 +718,7 @@ def cancel_ir(
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
-    _check_enterprise(member)
+    _check_enterprise(member, db)
     ir = db.query(IncidentResponse).filter(
         IncidentResponse.id == ir_id,
         IncidentResponse.workspace_id == member.workspace_id,
