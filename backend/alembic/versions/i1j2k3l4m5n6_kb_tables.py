@@ -1,15 +1,15 @@
 """knowledge base tables
 
-Revision ID: p5q6r7s8t9u0
-Revises: o4p5q6r7s8t9
+Revision ID: i1j2k3l4m5n6
+Revises: h8i9j0k1l2m3
 Create Date: 2026-04-24
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import UUID
 
-revision = 'p5q6r7s8t9u0'
-down_revision = 'o4p5q6r7s8t9'
+revision = 'i1j2k3l4m5n6'
+down_revision = 'h8i9j0k1l2m3'
 branch_labels = None
 depends_on = None
 
@@ -48,7 +48,6 @@ def upgrade():
     )
     op.create_index('ix_kb_articles_category_order', 'kb_articles', ['category_id', 'order'])
 
-    # Full-text search index (Portuguese)
     op.execute("""
         CREATE INDEX ix_kb_articles_fts
         ON kb_articles
