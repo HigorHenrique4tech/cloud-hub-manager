@@ -17,6 +17,7 @@ from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
 from app.database import get_db
 from app.models.db_models import PartnerCenterConfig, Organization, Workspace, OrganizationMember, WorkspaceMember
+from app.services.plan_service import check_workspace_limit
 
 logger = logging.getLogger(__name__)
 
@@ -228,6 +229,14 @@ def import_customer(
             "org_id": str(existing.id),
             "message": f"Organização '{body.customer_name}' atualizada.",
         }
+
+    # Checar limite de workspaces antes de criar (cada org importada cria 1 workspace)
+    ws_allowed, ws_current, ws_max = check_workspace_limit(db, master_org.id, master_org.plan_tier, "master")
+    if not ws_allowed:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Limite de workspaces atingido ({ws_current}/{ws_max}). Faça upgrade para importar mais clientes.",
+        )
 
     # Create new partner org
     base_slug = _slugify(body.customer_name)

@@ -22,9 +22,9 @@ PLAN_HIERARCHY = {
 # ── Plan limits ──────────────────────────────────────────────────────────────
 
 PLAN_LIMITS = {
-    "free":                 {"workspaces": 2,    "cloud_accounts": 3,    "members": 3,    "managed_orgs": 0},
-    "basic":                {"workspaces": 5,    "cloud_accounts": 10,   "members": 3,    "managed_orgs": 0},
-    "standard":             {"workspaces": 25,   "cloud_accounts": None, "members": 10,   "managed_orgs": 0},
+    "free":                 {"workspaces": 2,    "cloud_accounts": 3,    "members": 3,    "managed_orgs": None},
+    "basic":                {"workspaces": 5,    "cloud_accounts": 10,   "members": 3,    "managed_orgs": None},
+    "standard":             {"workspaces": 25,   "cloud_accounts": None, "members": 10,   "managed_orgs": None},
     "enterprise_e1":        {"workspaces": 50,   "cloud_accounts": None, "members": 20,   "managed_orgs": None},
     "enterprise_e2":        {"workspaces": 100,  "cloud_accounts": None, "members": 40,   "managed_orgs": None},
     "enterprise_e3":        {"workspaces": 200,  "cloud_accounts": None, "members": 80,   "managed_orgs": None},
@@ -44,8 +44,8 @@ PLAN_PRICES = {
     "addon_user":                 15900,   # R$ 159,00 per user
 
     # Legacy migration (backward compat)
-    "enterprise_migration":       474700,  # R$ 4.747,00 (Enterprise R$2.497 + Migration R$2.250)
-    "migration_license_unit":     7000,    # R$ 70,00 por licença avulsa
+    "enterprise_migration":       0,        # legado — plano removido do catálogo
+    "migration_license_unit":     7500,    # R$ 75,00 por licença de migração
     "enterprise_extra_org":       39700,   # R$ 397,00 por org parceira adicional
     "enterprise_base_orgs":       5,       # orgs parceiras incluídas no base Enterprise
     "enterprise_base_workspaces": 20,      # workspaces incluídos na org master Enterprise
@@ -109,6 +109,18 @@ def _count_consolidated_workspaces(db: Session, master_org_id) -> int:
     ).count()
 
 
+def _count_consolidated_members(db: Session, master_org_id) -> int:
+    """Count unique active members across master org and all its partner orgs."""
+    partner_ids = [
+        row[0] for row in db.query(Organization.id).filter(Organization.parent_org_id == master_org_id).all()
+    ]
+    all_ids = [master_org_id] + partner_ids
+    return db.query(OrganizationMember.user_id).filter(
+        OrganizationMember.organization_id.in_(all_ids),
+        OrganizationMember.is_active == True,
+    ).distinct().count()
+
+
 def check_workspace_limit(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> tuple:
     """Returns (allowed, current_count, max_count).
     For master orgs: counts workspaces across master + all partners against the master plan limit.
@@ -165,8 +177,25 @@ def check_account_limit(db: Session, org_id, plan_tier: str) -> tuple:
     return (current < max_acc, current, max_acc)
 
 
-def check_member_limit(db: Session, org_id, plan_tier: str) -> tuple:
-    """Returns (allowed, current_count, max_count)."""
+def check_member_limit(db: Session, org_id, plan_tier: str, org_type: str = "standalone") -> tuple:
+    """Returns (allowed, current_count, max_count).
+    For master orgs: counts unique members across master + all partner orgs.
+    For partner orgs: resolves to master org and checks against master plan limit.
+    """
+    if org_type == "partner":
+        org = db.query(Organization).filter(Organization.id == org_id).first()
+        if org and org.parent_org_id:
+            master = db.query(Organization).filter(Organization.id == org.parent_org_id).first()
+            if master:
+                return check_member_limit(db, master.id, get_effective_plan(master), org_type="master")
+    if org_type == "master" or org_type == "partner":
+        limits = get_plan_limits(plan_tier)
+        max_mem = limits["members"]
+        current = _count_consolidated_members(db, org_id)
+        if max_mem is None:
+            return (True, current, None)
+        return (current < max_mem, current, max_mem)
+    # standalone
     limits = get_plan_limits(plan_tier)
     max_mem = limits["members"]
     current = db.query(OrganizationMember).filter(
@@ -223,10 +252,22 @@ def get_org_usage(db: Session, org_id, plan_tier: str, org_type: str = "standalo
         )
         .count()
     )
-    mem_count = db.query(OrganizationMember).filter(
-        OrganizationMember.organization_id == org_id,
-        OrganizationMember.is_active == True,
-    ).count()
+    if org_type == "master":
+        mem_count = _count_consolidated_members(db, org_id)
+    elif org_type == "partner":
+        org_obj = db.query(Organization).filter(Organization.id == org_id).first()
+        if org_obj and org_obj.parent_org_id:
+            mem_count = _count_consolidated_members(db, org_obj.parent_org_id)
+        else:
+            mem_count = db.query(OrganizationMember).filter(
+                OrganizationMember.organization_id == org_id,
+                OrganizationMember.is_active == True,
+            ).count()
+    else:
+        mem_count = db.query(OrganizationMember).filter(
+            OrganizationMember.organization_id == org_id,
+            OrganizationMember.is_active == True,
+        ).count()
     managed_orgs_count = db.query(Organization).filter(
         Organization.parent_org_id == org_id,
     ).count()
@@ -248,9 +289,8 @@ def get_org_usage(db: Session, org_id, plan_tier: str, org_type: str = "standalo
 def check_migration_access(db: Session, org_id) -> tuple:
     """Check if an org can use Migration365.
 
-    Returns (allowed, remaining_licenses_or_none, message).
-    - enterprise_migration: unlimited (remaining=None)
-    - enterprise with active licenses: remaining count
+    Returns (allowed, remaining_licenses, message).
+    - Enterprise E1/E2/E3 with approved licenses: remaining count
     - anything else: denied
     """
     org = db.query(Organization).filter(Organization.id == org_id).first()
@@ -258,100 +298,75 @@ def check_migration_access(db: Session, org_id) -> tuple:
         return False, 0, "Organização não encontrada"
 
     effective = get_effective_plan(org)
-    level = PLAN_HIERARCHY.get(effective, 0)
+    if effective not in _ENTERPRISE_TIERS:
+        return False, 0, "Migration365 requer plano Enterprise ou superior."
 
-    # Bundle: unlimited
-    if effective == "enterprise_migration":
-        return True, None, "Migration365 ilimitado (bundle)"
-
-    # Enterprise: check for approved licenses
-    if level >= PLAN_HIERARCHY["enterprise"]:
-        licenses = (
-            db.query(MigrationLicense)
-            .filter(
-                MigrationLicense.organization_id == org_id,
-                MigrationLicense.is_active == True,
-                MigrationLicense.status == "approved",
-            )
-            .all()
+    licenses = (
+        db.query(MigrationLicense)
+        .filter(
+            MigrationLicense.organization_id == org_id,
+            MigrationLicense.is_active == True,
+            MigrationLicense.status == "approved",
         )
-        total_purchased = sum(l.licenses_purchased for l in licenses)
-        total_used = sum(l.licenses_used for l in licenses)
-        remaining = total_purchased - total_used
+        .all()
+    )
+    total_purchased = sum(l.licenses_purchased for l in licenses)
+    total_used = sum(l.licenses_used for l in licenses)
+    remaining = total_purchased - total_used
 
-        if total_purchased == 0:
-            return False, 0, "Nenhuma licença Migration365 aprovada. Solicite licenças avulsas (R$ 70/usuário) ou faça upgrade para Enterprise + Migration."
+    if total_purchased == 0:
+        return False, 0, "Nenhuma licença de migração aprovada. Solicite licenças (R$ 75,00/usuário) para começar."
 
-        if remaining <= 0:
-            return False, 0, f"Todas as {total_purchased} licenças foram utilizadas. Solicite mais licenças para continuar."
+    if remaining <= 0:
+        return False, 0, f"Todas as {total_purchased} licenças foram utilizadas. Solicite mais licenças para continuar."
 
-        return True, remaining, f"{remaining} licença(s) restante(s)"
-
-    # Pro or below
-    return False, 0, "Migration365 requer plano Enterprise ou superior."
+    return True, remaining, f"{remaining} licença(s) restante(s)"
 
 
 def get_migration_license_summary(db: Session, org_id) -> dict:
     """Return license summary for an organization."""
+    unit_price = PLAN_PRICES.get("migration_license_unit", 7500)
     org = db.query(Organization).filter(Organization.id == org_id).first()
     if not org:
-        return {"has_access": False}
+        return {"has_access": False, "unit_price_cents": unit_price}
 
     effective = get_effective_plan(org)
+    if effective not in _ENTERPRISE_TIERS:
+        return {"has_access": False, "mode": None, "required_plan": "enterprise", "unit_price_cents": unit_price}
 
-    if effective == "enterprise_migration":
-        return {
-            "has_access": True,
-            "mode": "bundle",
-            "licenses_purchased": None,
-            "licenses_used": None,
-            "licenses_remaining": None,
-            "unit_price_cents": PLAN_PRICES.get("migration_license_unit", 7000),
-        }
-
-    level = PLAN_HIERARCHY.get(effective, 0)
-    if level >= PLAN_HIERARCHY["enterprise"]:
-        approved = (
-            db.query(MigrationLicense)
-            .filter(
-                MigrationLicense.organization_id == org_id,
-                MigrationLicense.is_active == True,
-                MigrationLicense.status == "approved",
-            )
-            .all()
+    approved = (
+        db.query(MigrationLicense)
+        .filter(
+            MigrationLicense.organization_id == org_id,
+            MigrationLicense.is_active == True,
+            MigrationLicense.status == "approved",
         )
-        pending = (
-            db.query(MigrationLicense)
-            .filter(
-                MigrationLicense.organization_id == org_id,
-                MigrationLicense.status == "pending",
-            )
-            .count()
+        .all()
+    )
+    pending = (
+        db.query(MigrationLicense)
+        .filter(
+            MigrationLicense.organization_id == org_id,
+            MigrationLicense.status == "pending",
         )
-        total_purchased = sum(l.licenses_purchased for l in approved)
-        total_used = sum(l.licenses_used for l in approved)
-        return {
-            "has_access": total_purchased > total_used,
-            "mode": "per_license",
-            "licenses_purchased": total_purchased,
-            "licenses_used": total_used,
-            "licenses_remaining": total_purchased - total_used,
-            "pending_requests": pending,
-            "unit_price_cents": PLAN_PRICES.get("migration_license_unit", 7000),
-        }
-
+        .count()
+    )
+    total_purchased = sum(l.licenses_purchased for l in approved)
+    total_used = sum(l.licenses_used for l in approved)
     return {
-        "has_access": False,
-        "mode": None,
-        "required_plan": "enterprise",
-        "unit_price_cents": PLAN_PRICES.get("migration_license_unit", 7000),
+        "has_access": total_purchased > total_used,
+        "mode": "per_license",
+        "licenses_purchased": total_purchased,
+        "licenses_used": total_used,
+        "licenses_remaining": total_purchased - total_used,
+        "pending_requests": pending,
+        "unit_price_cents": unit_price,
     }
 
 
 def consume_migration_license(db: Session, org_id, count: int = 1) -> bool:
-    """Consume N licenses from the oldest active license batch.
+    """Consume N licenses from the oldest active license batch (FIFO).
 
-    For enterprise_migration (bundle), always returns True without consuming.
     Returns True if licenses were consumed, False if insufficient.
     """
     org = db.query(Organization).filter(Organization.id == org_id).first()
@@ -359,12 +374,10 @@ def consume_migration_license(db: Session, org_id, count: int = 1) -> bool:
         return False
 
     effective = get_effective_plan(org)
+    if effective not in _ENTERPRISE_TIERS:
+        return False
 
-    # Bundle: unlimited, no consumption needed
-    if effective == "enterprise_migration":
-        return True
-
-    # Enterprise: consume from approved license batches (FIFO)
+    # Consume from approved license batches (FIFO)
     # with_for_update() locks rows to prevent race conditions
     licenses = (
         db.query(MigrationLicense)

@@ -18,7 +18,7 @@ from app.core.dependencies import (
 from app.core.auth_context import MemberContext
 from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
-from app.services.plan_service import check_member_limit, check_managed_org_limit, get_org_usage, get_effective_plan, PLAN_PRICES
+from app.services.plan_service import check_member_limit, check_managed_org_limit, check_workspace_limit, get_org_usage, get_effective_plan, PLAN_PRICES
 from app.services.email_service import send_invite_email, send_org_member_added_email
 from app.services.notification_service import push_notification
 from app.services.notification_channel_service import fire_event
@@ -396,10 +396,10 @@ async def invite_member(
     if payload.role not in VALID_ROLES:
         raise HTTPException(status_code=400, detail=f"Role inválida. Opções: {', '.join(VALID_ROLES)}")
 
-    # Plan limit check
+    # Plan limit check — for partner orgs, checks against master org's consolidated count
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     effective = get_effective_plan(org)
-    allowed, current, limit = check_member_limit(db, member.organization_id, effective)
+    allowed, current, limit = check_member_limit(db, member.organization_id, effective, org_type=org.org_type)
     if not allowed:
         raise HTTPException(
             status_code=403,
@@ -1058,12 +1058,12 @@ async def create_managed_org(
     if master_org.plan_tier not in ("enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"):
         raise HTTPException(status_code=403, detail="Criação de organizações parceiras requer plano Enterprise.")
 
-    allowed, current, max_orgs = check_managed_org_limit(db, master_org.id, master_org.plan_tier)
-    # enterprise has None limit → always allowed
-    if not allowed:
+    # Orgs são ilimitadas — mas cada org cria 1 workspace, então checar limite de workspaces
+    ws_allowed, ws_current, ws_max = check_workspace_limit(db, master_org.id, master_org.plan_tier, "master")
+    if not ws_allowed:
         raise HTTPException(
             status_code=403,
-            detail=f"Limite de organizações gerenciadas atingido (máx {max_orgs}).",
+            detail=f"Limite de workspaces atingido ({ws_current}/{ws_max}). Cada organização parceira cria 1 workspace. Faça upgrade para continuar.",
         )
 
     slug = _slugify(payload.name)

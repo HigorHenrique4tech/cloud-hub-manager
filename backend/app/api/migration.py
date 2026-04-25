@@ -27,8 +27,7 @@ ws_router = APIRouter(
 # ── Schemas ───────────────────────────────────────────────────────────────────
 
 VALID_MIGRATION_TYPES = {
-    "imap", "google_workspace", "tenant_to_tenant",
-    "onedrive_to_onedrive", "sharepoint_to_sharepoint", "teams_chat",
+    "tenant_to_tenant",
 }
 
 
@@ -104,26 +103,21 @@ async def request_licenses(
 ):
     """Request migration licenses (Enterprise only). Requires admin approval."""
     from app.models.db_models import Organization, MigrationLicense
-    from app.services.plan_service import get_effective_plan, PLAN_HIERARCHY, PLAN_PRICES
+    from app.services.plan_service import get_effective_plan, PLAN_PRICES, _ENTERPRISE_TIERS
 
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     if not org:
         raise HTTPException(status_code=404, detail="Organização não encontrada")
 
     effective = get_effective_plan(org)
-
-    if effective == "enterprise_migration":
-        raise HTTPException(status_code=400,
-                            detail="Seu plano já inclui migrações ilimitadas. Não é necessário solicitar licenças.")
-
-    if PLAN_HIERARCHY.get(effective, 0) < PLAN_HIERARCHY["enterprise"]:
+    if effective not in _ENTERPRISE_TIERS:
         raise HTTPException(status_code=403,
-                            detail="Licenças Migration365 requerem plano Enterprise ou superior.")
+                            detail="Licenças de migração requerem plano Enterprise ou superior.")
 
     if body.quantity < 1 or body.quantity > 10000:
         raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 10.000.")
 
-    unit_price = PLAN_PRICES.get("migration_license_unit", 7000)
+    unit_price = PLAN_PRICES.get("migration_license_unit", 7500)
     total = unit_price * body.quantity
 
     import uuid
@@ -371,10 +365,7 @@ async def import_csv_preview(
     EMAIL_RE = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
     import re
 
-    # Para migrações de arquivo, não exigir formato de e-mail
-    is_file_migration = project.get("migration_type", "") in (
-        "onedrive_to_onedrive", "sharepoint_to_sharepoint", "teams_chat",
-    )
+    is_file_migration = False  # apenas tenant_to_tenant suportado
 
     for i, row in enumerate(reader, start=2):  # linha 1 = header
         # Tenta encontrar source_email por nome ou primeira coluna
