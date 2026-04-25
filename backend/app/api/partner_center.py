@@ -184,7 +184,9 @@ def import_customer(
     """
     _check_enterprise(member, db)
 
-    master_org = member.organization
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not master_org:
+        raise HTTPException(404, "Organização não encontrada.")
     if master_org.org_type not in ("master", "standalone"):
         raise HTTPException(400, "Apenas orgs master podem importar clientes Partner Center.")
 
@@ -255,7 +257,9 @@ def sync_customers(
     except Exception as exc:
         raise HTTPException(502, f"Erro ao autenticar no Partner Center: {exc}")
 
-    master_org = member.organization
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not master_org:
+        raise HTTPException(404, "Organização não encontrada.")
     created, updated, errors = 0, 0, []
 
     for cid in body.customer_ids:
