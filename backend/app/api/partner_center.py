@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
 from app.database import get_db
-from app.models.db_models import PartnerCenterConfig, Organization
+from app.models.db_models import PartnerCenterConfig, Organization, Workspace
 
 logger = logging.getLogger(__name__)
 
@@ -202,6 +202,10 @@ def import_customer(
     if existing:
         existing.name = body.customer_name
         existing.partner_center_tenant = body.customer_tenant_id
+        # Garante workspace caso não tenha sido criado na importação original
+        has_ws = db.query(Workspace).filter(Workspace.organization_id == existing.id).first()
+        if not has_ws:
+            db.add(Workspace(organization_id=existing.id, name="Default", slug="default"))
         db.commit()
         return {
             "action": "updated",
@@ -227,6 +231,14 @@ def import_customer(
         partner_center_tenant=body.customer_tenant_id,
     )
     db.add(new_org)
+    db.flush()
+
+    ws = Workspace(
+        organization_id=new_org.id,
+        name="Default",
+        slug="default",
+    )
+    db.add(ws)
     db.commit()
     db.refresh(new_org)
 
@@ -294,6 +306,8 @@ def sync_customers(
                 partner_center_tenant=customer["tenant_id"],
             )
             db.add(new_org)
+            db.flush()
+            db.add(Workspace(organization_id=new_org.id, name="Default", slug="default"))
             created += 1
 
     db.commit()
