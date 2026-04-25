@@ -1923,7 +1923,12 @@ const Migration365 = () => {
   const [toDelete, setToDelete]     = useState(null);
 
   const effectivePlan = currentOrg?.effective_plan || 'free';
-  const planLevel = { free: 0, pro: 1, enterprise: 2 }[effectivePlan] || 0;
+  const planLevel = {
+    free: 0, basic: 0, standard: 1,
+    enterprise: 2,
+    enterprise_e1: 2, enterprise_e2: 2, enterprise_e3: 2,
+    enterprise_migration: 2,
+  }[effectivePlan] || 0;
 
   const hasEnterprise = planLevel >= 2;
 
