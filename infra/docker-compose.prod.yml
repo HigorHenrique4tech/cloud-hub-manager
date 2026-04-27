@@ -98,6 +98,11 @@ services:
       - ABACATEPAY_WEBHOOK_SECRET=${ABACATEPAY_WEBHOOK_SECRET:-}
       # Cache
       - REDIS_URL=redis://redis:6379/0
+      # Knowledge Base storage (Azure Blob)
+      - KB_AZURE_CONNECTION_STRING=${KB_AZURE_CONNECTION_STRING:-}
+      - KB_AZURE_STORAGE_ACCOUNT=${KB_AZURE_STORAGE_ACCOUNT:-}
+      - KB_AZURE_STORAGE_KEY=${KB_AZURE_STORAGE_KEY:-}
+      - KB_AZURE_CONTAINER=${KB_AZURE_CONTAINER:-knowledge-base}
     networks:
       - cloudatlas-network
     depends_on:
