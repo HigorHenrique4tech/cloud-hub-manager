@@ -830,10 +830,14 @@ const CustomerDetailDrawer = ({ customer, workspaceId, orgSlug, onClose }) => {
 
 /* ── Partner Center Tab ──────────────────────────────────────────────────── */
 
+const PC_PER_PAGE = 20;
+
 const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
   const qc = useQueryClient();
   const [selected, setSelected] = useState(new Set());
   const [gdapCustomer, setGdapCustomer] = useState(null);
+  const [pcSearch, setPcSearch] = useState('');
+  const [pcPage, setPcPage] = useState(1);
 
   const statusQ = useQuery({
     queryKey: ['pc-status', orgSlug, workspaceId],
@@ -921,6 +925,20 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
   const customers = customersQ.data?.customers || [];
   const syncedCount = customers.filter((c) => c.synced).length;
 
+  const filteredCustomers = pcSearch.trim()
+    ? customers.filter((c) =>
+        c.name?.toLowerCase().includes(pcSearch.toLowerCase()) ||
+        c.domain?.toLowerCase().includes(pcSearch.toLowerCase()) ||
+        c.tenant_id?.toLowerCase().includes(pcSearch.toLowerCase())
+      )
+    : customers;
+
+  const pcTotalPages = Math.max(1, Math.ceil(filteredCustomers.length / PC_PER_PAGE));
+  const safePage = Math.min(pcPage, pcTotalPages);
+  const paginatedCustomers = filteredCustomers.slice((safePage - 1) * PC_PER_PAGE, safePage * PC_PER_PAGE);
+
+  const handlePcSearch = (val) => { setPcSearch(val); setPcPage(1); setSelected(new Set()); };
+
   const toggleSelect = (id) => setSelected((prev) => {
     const next = new Set(prev);
     next.has(id) ? next.delete(id) : next.add(id);
@@ -928,9 +946,12 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
   });
 
   const toggleAll = () => {
-    const unsynced = customers.filter((c) => !c.synced).map((c) => c.id);
-    if (selected.size === unsynced.length) setSelected(new Set());
-    else setSelected(new Set(unsynced));
+    const unsynced = paginatedCustomers.filter((c) => !c.synced).map((c) => c.id);
+    if (unsynced.every((id) => selected.has(id))) {
+      setSelected((prev) => { const next = new Set(prev); unsynced.forEach((id) => next.delete(id)); return next; });
+    } else {
+      setSelected((prev) => { const next = new Set(prev); unsynced.forEach((id) => next.add(id)); return next; });
+    }
   };
 
   return (
@@ -969,13 +990,26 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+      <div className="flex items-center gap-3 flex-wrap">
+        {/* Busca */}
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={pcSearch}
+            onChange={(e) => handlePcSearch(e.target.value)}
+            placeholder="Buscar por nome, domínio ou tenant ID…"
+            className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+
+        <p className="text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
           {selected.size > 0
             ? `${selected.size} selecionado(s)`
-            : `${customers.length} cliente(s) encontrado(s)`}
+            : `${filteredCustomers.length}${pcSearch ? ` de ${customers.length}` : ''} cliente(s)`}
         </p>
-        <div className="flex items-center gap-2">
+
+        <div className="flex items-center gap-2 ml-auto">
           <button
             onClick={() => customersQ.refetch()}
             disabled={customersQ.isFetching}
@@ -1016,6 +1050,12 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
           <Store size={40} className="mb-3 opacity-20" />
           <p className="text-sm">Nenhum cliente encontrado no Partner Center</p>
         </div>
+      ) : filteredCustomers.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+          <Search size={32} className="mb-3 opacity-20" />
+          <p className="text-sm">Nenhum cliente corresponde a "{pcSearch}"</p>
+          <button onClick={() => handlePcSearch('')} className="mt-2 text-xs text-blue-500 hover:underline">Limpar busca</button>
+        </div>
       ) : (
         <div className="card rounded-2xl overflow-hidden">
           <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -1024,7 +1064,8 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
                 <th className="px-4 py-3">
                   <input
                     type="checkbox"
-                    checked={selected.size > 0 && selected.size === customers.filter((c) => !c.synced).length}
+                    checked={paginatedCustomers.filter((c) => !c.synced).length > 0 &&
+                             paginatedCustomers.filter((c) => !c.synced).every((c) => selected.has(c.id))}
                     onChange={toggleAll}
                     className="rounded border-gray-300 dark:border-gray-600"
                   />
@@ -1038,7 +1079,7 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
-              {customers.map((c) => (
+              {paginatedCustomers.map((c) => (
                 <tr key={c.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40">
                   <td className="px-4 py-3">
                     {c.synced ? (
@@ -1096,6 +1137,32 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
               ))}
             </tbody>
           </table>
+          {pcTotalPages > 1 && (
+            <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-700">
+              <p className="text-xs text-gray-400 dark:text-gray-500">
+                Mostrando {((safePage - 1) * PC_PER_PAGE) + 1}–{Math.min(safePage * PC_PER_PAGE, filteredCustomers.length)} de {filteredCustomers.length} cliente(s)
+              </p>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPcPage((p) => Math.max(1, p - 1))}
+                  disabled={safePage <= 1}
+                  className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="text-xs text-gray-600 dark:text-gray-300 font-medium">
+                  {safePage} de {pcTotalPages}
+                </span>
+                <button
+                  onClick={() => setPcPage((p) => Math.min(pcTotalPages, p + 1))}
+                  disabled={safePage >= pcTotalPages}
+                  className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
