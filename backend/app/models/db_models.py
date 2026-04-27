@@ -947,6 +947,8 @@ class MigrationProject(Base):
     completed_count    = Column(Integer, nullable=False, default=0)
     failed_count       = Column(Integer, nullable=False, default=0)
     verified_count     = Column(Integer, nullable=False, default=0)
+    strip_mip_labels        = Column(Boolean, nullable=False, default=False)  # remove MIP/AIP sensitivity label headers during migration
+    preserve_sp_permissions = Column(Boolean, nullable=False, default=False)  # copy SharePoint item permissions to destination
     started_at         = Column(DateTime, nullable=True)
     completed_at       = Column(DateTime, nullable=True)
     scheduled_at       = Column(DateTime, nullable=True)

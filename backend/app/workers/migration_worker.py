@@ -287,6 +287,12 @@ def run_migration_project(self, project_id: str,
 
         migration_type = project.migration_type
 
+        # Injeta flags de projeto no source_cfg para que as engines possam ler sem alterar a interface
+        if project.strip_mip_labels:
+            source_cfg = {**source_cfg, "strip_mip_labels": True}
+        if project.preserve_sp_permissions:
+            source_cfg = {**source_cfg, "preserve_sp_permissions": True}
+
         # Filtra mailboxes conforme modo de operação
         if verify_only:
             mailboxes = db.query(MigrationMailbox).filter(

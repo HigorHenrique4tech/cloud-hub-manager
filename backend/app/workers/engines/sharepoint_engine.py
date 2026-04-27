@@ -264,6 +264,80 @@ class SharePointEngine(MigrationEngine):
 
         return result.get("id", "")
 
+    # ── Permissões de item ──────────────────────────────────────────────────────
+
+    def _get_unique_permissions(self, drive_id: str, item_id: str,
+                                headers: dict) -> list[dict]:
+        """
+        Retorna apenas as permissões únicas (não herdadas) do item.
+        Filtra fora links anônimos e permissões sem grantedToV2.user.email.
+        """
+        url = f"{GRAPH_V1}/drives/{drive_id}/items/{item_id}/permissions?$top=100"
+        perms: list[dict] = []
+        try:
+            while url:
+                def fetch():
+                    r = requests.get(url, headers=headers, timeout=15)
+                    if r.status_code == 429:
+                        raise Exception("429 throttle")
+                    r.raise_for_status()
+                    return r.json()
+                page = self.retry_on_throttle(fetch)
+                for p in page.get("value", []):
+                    # Ignora permissões herdadas
+                    if p.get("inheritedFrom"):
+                        continue
+                    # Precisa ter roles e e-mail do destinatário
+                    roles = p.get("roles", [])
+                    granted = (p.get("grantedToV2") or p.get("grantedTo") or {})
+                    user = granted.get("user") or {}
+                    email = user.get("email") or user.get("userPrincipalName")
+                    if not roles or not email:
+                        continue
+                    perms.append({"roles": roles, "email": email})
+                url = page.get("@odata.nextLink")
+        except Exception as exc:
+            logger.debug(f"_get_unique_permissions falhou drive={drive_id} item={item_id}: {exc}")
+        return perms
+
+    def _apply_permissions(self, drive_id: str, item_id: str,
+                           permissions: list[dict], headers: dict) -> None:
+        """Aplica permissões únicas no item de destino via /invite."""
+        if not permissions:
+            return
+        url = f"{GRAPH_V1}/drives/{drive_id}/items/{item_id}/invite"
+        for perm in permissions:
+            body = {
+                "requireSignIn": True,
+                "sendInvitation": False,
+                "roles": perm["roles"],
+                "recipients": [{"email": perm["email"]}],
+            }
+            try:
+                def do():
+                    r = requests.post(
+                        url,
+                        headers={**headers, "Content-Type": "application/json"},
+                        json=body,
+                        timeout=15,
+                    )
+                    if r.status_code == 429:
+                        raise Exception("429 throttle")
+                    # 200/201 = ok, 400 = já tem acesso, 404 = usuário não existe no tenant
+                    if r.status_code == 404:
+                        logger.debug(
+                            f"Permissão ignorada: {perm['email']} não existe no tenant destino."
+                        )
+                        return
+                    if r.status_code not in (200, 201, 400):
+                        logger.debug(
+                            f"_apply_permissions HTTP {r.status_code} para {perm['email']}: "
+                            f"{r.text[:200]}"
+                        )
+                self.retry_on_throttle(do)
+            except Exception as exc:
+                logger.debug(f"_apply_permissions exceção para {perm.get('email')}: {exc}")
+
     def _update_timestamps(self, drive_id: str, item_id: str,
                            created: str | None, last_modified: str | None,
                            headers: dict) -> None:
@@ -492,11 +566,15 @@ class SharePointEngine(MigrationEngine):
         total_migrated = self.mailbox.items_migrated or 0
         total_files = self.mailbox.items_total or 0
 
+        preserve_perms = self.source_cfg.get("preserve_sp_permissions", False)
         drive_mappings = self._map_drives(src_site, dst_site, src_hdrs, dst_hdrs)
 
         if not drive_mappings:
             self.add_log("Nenhum drive mapeado entre origem e destino.", "error")
             return
+
+        if preserve_perms:
+            self.add_log("Preservação de permissões ativada: permissões únicas serão copiadas após cada arquivo.")
 
         for src_drive_id, dst_drive_id, drive_name in drive_mappings:
             self.add_log(f"Migrando biblioteca '{drive_name}'...")
@@ -535,6 +613,12 @@ class SharePointEngine(MigrationEngine):
                         item.get("lastModifiedDateTime"),
                         dst_hdrs,
                     )
+
+                    # Copiar permissões únicas se flag ativo
+                    if preserve_perms and dest_id:
+                        perms = self._get_unique_permissions(src_drive_id, item_id, src_hdrs)
+                        if perms:
+                            self._apply_permissions(dst_drive_id, dest_id, perms, dst_hdrs)
 
                     self.record_copied(
                         folder=folder_key, uid=item_id, dest_id=dest_id,

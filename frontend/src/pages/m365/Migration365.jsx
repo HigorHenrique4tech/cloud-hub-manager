@@ -124,6 +124,8 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
     migration_type: 'tenant_to_tenant',
     source_config: {},
     destination_config: {},
+    strip_mip_labels: false,
+    preserve_sp_permissions: false,
   });
   const [srcFields, setSrcFields] = useState({});
   const [dstFields, setDstFields] = useState({});
@@ -145,6 +147,8 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
       migration_type: form.migration_type,
       source_config: { ...srcFields, label: srcFields.domain || srcFields.host || srcFields.tenant_id || '' },
       destination_config: dstFields,
+      strip_mip_labels: form.strip_mip_labels,
+      preserve_sp_permissions: form.preserve_sp_permissions,
     }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['migration-projects'] });
@@ -360,6 +364,67 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                   className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
               </div>
+
+              {/* MIP label stripping */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <div className="relative mt-0.5 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={form.strip_mip_labels}
+                      onChange={e => setForm(p => ({ ...p, strip_mip_labels: e.target.checked }))}
+                      className="sr-only"
+                    />
+                    <div
+                      onClick={() => setForm(p => ({ ...p, strip_mip_labels: !p.strip_mip_labels }))}
+                      className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.strip_mip_labels ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    >
+                      <span className={`block w-4 h-4 mt-0.5 rounded-full bg-white shadow transition-transform ${form.strip_mip_labels ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-purple-500" />
+                      Remover labels de proteção MIP (Microsoft Purview)
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Remove os headers <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-purple-600 dark:text-purple-400">msip_labels</code> de cada e-mail antes de importar no destino.
+                      Útil quando o tenant destino tem políticas de labels diferentes — evita erros de "label órfã".
+                    </p>
+                  </div>
+                </label>
+              </div>
+
+              {/* SharePoint permissions */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <div className="relative mt-0.5 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={form.preserve_sp_permissions}
+                      onChange={e => setForm(p => ({ ...p, preserve_sp_permissions: e.target.checked }))}
+                      className="sr-only"
+                    />
+                    <div
+                      onClick={() => setForm(p => ({ ...p, preserve_sp_permissions: !p.preserve_sp_permissions }))}
+                      className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.preserve_sp_permissions ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    >
+                      <span className={`block w-4 h-4 mt-0.5 rounded-full bg-white shadow transition-transform ${form.preserve_sp_permissions ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-green-500" />
+                      Preservar permissões de pastas e arquivos (SharePoint)
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Copia permissões únicas (não herdadas) de cada item SharePoint para o destino.
+                      Os usuários precisam existir no tenant destino com o mesmo UPN.
+                      Aumenta o tempo de migração (~1 chamada de API extra por arquivo com permissão customizada).
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
           )}
 
@@ -374,10 +439,12 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                   { label: 'Origem', value: srcFields.domain || srcFields.host || srcFields.tenant_id || '—' },
                   { label: 'Destino', value: dstFields.tenant_id || 'Tenant do workspace' },
                   { label: 'Descrição', value: form.description || '—' },
-                ].map(({ label, value }) => (
+                  { label: 'Labels MIP', value: form.strip_mip_labels ? 'Remover durante migração' : 'Preservar (padrão)', highlight: form.strip_mip_labels },
+                  { label: 'Permissões SP', value: form.preserve_sp_permissions ? 'Copiar permissões únicas' : 'Não copiar (padrão)', highlight: form.preserve_sp_permissions },
+                ].map(({ label, value, highlight }) => (
                   <div key={label} className="flex items-start gap-4 px-4 py-3 border-b last:border-0 border-gray-100 dark:border-gray-800">
-                    <span className="text-xs text-gray-500 dark:text-gray-400 w-24 flex-shrink-0">{label}</span>
-                    <span className="text-sm text-gray-800 dark:text-gray-200 font-medium">{value}</span>
+                    <span className="text-xs text-gray-500 dark:text-gray-400 w-28 flex-shrink-0">{label}</span>
+                    <span className={`text-sm font-medium ${highlight ? 'text-blue-600 dark:text-blue-400' : 'text-gray-800 dark:text-gray-200'}`}>{value}</span>
                   </div>
                 ))}
               </div>
@@ -434,13 +501,55 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
 // ── Add Mailboxes Modal ───────────────────────────────────────────────────────
 
 const OBJECT_TYPE_CONFIG = {
-  email:      { title: 'Adicionar Caixas de Correio', srcLabel: 'E-mail de origem',   dstLabel: 'E-mail de destino', srcPlaceholder: 'usuario@origem.com' },
-  onedrive:   { title: 'Adicionar Contas OneDrive',   srcLabel: 'E-mail da conta',    dstLabel: 'E-mail de destino', srcPlaceholder: 'usuario@origem.com' },
-  sharepoint: { title: 'Adicionar Sites SharePoint',  srcLabel: 'E-mail do usuário',  dstLabel: 'E-mail de destino', srcPlaceholder: 'usuario@origem.com' },
+  email: {
+    title: 'Adicionar Caixas de Correio',
+    srcLabel: 'E-mail de origem',
+    dstLabel: 'E-mail de destino',
+    hint: 'origem@tenant.com, destino@tenant.com, Nome',
+    textareaPlaceholder: 'joao@origem.com, joao@empresa.com, João Silva\nmaria@origem.com, maria@empresa.com\npedro@origem.com',
+    csvHint: <>Colunas: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">source_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">destination_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">display_name</code></>,
+    validate: (v) => v.includes('@'),
+    invalidMsg: 'Nenhum e-mail válido encontrado.',
+    itemLabel: 'caixa(s)',
+  },
+  onedrive: {
+    title: 'Adicionar Contas OneDrive',
+    srcLabel: 'E-mail do usuário (origem)',
+    dstLabel: 'E-mail do usuário (destino)',
+    hint: 'usuario@origem.com, usuario@destino.com, Nome',
+    textareaPlaceholder: 'joao@origem.com, joao@empresa.com, João Silva\nmaria@origem.com, maria@empresa.com',
+    csvHint: <>Colunas: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">source_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">destination_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">display_name</code></>,
+    validate: (v) => v.includes('@'),
+    invalidMsg: 'Nenhum e-mail válido encontrado.',
+    itemLabel: 'conta(s)',
+  },
+  sharepoint: {
+    title: 'Adicionar Sites SharePoint',
+    srcLabel: 'URL do site de origem',
+    dstLabel: 'URL do site de destino',
+    hint: 'https://origem.sharepoint.com/sites/nome, https://destino.sharepoint.com/sites/nome, Nome do Site',
+    textareaPlaceholder: 'https://origem.sharepoint.com/sites/Marketing, https://destino.sharepoint.com/sites/Marketing, Marketing\nhttps://origem.sharepoint.com/sites/TI, https://destino.sharepoint.com/sites/TI, TI',
+    csvHint: <>Colunas: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">source_url</code> (ou source_email), <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">destination_url</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">display_name</code></>,
+    validate: (v) => v.startsWith('https://') || v.startsWith('http://'),
+    invalidMsg: 'Nenhuma URL de site SharePoint válida encontrada. Use o formato https://tenant.sharepoint.com/sites/nome',
+    itemLabel: 'site(s)',
+  },
+  m365_group: {
+    title: 'Adicionar Grupos M365',
+    srcLabel: 'E-mail do grupo (origem)',
+    dstLabel: 'E-mail do grupo (destino)',
+    hint: 'grupo@origem.com, grupo@destino.com, Nome do Grupo',
+    textareaPlaceholder: 'marketing@origem.com, marketing@empresa.com, Marketing\nti@origem.com, ti@empresa.com, TI',
+    csvHint: <>Colunas: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">source_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">destination_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">display_name</code></>,
+    validate: (v) => v.includes('@'),
+    invalidMsg: 'Nenhum e-mail de grupo válido encontrado.',
+    itemLabel: 'grupo(s)',
+  },
 };
 
 const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
-  const { title: modalTitle, srcLabel, dstLabel, srcPlaceholder } = OBJECT_TYPE_CONFIG[objectType] || OBJECT_TYPE_CONFIG.email;
+  const cfg = OBJECT_TYPE_CONFIG[objectType] || OBJECT_TYPE_CONFIG.email;
+  const { title: modalTitle, srcLabel, dstLabel, hint, textareaPlaceholder, csvHint, validate, invalidMsg, itemLabel } = cfg;
   const qc = useQueryClient();
   const [tab, setTab] = useState('text');  // 'text' | 'csv'
 
@@ -453,10 +562,15 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
     setParseError('');
     const lines = input.trim().split('\n').filter(l => l.trim());
     const entries = lines.map(line => {
-      const parts = line.split(',').map(p => p.trim());
-      return { source_email: parts[0], destination_email: parts[1] || '', display_name: parts[2] || '' };
-    }).filter(e => e.source_email.includes('@'));
-    if (!entries.length) { setParseError('Nenhum e-mail válido encontrado.'); return; }
+      // SharePoint URLs have commas only in edge cases — split on first 2 commas max
+      const idx1 = line.indexOf(',');
+      const idx2 = idx1 >= 0 ? line.indexOf(',', idx1 + 1) : -1;
+      const src  = (idx1 >= 0 ? line.slice(0, idx1) : line).trim();
+      const dst  = (idx1 >= 0 && idx2 >= 0 ? line.slice(idx1 + 1, idx2) : idx1 >= 0 ? line.slice(idx1 + 1) : '').trim();
+      const name = (idx2 >= 0 ? line.slice(idx2 + 1) : '').trim();
+      return { source_email: src, destination_email: dst || '', display_name: name || '' };
+    }).filter(e => e.source_email && validate(e.source_email));
+    if (!entries.length) { setParseError(invalidMsg); return; }
     setParsed(entries);
   };
 
@@ -528,19 +642,19 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
           {/* Aba: Colar texto */}
           {tab === 'text' && (
             <>
-              <p className="text-xs text-gray-500">Uma por linha: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{srcPlaceholder}, {dstLabel.toLowerCase()}, nome</code></p>
+              <p className="text-xs text-gray-500">Uma por linha: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-[11px]">{hint}</code></p>
               <textarea
                 rows={8}
                 value={input}
                 onChange={e => { setInput(e.target.value); setParsed([]); }}
-                placeholder={"joao@origem.com, joao@empresa.com, João Silva\nmaria@origem.com, maria@empresa.com\npedro@origem.com"}
+                placeholder={textareaPlaceholder}
                 className="w-full px-3 py-2 text-sm font-mono rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
               />
               {parseError && <p className="text-xs text-red-500">{parseError}</p>}
               {parsed.length > 0 && (
                 <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
                   <p className="text-xs text-green-700 dark:text-green-300 font-medium">
-                    {parsed.length} {objectType === 'onedrive' ? 'conta(s)' : objectType === 'sharepoint' ? 'site(s)' : 'caixa(s)'} pronta(s) para adicionar
+                    {parsed.length} {itemLabel} pronta(s) para adicionar
                   </p>
                 </div>
               )}
@@ -550,9 +664,7 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
           {/* Aba: Upload CSV */}
           {tab === 'csv' && (
             <>
-              <p className="text-xs text-gray-500">
-                Colunas aceitas: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">source_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">destination_email</code>, <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">display_name</code>
-              </p>
+              <p className="text-xs text-gray-500">{csvHint}</p>
 
               {/* Dropzone */}
               <label
@@ -595,8 +707,8 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
                       <table className="w-full text-xs">
                         <thead>
                           <tr className="bg-gray-50 dark:bg-gray-800 text-gray-500 text-left">
-                            <th className="px-3 py-2 font-medium">Origem</th>
-                            <th className="px-3 py-2 font-medium">Destino</th>
+                            <th className="px-3 py-2 font-medium">{srcLabel}</th>
+                            <th className="px-3 py-2 font-medium">{dstLabel}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -650,7 +762,7 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
             <button onClick={() => addMut.mutate()} disabled={addMut.isPending}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40">
               {addMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Importar {entries.length} {objectType === 'onedrive' ? 'conta(s)' : objectType === 'sharepoint' ? 'site(s)' : 'caixa(s)'}
+              Importar {entries.length} {itemLabel}
             </button>
           )}
         </div>
@@ -972,7 +1084,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
   };
 
   const MB_PER_PAGE = 50;
-  const MAILBOX_TABS = ['email', 'onedrive', 'sharepoint'];
+  const MAILBOX_TABS = ['email', 'onedrive', 'sharepoint', 'm365_group'];
   const currentObjectType = MAILBOX_TABS.includes(tab) ? tab : 'email';
   const filteredMailboxes = mailboxes.filter(m => {
     const matchType = m.object_type === currentObjectType;
@@ -1167,6 +1279,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
           { id: 'email',      label: 'Correio',     icon: Mail },
           { id: 'onedrive',   label: 'OneDrive',    icon: HardDrive },
           { id: 'sharepoint', label: 'SharePoint',  icon: Globe },
+          { id: 'm365_group', label: 'Grupos M365', icon: Users },
           { id: 'logs',       label: 'Logs',        icon: FileText },
         ].map(({ id, label, icon: Icon }) => {
           const cnt = MAILBOX_TABS.includes(id)
@@ -1199,7 +1312,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
             <button onClick={() => setShowAddMailboxes(true)}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
               <Plus className="w-4 h-4" />
-              {currentObjectType === 'email' ? 'Adicionar' : currentObjectType === 'onedrive' ? 'Adicionar OneDrive' : 'Adicionar SharePoint'}
+              {{ email: 'Adicionar', onedrive: 'Adicionar OneDrive', sharepoint: 'Adicionar SharePoint', m365_group: 'Adicionar Grupo' }[currentObjectType] || 'Adicionar'}
             </button>
           </div>
 
@@ -1229,19 +1342,14 @@ const ProjectDetail = ({ projectId, onBack }) => {
           </div>
           {filteredMailboxes.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              {currentObjectType === 'onedrive' ? <HardDrive className="w-10 h-10 text-gray-300 dark:text-gray-600" /> :
-               currentObjectType === 'sharepoint' ? <Globe className="w-10 h-10 text-gray-300 dark:text-gray-600" /> :
-               <Mail className="w-10 h-10 text-gray-300 dark:text-gray-600" />}
+              {{ email: <Mail className="w-10 h-10 text-gray-300 dark:text-gray-600" />, onedrive: <HardDrive className="w-10 h-10 text-gray-300 dark:text-gray-600" />, sharepoint: <Globe className="w-10 h-10 text-gray-300 dark:text-gray-600" />, m365_group: <Users className="w-10 h-10 text-gray-300 dark:text-gray-600" /> }[currentObjectType] || <Mail className="w-10 h-10 text-gray-300 dark:text-gray-600" />}
               <p className="text-sm text-gray-500">
-                {currentObjectType === 'onedrive' ? 'Nenhuma conta OneDrive adicionada ainda.' :
-                 currentObjectType === 'sharepoint' ? 'Nenhum site SharePoint adicionado ainda.' :
-                 'Nenhuma caixa de correio adicionada ainda.'}
+                {{ email: 'Nenhuma caixa de correio adicionada ainda.', onedrive: 'Nenhuma conta OneDrive adicionada ainda.', sharepoint: 'Nenhum site SharePoint adicionado ainda.', m365_group: 'Nenhum grupo M365 adicionado ainda.' }[currentObjectType]}
               </p>
               <button onClick={() => setShowAddMailboxes(true)}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 hover:border-blue-400 hover:text-blue-500">
                 <Plus className="w-4 h-4" />
-                {currentObjectType === 'onedrive' ? 'Adicionar OneDrive' :
-                 currentObjectType === 'sharepoint' ? 'Adicionar SharePoint' : 'Adicionar caixas'}
+                {{ email: 'Adicionar caixas', onedrive: 'Adicionar OneDrive', sharepoint: 'Adicionar SharePoint', m365_group: 'Adicionar Grupo M365' }[currentObjectType]}
               </button>
             </div>
           ) : (
@@ -1260,8 +1368,12 @@ const ProjectDetail = ({ projectId, onBack }) => {
                         className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                       />
                     </th>
-                    <th className="px-4 py-3 font-medium">Origem</th>
-                    <th className="px-4 py-3 font-medium">Destino</th>
+                    <th className="px-4 py-3 font-medium">
+                      {{ email: 'Origem', onedrive: 'Usuário Origem', sharepoint: 'URL de Origem', m365_group: 'Grupo Origem' }[currentObjectType] || 'Origem'}
+                    </th>
+                    <th className="px-4 py-3 font-medium">
+                      {{ email: 'Destino', onedrive: 'Usuário Destino', sharepoint: 'URL de Destino', m365_group: 'Grupo Destino' }[currentObjectType] || 'Destino'}
+                    </th>
                     <th className="px-4 py-3 font-medium">Status / Fase</th>
                     <th className="px-4 py-3 font-medium">Progresso</th>
                     <th className="px-4 py-3 font-medium">Verificação</th>
@@ -1285,11 +1397,11 @@ const ProjectDetail = ({ projectId, onBack }) => {
                             className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                           />
                         </td>
-                        <td className="px-4 py-3">
-                          <p className="font-medium text-gray-800 dark:text-gray-200">{mb.source_email}</p>
-                          {mb.display_name && <p className="text-xs text-gray-400">{mb.display_name}</p>}
+                        <td className="px-4 py-3 max-w-[220px]">
+                          <p className="font-medium text-gray-800 dark:text-gray-200 truncate" title={mb.source_email}>{mb.source_email}</p>
+                          {mb.display_name && <p className="text-xs text-gray-400 truncate">{mb.display_name}</p>}
                         </td>
-                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400">{mb.destination_email || '—'}</td>
+                        <td className="px-4 py-3 text-gray-600 dark:text-gray-400 max-w-[200px] truncate" title={mb.destination_email || ''}>{mb.destination_email || '—'}</td>
                         <td className="px-4 py-3">
                           <span className={`text-xs font-medium ${mbCfg.color}`}>{mbCfg.label}</span>
                           {/* Fase atual (quando running) */}

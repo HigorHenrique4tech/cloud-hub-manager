@@ -6,7 +6,9 @@ PidTagMessageFlags limpa o bit de rascunho (mfUnsent).
 """
 import base64
 import email as email_lib
+from email import generator as email_generator
 import hashlib
+import io
 import logging
 from urllib.parse import quote
 
@@ -106,6 +108,29 @@ class TenantToTenantEngine(MigrationEngine):
     def _enc_user(user_id: str) -> str:
         """URL-encode de UPN para segmento de path."""
         return quote(user_id or "", safe="@.")
+
+    # ── MIP label stripping ───────────────────────────────────────────────────
+
+    # Headers that carry Microsoft Information Protection (MIP/AIP) sensitivity
+    # labels. Removing them prevents "orphan label" errors when the destination
+    # tenant has different label policies.
+    _MIP_HEADERS = frozenset({
+        "msip_labels",
+        "x-protecting-labels",
+        "x-microsoft-msip-policy-revision",
+    })
+
+    @staticmethod
+    def _strip_mip_headers(raw_bytes: bytes) -> bytes:
+        """Return MIME bytes with MIP sensitivity label headers removed."""
+        msg = email_lib.message_from_bytes(raw_bytes)
+        for header_name in list(msg.keys()):
+            if header_name.lower() in TenantToTenantEngine._MIP_HEADERS:
+                del msg[header_name]
+        buf = io.BytesIO()
+        gen = email_generator.BytesGenerator(buf, mangle_from_=False)
+        gen.flatten(msg)
+        return buf.getvalue()
 
     # ── Download MIME (fonte) ─────────────────────────────────────────────────
 
@@ -531,6 +556,12 @@ class TenantToTenantEngine(MigrationEngine):
             )
             raise
 
+        if self.source_cfg.get("strip_mip_labels"):
+            self.add_log(
+                "Remoção de labels MIP ativada: headers msip_labels serão removidos de cada mensagem antes da importação.",
+                "info",
+            )
+
         total_migrated = self.mailbox.items_migrated or 0
         folders = self._list_folders(src_user, src_hdrs)
         _folder_cache: dict = {}  # folder_name → dest folder_id
@@ -589,6 +620,8 @@ class TenantToTenantEngine(MigrationEngine):
 
                     try:
                         raw_bytes = self._get_mime(src_user, msg_id, src_hdrs)
+                        if self.source_cfg.get("strip_mip_labels"):
+                            raw_bytes = self._strip_mip_headers(raw_bytes)
                         parsed = email_lib.message_from_bytes(raw_bytes)
                         msg_id_header = (parsed.get("Message-ID") or msg_int_id or "").strip()
                         content_hash = hashlib.sha256(raw_bytes[:4096]).hexdigest()
@@ -684,6 +717,8 @@ class TenantToTenantEngine(MigrationEngine):
                         continue
                     try:
                         raw_bytes = self._get_mime(src_user, msg_id, src_hdrs)
+                        if self.source_cfg.get("strip_mip_labels"):
+                            raw_bytes = self._strip_mip_headers(raw_bytes)
                         parsed = email_lib.message_from_bytes(raw_bytes)
                         msg_id_header = (parsed.get("Message-ID") or msg_int_id or "").strip()
                         dest_folder_id = self._get_or_create_folder(

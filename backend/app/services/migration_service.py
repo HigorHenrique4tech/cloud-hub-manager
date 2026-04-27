@@ -67,6 +67,8 @@ def create_project(
     migration_type: str,
     source_config: dict,
     destination_config: dict,
+    strip_mip_labels: bool = False,
+    preserve_sp_permissions: bool = False,
 ) -> dict:
     project = MigrationProject(
         id=uuid.uuid4(),
@@ -77,6 +79,8 @@ def create_project(
         migration_type=migration_type,
         source_config=_encrypt_config(db, workspace_id, source_config),
         destination_config=_encrypt_config(db, workspace_id, destination_config),
+        strip_mip_labels=strip_mip_labels,
+        preserve_sp_permissions=preserve_sp_permissions,
         status="draft",
     )
     db.add(project)
@@ -463,6 +467,8 @@ def _project_to_dict(p: MigrationProject, source_label: str = "",
         "failed_count": p.failed_count or 0,
         "verified_count": p.verified_count or 0,
         "progress": progress,
+        "strip_mip_labels": bool(p.strip_mip_labels),
+        "preserve_sp_permissions": bool(p.preserve_sp_permissions),
         "source_label": source_label,
         "eta_seconds": eta_seconds,
         "scheduled_at": p.scheduled_at.isoformat() if p.scheduled_at else None,

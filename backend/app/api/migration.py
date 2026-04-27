@@ -37,6 +37,8 @@ class CreateProjectRequest(BaseModel):
     migration_type: str
     source_config: dict
     destination_config: dict
+    strip_mip_labels: bool = False
+    preserve_sp_permissions: bool = False
 
     @validator("migration_type")
     def validate_migration_type(cls, v):
@@ -209,6 +211,8 @@ async def create_project(
         migration_type=body.migration_type,
         source_config=body.source_config,
         destination_config=body.destination_config,
+        strip_mip_labels=body.strip_mip_labels,
+        preserve_sp_permissions=body.preserve_sp_permissions,
     )
 
 
