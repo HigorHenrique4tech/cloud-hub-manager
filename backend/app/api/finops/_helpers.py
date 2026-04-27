@@ -230,6 +230,7 @@ def _require_plan(plan: str, minimum: str, feature: str):
         "free": 0,
         "basic": 1,
         "standard": 2,
+        "enterprise": 3,
         "enterprise_e1": 3,
         "enterprise_e2": 4,
         "enterprise_e3": 5,

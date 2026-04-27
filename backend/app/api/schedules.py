@@ -192,11 +192,16 @@ def _get_org_plan(member: MemberContext, db: Session) -> str:
 
 def _require_pro(member: MemberContext, db: Session):
     plan = _get_org_plan(member, db)
-    order = {"free": 0, "pro": 1, "enterprise": 2, "enterprise_migration": 3}
+    order = {
+        "free": 0, "basic": 0,
+        "standard": 1,
+        "enterprise": 2, "enterprise_e1": 2, "enterprise_e2": 2, "enterprise_e3": 2,
+        "enterprise_migration": 2,
+    }
     if order.get(plan, 0) < 1:
         raise HTTPException(
             status_code=403,
-            detail="Agendamentos requerem plano Pro ou superior."
+            detail="Agendamentos requerem plano Standard ou superior."
         )
 
 

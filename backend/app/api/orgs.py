@@ -239,7 +239,7 @@ async def update_plan(
     db: Session = Depends(get_db),
 ):
     """Update the organization's plan tier (owner/admin only)."""
-    valid_tiers = {"free", "pro", "enterprise", "enterprise_migration"}
+    valid_tiers = {"free", "basic", "standard", "enterprise", "enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"}
     if payload.plan_tier not in valid_tiers:
         raise HTTPException(status_code=400, detail=f"Plano inválido. Opções: {', '.join(sorted(valid_tiers))}")
 
