@@ -92,6 +92,8 @@ class Settings(BaseSettings):
     METRICS_TOKEN: str = ""
 
     # Knowledge Base storage (Azure Blob Storage)
+    # Aceita connection string OU account+key separados
+    KB_AZURE_CONNECTION_STRING: str = ""
     KB_AZURE_STORAGE_ACCOUNT: str = ""
     KB_AZURE_STORAGE_KEY: str = ""
     KB_AZURE_CONTAINER: str = "knowledge-base"

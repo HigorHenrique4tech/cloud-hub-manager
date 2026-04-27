@@ -2,6 +2,10 @@
 
 All blobs are private; access is granted via SAS tokens (PUT for upload, GET for playback).
 Container must exist and be set to private access.
+
+Accepts either:
+  - KB_AZURE_CONNECTION_STRING  (easiest — copy from Azure Portal)
+  - KB_AZURE_STORAGE_ACCOUNT + KB_AZURE_STORAGE_KEY  (legacy)
 """
 import logging
 import uuid
@@ -27,23 +31,43 @@ class KBStorageError(Exception):
     pass
 
 
+def _parse_connection_string(conn_str: str) -> dict:
+    """Parse 'Key=Value;Key=Value;...' into a dict (case-insensitive keys)."""
+    result = {}
+    for part in conn_str.split(";"):
+        if "=" in part:
+            k, _, v = part.partition("=")
+            result[k.strip().lower()] = v.strip()
+    return result
+
+
+def _get_account_and_key() -> tuple[str, str]:
+    """Return (account_name, account_key) from connection string or explicit settings."""
+    if settings.KB_AZURE_CONNECTION_STRING:
+        parsed = _parse_connection_string(settings.KB_AZURE_CONNECTION_STRING)
+        account = parsed.get("accountname", "")
+        key = parsed.get("accountkey", "")
+        if account and key:
+            return account, key
+    return settings.KB_AZURE_STORAGE_ACCOUNT, settings.KB_AZURE_STORAGE_KEY
+
+
 def is_configured() -> bool:
-    return bool(
-        settings.KB_AZURE_STORAGE_ACCOUNT
-        and settings.KB_AZURE_STORAGE_KEY
-        and settings.KB_AZURE_CONTAINER
-    )
+    account, key = _get_account_and_key()
+    return bool(account and key and settings.KB_AZURE_CONTAINER)
 
 
 def _account_url() -> str:
-    return f"https://{settings.KB_AZURE_STORAGE_ACCOUNT}.blob.core.windows.net"
+    account, _ = _get_account_and_key()
+    return f"https://{account}.blob.core.windows.net"
 
 
 def _assert_configured() -> None:
     if not is_configured():
         raise KBStorageError(
             "Knowledge Base storage não configurado. "
-            "Defina KB_AZURE_STORAGE_ACCOUNT, KB_AZURE_STORAGE_KEY e KB_AZURE_CONTAINER."
+            "Defina KB_AZURE_CONNECTION_STRING (ou KB_AZURE_STORAGE_ACCOUNT + KB_AZURE_STORAGE_KEY) "
+            "e KB_AZURE_CONTAINER."
         )
 
 
@@ -58,13 +82,14 @@ def presigned_put(blob_key: str, content_type: str, max_mb: Optional[int] = None
     if content_type not in ALLOWED_CONTENT_TYPES:
         raise KBStorageError(f"Content-type não permitido: {content_type}")
     _assert_configured()
+    account, key = _get_account_and_key()
     try:
         expiry = datetime.now(timezone.utc) + timedelta(seconds=settings.KB_PRESIGN_PUT_EXPIRE_SECONDS)
         sas = generate_blob_sas(
-            account_name=settings.KB_AZURE_STORAGE_ACCOUNT,
+            account_name=account,
             container_name=settings.KB_AZURE_CONTAINER,
             blob_name=blob_key,
-            account_key=settings.KB_AZURE_STORAGE_KEY,
+            account_key=key,
             permission=BlobSasPermissions(write=True, create=True),
             expiry=expiry,
             content_type=content_type,
@@ -77,13 +102,14 @@ def presigned_put(blob_key: str, content_type: str, max_mb: Optional[int] = None
 
 def presigned_get(blob_key: str) -> str:
     _assert_configured()
+    account, key = _get_account_and_key()
     try:
         expiry = datetime.now(timezone.utc) + timedelta(seconds=settings.KB_PRESIGN_GET_EXPIRE_SECONDS)
         sas = generate_blob_sas(
-            account_name=settings.KB_AZURE_STORAGE_ACCOUNT,
+            account_name=account,
             container_name=settings.KB_AZURE_CONTAINER,
             blob_name=blob_key,
-            account_key=settings.KB_AZURE_STORAGE_KEY,
+            account_key=key,
             permission=BlobSasPermissions(read=True),
             expiry=expiry,
         )
@@ -98,8 +124,9 @@ def delete_object(blob_key: str) -> None:
         return
     if not is_configured():
         return
+    _, key = _get_account_and_key()
     try:
-        client = BlobServiceClient(account_url=_account_url(), credential=settings.KB_AZURE_STORAGE_KEY)
+        client = BlobServiceClient(account_url=_account_url(), credential=key)
         client.get_blob_client(container=settings.KB_AZURE_CONTAINER, blob=blob_key).delete_blob()
     except Exception as e:
         logger.warning("Azure delete failed for %s: %s", blob_key, e)
