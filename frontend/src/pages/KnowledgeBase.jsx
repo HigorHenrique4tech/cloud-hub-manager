@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
-  BookOpen, Search, Settings2, Grid3x3, X, Sparkles,
+  BookOpen, Search, Settings2, Grid3x3, X, Sparkles, ArrowLeft,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
 import knowledgeService from '../services/knowledgeService';
@@ -81,6 +81,13 @@ export default function KnowledgeBase() {
         <div className="absolute inset-0 opacity-20 pointer-events-none"
              style={{ backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.4) 0%, transparent 50%), radial-gradient(circle at 80% 80%, rgba(255,255,255,0.25) 0%, transparent 50%)' }} />
         <div className="relative flex items-start gap-4 flex-wrap">
+          <Link
+            to="/"
+            className="p-2 rounded-lg bg-white/15 hover:bg-white/25 backdrop-blur ring-1 ring-white/20 transition-colors"
+            aria-label="Voltar"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </Link>
           <div className="p-3 rounded-xl bg-white/15 backdrop-blur ring-1 ring-white/20">
             <BookOpen className="w-7 h-7" />
           </div>
