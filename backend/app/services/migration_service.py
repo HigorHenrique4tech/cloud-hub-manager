@@ -149,12 +149,14 @@ def bulk_add_mailboxes(
     if not p:
         return {"added": 0, "skipped": 0}
 
-    existing = {m.source_email for m in db.query(MigrationMailbox.source_email)
-                .filter(MigrationMailbox.project_id == project_id).all()}
+    existing_rows = db.query(MigrationMailbox.source_email, MigrationMailbox.object_type)\
+                      .filter(MigrationMailbox.project_id == project_id).all()
+    existing = {(r.source_email, r.object_type) for r in existing_rows}
     added = 0
     for entry in entries:
         src = entry.get("source_email", "").strip().lower()
-        if not src or src in existing:
+        obj_type = entry.get("object_type", "email")
+        if not src or (src, obj_type) in existing:
             continue
         mb = MigrationMailbox(
             id=uuid.uuid4(),
@@ -162,10 +164,11 @@ def bulk_add_mailboxes(
             source_email=src,
             destination_email=(entry.get("destination_email") or "").strip() or None,
             display_name=entry.get("display_name"),
+            object_type=obj_type,
             status="pending",
         )
         db.add(mb)
-        existing.add(src)
+        existing.add((src, obj_type))
         added += 1
 
     if added:
@@ -489,6 +492,7 @@ def _mailbox_to_dict(m: MigrationMailbox) -> dict:
         "source_email": m.source_email,
         "destination_email": m.destination_email,
         "display_name": m.display_name,
+        "object_type": m.object_type or "email",
         "status": m.status,
         "error_message": m.error_message,
         "items_total": m.items_total,

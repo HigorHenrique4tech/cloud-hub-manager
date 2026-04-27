@@ -6,7 +6,7 @@ import {
   CheckCircle, XCircle, Clock, AlertCircle, ChevronRight,
   Mail, Users, BarChart3, FileText, ArrowLeft, Upload,
   Server, Building2, Wifi, Search, ShieldCheck, GitMerge,
-  MoreVertical, Download, CalendarClock,
+  MoreVertical, Download, CalendarClock, HardDrive, Globe,
   Lock, ShoppingCart, CreditCard,
 } from 'lucide-react';
 import Layout from '../../components/layout/layout';
@@ -433,11 +433,14 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
 
 // ── Add Mailboxes Modal ───────────────────────────────────────────────────────
 
-const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
-  const srcLabel = 'E-mail de origem';
-  const dstLabel = 'E-mail de destino';
-  const srcPlaceholder = 'email_origem';
-  const modalTitle = 'Adicionar Caixas de Correio';
+const OBJECT_TYPE_CONFIG = {
+  email:      { title: 'Adicionar Caixas de Correio', srcLabel: 'E-mail de origem',   dstLabel: 'E-mail de destino', srcPlaceholder: 'usuario@origem.com' },
+  onedrive:   { title: 'Adicionar Contas OneDrive',   srcLabel: 'E-mail da conta',    dstLabel: 'E-mail de destino', srcPlaceholder: 'usuario@origem.com' },
+  sharepoint: { title: 'Adicionar Sites SharePoint',  srcLabel: 'E-mail do usuário',  dstLabel: 'E-mail de destino', srcPlaceholder: 'usuario@origem.com' },
+};
+
+const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
+  const { title: modalTitle, srcLabel, dstLabel, srcPlaceholder } = OBJECT_TYPE_CONFIG[objectType] || OBJECT_TYPE_CONFIG.email;
   const qc = useQueryClient();
   const [tab, setTab] = useState('text');  // 'text' | 'csv'
 
@@ -445,44 +448,6 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
   const [input, setInput] = useState('');
   const [parsed, setParsed] = useState([]);
   const [parseError, setParseError] = useState('');
-
-  // ── SharePoint URL resolver ───────────────────────────────────────────────
-  // site_id composto contém vírgulas — não pode passar pelo textarea. Guardamos
-  // direto em spStaged[] e esse array vira a fonte de `entries` no SharePoint.
-  const [spSrcUrl, setSpSrcUrl] = useState('');
-  const [spDstUrl, setSpDstUrl] = useState('');
-  const [spResolveError, setSpResolveError] = useState('');
-  const [spStaged, setSpStaged] = useState([]);  // [{source_email, destination_email, display_name}]
-
-  const spResolveMut = useMutation({
-    mutationFn: async () => {
-      setSpResolveError('');
-      const srcUrl = spSrcUrl.trim();
-      const dstUrl = spDstUrl.trim();
-      if (!srcUrl) throw new Error('Informe a URL do site de origem.');
-      if (!dstUrl) throw new Error('Informe a URL do site de destino.');
-
-      const src = await migrationApi.resolveSpSite(projectId, srcUrl, 'source');
-      if (!src.ok) throw new Error(`Origem: ${src.message}`);
-
-      const dst = await migrationApi.resolveSpSite(projectId, dstUrl, 'destination');
-      if (!dst.ok) throw new Error(`Destino: ${dst.message}`);
-
-      return { src, dst };
-    },
-    onSuccess: ({ src, dst }) => {
-      setSpStaged(prev => [...prev, {
-        source_email: src.site_id,
-        destination_email: dst.site_id,
-        display_name: src.display_name || dst.display_name || '',
-      }]);
-      setSpSrcUrl('');
-      setSpDstUrl('');
-    },
-    onError: (e) => setSpResolveError(e.message || 'Falha ao resolver.'),
-  });
-
-  const removeSpStaged = (i) => setSpStaged(prev => prev.filter((_, idx) => idx !== i));
 
   const parseText = () => {
     setParseError('');
@@ -518,11 +483,13 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
 
   // ── Adicionar (comum às duas abas) ────────────────────────────────────────
   const entries = tab === 'text'
-    ? (isSharePoint ? spStaged : parsed)
+    ? parsed
     : (csvPreview?.valid || []);
 
   const addMut = useMutation({
-    mutationFn: () => migrationApi.addMailboxes(projectId, { mailboxes: entries }),
+    mutationFn: () => migrationApi.addMailboxes(projectId, {
+      mailboxes: entries.map(e => ({ ...e, object_type: objectType })),
+    }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
       qc.invalidateQueries({ queryKey: ['migration-project', projectId] });
@@ -559,74 +526,7 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
 
           {/* Aba: Colar texto */}
-          {tab === 'text' && isSharePoint && (
-            <>
-              <div className="p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-900/10 space-y-2">
-                <p className="text-xs font-medium text-blue-700 dark:text-blue-300">
-                  Adicionar site pela URL
-                </p>
-                <p className="text-[11px] text-gray-500 dark:text-gray-400">
-                  Cole a URL amigável (ex.: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">contoso.sharepoint.com/sites/MeuSite</code>). O Graph retorna o site_id composto automaticamente.
-                </p>
-                <input
-                  type="text"
-                  value={spSrcUrl}
-                  onChange={e => setSpSrcUrl(e.target.value)}
-                  placeholder="URL do site de origem"
-                  className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <input
-                  type="text"
-                  value={spDstUrl}
-                  onChange={e => setSpDstUrl(e.target.value)}
-                  placeholder="URL do site de destino"
-                  className="w-full px-3 py-1.5 text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => spResolveMut.mutate()}
-                  disabled={spResolveMut.isPending || !spSrcUrl.trim() || !spDstUrl.trim()}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white"
-                >
-                  {spResolveMut.isPending
-                    ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    : <Plus className="w-3.5 h-3.5" />}
-                  Resolver e adicionar à lista
-                </button>
-                {spResolveError && (
-                  <p className="text-[11px] text-red-500">{spResolveError}</p>
-                )}
-              </div>
-
-              {spStaged.length > 0 && (
-                <div className="rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
-                  {spStaged.map((s, i) => (
-                    <div key={i} className="flex items-center justify-between px-3 py-2 text-xs">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                          {s.display_name || 'Sem nome'}
-                        </p>
-                        <p className="text-gray-500 truncate font-mono text-[10px]">
-                          origem: {s.source_email}
-                        </p>
-                        <p className="text-gray-500 truncate font-mono text-[10px]">
-                          destino: {s.destination_email}
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => removeSpStaged(i)}
-                        className="p-1 text-gray-400 hover:text-red-500 shrink-0"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {tab === 'text' && !isSharePoint && (
+          {tab === 'text' && (
             <>
               <p className="text-xs text-gray-500">Uma por linha: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">{srcPlaceholder}, {dstLabel.toLowerCase()}, nome</code></p>
               <textarea
@@ -639,7 +539,9 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
               {parseError && <p className="text-xs text-red-500">{parseError}</p>}
               {parsed.length > 0 && (
                 <div className="p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
-                  <p className="text-xs text-green-700 dark:text-green-300 font-medium">{parsed.length} caixa(s) prontas para adicionar</p>
+                  <p className="text-xs text-green-700 dark:text-green-300 font-medium">
+                    {parsed.length} {objectType === 'onedrive' ? 'conta(s)' : objectType === 'sharepoint' ? 'site(s)' : 'caixa(s)'} pronta(s) para adicionar
+                  </p>
                 </div>
               )}
             </>
@@ -739,7 +641,7 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
           <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
             Cancelar
           </button>
-          {tab === 'text' && !isSharePoint && !parsed.length && (
+          {tab === 'text' && !parsed.length && (
             <button onClick={parseText} className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-800 text-white text-sm font-medium rounded-lg">
               <Search className="w-4 h-4" /> Analisar
             </button>
@@ -748,7 +650,7 @@ const AddMailboxesModal = ({ projectId, migrationType, onClose }) => {
             <button onClick={() => addMut.mutate()} disabled={addMut.isPending}
               className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-40">
               {addMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
-              Importar {entries.length} caixa(s)
+              Importar {entries.length} {objectType === 'onedrive' ? 'conta(s)' : objectType === 'sharepoint' ? 'site(s)' : 'caixa(s)'}
             </button>
           )}
         </div>
@@ -902,7 +804,7 @@ const MailboxLedgerDrawer = ({ projectId, mb, onClose }) => {
 
 const ProjectDetail = ({ projectId, onBack }) => {
   const qc = useQueryClient();
-  const [tab, setTab] = useState('mailboxes');
+  const [tab, setTab] = useState('email');
   const [showAddMailboxes, setShowAddMailboxes] = useState(false);
   const [mbSearch, setMbSearch] = useState('');
   const [toDeleteMb, setToDeleteMb] = useState(null);
@@ -1070,10 +972,13 @@ const ProjectDetail = ({ projectId, onBack }) => {
   };
 
   const MB_PER_PAGE = 50;
+  const MAILBOX_TABS = ['email', 'onedrive', 'sharepoint'];
+  const currentObjectType = MAILBOX_TABS.includes(tab) ? tab : 'email';
   const filteredMailboxes = mailboxes.filter(m => {
+    const matchType = m.object_type === currentObjectType;
     const matchSearch = !mbSearch || m.source_email.includes(mbSearch) || (m.display_name || '').toLowerCase().includes(mbSearch.toLowerCase());
     const matchStatus = mbStatusFilter === 'all' || m.status === mbStatusFilter;
-    return matchSearch && matchStatus;
+    return matchType && matchSearch && matchStatus;
   });
   const totalMbPages = Math.max(1, Math.ceil(filteredMailboxes.length / MB_PER_PAGE));
   const paginatedMailboxes = filteredMailboxes.slice((mbPage - 1) * MB_PER_PAGE, mbPage * MB_PER_PAGE);
@@ -1259,20 +1164,28 @@ const ProjectDetail = ({ projectId, onBack }) => {
       {/* Tabs */}
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-700">
         {[
-          { id: 'mailboxes', label: 'Caixas de Correio', icon: Mail },
-          { id: 'logs',      label: 'Logs',              icon: FileText },
-        ].map(({ id, label, icon: Icon }) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-              tab === id ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
-            }`}>
-            <Icon className="w-4 h-4" /> {label}
-          </button>
-        ))}
+          { id: 'email',      label: 'Correio',     icon: Mail },
+          { id: 'onedrive',   label: 'OneDrive',    icon: HardDrive },
+          { id: 'sharepoint', label: 'SharePoint',  icon: Globe },
+          { id: 'logs',       label: 'Logs',        icon: FileText },
+        ].map(({ id, label, icon: Icon }) => {
+          const cnt = MAILBOX_TABS.includes(id)
+            ? mailboxes.filter(m => m.object_type === id).length
+            : null;
+          return (
+            <button key={id} onClick={() => { setTab(id); setMbPage(1); setSelectedMbs(new Set()); }}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                tab === id ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}>
+              <Icon className="w-4 h-4" /> {label}
+              {cnt !== null && cnt > 0 && <span className="ml-0.5 text-xs opacity-60">({cnt})</span>}
+            </button>
+          );
+        })}
       </div>
 
-      {/* Mailboxes tab */}
-      {tab === 'mailboxes' && (
+      {/* Mailboxes tab (Correio / OneDrive / SharePoint) */}
+      {MAILBOX_TABS.includes(tab) && (
         <div className="card">
           <div className="flex items-center gap-3 p-4 border-b border-gray-200 dark:border-gray-700">
             <div className="relative flex-1">
@@ -1285,7 +1198,8 @@ const ProjectDetail = ({ projectId, onBack }) => {
             </div>
             <button onClick={() => setShowAddMailboxes(true)}
               className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white">
-              <Plus className="w-4 h-4" /> Adicionar
+              <Plus className="w-4 h-4" />
+              {currentObjectType === 'email' ? 'Adicionar' : currentObjectType === 'onedrive' ? 'Adicionar OneDrive' : 'Adicionar SharePoint'}
             </button>
           </div>
 
@@ -1299,7 +1213,8 @@ const ProjectDetail = ({ projectId, onBack }) => {
               { id: 'failed',    label: 'Com falha' },
               { id: 'paused',    label: 'Pausadas' },
             ].map(f => {
-              const cnt = f.id === 'all' ? mailboxes.length : mailboxes.filter(m => m.status === f.id).length;
+              const typeMbs = mailboxes.filter(m => m.object_type === currentObjectType);
+              const cnt = f.id === 'all' ? typeMbs.length : typeMbs.filter(m => m.status === f.id).length;
               return (
                 <button key={f.id} onClick={() => { setMbStatusFilter(f.id); setMbPage(1); setSelectedMbs(new Set()); }}
                   className={`px-2.5 py-1 text-xs font-medium rounded-full transition-colors ${
@@ -1314,11 +1229,19 @@ const ProjectDetail = ({ projectId, onBack }) => {
           </div>
           {filteredMailboxes.length === 0 ? (
             <div className="flex flex-col items-center gap-3 py-12 text-center">
-              <Mail className="w-10 h-10 text-gray-300 dark:text-gray-600" />
-              <p className="text-sm text-gray-500">Nenhuma caixa de correio adicionada ainda.</p>
+              {currentObjectType === 'onedrive' ? <HardDrive className="w-10 h-10 text-gray-300 dark:text-gray-600" /> :
+               currentObjectType === 'sharepoint' ? <Globe className="w-10 h-10 text-gray-300 dark:text-gray-600" /> :
+               <Mail className="w-10 h-10 text-gray-300 dark:text-gray-600" />}
+              <p className="text-sm text-gray-500">
+                {currentObjectType === 'onedrive' ? 'Nenhuma conta OneDrive adicionada ainda.' :
+                 currentObjectType === 'sharepoint' ? 'Nenhum site SharePoint adicionado ainda.' :
+                 'Nenhuma caixa de correio adicionada ainda.'}
+              </p>
               <button onClick={() => setShowAddMailboxes(true)}
                 className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 hover:border-blue-400 hover:text-blue-500">
-                <Plus className="w-4 h-4" /> Adicionar caixas
+                <Plus className="w-4 h-4" />
+                {currentObjectType === 'onedrive' ? 'Adicionar OneDrive' :
+                 currentObjectType === 'sharepoint' ? 'Adicionar SharePoint' : 'Adicionar caixas'}
               </button>
             </div>
           ) : (
@@ -1641,7 +1564,7 @@ const ProjectDetail = ({ projectId, onBack }) => {
         </div>
       )}
 
-      {showAddMailboxes && <AddMailboxesModal projectId={projectId} migrationType={project.migration_type} onClose={() => setShowAddMailboxes(false)} />}
+      {showAddMailboxes && <AddMailboxesModal projectId={projectId} objectType={currentObjectType} onClose={() => setShowAddMailboxes(false)} />}
 
       {/* Schedule modal */}
       {showSchedule && (

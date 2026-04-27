@@ -965,6 +965,7 @@ class MigrationMailbox(Base):
     source_email      = Column(String(255), nullable=False)
     destination_email = Column(String(255), nullable=True)
     display_name      = Column(String(255), nullable=True)
+    object_type       = Column(String(20), nullable=False, default="email")  # email | onedrive | sharepoint
     status            = Column(String(30), nullable=False, default="pending")  # pending | running | completed | failed | skipped
     phase             = Column(String(20), nullable=True)  # initial | delta | verify | done
     error_message     = Column(Text, nullable=True)
