@@ -67,8 +67,10 @@ def _get_org_plan(db: Session, organization_id) -> str:
     return get_effective_plan(org)
 
 
+_ENTERPRISE_PLANS = {"enterprise", "enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"}
+
 def _require_enterprise(plan: str, feature: str = "Microsoft 365"):
-    if plan not in ("enterprise", "enterprise_migration"):
+    if plan not in _ENTERPRISE_PLANS:
         raise HTTPException(
             status_code=403,
             detail=f"Recurso '{feature}' requer plano Enterprise.",

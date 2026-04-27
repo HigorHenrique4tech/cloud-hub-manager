@@ -43,6 +43,8 @@ APPROVER_ROLES = {"owner", "admin"}
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
+_ENTERPRISE_PLANS = {"enterprise", "enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"}
+
 def _check_enterprise(member: MemberContext, db: Session):
     from app.services.plan_service import get_effective_plan
     from app.models.db_models import Organization
@@ -50,7 +52,7 @@ def _check_enterprise(member: MemberContext, db: Session):
     if not org:
         raise HTTPException(status_code=404, detail="Organização não encontrada")
     plan = get_effective_plan(org)
-    if plan not in ("enterprise", "enterprise_migration"):
+    if plan not in _ENTERPRISE_PLANS:
         raise HTTPException(
             status_code=403,
             detail="Security Automation requer plano Enterprise."
