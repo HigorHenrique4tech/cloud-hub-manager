@@ -82,3 +82,17 @@ export const fmtCurrency = (v, currency = 'USD', rate = null) => {
   }
   return fmtUSD(v);
 };
+
+// Estimate reading time in minutes based on word count (~200 wpm).
+// Strips markdown noise lightly before counting.
+export const estimateReadingTime = (markdown) => {
+  if (!markdown) return 1;
+  const text = String(markdown)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[.*?\]\(.*?\)/g, ' ')
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+    .replace(/[#>*_~\-]/g, ' ');
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(words / 200));
+};

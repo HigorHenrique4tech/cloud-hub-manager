@@ -74,6 +74,7 @@ def article_to_dict(article: KBArticle, include_content: bool = True, include_vi
         "category_id": str(article.category_id),
         "category_slug": article.category.slug if article.category else None,
         "category_name": article.category.name if article.category else None,
+        "category_icon": article.category.icon if article.category else None,
         "title": article.title,
         "slug": article.slug,
         "summary": article.summary,
