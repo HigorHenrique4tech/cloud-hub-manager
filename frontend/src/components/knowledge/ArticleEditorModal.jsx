@@ -8,32 +8,33 @@ const MAX_MB = 500;
 
 export default function ArticleEditorModal({ article, categories, onClose }) {
   const qc = useQueryClient();
-  const isEdit = !!article?.id;
+  const [currentArticle, setCurrentArticle] = useState(article);
+  const isEdit = !!currentArticle?.id;
 
   const [form, setForm] = useState({
-    category_id: article?.category_id || categories[0]?.id || '',
-    title: article?.title || '',
-    summary: article?.summary || '',
-    content: article?.content || '',
-    order: article?.order ?? 0,
-    is_published: article?.is_published ?? true,
+    category_id: currentArticle?.category_id || categories[0]?.id || '',
+    title: currentArticle?.title || '',
+    summary: currentArticle?.summary || '',
+    content: currentArticle?.content || '',
+    order: currentArticle?.order ?? 0,
+    is_published: currentArticle?.is_published ?? true,
   });
   const [tab, setTab] = useState('edit'); // edit | preview
-  const [videos, setVideos] = useState(article?.videos || []);
+  const [videos, setVideos] = useState(currentArticle?.videos || []);
   const [uploadState, setUploadState] = useState(null); // { progress, name }
   const [error, setError] = useState('');
   const fileRef = useRef(null);
 
   useEffect(() => {
-    setVideos(article?.videos || []);
-  }, [article?.id]);
+    setVideos(currentArticle?.videos || []);
+  }, [currentArticle?.id]);
 
   const setField = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
   const saveMut = useMutation({
     mutationFn: async () => {
       if (isEdit) {
-        return knowledgeService.adminUpdateArticle(article.id, form);
+        return knowledgeService.adminUpdateArticle(currentArticle.id, form);
       }
       return knowledgeService.adminCreateArticle(form);
     },
@@ -41,9 +42,12 @@ export default function ArticleEditorModal({ article, categories, onClose }) {
       qc.invalidateQueries({ queryKey: ['kb-admin-articles'] });
       qc.invalidateQueries({ queryKey: ['kb-articles'] });
       qc.invalidateQueries({ queryKey: ['kb-categories'] });
-      // If this was a creation, swap to "edit mode" so user can upload videos
-      if (!isEdit) {
-        article = saved;
+      if (isEdit) {
+        // Edição concluída — fecha modal
+        onClose();
+      } else {
+        // Criação — alterna para modo edição para permitir upload de vídeos
+        setCurrentArticle(saved);
         setVideos(saved.videos || []);
       }
     },
@@ -53,7 +57,7 @@ export default function ArticleEditorModal({ article, categories, onClose }) {
   });
 
   const deleteVideoMut = useMutation({
-    mutationFn: (videoId) => knowledgeService.adminDeleteVideo(article.id, videoId),
+    mutationFn: (videoId) => knowledgeService.adminDeleteVideo(currentArticle.id, videoId),
     onSuccess: (_, videoId) => {
       setVideos((list) => list.filter((v) => v.id !== videoId));
       qc.invalidateQueries({ queryKey: ['kb-admin-articles'] });
@@ -61,7 +65,7 @@ export default function ArticleEditorModal({ article, categories, onClose }) {
   });
 
   const handleVideoUpload = async (file) => {
-    if (!article?.id) {
+    if (!currentArticle?.id) {
       setError('Salve o artigo antes de adicionar vídeos.');
       return;
     }
@@ -72,7 +76,7 @@ export default function ArticleEditorModal({ article, categories, onClose }) {
     setError('');
     try {
       setUploadState({ progress: 0, name: file.name });
-      const { upload_url, s3_key } = await knowledgeService.adminPresignVideo(article.id, {
+      const { upload_url, s3_key } = await knowledgeService.adminPresignVideo(currentArticle.id, {
         filename: file.name,
         content_type: file.type,
       });
@@ -81,7 +85,7 @@ export default function ArticleEditorModal({ article, categories, onClose }) {
           setUploadState({ progress: Math.round((ev.loaded / ev.total) * 100), name: file.name });
         }
       });
-      const created = await knowledgeService.adminConfirmVideo(article.id, {
+      const created = await knowledgeService.adminConfirmVideo(currentArticle.id, {
         s3_key,
         title: file.name.replace(/\.[^.]+$/, ''),
         content_type: file.type,
