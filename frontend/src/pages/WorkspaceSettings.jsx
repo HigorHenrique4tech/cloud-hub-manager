@@ -385,11 +385,12 @@ const WorkspaceSettings = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+    <div className="h-screen bg-gray-50 dark:bg-gray-900 flex flex-col overflow-hidden">
       <Header />
-      <div className="flex">
+      <div className="flex flex-1 overflow-hidden">
         <Sidebar />
-        <main className="flex-1 p-6 space-y-6">
+        <main className="flex-1 overflow-auto px-6 py-6">
+          <div className="max-w-5xl space-y-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <Layers className="w-6 h-6 text-primary" />
             Configurações do Workspace
@@ -452,6 +453,7 @@ const WorkspaceSettings = () => {
             confirmLabel="Excluir Workspace"
             isLoading={deleteWsMutation.isPending}
           />
+          </div>
         </main>
       </div>
     </div>
