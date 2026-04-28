@@ -125,7 +125,7 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   const pendingCount = pendingCountQ.data ?? 0;
 
   return (
-    <aside aria-label="Menu principal" className={`w-56 min-h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4 flex-shrink-0 transition-transform duration-200 ease-in-out fixed lg:static z-40 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
+    <aside aria-label="Menu principal" className={`w-56 h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4 flex-shrink-0 transition-transform duration-200 ease-in-out fixed lg:static z-40 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
       {/* Workspace switcher */}
       <WorkspaceSwitcher />
 

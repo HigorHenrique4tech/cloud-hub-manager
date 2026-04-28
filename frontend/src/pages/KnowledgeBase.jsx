@@ -5,6 +5,7 @@ import {
   BookOpen, Search, Settings2, Grid3x3, X, Sparkles, ArrowLeft,
 } from 'lucide-react';
 import * as Icons from 'lucide-react';
+import Layout from '../components/layout/layout';
 import knowledgeService from '../services/knowledgeService';
 import ArticleCard from '../components/knowledge/ArticleCard';
 import EmptyState from '../components/common/emptystate';
@@ -72,6 +73,7 @@ export default function KnowledgeBase() {
   }, [activeCategory, categories]);
 
   return (
+    <Layout>
     <div className="max-w-6xl mx-auto p-4 lg:p-6 space-y-6">
       {/* ── Hero ─────────────────────────────────────────────────────────── */}
       <div
@@ -276,5 +278,6 @@ export default function KnowledgeBase() {
         </div>
       )}
     </div>
+    </Layout>
   );
 }
