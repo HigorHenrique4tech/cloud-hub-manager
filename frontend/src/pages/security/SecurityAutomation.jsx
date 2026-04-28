@@ -8,6 +8,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import api, { wsUrl as _wsUrl } from '../../services/api';
+import Layout from '../../components/layout/layout';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -1111,28 +1112,24 @@ export default function SecurityAutomation() {
 
   if (!isPro) {
     return (
-      <div className="p-8 max-w-lg mx-auto text-center pt-24">
-        <ShieldAlert size={48} className="mx-auto mb-4 text-gray-300 dark:text-gray-600" />
-        <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Security Automation</h2>
-        <p className="text-gray-500 dark:text-gray-400">
-          Disponível apenas no plano Enterprise. Faça upgrade para acessar detecção automática
-          de incidentes, playbooks e resposta a incidentes CSP.
-        </p>
-      </div>
+      <Layout>
+        <div className="p-8 max-w-lg mx-auto text-center pt-24">
+          <ShieldAlert size={48} className="mx-auto mb-4 text-gray-300 dark:text-gray-600" />
+          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">Security Automation</h2>
+          <p className="text-gray-500 dark:text-gray-400">
+            Disponível apenas no plano Enterprise. Faça upgrade para acessar detecção automática
+            de incidentes, playbooks e resposta a incidentes CSP.
+          </p>
+        </div>
+      </Layout>
     );
   }
 
   return (
+    <Layout>
     <div className="p-6 h-full flex flex-col">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => navigate('/')}
-            className="p-2 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
-            title="Voltar ao painel"
-          >
-            <ArrowLeft size={18} />
-          </button>
           <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-red-500 to-orange-600 flex items-center justify-center shadow-md">
             <ShieldAlert size={20} className="text-white" />
           </div>
@@ -1169,5 +1166,6 @@ export default function SecurityAutomation() {
         {activeTab === 'settings'  && <SettingsTab isMaster={isMasterUser} />}
       </div>
     </div>
+    </Layout>
   );
 }

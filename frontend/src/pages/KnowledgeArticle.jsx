@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Video as VideoIcon, Loader2, FileX } from 'lucide-react';
+import Layout from '../components/layout/layout';
 import knowledgeService from '../services/knowledgeService';
 import MarkdownRenderer from '../components/knowledge/MarkdownRenderer';
 import VideoPlayer, { formatDuration } from '../components/knowledge/VideoPlayer';
@@ -18,23 +19,27 @@ export default function KnowledgeArticle() {
 
   if (articleQ.isLoading) {
     return (
-      <div className="max-w-4xl mx-auto p-6 flex items-center justify-center min-h-[300px]">
-        <Loader2 className="w-6 h-6 animate-spin text-primary" />
-      </div>
+      <Layout>
+        <div className="max-w-4xl mx-auto p-6 flex items-center justify-center min-h-[300px]">
+          <Loader2 className="w-6 h-6 animate-spin text-primary" />
+        </div>
+      </Layout>
     );
   }
 
   if (articleQ.isError || !articleQ.data) {
     return (
-      <div className="max-w-4xl mx-auto p-6 text-center">
-        <FileX className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-        <p className="text-gray-500 dark:text-gray-400 mb-4">
-          Artigo não encontrado ou removido.
-        </p>
-        <Link to="/knowledge" className="text-primary hover:underline text-sm">
-          ← Voltar para Base de Conhecimento
-        </Link>
-      </div>
+      <Layout>
+        <div className="max-w-4xl mx-auto p-6 text-center">
+          <FileX className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+          <p className="text-gray-500 dark:text-gray-400 mb-4">
+            Artigo não encontrado ou removido.
+          </p>
+          <Link to="/knowledge" className="text-primary hover:underline text-sm">
+            ← Voltar para Base de Conhecimento
+          </Link>
+        </div>
+      </Layout>
     );
   }
 
@@ -42,6 +47,7 @@ export default function KnowledgeArticle() {
   const videos = a.videos || [];
 
   return (
+    <Layout>
     <div className="max-w-4xl mx-auto p-4 lg:p-6 space-y-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
@@ -116,5 +122,6 @@ export default function KnowledgeArticle() {
         </section>
       )}
     </div>
+    </Layout>
   );
 }
