@@ -33,10 +33,7 @@
   "offers": [
     { "@type": "Offer", "price": "397",  "priceCurrency": "BRL", "name": "Basic" },
     { "@type": "Offer", "price": "797",  "priceCurrency": "BRL", "name": "Standard" },
-    { "@type": "Offer", "price": "2997", "priceCurrency": "BRL", "name": "Enterprise E1" },
-    { "@type": "Offer", "price": "4997", "priceCurrency": "BRL", "name": "Enterprise E2" },
-    { "@type": "Offer", "price": "7997", "priceCurrency": "BRL", "name": "Enterprise E3" },
-    { "@type": "Offer", "price": "4747", "priceCurrency": "BRL", "name": "Enterprise + Migration365" }
+    { "@type": "Offer", "price": "2997", "priceCurrency": "BRL", "name": "Enterprise E1" }
   ]
 }
 </script>
@@ -1952,8 +1949,8 @@
   <div class="security-inner">
     <div class="security-header">
       <span class="section-label reveal">Segurança em primeiro lugar</span>
-      <h2 class="section-title reveal reveal-delay-1">Infraestrutura de nível enterprise desde o plano Basic</h2>
-      <p class="security-sub reveal reveal-delay-2">Criptografia por organização, RBAC granular, proteções contra SSRF/CSRF e auditoria completa. Ativo por padrão em todos os planos.</p>
+      <h2 class="section-title reveal reveal-delay-1">Seus dados protegidos em cada camada</h2>
+      <p class="security-sub reveal reveal-delay-2">Segurança robusta ativa desde o primeiro dia — sem configuração extra, sem custos adicionais. Em todos os planos.</p>
     </div>
 
     <div class="security-grid">
@@ -1963,24 +1960,24 @@
           <div class="security-col-icon">
             <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
           </div>
-          <h3>Dados e credenciais</h3>
+          <h3>Seus dados em segurança</h3>
         </div>
         <ul>
           <li>
             <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
-            <span><strong>Fernet (AES-128)</strong> com chave exclusiva por organização</span>
-          </li>
-          <li>
-            <svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 11-7.778 7.778 5.5 5.5 0 017.778-7.778zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
-            <span>Derivação <strong>HKDF</strong> a partir da chave mestra do sistema</span>
+            <span>Credenciais criptografadas com <strong>chave exclusiva por organização</strong></span>
           </li>
           <li>
             <svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-            <span>Credenciais cloud em modo <strong>read-only</strong> por padrão</span>
+            <span>Acesso à sua nuvem em modo <strong>somente leitura</strong> por padrão</span>
           </li>
           <li>
             <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-            <span>Zero armazenamento de dados de negócio dos clientes</span>
+            <span>Nunca armazenamos dados de negócio dos seus clientes</span>
+          </li>
+          <li>
+            <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+            <span>Isolamento total entre organizações — nenhum dado é compartilhado</span>
           </li>
         </ul>
       </div>
@@ -1991,24 +1988,24 @@
           <div class="security-col-icon">
             <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
           </div>
-          <h3>Acesso e identidade</h3>
+          <h3>Controle de acesso</h3>
         </div>
         <ul>
           <li>
             <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-            <span>RBAC granular: <strong>6 roles</strong> e <strong>25 permissões</strong></span>
+            <span>Defina <strong>quem vê e quem age</strong> com perfis de acesso por função</span>
           </li>
           <li>
             <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2"/><path d="M12 18h.01"/></svg>
-            <span>MFA via OTP (HMAC-SHA256, expira em 5min)</span>
+            <span><strong>Autenticação em dois fatores</strong> (MFA) disponível em todos os planos</span>
           </li>
           <li>
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
-            <span>SSO: <strong>Google, Microsoft, GitHub</strong> (OAuth 2.0)</span>
+            <span>Login com <strong>Google, Microsoft ou GitHub</strong> com um clique</span>
           </li>
           <li>
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-            <span>Rate limiting: login 5/min, registro 3/min, reset 3/min</span>
+            <span>Proteção automática contra <strong>tentativas de invasão</strong> por força bruta</span>
           </li>
         </ul>
       </div>
@@ -2019,7 +2016,7 @@
           <div class="security-col-icon">
             <svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/></svg>
           </div>
-          <h3>Infraestrutura e compliance</h3>
+          <h3>Conformidade e rastreabilidade</h3>
         </div>
         <ul>
           <li>
@@ -2028,15 +2025,15 @@
           </li>
           <li>
             <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-            <span><strong>SSRF protection</strong>: bloqueia IPs privados e metadata endpoints</span>
+            <span>Sua infraestrutura interna <strong>nunca é exposta</strong> à internet via plataforma</span>
           </li>
           <li>
             <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
-            <span>Headers <strong>CSP, HSTS, CSRF</strong> e cookie hardening</span>
+            <span>Proteções de segurança web ativas em <strong>todas as requisições</strong></span>
           </li>
           <li>
             <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-            <span>Audit logs completos em <strong>6 tabelas temporais</strong></span>
+            <span><strong>Histórico completo</strong> de todas as ações realizadas na plataforma</span>
           </li>
         </ul>
       </div>
@@ -2355,7 +2352,7 @@
       <!-- Enterprise E2 -->
       <div class="pricing-card reveal">
         <h3>Enterprise E2</h3>
-        <div class="pricing-price">R$ 4.997 <span>/mês</span></div>
+        <div class="pricing-price" style="font-size:1.4rem; color:var(--blue-light);">Sob consulta</div>
         <div class="pricing-card-tagline">Operações de alto volume com SLA garantido.</div>
         <ul class="pricing-features">
           <li>100 workspaces</li>
@@ -2370,7 +2367,7 @@
       <!-- Enterprise E3 -->
       <div class="pricing-card reveal reveal-delay-1">
         <h3>Enterprise E3</h3>
-        <div class="pricing-price">R$ 7.997 <span>/mês</span></div>
+        <div class="pricing-price" style="font-size:1.4rem; color:var(--blue-light);">Sob consulta</div>
         <div class="pricing-card-tagline">Grandes corporações e MSPs escalados.</div>
         <ul class="pricing-features">
           <li>200 workspaces</li>
@@ -2382,32 +2379,6 @@
         <a href="#contato" class="pricing-cta pricing-cta-secondary">Falar com vendas</a>
       </div>
 
-      <!-- Enterprise + Migration -->
-      <div class="pricing-card reveal reveal-delay-2" style="border-color: rgba(14,165,233,0.35);">
-        <div class="pricing-badge" style="background: linear-gradient(135deg, #0ea5e9, #8b5cf6);">Inclui Migration365</div>
-        <h3>Enterprise + Migration</h3>
-        <div class="pricing-price">R$ 4.747 <span>/mês</span></div>
-        <div class="pricing-card-tagline">Enterprise + migrações M365 ilimitadas.</div>
-        <ul class="pricing-features">
-          <li>20 workspaces</li>
-          <li>Membros ilimitados</li>
-          <li>Migrações ilimitadas (7 engines)</li>
-          <li>IMAP, Exchange, Google, T2T, OneDrive, SharePoint, Teams</li>
-          <li>Todos os recursos Enterprise</li>
-        </ul>
-        <a href="#migration" class="pricing-cta pricing-cta-secondary">Ver Migration365</a>
-      </div>
-    </div>
-
-    <!-- Add-ons -->
-    <div class="reveal" style="margin-top:40px; padding: 28px 32px; background: rgba(26,111,219,0.05); border: 1px solid var(--border); border-radius: 16px; text-align: left;">
-      <p style="font-family:'Space Grotesk',sans-serif; font-weight:600; color:var(--white); margin-bottom:12px; font-size:0.95rem;">Add-ons disponíveis em todos os planos</p>
-      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; font-size: 0.85rem; color: var(--muted);">
-        <div><strong style="color:var(--blue-light);">R$ 60/mês</strong> · workspace extra</div>
-        <div><strong style="color:var(--blue-light);">R$ 159/mês</strong> · usuário extra</div>
-        <div><strong style="color:var(--blue-light);">R$ 290/mês</strong> · workspace MSP extra</div>
-        <div><strong style="color:var(--blue-light);">R$ 70/licença</strong> · Migration365 avulso</div>
-      </div>
     </div>
 
     <p class="reveal" style="text-align:center; margin-top:24px; font-size:0.88rem; color:var(--muted);">
@@ -2430,7 +2401,7 @@
           <span class="faq-toggle">+</span>
         </button>
         <div class="faq-answer">
-          <p>Não. O CloudAtlas utiliza credenciais read-only por padrão e nunca armazena dados de negócio. As credenciais são criptografadas com Fernet (AES-128) e cada workspace tem isolamento total.</p>
+          <p>Não. O CloudAtlas utiliza credenciais com permissões mínimas por padrão e nunca armazena dados de negócio dos seus clientes. Todas as credenciais são criptografadas em repouso com isolamento total por organização.</p>
         </div>
       </div>
 
@@ -2540,8 +2511,33 @@
   <div class="contact-container">
     <h2 class="reveal">Entre em <span style="color:var(--blue-light)">contato</span></h2>
     <p class="reveal reveal-delay-1">
-      Quer saber mais sobre o CloudAtlas? Preencha o formulário e nossa equipe entrará em contato.
+      Quer saber mais sobre o CloudAtlas? Preencha o formulário ou fale direto pelo WhatsApp.
     </p>
+
+    <div class="reveal reveal-delay-2" style="display:flex; justify-content:center; margin-bottom:28px;">
+      <a
+        href="https://wa.me/5511969160623?text=Ol%C3%A1%2C%20vim%20da%20landing%20page%20do%20CloudAtlas%20e%20gostaria%20de%20saber%20mais!"
+        target="_blank"
+        rel="noopener noreferrer"
+        style="
+          display:inline-flex; align-items:center; gap:10px;
+          padding:12px 24px; border-radius:12px;
+          background:#25D366; color:#fff;
+          font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.95rem;
+          text-decoration:none;
+          box-shadow: 0 4px 16px rgba(37,211,102,0.35);
+          transition: transform 0.15s, box-shadow 0.15s;
+        "
+        onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 8px 24px rgba(37,211,102,0.45)'"
+        onmouseout="this.style.transform=''; this.style.boxShadow='0 4px 16px rgba(37,211,102,0.35)'"
+      >
+        <!-- WhatsApp icon -->
+        <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+        </svg>
+        Falar no WhatsApp
+      </a>
+    </div>
 
     <form class="contact-form reveal reveal-delay-2" id="contactForm" novalidate onsubmit="handleContactSubmit(event)">
       <div class="toast-error" id="formToast"></div>
