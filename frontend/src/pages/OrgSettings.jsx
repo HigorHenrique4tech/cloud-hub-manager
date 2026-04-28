@@ -5,8 +5,6 @@ import {
   Building2, UserPlus, Trash2, Shield, Copy, Clock, ArrowUpRight, Search,
   ChevronRight, Palette,
 } from 'lucide-react';
-import Header from '../components/layout/header';
-import Sidebar from '../components/layout/sidebar';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import { RoleGate } from '../components/common/PermissionGate';
 import ConfirmDeleteModal from '../components/common/ConfirmDeleteModal';
@@ -160,11 +158,7 @@ const OrgSettings = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <Header />
-      <div className="flex">
-        <Sidebar />
-        <main className="flex-1 p-6 space-y-6 max-w-5xl">
+    <div className="max-w-5xl space-y-6">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <Building2 className="w-6 h-6 text-primary" />
             Configurações da Organização
@@ -388,8 +382,6 @@ const OrgSettings = () => {
           {workspaces.length > 1 && (
             <WorkspaceCostComparison orgSlug={slug} workspaces={workspaces} />
           )}
-        </main>
-      </div>
 
       {/* ── Modals / Drawers ──────────────────────────────────────────────── */}
 
