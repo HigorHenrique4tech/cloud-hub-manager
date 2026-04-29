@@ -214,6 +214,18 @@ mailbox_migration_duration = Histogram(
 )
 
 # ────────────────────────────────────────────────────────────────────────────
+# PER-ORG REQUEST METRICS
+# ────────────────────────────────────────────────────────────────────────────
+
+# Counter: requests broken down by real org/workspace identifiers
+org_requests_total = Counter(
+    'cloudatlas_org_requests_total',
+    'HTTP requests with actual org_slug and workspace_id resolved from path',
+    ['org_slug', 'workspace_id', 'method', 'status_class', 'route'],
+    registry=registry
+)
+
+# ────────────────────────────────────────────────────────────────────────────
 # API ENDPOINT METRICS (FastAPI)
 # ────────────────────────────────────────────────────────────────────────────
 

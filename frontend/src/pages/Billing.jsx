@@ -1,10 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Crown, ArrowUpRight, CreditCard, Building2 } from 'lucide-react';
+import { Crown, ArrowUpRight, CreditCard } from 'lucide-react';
 import { useState } from 'react';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import billingService from '../services/billingService';
-import orgService from '../services/orgService';
+
 import Layout from '../components/layout/layout';
 import AddOnsPanel from '../components/billing/AddOnsPanel';
 
@@ -76,12 +76,7 @@ const Billing = () => {
     enabled: !!slug,
   });
 
-  const { data: managedSummary } = useQuery({
-    queryKey: ['managed-orgs-summary', slug],
-    queryFn: () => orgService.getManagedOrgsSummary(slug),
-    enabled: !!slug && isEnterprise && isMasterOrg,
-    retry: false,
-  });
+
 
 
   const plan = PLAN_INFO[effectivePlan] || PLAN_INFO.free;
@@ -201,68 +196,6 @@ const Billing = () => {
           maxMembers={limits.members}
           maxWorkspaces={limits.workspaces}
         />
-
-        {/* Managed orgs add-on (Enterprise master only) */}
-        {isEnterprise && isMasterOrg && managedSummary && (
-          <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
-            <div className="flex items-center justify-between mb-5">
-              <div className="flex items-center gap-2">
-                <Building2 className="w-5 h-5 text-amber-500" />
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Organizações Gerenciadas</h2>
-              </div>
-              <button
-                onClick={() => navigate('/org/managed')}
-                className="text-sm text-primary hover:text-primary-light font-medium transition-colors"
-              >
-                Gerenciar →
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <div className="flex items-center justify-between text-sm mb-1.5">
-                  <span className="text-gray-700 dark:text-gray-300 font-medium">Orgs parceiras</span>
-                  <span className="font-semibold text-gray-600 dark:text-gray-400">
-                    {managedSummary.total_partners} / {managedSummary.base_included_orgs} incluídas
-                  </span>
-                </div>
-                <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all duration-500 ${
-                      managedSummary.total_partners > managedSummary.base_included_orgs ? 'bg-amber-500' : 'bg-primary'
-                    }`}
-                    style={{ width: `${Math.min((managedSummary.total_partners / Math.max(managedSummary.base_included_orgs, 1)) * 100, 100)}%` }}
-                  />
-                </div>
-              </div>
-              {managedSummary.extra_orgs > 0 ? (
-                <div className="rounded-lg bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30 px-4 py-3">
-                  <p className="text-sm text-amber-700 dark:text-amber-400">
-                    <strong>{managedSummary.extra_orgs}</strong> org{managedSummary.extra_orgs > 1 ? 's' : ''} adicional{managedSummary.extra_orgs > 1 ? 'is' : ''} a{' '}
-                    <strong>R$ 397,00/org/mês</strong> = <strong>R$ {managedSummary.extra_cost_brl.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</strong>
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Até {managedSummary.base_included_orgs} orgs incluídas no plano base · orgs adicionais R$ 397,00/org/mês
-                </p>
-              )}
-
-              {/* Workspace add-on */}
-              {managedSummary.total_extra_workspaces > 0 ? (
-                <div className="rounded-lg bg-sky-50 dark:bg-sky-900/10 border border-sky-200 dark:border-sky-800/30 px-4 py-3">
-                  <p className="text-sm text-sky-700 dark:text-sky-400">
-                    <strong>{managedSummary.total_extra_workspaces}</strong> workspace{managedSummary.total_extra_workspaces > 1 ? 's' : ''} adicional{managedSummary.total_extra_workspaces > 1 ? 'is' : ''} além do incluso a{' '}
-                    <strong>R$ 290,00/ws/mês</strong> = <strong>R$ {managedSummary.extra_workspace_cost_brl.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</strong>
-                  </p>
-                </div>
-              ) : (
-                <p className="text-xs text-gray-400 dark:text-gray-500">
-                  Cada org parceira inclui {managedSummary.partner_base_workspaces} workspaces · extras a R$ 290,00/ws/mês
-                </p>
-              )}
-            </div>
-          </div>
-        )}
 
         {/* Payment history */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">

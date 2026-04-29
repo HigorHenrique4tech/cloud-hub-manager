@@ -269,7 +269,7 @@ const BrandingPartnerModal = ({ org, onClose, onSave, saving }) => {
 
 /* ── Partner Org Card (Enhanced) ─────────────────────────────────────────── */
 
-const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isAddon, addonPricePerOrg, batchMode, isSelected, onToggleSelect }) => {
+const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, batchMode, isSelected, onToggleSelect }) => {
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
   const fmtBRL = (v) => v?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) ?? '—';
   const initials = (name) => name ? name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() : '?';
@@ -288,8 +288,6 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
           ? 'border-primary ring-2 ring-primary/30'
           : !org.is_active
           ? 'border-red-300/50 dark:border-red-800/40 opacity-70'
-          : isAddon
-          ? 'border-amber-400/50 dark:border-amber-500/40 hover:border-amber-400 dark:hover:border-amber-500/60'
           : 'border-gray-300 dark:border-gray-700 hover:border-gray-400 dark:hover:border-gray-600 shadow-sm'
       }`}
       onClick={batchMode ? () => onToggleSelect(org.slug) : undefined}
@@ -324,11 +322,6 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
         <div className="flex-1" />
 
         {/* Badges */}
-        {isAddon && (
-          <span className="inline-flex items-center gap-1 rounded-md bg-amber-50 dark:bg-amber-500/10 border border-amber-300/50 dark:border-amber-500/30 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:text-amber-400">
-            <PlusCircle size={10} /> Add-on
-          </span>
-        )}
         {!org.is_active && (
           <span className="inline-flex items-center gap-1 rounded-md bg-red-50 dark:bg-red-900/20 border border-red-300/50 dark:border-red-800/40 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:text-red-400">
             <Ban size={10} /> Suspensa
@@ -349,8 +342,8 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, isA
       {/* Header */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0 ${isAddon ? 'bg-amber-500/10' : 'bg-primary/10'}`}>
-            <Building2 size={18} className={isAddon ? 'text-amber-500' : 'text-primary-light'} />
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg flex-shrink-0 bg-primary/10">
+            <Building2 size={18} className="text-primary-light" />
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{org.name}</p>
@@ -1423,7 +1416,7 @@ const ManagedOrgsPage = () => {
         {activeView === 'orgs' && summary && (
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
-              { label: 'Organizações', value: summary.total_partners, sub: `${summary.base_included_orgs} incluídas no plano` },
+              { label: 'Organizações', value: summary.total_partners, sub: 'orgs parceiras ativas' },
               { label: 'Workspaces', value: summary.total_workspaces, sub: 'em todas as parceiras' },
               { label: 'Contas cloud', value: summary.total_cloud_accounts, sub: 'em todas as parceiras' },
               { label: 'Membros', value: summary.total_members, sub: 'em todas as parceiras' },
@@ -1437,13 +1430,6 @@ const ManagedOrgsPage = () => {
           </div>
         )}
 
-        {/* Add-on pricing info */}
-        {activeView === 'orgs' && summary && summary.extra_orgs > 0 && (
-          <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-sm text-amber-600 dark:text-amber-400">
-            <strong>{summary.extra_orgs}</strong> org{summary.extra_orgs > 1 ? 's' : ''} adicional{summary.extra_orgs > 1 ? 'is' : ''} além das {summary.base_included_orgs} incluídas
-            {' '}· <strong>R$ {summary.extra_cost_brl.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}/mês</strong> em add-ons
-          </div>
-        )}
 
         {/* Orgs grid */}
         {activeView === 'orgs' && (
@@ -1501,10 +1487,6 @@ const ManagedOrgsPage = () => {
               {/* Cards grid */}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {managedOrgs.map((org) => {
-                  const baseIncluded = summary?.base_included_orgs ?? 5;
-                  const originalIdx = (orgsQ.data?.managed_orgs || []).findIndex(o => o.id === org.id);
-                  const isAddon = originalIdx >= baseIncluded;
-                  const addonPricePerOrg = summary?.extra_orgs > 0 ? summary.extra_cost_brl / summary.extra_orgs : null;
                   return (
                     <PartnerCard
                       key={org.id}
@@ -1514,8 +1496,6 @@ const ManagedOrgsPage = () => {
                       onEdit={setEditTarget}
                       onNotes={setNotesTarget}
                       onBranding={(o) => setBrandingOrg(o)}
-                      isAddon={isAddon}
-                      addonPricePerOrg={addonPricePerOrg}
                       batchMode={batchMode}
                       isSelected={selectedOrgs.has(org.slug)}
                       onToggleSelect={toggleSelect}

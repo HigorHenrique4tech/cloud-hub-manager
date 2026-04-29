@@ -189,6 +189,33 @@ async def protect_metrics(request: Request, call_next):
                     return JSONResponse(status_code=403, content={"detail": "Forbidden"})
     return await call_next(request)
 
+# ── Per-org request tracking ─────────────────────────────────────────────────
+from app.core.metrics import org_requests_total
+
+@app.middleware("http")
+async def track_org_requests(request: Request, call_next):
+    response = await call_next(request)
+    try:
+        path_params = dict(request.scope.get("path_params", {}))
+        org_slug    = path_params.get("org_slug", "")
+        workspace_id = path_params.get("workspace_id", "")
+        if org_slug:
+            route      = request.scope.get("route")
+            route_path = route.path if route else request.url.path
+            # Strip /api/v1 prefix to keep labels shorter
+            route_path = route_path.removeprefix("/api/v1")
+            status_class = f"{response.status_code // 100}xx"
+            org_requests_total.labels(
+                org_slug=org_slug,
+                workspace_id=workspace_id or "_",
+                method=request.method,
+                status_class=status_class,
+                route=route_path,
+            ).inc()
+    except Exception:
+        pass
+    return response
+
 # ── Prometheus metrics ───────────────────────────────────────────────────────
 from prometheus_fastapi_instrumentator import Instrumentator
 
