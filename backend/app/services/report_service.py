@@ -257,7 +257,7 @@ def _collect_summary_data(db: Session, workspace_id: UUID, period: str, report_s
 # ── PDF generation ────────────────────────────────────────────────────────────
 
 
-def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = None, branding: dict = None) -> bytes:
+def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = None, branding: dict = None, currency: str = "USD", rate: float = 1.0) -> bytes:
     """Build a styled PDF from summary data using reportlab. Returns raw PDF bytes."""
     try:
         from reportlab.lib import colors
@@ -379,6 +379,17 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
         spaceAfter=4,
     )
 
+    # ── Currency formatters ───────────────────────────────────────────────────
+    def _fmt(v: float) -> str:
+        converted = v * rate
+        return f"R$ {converted:,.2f}" if currency == "BRL" else f"${converted:,.2f}"
+
+    def _fmt_short(v: float) -> str:
+        converted = v * rate
+        return f"R$ {converted:,.0f}" if currency == "BRL" else f"${converted:,.0f}"
+
+    _curr_label = "BRL" if currency == "BRL" else "US$"
+
     # ── Section header helper ─────────────────────────────────────────────────
     def _section_header(text: str):
         style = ParagraphStyle(
@@ -453,7 +464,7 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
     kpi_table = Table(
         [[
             _kpi("GASTO TOTAL",
-                 f'<font color="#1D4ED8" size="19"><b>${total_spend:,.2f}</b></font>',
+                 f'<font color="#1D4ED8" size="19"><b>{_fmt(total_spend)}</b></font>',
                  delta_str or '<font color="#9CA3AF" size="8">vs mês anterior</font>',
                  "#EFF6FF"),
             _kpi("ANOMALIAS",
@@ -461,7 +472,7 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
                  '<font color="#92400E" size="8">no período</font>',
                  "#FFFBEB"),
             _kpi("ECONOMIA POTENCIAL",
-                 f'<font color="#059669" size="19"><b>${potential_saving:,.2f}</b></font>',
+                 f'<font color="#059669" size="19"><b>{_fmt(potential_saving)}</b></font>',
                  '<font color="#065F46" size="8">/mês disponível</font>',
                  "#D1FAE5"),
         ]],
@@ -500,10 +511,10 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
             color  = "red" if delta_pct > 0 else "green"
             delta_text = (
                 f' — vs {prev_p}: <font color="{color}"><b>{arrow} {abs(delta_pct):.1f}%</b></font>'
-                f' (US$ {prev_s:,.2f})'
+                f' ({_fmt(prev_s)})'
             )
         story.append(Paragraph(
-            f"Gasto total estimado: <b>US$ {total_spend:,.2f}</b>{delta_text}",
+            f"Gasto total estimado: <b>{_fmt(total_spend)}</b>{delta_text}",
             body_style,
         ))
         story.append(Spacer(1, 0.25 * cm))
@@ -539,7 +550,7 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
                 # Value above bar
                 if h["spend"] > 0:
                     drawing.add(String(x + bar_w / 2, base_y + bar_h + 4,
-                                       f"${h['spend']:,.0f}",
+                                       _fmt_short(h["spend"]),
                                        fontName="Helvetica-Bold", fontSize=7.5,
                                        fillColor=BLUE_DARK, textAnchor="middle"))
 
@@ -550,15 +561,15 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
         summary = costs.get("summary", [])
         if summary:
             cw = [CONTENT_W * f for f in (0.14, 0.30, 0.19, 0.19, 0.18)]
-            table_data = [["Provedor", "Orçamento", "Limite (US$)", "Gasto (US$)", "% Usado"]]
+            table_data = [["Provedor", "Orçamento", f"Limite ({_curr_label})", f"Gasto ({_curr_label})", "% Usado"]]
             for row in summary:
                 pct = row["pct_used"]
                 pc  = "#10B981" if pct < 70 else ("#F59E0B" if pct < 90 else "#EF4444")
                 table_data.append([
                     row["provider"].upper(),
                     row["budget_name"],
-                    f"${row['budget_amount']:,.2f}",
-                    f"${row['last_spend']:,.2f}",
+                    _fmt(row["budget_amount"]),
+                    _fmt(row["last_spend"]),
                     Paragraph(f'<font color="{pc}"><b>{pct}%</b></font>', body_style),
                 ])
             t = Table(table_data, colWidths=cw)
@@ -588,8 +599,8 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
                     a["provider"].upper(),
                     a["service"],
                     a["detected_date"],
-                    f"${a['baseline_cost']:,.2f}",
-                    f"${a['actual_cost']:,.2f}",
+                    _fmt(a["baseline_cost"]),
+                    _fmt(a["actual_cost"]),
                     Paragraph(f'<font color="{dc}"><b>+{dev}%</b></font>', body_style),
                 ])
             t = Table(table_data, colWidths=cw)
@@ -604,7 +615,7 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
 
         potential = recs_data.get("total_potential_saving", 0)
         story.append(Paragraph(
-            f"Potencial de economia total: <b>US$ {potential:,.2f}/mês</b>",
+            f"Potencial de economia total: <b>{_fmt(potential)}/mês</b>",
             body_style,
         ))
         story.append(Spacer(1, 0.2 * cm))
@@ -614,7 +625,7 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
             story.append(Paragraph("Nenhuma recomendação pendente.", body_style))
         else:
             cw = [CONTENT_W * f for f in (0.13, 0.30, 0.24, 0.14, 0.19)]
-            table_data = [["Provedor", "Recurso", "Tipo", "Severidade", "Economia/mês"]]
+            table_data = [["Provedor", "Recurso", "Tipo", "Severidade", f"Economia/mês ({_curr_label})"]]
             for r in top:
                 sev = r["severity"]
                 sc  = "#EF4444" if sev == "high" else ("#F59E0B" if sev == "medium" else "#10B981")
@@ -624,7 +635,7 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
                     r["resource_name"][:28],
                     r["recommendation_type"].replace("_", " ").title(),
                     Paragraph(f'<font color="{sc}"><b>{sl}</b></font>', body_style),
-                    f"${r['saving_monthly']:,.2f}",
+                    _fmt(r["saving_monthly"]),
                 ])
             t = Table(table_data, colWidths=cw)
             ts = _table_style()
@@ -681,6 +692,8 @@ def _build_rich_email_html(
     summary_data: dict,
     logo_bytes: Optional[bytes] = None,
     branding: dict = None,
+    currency: str = "USD",
+    rate: float = 1.0,
 ) -> str:
     """Build a rich HTML email body with logo, KPI cards, anomalies and recommendations."""
     costs          = summary_data.get("costs", {})
@@ -693,6 +706,10 @@ def _build_rich_email_html(
     inventory      = summary_data.get("inventory", {})
 
     _platform = (branding or {}).get("platform_name", "CloudAtlas")
+
+    def _fmt(v: float) -> str:
+        converted = v * rate
+        return f"R$ {converted:,.2f}" if currency == "BRL" else f"${converted:,.2f}"
 
     # Logo img tag (inline base64) or text fallback
     if logo_bytes:
@@ -708,9 +725,10 @@ def _build_rich_email_html(
     if delta_pct is not None:
         arrow       = "▲" if delta_pct > 0 else "▼"
         delta_color = "#EF4444" if delta_pct > 0 else "#10B981"
+        prev_s      = costs.get("prev_spend", 0)
         delta_badge = (
             f'<span style="font-size:11px;color:{delta_color};font-weight:600;">'
-            f'{arrow} {abs(delta_pct):.1f}% vs mês anterior</span>'
+            f'{arrow} {abs(delta_pct):.1f}% vs mês anterior ({_fmt(prev_s)})</span>'
         )
     else:
         delta_badge = '<span style="font-size:11px;color:#9CA3AF;">vs mês anterior</span>'
@@ -749,7 +767,7 @@ def _build_rich_email_html(
             f"<td style='padding:9px 14px;border:1px solid #E5E7EB;font-size:13px;font-weight:600;'>{r['provider'].upper()}</td>"
             f"<td style='padding:9px 14px;border:1px solid #E5E7EB;font-size:13px;'>{r.get('resource_name','')[:32]}</td>"
             f"<td style='padding:9px 14px;border:1px solid #E5E7EB;font-size:13px;color:{sc};font-weight:700;'>{sl}</td>"
-            f"<td style='padding:9px 14px;border:1px solid #E5E7EB;font-size:13px;color:#059669;font-weight:700;'>${r.get('saving_monthly',0):,.2f}/mês</td>"
+            f"<td style='padding:9px 14px;border:1px solid #E5E7EB;font-size:13px;color:#059669;font-weight:700;'>{_fmt(r.get('saving_monthly', 0))}/mês</td>"
             f"</tr>"
         )
     if not rec_rows:
@@ -815,7 +833,7 @@ def _build_rich_email_html(
               <p style="margin:0 0 6px;font-size:10px;color:#6B7280;text-transform:uppercase;
                         letter-spacing:.08em;font-weight:600;">Gasto Total</p>
               <p style="margin:0;font-size:24px;font-weight:800;color:#1D4ED8;">
-                ${total_spend:,.2f}
+                {_fmt(total_spend)}
               </p>
               <p style="margin:6px 0 0;font-size:11px;">{delta_badge}</p>
             </div>
@@ -837,7 +855,7 @@ def _build_rich_email_html(
               <p style="margin:0 0 6px;font-size:10px;color:#6B7280;text-transform:uppercase;
                         letter-spacing:.08em;font-weight:600;">Economia Potencial</p>
               <p style="margin:0;font-size:24px;font-weight:800;color:#059669;">
-                ${potential_saving:,.2f}
+                {_fmt(potential_saving)}
               </p>
               <p style="margin:6px 0 0;font-size:11px;color:#065F46;">/m&ecirc;s dispon&iacute;vel</p>
             </div>
@@ -1006,8 +1024,20 @@ def generate_report(db: Session, workspace_id: UUID, period: str, branding: dict
 
         if logo_bytes is None:
             logo_bytes = _load_org_logo(branding, db, org)
+
+        currency_display = "USD"
+        exchange_rate = 1.0
+        if org:
+            try:
+                from app.services.currency_service import get_exchange_rate as _get_rate
+                currency_display = getattr(org, "currency_display", "USD") or "USD"
+                if currency_display == "BRL":
+                    exchange_rate = _get_rate(db, org) or 1.0
+            except Exception:
+                pass
+
         summary_data = _collect_summary_data(db, workspace_id, period, report_settings)
-        pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes, branding=branding)
+        pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes, branding=branding, currency=currency_display, rate=exchange_rate)
 
         report.status       = "ready"
         report.pdf_bytes    = base64.b64encode(pdf_bytes).decode("ascii")
@@ -1055,8 +1085,20 @@ def retry_report(db: Session, report_id: UUID, branding: dict = None, logo_bytes
 
         if logo_bytes is None:
             logo_bytes = _load_org_logo(branding, db, org)
+
+        currency_display = "USD"
+        exchange_rate = 1.0
+        if org:
+            try:
+                from app.services.currency_service import get_exchange_rate as _get_rate
+                currency_display = getattr(org, "currency_display", "USD") or "USD"
+                if currency_display == "BRL":
+                    exchange_rate = _get_rate(db, org) or 1.0
+            except Exception:
+                pass
+
         summary_data = _collect_summary_data(db, workspace_id, period, report_settings)
-        pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes, branding=branding)
+        pdf_bytes    = _generate_pdf(summary_data, report_settings, logo_bytes, branding=branding, currency=currency_display, rate=exchange_rate)
 
         report.status       = "ready"
         report.pdf_bytes    = base64.b64encode(pdf_bytes).decode("ascii")
@@ -1098,9 +1140,21 @@ def send_report(db: Session, report_id: UUID, recipients: List[str], branding: d
     if logo_bytes is None:
         logo_bytes = _load_org_logo(branding, db, org)
 
+    currency_display = "USD"
+    exchange_rate = 1.0
+    if org:
+        try:
+            from app.services.currency_service import get_exchange_rate as _get_rate
+            currency_display = getattr(org, "currency_display", "USD") or "USD"
+            if currency_display == "BRL":
+                exchange_rate = _get_rate(db, org) or 1.0
+        except Exception:
+            pass
+
     subject   = f"Relatório Executivo — {workspace_name} — {report.period}"
     body_html = _build_rich_email_html(
         workspace_name, report.period, report.summary_data or {}, logo_bytes, branding=branding,
+        currency=currency_display, rate=exchange_rate,
     )
 
     _sender = (branding or {}).get("email_sender_name", "CloudAtlas")

@@ -39,6 +39,7 @@ class CreateProjectRequest(BaseModel):
     destination_config: dict
     strip_mip_labels: bool = False
     preserve_sp_permissions: bool = False
+    migrate_inbox_rules: bool = False
 
     @validator("migration_type")
     def validate_migration_type(cls, v):
@@ -213,6 +214,7 @@ async def create_project(
         destination_config=body.destination_config,
         strip_mip_labels=body.strip_mip_labels,
         preserve_sp_permissions=body.preserve_sp_permissions,
+        migrate_inbox_rules=body.migrate_inbox_rules,
     )
 
 

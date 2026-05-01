@@ -126,6 +126,7 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
     destination_config: {},
     strip_mip_labels: false,
     preserve_sp_permissions: false,
+    migrate_inbox_rules: false,
   });
   const [srcFields, setSrcFields] = useState({});
   const [dstFields, setDstFields] = useState({});
@@ -149,6 +150,7 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
       destination_config: dstFields,
       strip_mip_labels: form.strip_mip_labels,
       preserve_sp_permissions: form.preserve_sp_permissions,
+      migrate_inbox_rules: form.migrate_inbox_rules,
     }),
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ['migration-projects'] });
@@ -425,6 +427,38 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                   </div>
                 </label>
               </div>
+
+              {/* Migrate inbox rules */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <div className="relative mt-0.5 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={form.migrate_inbox_rules}
+                      onChange={e => setForm(p => ({ ...p, migrate_inbox_rules: e.target.checked }))}
+                      className="sr-only"
+                    />
+                    <div
+                      onClick={() => setForm(p => ({ ...p, migrate_inbox_rules: !p.migrate_inbox_rules }))}
+                      className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.migrate_inbox_rules ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+                    >
+                      <span className={`block w-4 h-4 mt-0.5 rounded-full bg-white shadow transition-transform ${form.migrate_inbox_rules ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 flex items-center gap-1.5">
+                      <Mail className="w-3.5 h-3.5 text-blue-500" />
+                      Migrar regras de caixa de entrada
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      Copia as regras de organização de e-mail (mover, encaminhar, marcar como lida, etc.)
+                      da caixa de origem para o destino. Pastas referenciadas nas regras são criadas
+                      automaticamente se não existirem no tenant destino.
+                      Aplica-se apenas a migrações do tipo <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded text-blue-600 dark:text-blue-400">Correio</code>.
+                    </p>
+                  </div>
+                </label>
+              </div>
             </div>
           )}
 
@@ -441,6 +475,7 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                   { label: 'Descrição', value: form.description || '—' },
                   { label: 'Labels MIP', value: form.strip_mip_labels ? 'Remover durante migração' : 'Preservar (padrão)', highlight: form.strip_mip_labels },
                   { label: 'Permissões SP', value: form.preserve_sp_permissions ? 'Copiar permissões únicas' : 'Não copiar (padrão)', highlight: form.preserve_sp_permissions },
+                  { label: 'Regras de inbox', value: form.migrate_inbox_rules ? 'Migrar regras de caixa de entrada' : 'Não migrar (padrão)', highlight: form.migrate_inbox_rules },
                 ].map(({ label, value, highlight }) => (
                   <div key={label} className="flex items-start gap-4 px-4 py-3 border-b last:border-0 border-gray-100 dark:border-gray-800">
                     <span className="text-xs text-gray-500 dark:text-gray-400 w-28 flex-shrink-0">{label}</span>

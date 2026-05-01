@@ -69,6 +69,7 @@ def create_project(
     destination_config: dict,
     strip_mip_labels: bool = False,
     preserve_sp_permissions: bool = False,
+    migrate_inbox_rules: bool = False,
 ) -> dict:
     project = MigrationProject(
         id=uuid.uuid4(),
@@ -81,6 +82,7 @@ def create_project(
         destination_config=_encrypt_config(db, workspace_id, destination_config),
         strip_mip_labels=strip_mip_labels,
         preserve_sp_permissions=preserve_sp_permissions,
+        migrate_inbox_rules=migrate_inbox_rules,
         status="draft",
     )
     db.add(project)
@@ -469,6 +471,7 @@ def _project_to_dict(p: MigrationProject, source_label: str = "",
         "progress": progress,
         "strip_mip_labels": bool(p.strip_mip_labels),
         "preserve_sp_permissions": bool(p.preserve_sp_permissions),
+        "migrate_inbox_rules": bool(p.migrate_inbox_rules),
         "source_label": source_label,
         "eta_seconds": eta_seconds,
         "scheduled_at": p.scheduled_at.isoformat() if p.scheduled_at else None,

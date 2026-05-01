@@ -1249,17 +1249,46 @@ def _run_daily_backup_scan() -> None:
     and push a notification if there are unprotected or failing VMs.
     """
     from app.database import SessionLocal
-    from app.models.db_models import CloudAccount, Workspace
+    from app.models.db_models import CloudAccount, AlertEvent
     from app.services.auth_service import decrypt_for_account
     from app.services.notification_service import push_notification
+    from sqlalchemy import text
 
     db = SessionLocal()
     try:
+        # Distributed lock: only one Gunicorn worker executes this job.
+        # pg_try_advisory_lock is session-scoped and released on db.close().
+        acquired = db.execute(text("SELECT pg_try_advisory_lock(20260428)")).scalar()
+        if not acquired:
+            logger.info("[backup_scan_daily] Another worker is already running this job, skipping")
+            return
+
+        # Deduplicate by workspace: collect workspaces already notified in the last 23h
+        cutoff = datetime.utcnow() - timedelta(hours=23)
+        notified_ws = {
+            str(row[0])
+            for row in db.query(AlertEvent.workspace_id)
+            .filter(
+                AlertEvent.notification_type == "backup",
+                AlertEvent.created_at >= cutoff,
+            )
+            .distinct()
+            .all()
+        }
+
+        # Group accounts by workspace so each workspace gets at most one notification
         accounts = db.query(CloudAccount).filter(
             CloudAccount.provider == "azure",
             CloudAccount.is_active == True,
         ).all()
+
+        seen_workspaces: set[str] = set()
         for account in accounts:
+            ws_id = str(account.workspace_id)
+            if ws_id in notified_ws or ws_id in seen_workspaces:
+                logger.info("[backup_scan_daily] workspace=%s already notified today, skipping", ws_id)
+                continue
+            seen_workspaces.add(ws_id)
             try:
                 creds = decrypt_for_account(db, account)
                 if not creds:
@@ -1275,7 +1304,6 @@ def _run_daily_backup_scan() -> None:
                 bv = BackupValidationService(svc)
                 summary = bv.get_coverage_summary()
 
-                ws_id = str(account.workspace_id)
                 problems = []
                 if summary.get("unprotected_vms", 0) > 0:
                     problems.append(f"{summary['unprotected_vms']} VM(s) sem backup")

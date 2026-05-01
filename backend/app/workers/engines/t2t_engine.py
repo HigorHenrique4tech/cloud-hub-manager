@@ -662,6 +662,204 @@ class TenantToTenantEngine(MigrationEngine):
             self.add_log(f"Pasta '{folder_name}' concluída: {batch_count} msgs processadas.")
             on_progress(total_migrated, self.mailbox.items_total or 0, 0)
 
+    # ── Fase 2b: Regras de caixa de entrada ───────────────────────────────────
+
+    def _list_inbox_rules(self, user_id: str, headers: dict) -> list[dict]:
+        """Lista as regras de caixa de entrada via Graph API."""
+        url = f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders/inbox/messageRules"
+
+        def fetch():
+            r = requests.get(url, headers=headers, timeout=30)
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(
+                        f"HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+            return r.json().get("value", [])
+
+        return self.retry_on_throttle(fetch)
+
+    def _build_folder_id_map(self, user_id: str, headers: dict) -> dict:
+        """
+        Constrói mapa folder_id → displayName para traduzir IDs de pastas
+        presentes em ações de regras (moveToFolder/copyToFolder).
+        """
+        list_url = (
+            f"{GRAPH_V1}/users/{self._enc_user(user_id)}"
+            f"/mailFolders?$top=100&$select=id,displayName"
+        )
+        result: dict = {}
+        while list_url:
+            r = requests.get(list_url, headers=headers, timeout=30)
+            if not r.ok:
+                break
+            data = r.json()
+            for f in data.get("value", []):
+                result[f["id"]] = f.get("displayName", "")
+            list_url = data.get("@odata.nextLink")
+
+        # Complementa com well-known names (inbox, sentitems, etc.)
+        for wk in ("inbox", "sentitems", "drafts", "deleteditems", "archive"):
+            try:
+                r = requests.get(
+                    f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders/{wk}"
+                    f"?$select=id,displayName",
+                    headers=headers, timeout=15,
+                )
+                if r.ok:
+                    fdata = r.json()
+                    result[fdata["id"]] = fdata.get("displayName", "")
+            except Exception:
+                pass
+        return result
+
+    def _prepare_rule_for_destination(
+        self,
+        rule: dict,
+        src_folder_map: dict,
+        dest_user: str,
+        dst_hdrs: dict,
+        dst_folder_cache: dict,
+    ) -> dict:
+        """
+        Sanitiza um messageRule para criação no destino:
+        - Remove campos somente-leitura (id, hasError)
+        - Traduz IDs de pasta em actions.moveToFolder / actions.copyToFolder
+          usando o mapa da origem e resolvendo/criando no destino
+        """
+        import copy
+        body = copy.deepcopy(rule)
+        body.pop("id", None)
+        body.pop("hasError", None)
+
+        actions = body.get("actions", {})
+        for action_key in ("moveToFolder", "copyToFolder"):
+            src_folder_id = actions.get(action_key)
+            if not src_folder_id:
+                continue
+            folder_name = src_folder_map.get(src_folder_id, "")
+            if folder_name:
+                try:
+                    dst_folder_id = self._get_or_create_folder(
+                        dest_user, folder_name, dst_hdrs, dst_folder_cache
+                    )
+                    actions[action_key] = dst_folder_id
+                except Exception as exc:
+                    self.add_log(
+                        f"Não foi possível resolver pasta '{folder_name}' no destino "
+                        f"para ação '{action_key}' — ação removida da regra: {exc}",
+                        "warning",
+                    )
+                    actions.pop(action_key, None)
+            else:
+                self.add_log(
+                    f"ID de pasta '{src_folder_id[:20]}...' não encontrado no mapa da origem "
+                    f"— ação '{action_key}' removida da regra.",
+                    "warning",
+                )
+                actions.pop(action_key, None)
+        return body
+
+    def _create_inbox_rule(self, user_id: str, rule_body: dict, headers: dict) -> dict:
+        """Cria uma regra de caixa de entrada no tenant de destino."""
+        url = (
+            f"{GRAPH_V1}/users/{self._enc_user(user_id)}"
+            f"/mailFolders/inbox/messageRules"
+        )
+        json_hdrs = {**headers, "Content-Type": "application/json"}
+
+        def create():
+            r = requests.post(url, headers=json_hdrs, json=rule_body, timeout=30)
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(
+                        f"HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+            return r.json()
+
+        return self.retry_on_throttle(create)
+
+    def migrate_inbox_rules(self) -> dict:
+        """
+        Copia as regras de caixa de entrada (inbox rules) da origem para o destino.
+        Resolve IDs de pasta para o tenant destino. Não é crítico — falhas são
+        logadas como warning e não interrompem a migração de mensagens.
+        Retorna {"copied": int, "skipped": int, "failed": int}.
+        """
+        src_user = self.source_cfg.get("src_user_id") or self.mailbox.source_email
+        dest_user = self.dest_cfg.get("dest_user_id") or self.mailbox.destination_email
+        src_hdrs = self._src_headers()
+        dst_hdrs = self._dst_headers()
+
+        try:
+            rules = self._list_inbox_rules(src_user, src_hdrs)
+        except Exception as exc:
+            self.add_log(f"Não foi possível listar regras da origem: {exc}", "warning")
+            return {"copied": 0, "skipped": 0, "failed": 0}
+
+        if not rules:
+            self.add_log("Nenhuma regra de caixa de entrada na origem.", "info")
+            return {"copied": 0, "skipped": 0, "failed": 0}
+
+        self.add_log(
+            f"Encontrada(s) {len(rules)} regra(s) na origem. Copiando para o destino...",
+            "info",
+        )
+
+        src_folder_map: dict = {}
+        try:
+            src_folder_map = self._build_folder_id_map(src_user, src_hdrs)
+        except Exception as exc:
+            self.add_log(
+                f"Aviso: não foi possível construir mapa de pastas da origem ({exc}). "
+                "Ações 'mover para pasta' podem ser perdidas.",
+                "warning",
+            )
+
+        dst_folder_cache: dict = {}
+        copied = skipped = failed = 0
+
+        for rule in rules:
+            rule_name = rule.get("displayName", "(sem nome)")
+            try:
+                body = self._prepare_rule_for_destination(
+                    rule, src_folder_map, dest_user, dst_hdrs, dst_folder_cache
+                )
+                actions = body.get("actions") or {}
+                has_action = any(
+                    v not in (None, False, [], {}, "")
+                    for v in actions.values()
+                )
+                if not has_action:
+                    self.add_log(
+                        f"Regra '{rule_name}' ignorada — nenhuma ação válida após tradução.",
+                        "warning",
+                    )
+                    skipped += 1
+                    continue
+
+                self._create_inbox_rule(dest_user, body, dst_hdrs)
+                copied += 1
+                self.add_log(f"Regra '{rule_name}' copiada.", "info")
+
+            except Exception as exc:
+                failed += 1
+                self.add_log(f"Falha ao copiar regra '{rule_name}': {exc}", "warning")
+
+        return {"copied": copied, "skipped": skipped, "failed": failed}
+
     # ── Fase 3: Delta sync ────────────────────────────────────────────────────
 
     def delta_sync(self, on_progress: ProgressCallback) -> None:

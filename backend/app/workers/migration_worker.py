@@ -159,6 +159,20 @@ def _migrate_one_mailbox(project_id: str, mailbox_id: str,
 
         engine.migrate_mailbox(on_progress)
 
+        # ── Fase 2b: Regras de caixa de entrada ──────────────────────────────
+        if source_cfg.get("migrate_inbox_rules") and (mb.object_type or "email") == "email":
+            engine.add_log("Migrando regras de caixa de entrada...")
+            try:
+                rules_result = engine.migrate_inbox_rules()
+                engine.add_log(
+                    f"Regras: {rules_result['copied']} copiada(s), "
+                    f"{rules_result['skipped']} ignorada(s), "
+                    f"{rules_result['failed']} falha(s).",
+                    level="info" if rules_result["failed"] == 0 else "warning",
+                )
+            except Exception as exc:
+                engine.add_log(f"Migração de regras falhou (não crítico): {exc}", "warning")
+
         # ── Fase 3: Delta sync ────────────────────────────────────────────────
         mb.phase = "delta"
         db.commit()
@@ -292,6 +306,8 @@ def run_migration_project(self, project_id: str,
             source_cfg = {**source_cfg, "strip_mip_labels": True}
         if project.preserve_sp_permissions:
             source_cfg = {**source_cfg, "preserve_sp_permissions": True}
+        if project.migrate_inbox_rules:
+            source_cfg = {**source_cfg, "migrate_inbox_rules": True}
 
         # Filtra mailboxes conforme modo de operação
         if verify_only:

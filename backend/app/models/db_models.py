@@ -949,6 +949,7 @@ class MigrationProject(Base):
     verified_count     = Column(Integer, nullable=False, default=0)
     strip_mip_labels        = Column(Boolean, nullable=False, default=False)  # remove MIP/AIP sensitivity label headers during migration
     preserve_sp_permissions = Column(Boolean, nullable=False, default=False)  # copy SharePoint item permissions to destination
+    migrate_inbox_rules     = Column(Boolean, nullable=False, default=False)  # copy inbox messageRules to destination tenant
     started_at         = Column(DateTime, nullable=True)
     completed_at       = Column(DateTime, nullable=True)
     scheduled_at       = Column(DateTime, nullable=True)
