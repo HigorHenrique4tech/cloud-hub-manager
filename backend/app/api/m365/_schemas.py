@@ -115,6 +115,12 @@ class SendGdapInviteRequest(BaseModel):
     emails: list = []
 
 
+class RenewGdapRelationshipRequest(BaseModel):
+    duration_days: int = 365
+    auto_extend: bool = True
+    display_name_suffix: str = " (renovada)"
+
+
 class ToggleUserRequest(BaseModel):
     enabled: bool
 

@@ -17,6 +17,7 @@ import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import orgService from '../services/orgService';
 import m365Service from '../services/m365Service';
 import GdapPanel from '../components/gdap/GdapPanel';
+import PurchaseSubscriptionModal from './managed/PurchaseSubscriptionModal';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -548,7 +549,8 @@ function SubStatusBadge({ status }) {
   );
 }
 
-function SubscriptionRow({ sub }) {
+function SubscriptionRow({ sub, onEditQuantity }) {
+  const canEditQty = onEditQuantity && !isAzure(sub) && sub.status === 'active';
   return (
     <div className="flex items-center gap-3 py-2.5 border-b border-gray-100 dark:border-gray-700/60 last:border-0">
       <div className="flex-1 min-w-0">
@@ -559,8 +561,17 @@ function SubscriptionRow({ sub }) {
       </div>
       <div className="flex items-center gap-3 flex-shrink-0 text-right">
         {!isAzure(sub) && (
-          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+          <span className="text-xs text-gray-500 dark:text-gray-400 font-medium inline-flex items-center gap-1.5">
             {sub.quantity} {sub.unit_type === 'Licenses' ? 'licença' : 'seat'}{sub.quantity !== 1 ? 's' : ''}
+            {canEditQty && (
+              <button
+                onClick={() => onEditQuantity(sub)}
+                className="p-0.5 rounded text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
+                title="Alterar quantidade"
+              >
+                <Pencil size={12} />
+              </button>
+            )}
           </span>
         )}
         <div className="text-right">
@@ -576,7 +587,66 @@ function SubscriptionRow({ sub }) {
   );
 }
 
-const OverviewTab = ({ customer, subs, relQ }) => {
+/* ── Edit Subscription Quantity Modal ────────────────────────────────────── */
+
+const EditQuantityModal = ({ sub, onClose, onSubmit, isPending, error }) => {
+  useEscapeKey(true, onClose);
+  const [quantity, setQuantity] = useState(sub?.quantity || 1);
+  if (!sub) return null;
+  const submit = (e) => {
+    e.preventDefault();
+    if (quantity < 1 || quantity === sub.quantity) return;
+    onSubmit(quantity);
+  };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4">
+      <form onSubmit={submit} className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Alterar quantidade</h2>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-white">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="px-5 py-4 space-y-4">
+          <div>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{sub.offer_name || sub.friendly_name}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Atual: {sub.quantity} licença{sub.quantity !== 1 ? 's' : ''}</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nova quantidade</label>
+            <input
+              type="number"
+              min={1}
+              value={quantity}
+              onChange={(e) => setQuantity(parseInt(e.target.value, 10) || 1)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+          </div>
+          {error && (
+            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+              {error}
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-gray-200 dark:border-gray-700 px-5 py-3">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            disabled={isPending || quantity < 1 || quantity === sub.quantity}
+            className="px-3 py-1.5 text-xs font-medium bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-700 disabled:text-gray-500 text-white rounded-lg"
+          >
+            {isPending ? 'Salvando...' : 'Salvar'}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const OverviewTab = ({ customer, subs, relQ, onEditQuantity }) => {
   const azure = (subs || []).filter(isAzure);
   const m365 = (subs || []).filter(s => !isAzure(s));
   const activeCount = (subs || []).filter(s => s.status === 'active').length;
@@ -630,7 +700,7 @@ const OverviewTab = ({ customer, subs, relQ }) => {
             <Zap size={11} /> Azure ({azure.length})
           </p>
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-4 divide-y divide-gray-100 dark:divide-gray-700/60">
-            {azure.map(s => <SubscriptionRow key={s.id} sub={s} />)}
+            {azure.map(s => <SubscriptionRow key={s.id} sub={s} onEditQuantity={onEditQuantity} />)}
           </div>
         </div>
       )}
@@ -642,7 +712,7 @@ const OverviewTab = ({ customer, subs, relQ }) => {
             <Package size={11} /> Microsoft 365 ({m365.length})
           </p>
           <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 px-4 divide-y divide-gray-100 dark:divide-gray-700/60">
-            {m365.slice(0, 5).map(s => <SubscriptionRow key={s.id} sub={s} />)}
+            {m365.slice(0, 5).map(s => <SubscriptionRow key={s.id} sub={s} onEditQuantity={onEditQuantity} />)}
             {m365.length > 5 && (
               <p className="text-xs text-gray-400 dark:text-gray-500 py-2 text-center">
                 +{m365.length - 5} assinaturas — veja na aba Assinaturas
@@ -655,26 +725,35 @@ const OverviewTab = ({ customer, subs, relQ }) => {
   );
 };
 
-const SubscriptionsTab = ({ subs, loading }) => {
+const SubscriptionsTab = ({ subs, loading, onEditQuantity, onPurchase, canPurchase }) => {
   const [filter, setFilter] = useState('all');
 
   if (loading) return <div className="flex justify-center py-10"><LoadingSpinner /></div>;
+
+  const azure = (subs || []).filter(isAzure);
+  const m365 = (subs || []).filter(s => !isAzure(s));
+  const visible = filter === 'azure' ? azure : filter === 'm365' ? m365 : (subs || []);
+  const activeCount = (subs || []).filter(s => s.status === 'active').length;
+  const suspendedCount = (subs || []).filter(s => s.status === 'suspended').length;
+
   if (!subs || subs.length === 0) return (
     <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
       <Package size={36} className="mb-3 opacity-20" />
-      <p className="text-sm">Nenhuma assinatura encontrada</p>
+      <p className="text-sm mb-3">Nenhuma assinatura encontrada</p>
+      {canPurchase && (
+        <button
+          onClick={onPurchase}
+          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+        >
+          <PlusCircle size={13} className="mr-1.5" /> Nova Assinatura
+        </button>
+      )}
     </div>
   );
 
-  const azure = subs.filter(isAzure);
-  const m365 = subs.filter(s => !isAzure(s));
-  const visible = filter === 'azure' ? azure : filter === 'm365' ? m365 : subs;
-  const activeCount = subs.filter(s => s.status === 'active').length;
-  const suspendedCount = subs.filter(s => s.status === 'suspended').length;
-
   return (
     <div className="space-y-4">
-      {/* Summary row */}
+      {/* Summary row + Purchase button */}
       <div className="flex items-center gap-3 text-sm">
         <span className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
           <CheckCircle size={13} /> {activeCount} ativa{activeCount !== 1 ? 's' : ''}
@@ -685,6 +764,14 @@ const SubscriptionsTab = ({ subs, loading }) => {
           </span>
         )}
         <span className="text-gray-400 dark:text-gray-500 text-xs ml-auto">{subs.length} total</span>
+        {canPurchase && (
+          <button
+            onClick={onPurchase}
+            className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+          >
+            <PlusCircle size={12} className="mr-1" /> Nova
+          </button>
+        )}
       </div>
 
       {/* Filter tabs */}
@@ -710,7 +797,7 @@ const SubscriptionsTab = ({ subs, loading }) => {
         {visible.length === 0 ? (
           <p className="text-sm text-center text-gray-400 dark:text-gray-500 py-6">Nenhuma assinatura nesta categoria</p>
         ) : (
-          visible.map(s => <SubscriptionRow key={s.id} sub={s} />)
+          visible.map(s => <SubscriptionRow key={s.id} sub={s} onEditQuantity={onEditQuantity} />)
         )}
       </div>
 
@@ -742,6 +829,10 @@ const SubscriptionsTab = ({ subs, loading }) => {
 const CustomerDetailDrawer = ({ customer, workspaceId, orgSlug, onClose }) => {
   useEscapeKey(true, onClose);
   const [tab, setTab] = useState(0);
+  const [editQtySub, setEditQtySub] = useState(null);
+  const [editQtyError, setEditQtyError] = useState(null);
+  const [showPurchase, setShowPurchase] = useState(false);
+  const qc = useQueryClient();
 
   const subsQ = useQuery({
     queryKey: ['pc-subs', orgSlug, workspaceId, customer.id],
@@ -755,6 +846,29 @@ const CustomerDetailDrawer = ({ customer, workspaceId, orgSlug, onClose }) => {
     queryFn: m365Service.getGdapRelationships,
     staleTime: 30_000,
   });
+
+  const updateQtyMut = useMutation({
+    mutationFn: (newQty) => orgService.pcUpdateSubscriptionQuantity(
+      orgSlug, workspaceId, customer.id, editQtySub.id, newQty,
+    ),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['pc-subs', orgSlug, workspaceId, customer.id] });
+      setEditQtySub(null);
+      setEditQtyError(null);
+      if (data?.async) {
+        // eslint-disable-next-line no-alert
+        alert('Alteração agendada — pode levar alguns minutos para refletir.');
+      }
+    },
+    onError: (err) => {
+      setEditQtyError(err?.response?.data?.detail || 'Falha ao alterar quantidade.');
+    },
+  });
+
+  const handleEditQuantity = (sub) => {
+    setEditQtyError(null);
+    setEditQtySub(sub);
+  };
 
   const subs = subsQ.data?.subscriptions || [];
   const initials = customer.name
@@ -803,10 +917,16 @@ const CustomerDetailDrawer = ({ customer, workspaceId, orgSlug, onClose }) => {
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-6 py-5">
           {tab === 0 && (
-            <OverviewTab customer={customer} subs={subsQ.isLoading ? null : subs} relQ={relQ} />
+            <OverviewTab customer={customer} subs={subsQ.isLoading ? null : subs} relQ={relQ} onEditQuantity={handleEditQuantity} />
           )}
           {tab === 1 && (
-            <SubscriptionsTab subs={subs} loading={subsQ.isLoading} />
+            <SubscriptionsTab
+              subs={subs}
+              loading={subsQ.isLoading}
+              onEditQuantity={handleEditQuantity}
+              onPurchase={() => setShowPurchase(true)}
+              canPurchase={Boolean(customer.country)}
+            />
           )}
           {tab === 2 && (
             <GdapPanel
@@ -817,6 +937,27 @@ const CustomerDetailDrawer = ({ customer, workspaceId, orgSlug, onClose }) => {
           )}
         </div>
       </div>
+      {editQtySub && (
+        <EditQuantityModal
+          sub={editQtySub}
+          onClose={() => { setEditQtySub(null); setEditQtyError(null); }}
+          onSubmit={(qty) => updateQtyMut.mutate(qty)}
+          isPending={updateQtyMut.isPending}
+          error={editQtyError}
+        />
+      )}
+      {showPurchase && (
+        <PurchaseSubscriptionModal
+          customer={customer}
+          orgSlug={orgSlug}
+          workspaceId={workspaceId}
+          onClose={() => setShowPurchase(false)}
+          onPurchased={() => {
+            setShowPurchase(false);
+            qc.invalidateQueries({ queryKey: ['pc-subs', orgSlug, workspaceId, customer.id] });
+          }}
+        />
+      )}
     </>
   );
 };

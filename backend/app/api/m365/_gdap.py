@@ -19,7 +19,7 @@ from app.services.log_service import log_activity
 
 from . import ws_router
 from ._helpers import _get_org_plan, _require_enterprise, _require_master_org
-from ._schemas import CreateGdapRelationshipRequest, SendGdapInviteRequest
+from ._schemas import CreateGdapRelationshipRequest, RenewGdapRelationshipRequest, SendGdapInviteRequest
 
 GRAPH_V1 = "https://graph.microsoft.com/v1.0"
 GDAP_BASE = f"{GRAPH_V1}/tenantRelationships/delegatedAdminRelationships"
@@ -210,6 +210,74 @@ async def ws_terminate_gdap_relationship(
     log_activity(db, member.user, "gdap.terminate", "GDAPRelationship",
                  resource_name=relationship_id, provider="m365",
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.post("/gdap/relationships/{relationship_id}/renew", status_code=201)
+async def ws_renew_gdap_relationship(
+    relationship_id: str,
+    body: RenewGdapRelationshipRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Renova uma relação GDAP criando uma nova com as mesmas roles + cliente.
+    Microsoft Graph não tem endpoint nativo de "renew" — esta é a abordagem oficial.
+    A relação antiga permanece ativa até o cliente aprovar a nova.
+    """
+    plan = _get_org_plan(db, member.organization_id)
+    _require_enterprise(plan)
+    _require_master_org(member, db)
+    try:
+        token = await asyncio.to_thread(_pc_graph_token, db, member.workspace_id)
+        old = await asyncio.to_thread(_graph_get, token, f"{GDAP_BASE}/{relationship_id}")
+
+        old_roles = [
+            r.get("roleDefinitionId")
+            for r in (old.get("accessDetails") or {}).get("unifiedRoles", [])
+            if r.get("roleDefinitionId")
+        ]
+        if not old_roles:
+            raise HTTPException(
+                status_code=400,
+                detail="Relação original não possui roles configuradas — não é possível renovar.",
+            )
+
+        old_customer_tid = (old.get("customer") or {}).get("tenantId")
+        old_display_name = old.get("displayName", "Relação GDAP")
+
+        rel_body = {
+            "displayName": f"{old_display_name}{body.display_name_suffix}",
+            "duration": f"P{body.duration_days}D",
+            "autoExtendDuration": "P180D" if body.auto_extend else "PT0S",
+            "accessDetails": {
+                "unifiedRoles": [{"roleDefinitionId": rid} for rid in old_roles]
+            },
+        }
+        if old_customer_tid:
+            rel_body["customer"] = {"tenantId": old_customer_tid}
+
+        new_rel = await asyncio.to_thread(_graph_post, token, GDAP_BASE, rel_body)
+        new_rel_id = new_rel["id"]
+
+        await asyncio.to_thread(
+            _graph_post, token,
+            f"{GDAP_BASE}/{new_rel_id}/requests",
+            {"action": "lockForApproval"},
+        )
+        result = await asyncio.to_thread(_graph_get, token, f"{GDAP_BASE}/{new_rel_id}")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    log_activity(
+        db, member.user, "gdap.renew", "GDAPRelationship",
+        resource_name=f"{relationship_id}->{result.get('id')}",
+        provider="m365",
+        organization_id=member.organization_id,
+        workspace_id=member.workspace_id,
+    )
     return result
 
 

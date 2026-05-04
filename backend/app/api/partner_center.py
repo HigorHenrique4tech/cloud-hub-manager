@@ -77,6 +77,21 @@ class SyncCustomersBody(BaseModel):
     customer_ids: list[str]
 
 
+class UpdateSubscriptionQuantityBody(BaseModel):
+    quantity: int
+
+
+class CartLineItemIn(BaseModel):
+    catalog_item_id: str
+    quantity: int
+    billing_cycle: str = "monthly"  # monthly | annual
+    term_duration: str = "P1Y"      # ISO 8601
+
+
+class CreateCartBody(BaseModel):
+    line_items: list[CartLineItemIn]
+
+
 # ── Status ────────────────────────────────────────────────────────────────────
 
 @ws_router.get("/status")
@@ -171,6 +186,253 @@ def get_customer_subscriptions(
         raise HTTPException(502, f"Erro ao consultar assinaturas: {exc}")
 
     return {"subscriptions": subs, "total": len(subs)}
+
+
+@ws_router.patch("/customers/{customer_id}/subscriptions/{subscription_id}/quantity")
+def update_subscription_quantity_endpoint(
+    customer_id: str,
+    subscription_id: str,
+    body: UpdateSubscriptionQuantityBody,
+    member: MemberContext = Depends(require_permission("resources.manage")),
+    db: Session = Depends(get_db),
+):
+    """Altera a quantidade de licenças de uma assinatura CSP."""
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            update_subscription_quantity,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        result = update_subscription_quantity(pc_token, customer_id, subscription_id, body.quantity)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao alterar quantidade: {exc}")
+
+    from app.services.log_service import log_activity
+    log_activity(
+        db, member.user, "partner_center.quantity_update", "PartnerSubscription",
+        resource_name=f"{customer_id}/{subscription_id}",
+        provider="partner_center",
+        organization_id=member.organization_id,
+        workspace_id=member.workspace_id,
+    )
+    return result
+
+
+# ── Catalog (Products / SKUs / Availabilities) ───────────────────────────────
+
+@ws_router.get("/catalog/products")
+def list_catalog_products(
+    country: str = Query("BR"),
+    target_view: str = Query("Online"),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista produtos do catálogo CSP por país e target view."""
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            list_products,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        products = list_products(pc_token, country=country, target_view=target_view)
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao consultar catálogo: {exc}")
+    return {"products": products, "total": len(products)}
+
+
+@ws_router.get("/catalog/products/{product_id}/skus")
+def list_catalog_skus(
+    product_id: str,
+    country: str = Query("BR"),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            list_skus,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        skus = list_skus(pc_token, product_id, country=country)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao consultar SKUs: {exc}")
+    return {"skus": skus, "total": len(skus)}
+
+
+@ws_router.get("/catalog/products/{product_id}/skus/{sku_id}/availabilities")
+def list_catalog_availabilities(
+    product_id: str,
+    sku_id: str,
+    country: str = Query("BR"),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            list_availabilities,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        avs = list_availabilities(pc_token, product_id, sku_id, country=country)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao consultar disponibilidades: {exc}")
+    return {"availabilities": avs, "total": len(avs)}
+
+
+@ws_router.post("/customers/{customer_id}/cart-checkout", status_code=201)
+def cart_checkout_endpoint(
+    customer_id: str,
+    body: CreateCartBody,
+    member: MemberContext = Depends(require_permission("resources.manage")),
+    db: Session = Depends(get_db),
+):
+    """Cria carrinho e faz checkout de uma vez. Retorna ordens criadas."""
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    line_items = [li.model_dump() for li in body.line_items]
+    if not line_items:
+        raise HTTPException(400, "Carrinho vazio: adicione pelo menos um item.")
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            cart_checkout,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        result = cart_checkout(pc_token, customer_id, line_items)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao finalizar compra: {exc}")
+
+    from app.services.log_service import log_activity
+    log_activity(
+        db, member.user, "partner_center.subscription_create", "PartnerSubscription",
+        resource_name=f"{customer_id} ({len(line_items)} item(s))",
+        provider="partner_center",
+        organization_id=member.organization_id,
+        workspace_id=member.workspace_id,
+    )
+    return result
+
+
+# ── Invoices ─────────────────────────────────────────────────────────────────
+
+@ws_router.get("/invoices")
+def list_invoices_endpoint(
+    size: int = Query(200, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista faturas do partner (paginado)."""
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            list_invoices,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        return list_invoices(pc_token, size=size, offset=offset)
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao consultar faturas: {exc}")
+
+
+@ws_router.get("/invoices/{invoice_id}")
+def get_invoice_endpoint(
+    invoice_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            get_invoice,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        return get_invoice(pc_token, invoice_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao consultar fatura: {exc}")
+
+
+@ws_router.get("/invoices/{invoice_id}/lineitems")
+def get_invoice_lineitems_endpoint(
+    invoice_id: str,
+    provider: str = Query("onetime"),
+    line_item_type: str = Query("billinglineitems"),
+    size: int = Query(2000, ge=1, le=2000),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista itens de uma fatura. provider: onetime|azure | line_item_type: billinglineitems|usagelineitems."""
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            list_invoice_lineitems,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        items = list_invoice_lineitems(pc_token, invoice_id, provider=provider, line_item_type=line_item_type, size=size)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao consultar itens da fatura: {exc}")
+
+    return {"items": items, "total": len(items)}
+
+
+@ws_router.get("/invoices/{invoice_id}/pdf-url")
+def get_invoice_pdf_url_endpoint(
+    invoice_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    _check_enterprise(member, db)
+    creds = _get_creds(db, member.workspace_id)
+
+    try:
+        from app.services.partner_center_service import (
+            get_partner_center_token,
+            get_invoice_pdf_url,
+        )
+        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        url = get_invoice_pdf_url(pc_token, invoice_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc))
+    except Exception as exc:
+        raise HTTPException(502, f"Erro ao obter PDF da fatura: {exc}")
+
+    if not url:
+        raise HTTPException(404, "PDF da fatura indisponível.")
+    return {"url": url}
 
 
 # ── Import / Sync ─────────────────────────────────────────────────────────────

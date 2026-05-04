@@ -488,6 +488,132 @@ function InviteModal({ rel, onClose }) {
   );
 }
 
+// ── Renew GDAP Modal ─────────────────────────────────────────────────────────
+
+function RenewModal({ rel, onClose, onRenewed }) {
+  useEscapeKey(true, onClose);
+  const [durationDays, setDurationDays] = useState(365);
+  const [autoExtend, setAutoExtend] = useState(true);
+  const [suffix, setSuffix] = useState(' (renovada)');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  if (!rel) return null;
+
+  const oldRoleIds = (rel.accessDetails?.unifiedRoles || []).map(r => r.roleDefinitionId);
+  const oldRoleNames = oldRoleIds
+    .map(id => GDAP_ROLES.find(r => r.id === id)?.name || id.slice(0, 8))
+    .filter(Boolean);
+
+  const submit = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const newRel = await m365Service.renewGdapRelationship(rel.id, {
+        duration_days: durationDays,
+        auto_extend: autoExtend,
+        display_name_suffix: suffix,
+      });
+      onRenewed(newRel);
+    } catch (err) {
+      setError(err.response?.data?.detail || err.message || 'Erro ao renovar relação');
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="bg-white dark:bg-gray-900 rounded-xl shadow-xl w-full max-w-md">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+              <RefreshCw className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+            </div>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Renovar Relação GDAP</h2>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-white">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-4 py-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-0.5">Relação atual</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{rel.displayName}</p>
+            {rel.customer?.displayName && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Cliente: {rel.customer.displayName}</p>
+            )}
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Expira: {fmtDate(rel.endDateTime)}</p>
+            {oldRoleNames.length > 0 && (
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                Roles: {oldRoleNames.slice(0, 3).join(', ')}{oldRoleNames.length > 3 ? ` +${oldRoleNames.length - 3}` : ''}
+              </p>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-blue-200 dark:border-blue-700 bg-blue-50 dark:bg-blue-900/20 px-4 py-3">
+            <p className="text-xs text-blue-700 dark:text-blue-300">
+              Uma nova relação será criada com as mesmas roles. A relação atual permanece ativa até a nova ser aprovada pelo cliente.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Duração</label>
+            <select
+              value={durationDays}
+              onChange={(e) => setDurationDays(parseInt(e.target.value, 10))}
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {DURATION_OPTIONS.map(o => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoExtend}
+              onChange={(e) => setAutoExtend(e.target.checked)}
+              className="rounded border-gray-300 dark:border-gray-600"
+            />
+            Auto-renovar por 180 dias
+          </label>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Sufixo do nome</label>
+            <input
+              type="text"
+              value={suffix}
+              onChange={(e) => setSuffix(e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Nova relação: {rel.displayName}{suffix}</p>
+          </div>
+
+          {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={submit}
+            disabled={loading || oldRoleIds.length === 0}
+            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg transition-colors"
+          >
+            {loading ? 'Renovando...' : 'Renovar'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Terminate Confirm ──────────────────────────────────────────────────────────
 
 function TerminateModal({ rel, onClose, onConfirmed }) {
@@ -701,6 +827,7 @@ export default function GdapManager() {
   const [createCustomer, setCreateCustomer] = useState(null); // pre-selected customer for create modal
   const [inviteTarget, setInviteTarget] = useState(null);
   const [terminateTarget, setTerminateTarget] = useState(null);
+  const [renewTarget, setRenewTarget] = useState(null);
 
   const relQ = useQuery({
     queryKey: ['m365', 'gdap', 'relationships'],
@@ -753,8 +880,16 @@ export default function GdapManager() {
     qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'relationships'] });
   };
 
-  const handleRenew = () => {
-    openCreate();
+  const handleRenew = (rel) => {
+    setRenewTarget(rel);
+  };
+
+  const handleRenewed = (newRel) => {
+    setRenewTarget(null);
+    qc.invalidateQueries({ queryKey: ['m365', 'gdap', 'relationships'] });
+    if (newRel?.inviteUrl) {
+      setInviteTarget(newRel);
+    }
   };
 
   return (
@@ -876,6 +1011,13 @@ export default function GdapManager() {
           rel={terminateTarget}
           onClose={() => setTerminateTarget(null)}
           onConfirmed={handleTerminated}
+        />
+      )}
+      {renewTarget && (
+        <RenewModal
+          rel={renewTarget}
+          onClose={() => setRenewTarget(null)}
+          onRenewed={handleRenewed}
         />
       )}
     </Layout>

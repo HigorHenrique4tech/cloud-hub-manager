@@ -100,6 +100,27 @@ export const orgService = {
     (await api.post(`/orgs/${slug}/workspaces/${wsId}/partner-center/import`, body)).data,
   pcSyncCustomers: async (slug, wsId, customerIds) =>
     (await api.post(`/orgs/${slug}/workspaces/${wsId}/partner-center/sync`, { customer_ids: customerIds })).data,
+  pcUpdateSubscriptionQuantity: async (slug, wsId, customerId, subscriptionId, quantity) =>
+    (await api.patch(
+      `/orgs/${slug}/workspaces/${wsId}/partner-center/customers/${customerId}/subscriptions/${subscriptionId}/quantity`,
+      { quantity },
+    )).data,
+  pcListInvoices: async (slug, wsId, params = {}) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/invoices`, { params })).data,
+  pcGetInvoice: async (slug, wsId, invoiceId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/invoices/${invoiceId}`)).data,
+  pcGetInvoiceLineItems: async (slug, wsId, invoiceId, params = {}) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/invoices/${invoiceId}/lineitems`, { params })).data,
+  pcGetInvoicePdfUrl: async (slug, wsId, invoiceId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/invoices/${invoiceId}/pdf-url`)).data,
+  pcListProducts: async (slug, wsId, params = {}) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/catalog/products`, { params })).data,
+  pcListSkus: async (slug, wsId, productId, country) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/catalog/products/${productId}/skus`, { params: { country } })).data,
+  pcListAvailabilities: async (slug, wsId, productId, skuId, country) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/catalog/products/${productId}/skus/${skuId}/availabilities`, { params: { country } })).data,
+  pcCheckoutCart: async (slug, wsId, customerId, body) =>
+    (await api.post(`/orgs/${slug}/workspaces/${wsId}/partner-center/customers/${customerId}/cart-checkout`, body)).data,
 
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {

@@ -213,6 +213,7 @@ const m365Service = {
   getGdapCustomers: () => api.get(wsUrl('/m365/gdap/customers')).then(r => r.data),
   createGdapRelationship: (data) => api.post(wsUrl('/m365/gdap/relationships'), data).then(r => r.data),
   terminateGdapRelationship: (id) => api.post(wsUrl(`/m365/gdap/relationships/${id}/terminate`)).then(r => r.data),
+  renewGdapRelationship: (id, data) => api.post(wsUrl(`/m365/gdap/relationships/${id}/renew`), data).then(r => r.data),
   sendGdapInvite: (id, emails) => api.post(wsUrl(`/m365/gdap/relationships/${id}/send-invite`), { emails }).then(r => r.data),
 };
 
