@@ -39,10 +39,40 @@ def _pc_graph_token(db: Session, workspace_id) -> str:
     return get_graph_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
 
 
+_GDAP_FRIENDLY_ERRORS = {
+    "servicePrincipalMissingInPartnerTenant": (
+        "O Service Principal do Partner Center não está provisionado no tenant parceiro. "
+        "Acesse portal.azure.com → Enterprise Applications e adicione 'Microsoft Partner Center' "
+        "(app ID fa3d9a0c-3fb0-42cc-9193-47c7ecd2edbd), ou confirme que o tenant está inscrito no Microsoft Partner Network."
+    ),
+    "DelegatedAdminRelationship.ReadWrite.All": (
+        "Permissão DelegatedAdminRelationship.ReadWrite.All ausente ou sem admin consent no App Registration."
+    ),
+}
+
+
+def _raise_graph_error(resp: requests.Response) -> None:
+    """Raise HTTPException with a friendly message for known Graph API errors."""
+    try:
+        err = resp.json().get("error", {})
+        inner_code = (err.get("innerError") or {}).get("code", "")
+        friendly = _GDAP_FRIENDLY_ERRORS.get(inner_code)
+        if friendly:
+            raise HTTPException(status_code=400, detail=friendly)
+        # 4xx from Graph = client error, pass through as 400
+        if 400 <= resp.status_code < 500:
+            raise HTTPException(status_code=400, detail=f"Graph API error {resp.status_code}: {resp.text[:400]}")
+    except HTTPException:
+        raise
+    except Exception:
+        pass
+    raise HTTPException(status_code=502, detail=f"Graph API error {resp.status_code}: {resp.text[:300]}")
+
+
 def _graph_get(token: str, url: str) -> dict:
     resp = requests.get(url, headers={"Authorization": f"Bearer {token}"}, timeout=30)
     if not resp.ok:
-        raise HTTPException(status_code=502, detail=f"Graph API error {resp.status_code}: {resp.text[:300]}")
+        _raise_graph_error(resp)
     return resp.json()
 
 
@@ -53,7 +83,7 @@ def _graph_post(token: str, url: str, body: dict) -> dict:
         timeout=30,
     )
     if not resp.ok:
-        raise HTTPException(status_code=502, detail=f"Graph API error {resp.status_code}: {resp.text[:300]}")
+        _raise_graph_error(resp)
     return resp.json()
 
 
