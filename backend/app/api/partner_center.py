@@ -50,6 +50,18 @@ def _get_creds(db: Session, workspace_id) -> dict:
     return creds
 
 
+def _pc_token(creds: dict) -> str:
+    """Obtém token Partner Center usando ROPC (se username/password presentes) ou client_credentials."""
+    from app.services.partner_center_service import get_partner_center_token
+    return get_partner_center_token(
+        creds["partner_tenant_id"],
+        creds["client_id"],
+        creds["client_secret"],
+        username=creds.get("username"),
+        password=creds.get("password"),
+    )
+
+
 def _slugify(name: str) -> str:
     """Gera um slug único a partir do nome."""
     slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')
@@ -109,11 +121,11 @@ def get_status(
 
     # Test token
     try:
-        from app.services.partner_center_service import decrypt_pc_credentials, get_partner_center_token
+        from app.services.partner_center_service import decrypt_pc_credentials
         creds = decrypt_pc_credentials(db, member.workspace_id)
         if not creds:
             return {"configured": False}
-        get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        _pc_token(creds)
         return {
             "configured": True,
             "partner_tenant_id": cfg.partner_tenant_id,
@@ -142,8 +154,8 @@ def list_customers(
     creds = _get_creds(db, member.workspace_id)
 
     try:
-        from app.services.partner_center_service import get_partner_center_token, list_customers as _list
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        from app.services.partner_center_service import list_customers as _list
+        pc_token = _pc_token(creds)
         customers = _list(pc_token)
     except Exception as exc:
         raise HTTPException(502, f"Erro ao consultar Partner Center: {exc}")
@@ -177,8 +189,8 @@ def get_customer_subscriptions(
     creds = _get_creds(db, member.workspace_id)
 
     try:
-        from app.services.partner_center_service import get_partner_center_token, list_customer_subscriptions
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        from app.services.partner_center_service import list_customer_subscriptions
+        pc_token = _pc_token(creds)
         subs = list_customer_subscriptions(pc_token, customer_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
@@ -205,7 +217,7 @@ def update_subscription_quantity_endpoint(
             get_partner_center_token,
             update_subscription_quantity,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         result = update_subscription_quantity(pc_token, customer_id, subscription_id, body.quantity)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
@@ -241,7 +253,7 @@ def list_catalog_products(
             get_partner_center_token,
             list_products,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         products = list_products(pc_token, country=country, target_view=target_view)
     except Exception as exc:
         raise HTTPException(502, f"Erro ao consultar catálogo: {exc}")
@@ -263,7 +275,7 @@ def list_catalog_skus(
             get_partner_center_token,
             list_skus,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         skus = list_skus(pc_token, product_id, country=country)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
@@ -288,7 +300,7 @@ def list_catalog_availabilities(
             get_partner_center_token,
             list_availabilities,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         avs = list_availabilities(pc_token, product_id, sku_id, country=country)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
@@ -317,7 +329,7 @@ def cart_checkout_endpoint(
             get_partner_center_token,
             cart_checkout,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         result = cart_checkout(pc_token, customer_id, line_items)
     except ValueError as exc:
         raise HTTPException(400, str(exc))
@@ -353,7 +365,7 @@ def list_invoices_endpoint(
             get_partner_center_token,
             list_invoices,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         return list_invoices(pc_token, size=size, offset=offset)
     except Exception as exc:
         raise HTTPException(502, f"Erro ao consultar faturas: {exc}")
@@ -373,7 +385,7 @@ def get_invoice_endpoint(
             get_partner_center_token,
             get_invoice,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         return get_invoice(pc_token, invoice_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
@@ -399,7 +411,7 @@ def get_invoice_lineitems_endpoint(
             get_partner_center_token,
             list_invoice_lineitems,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         items = list_invoice_lineitems(pc_token, invoice_id, provider=provider, line_item_type=line_item_type, size=size)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
@@ -423,7 +435,7 @@ def get_invoice_pdf_url_endpoint(
             get_partner_center_token,
             get_invoice_pdf_url,
         )
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        pc_token = _pc_token(creds)
         url = get_invoice_pdf_url(pc_token, invoice_id)
     except ValueError as exc:
         raise HTTPException(404, str(exc))
@@ -553,8 +565,8 @@ def sync_customers(
     creds = _get_creds(db, member.workspace_id)
 
     try:
-        from app.services.partner_center_service import get_partner_center_token, get_customer
-        pc_token = get_partner_center_token(creds["partner_tenant_id"], creds["client_id"], creds["client_secret"])
+        from app.services.partner_center_service import get_customer
+        pc_token = _pc_token(creds)
     except Exception as exc:
         raise HTTPException(502, f"Erro ao autenticar no Partner Center: {exc}")
 

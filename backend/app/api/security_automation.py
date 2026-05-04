@@ -124,6 +124,8 @@ class PartnerCenterConfigBody(BaseModel):
     client_id: str
     client_secret: str
     gdap_security_group_id: Optional[str] = None
+    username: Optional[str] = None       # Conta com role Admin Agent (fluxo ROPC)
+    password: Optional[str] = None       # Senha da conta (ROPC)
 
 
 class CreateIRBody(BaseModel):
@@ -435,10 +437,24 @@ def get_pc_config(
            .first())
     if not cfg:
         return {"configured": False}
+
+    # Verifica se há conta Admin Agent (ROPC) configurada
+    ropc_configured = False
+    try:
+        from app.services.partner_center_service import decrypt_pc_credentials
+        from app.models.db_models import Workspace
+        ws = db.query(Workspace).filter(Workspace.id == member.workspace_id).first()
+        if ws:
+            creds = decrypt_pc_credentials(db, member.workspace_id)
+            ropc_configured = bool(creds and creds.get("username"))
+    except Exception:
+        pass
+
     return {
         "configured": True,
         "partner_tenant_id": cfg.partner_tenant_id,
         "gdap_security_group_id": cfg.gdap_security_group_id,
+        "ropc_configured": ropc_configured,
         "created_at": cfg.created_at.isoformat(),
         "updated_at": cfg.updated_at.isoformat(),
     }
@@ -456,13 +472,21 @@ def upsert_pc_config(
 
     from app.services.auth_service import get_org_fernet
     fernet = get_org_fernet(db, member.organization_id)
-    creds_json = json.dumps({"client_id": body.client_id, "client_secret": body.client_secret})
+    creds_payload = {"client_id": body.client_id, "client_secret": body.client_secret}
+    if body.username:
+        creds_payload["username"] = body.username
+    if body.password:
+        creds_payload["password"] = body.password
+    creds_json = json.dumps(creds_payload)
     encrypted = fernet.encrypt(creds_json.encode()).decode()
 
     # Valida o token antes de salvar
     try:
         from app.services.partner_center_service import get_partner_center_token
-        get_partner_center_token(body.partner_tenant_id, body.client_id, body.client_secret)
+        get_partner_center_token(
+            body.partner_tenant_id, body.client_id, body.client_secret,
+            username=body.username, password=body.password,
+        )
     except Exception as exc:
         raise HTTPException(400, f"Falha ao validar credenciais Partner Center: {exc}")
 
@@ -502,7 +526,8 @@ def list_customer_subs(
         raise HTTPException(400, "Partner Center não configurado.")
     try:
         pc_token = get_partner_center_token(
-            creds["partner_tenant_id"], creds["client_id"], creds["client_secret"]
+            creds["partner_tenant_id"], creds["client_id"], creds["client_secret"],
+            username=creds.get("username"), password=creds.get("password"),
         )
         subs = list_customer_subscriptions(pc_token, customer_tenant_id)
     except Exception as exc:
@@ -529,7 +554,8 @@ def suspend_sub(
         raise HTTPException(400, "Partner Center não configurado.")
     try:
         pc_token = get_partner_center_token(
-            creds["partner_tenant_id"], creds["client_id"], creds["client_secret"]
+            creds["partner_tenant_id"], creds["client_id"], creds["client_secret"],
+            username=creds.get("username"), password=creds.get("password"),
         )
         result = suspend_subscription(pc_token, customer_tenant_id, subscription_id)
     except Exception as exc:
@@ -564,7 +590,8 @@ def reactivate_sub(
         raise HTTPException(400, "Partner Center não configurado.")
     try:
         pc_token = get_partner_center_token(
-            creds["partner_tenant_id"], creds["client_id"], creds["client_secret"]
+            creds["partner_tenant_id"], creds["client_id"], creds["client_secret"],
+            username=creds.get("username"), password=creds.get("password"),
         )
         result = reactivate_subscription(pc_token, customer_tenant_id, subscription_id)
     except Exception as exc:

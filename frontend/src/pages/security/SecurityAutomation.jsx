@@ -965,7 +965,7 @@ function SettingsTab({ isMaster }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [showPCForm, setShowPCForm] = useState(false);
-  const [pcForm, setPcForm] = useState({ partner_tenant_id: '', client_id: '', client_secret: '', gdap_security_group_id: '' });
+  const [pcForm, setPcForm] = useState({ partner_tenant_id: '', client_id: '', client_secret: '', gdap_security_group_id: '', username: '', password: '' });
 
   const settingsQ = useQuery({ queryKey: ['sec-settings'], queryFn: secApi.getSettings });
   const pcQ = useQuery({ queryKey: ['pc-config'], queryFn: secApi.getPCConfig });
@@ -1048,6 +1048,13 @@ function SettingsTab({ isMaster }) {
               {pcQ.data.gdap_security_group_id && (
                 <p><span className="text-gray-400">Grupo GDAP:</span> <span className="font-mono text-gray-700 dark:text-gray-200">{pcQ.data.gdap_security_group_id}</span></p>
               )}
+              <p>
+                <span className="text-gray-400">Conta Admin Agent:</span>{' '}
+                {pcQ.data.ropc_configured
+                  ? <span className="text-green-600 dark:text-green-400 font-medium">✓ Configurada (ROPC)</span>
+                  : <span className="text-amber-600 dark:text-amber-400">Não configurada — gestão de licenças limitada</span>
+                }
+              </p>
             </div>
             <button onClick={() => setShowPCForm(true)} className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400">
               Atualizar credenciais
@@ -1069,10 +1076,33 @@ function SettingsTab({ isMaster }) {
                   className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" />
               </div>
             ))}
+
+            {/* Conta de usuário Admin Agent (ROPC) */}
+            <div className="pt-1">
+              <p className="text-xs font-semibold text-gray-700 dark:text-gray-200 mb-1">
+                Conta Admin Agent <span className="font-normal text-gray-400">(opcional — necessária para alterar licenças e comprar assinaturas)</span>
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                Informe um usuário com role <strong>Admin Agent</strong> no Partner Center. A autenticação será feita em nome desse usuário (ROPC), que não pode ter MFA obrigatório.
+              </p>
+              {[
+                { key: 'username', label: 'E-mail do usuário Admin Agent', placeholder: 'admin@parceiro.onmicrosoft.com' },
+                { key: 'password', label: 'Senha do usuário', placeholder: '••••••••', type: 'password' },
+              ].map(({ key, label, placeholder, type }) => (
+                <div key={key} className="mb-2">
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-200 mb-1">{label}</label>
+                  <input type={type || 'text'} value={pcForm[key]}
+                    onChange={e => setPcForm(f => ({...f, [key]: e.target.value}))}
+                    placeholder={placeholder}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none" />
+                </div>
+              ))}
+            </div>
+
             <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300 space-y-1">
               <p className="font-semibold">Permissões necessárias:</p>
               <p>• App cadastrado em "Account settings &gt; App management"</p>
-              <p>• Usuário com role <strong>Admin Agent</strong> no partner tenant</p>
+              <p>• Usuário com role <strong>Admin Agent</strong> no partner tenant (para gestão de licenças)</p>
               <p>• Relação GDAP ativa com os clientes para ações Azure/Entra</p>
             </div>
             <div className="flex gap-2">

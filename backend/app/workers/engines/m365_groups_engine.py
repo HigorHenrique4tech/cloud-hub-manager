@@ -49,18 +49,12 @@ class M365GroupsEngine(MigrationEngine):
         return resp.json()["access_token"]
 
     def _src_headers(self) -> dict:
-        return {"Authorization": f"Bearer {self._get_token(
-            self.source_cfg['tenant_id'],
-            self.source_cfg['client_id'],
-            self.source_cfg['client_secret'],
-        )}"}
+        token = self._get_token(self.source_cfg['tenant_id'], self.source_cfg['client_id'], self.source_cfg['client_secret'])
+        return {"Authorization": f"Bearer {token}"}
 
     def _dst_headers(self) -> dict:
-        return {"Authorization": f"Bearer {self._get_token(
-            self.dest_cfg['tenant_id'],
-            self.dest_cfg['client_id'],
-            self.dest_cfg['client_secret'],
-        )}"}
+        token = self._get_token(self.dest_cfg['tenant_id'], self.dest_cfg['client_id'], self.dest_cfg['client_secret'])
+        return {"Authorization": f"Bearer {token}"}
 
     # ── Localização de grupo por e-mail ──────────────────────────────────────────
 

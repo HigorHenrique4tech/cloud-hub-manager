@@ -25,15 +25,32 @@ GRAPH_V1 = "https://graph.microsoft.com/v1.0"
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 def get_partner_center_token(partner_tenant_id: str, client_id: str,
-                              client_secret: str) -> str:
-    """Obtém access token para a Partner Center API."""
+                              client_secret: str, username: str = None,
+                              password: str = None) -> str:
+    """
+    Obtém access token para a Partner Center API.
+    Quando username+password são fornecidos usa ROPC (Resource Owner Password Credentials),
+    permitindo que o token herde o role Admin Agent do usuário no Partner Center.
+    Sem username/password usa client_credentials (app-only).
+    """
     url = f"https://login.microsoftonline.com/{partner_tenant_id}/oauth2/v2.0/token"
-    resp = requests.post(url, data={
-        "grant_type": "client_credentials",
-        "client_id": client_id,
-        "client_secret": client_secret,
-        "scope": PC_SCOPE,
-    }, timeout=30)
+    if username and password:
+        data = {
+            "grant_type": "password",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "username": username,
+            "password": password,
+            "scope": PC_SCOPE,
+        }
+    else:
+        data = {
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": PC_SCOPE,
+        }
+    resp = requests.post(url, data=data, timeout=30)
     try:
         resp.raise_for_status()
     except requests.HTTPError:
