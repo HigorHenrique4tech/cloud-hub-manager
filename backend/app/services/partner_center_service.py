@@ -153,6 +153,11 @@ def get_subscription(pc_token: str, customer_tenant_id: str,
     resp = requests.get(url, headers={"Authorization": f"Bearer {pc_token}"}, timeout=30)
     if resp.status_code == 404:
         raise ValueError(f"Assinatura '{subscription_id}' não encontrada para o cliente '{customer_tenant_id}'.")
+    if resp.status_code == 403:
+        raise ValueError(
+            "Acesso negado pelo Partner Center (403). Verifique se o App Registration possui "
+            "a função 'Admin Agent' atribuída em partner.microsoft.com → Configurações → Gerenciamento de usuários."
+        )
     resp.raise_for_status()
     return resp.json()
 
@@ -205,6 +210,11 @@ def update_subscription_quantity(pc_token: str, customer_tenant_id: str,
     patch_resp = requests.patch(url, headers=headers, json=payload, timeout=30)
     if patch_resp.status_code in (400, 409):
         raise ValueError(_pc_error_message(patch_resp, "Não foi possível alterar a quantidade."))
+    if patch_resp.status_code == 403:
+        raise ValueError(
+            "Acesso negado pelo Partner Center (403). Certifique-se de que o App Registration "
+            "possui a função 'Admin Agent' atribuída em partner.microsoft.com → Configurações → Gerenciamento de usuários."
+        )
     patch_resp.raise_for_status()
 
     is_async = patch_resp.status_code == 202
@@ -247,6 +257,11 @@ def _patch_subscription(pc_token: str, customer_tenant_id: str,
     patch_resp = requests.patch(url, headers=headers, json=payload, timeout=30)
     if patch_resp.status_code == 409:
         raise ValueError(f"Conflito ao alterar assinatura: já está no status '{current.get('status')}'.")
+    if patch_resp.status_code == 403:
+        raise ValueError(
+            "Acesso negado pelo Partner Center (403). Certifique-se de que o App Registration "
+            "possui a função 'Admin Agent' atribuída em partner.microsoft.com → Configurações → Gerenciamento de usuários."
+        )
     patch_resp.raise_for_status()
 
     result = patch_resp.json() if patch_resp.text else payload
