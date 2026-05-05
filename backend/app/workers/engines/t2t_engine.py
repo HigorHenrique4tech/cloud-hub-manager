@@ -258,6 +258,44 @@ class TenantToTenantEngine(MigrationEngine):
         self._ews_folder_cache[cache_key] = xml
         return xml
 
+    def _ews_clear_draft_flag(
+        self,
+        dest_user: str,
+        item_id: str,
+        change_key: str,
+        token: str,
+    ) -> None:
+        """
+        Força PR_MESSAGE_FLAGS=1 via UpdateItem, zerando MSGFLAG_UNSENT.
+        Usa o ItemId retornado pelo próprio CreateItem (sem conversão de ID).
+        ConflictResolution=AlwaysOverwrite ignora ChangeKey stale.
+        """
+        body = (
+            '<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">'
+            "<m:ItemChanges><t:ItemChange>"
+            f'<t:ItemId Id="{_xml_escape(item_id)}" ChangeKey="{_xml_escape(change_key)}" />'
+            "<t:Updates>"
+            "<t:SetItemField>"
+            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
+            "<t:Message><t:ExtendedProperty>"
+            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
+            "<t:Value>1</t:Value>"
+            "</t:ExtendedProperty></t:Message>"
+            "</t:SetItemField>"
+            "</t:Updates>"
+            "</t:ItemChange></m:ItemChanges>"
+            "</m:UpdateItem>"
+        )
+        try:
+            r = self._ews_post(dest_user, self._ews_envelope(dest_user, body), token, timeout=30)
+            if r.status_code != 200 or 'ResponseClass="Success"' not in r.text:
+                msg_m = _re.search(r"<m:MessageText>([^<]+)</m:MessageText>", r.text)
+                logger.debug(
+                    f"EWS clear_draft_flag: {msg_m.group(1) if msg_m else r.text[:200]}"
+                )
+        except Exception as exc:
+            logger.debug(f"EWS clear_draft_flag exc: {exc}")
+
     def _ews_create_item(
         self,
         dest_user: str,
@@ -266,9 +304,15 @@ class TenantToTenantEngine(MigrationEngine):
         token: str,
     ) -> bool:
         """
-        Importa mensagem via EWS CreateItem com MimeContent.
-        MessageDisposition="SaveOnly" + IsRead=true → sem rascunho.
-        Retorna True se inserido com sucesso.
+        Importa mensagem via EWS CreateItem + UpdateItem.
+
+        Passo 1 — CreateItem com MimeContent + PR_MESSAGE_FLAGS=1 na criação.
+          MessageDisposition="SaveOnly" cria o item na pasta alvo, mas Exchange
+          ainda seta MSGFLAG_UNSENT internamente ao processar MimeContent.
+
+        Passo 2 — UpdateItem imediato com o ItemId retornado pelo CreateItem.
+          Zeramos MSGFLAG_UNSENT via SetItemField em PR_MESSAGE_FLAGS usando o
+          ItemId fresco (sem necessidade de ConvertId ou FindItem).
         """
         folder_xml = self._ews_resolve_folder(dest_user, folder_name, token)
         mime_b64 = base64.b64encode(mime_bytes).decode("ascii")
@@ -280,6 +324,12 @@ class TenantToTenantEngine(MigrationEngine):
             "<t:Message>"
             f'<t:MimeContent CharacterSet="UTF-8">{mime_b64}</t:MimeContent>'
             "<t:IsRead>true</t:IsRead>"
+            # Tenta setar PR_MESSAGE_FLAGS já na criação (Exchange pode ignorar,
+            # mas reduz o janela de tempo em que o item aparece como rascunho)
+            "<t:ExtendedProperty>"
+            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
+            "<t:Value>1</t:Value>"
+            "</t:ExtendedProperty>"
             "</t:Message>"
             "</m:Items>"
             "</m:CreateItem>"
@@ -288,9 +338,14 @@ class TenantToTenantEngine(MigrationEngine):
         r = self._ews_post(dest_user, self._ews_envelope(dest_user, body), token, timeout=120)
 
         if r.status_code == 200 and 'ResponseClass="Success"' in r.text:
+            # Extrair ItemId do CreateItem para UpdateItem imediato
+            m = _re.search(r'<t:ItemId Id="([^"]+)" ChangeKey="([^"]+)"', r.text)
+            if m:
+                self._ews_clear_draft_flag(dest_user, m.group(1), m.group(2), token)
+            else:
+                logger.debug("EWS CreateItem: ItemId não encontrado na resposta para clear_draft_flag")
             return True
 
-        # Extrair mensagem de erro para diagnóstico
         msg_m = _re.search(r"<m:MessageText>([^<]+)</m:MessageText>", r.text)
         err_text = msg_m.group(1) if msg_m else r.text[:300]
         raise Exception(f"EWS CreateItem HTTP {r.status_code}: {err_text}")
