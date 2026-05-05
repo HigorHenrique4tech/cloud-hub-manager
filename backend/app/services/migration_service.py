@@ -5,6 +5,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 import json
 
@@ -55,7 +56,7 @@ def list_projects(db: Session, workspace_id: str) -> list[dict]:
         .order_by(MigrationProject.created_at.desc())
         .all()
     )
-    return [_project_to_dict(p, _get_source_label(db, workspace_id, p)) for p in projects]
+    return [_project_to_dict(p, _get_source_label(db, workspace_id, p), db=db) for p in projects]
 
 
 def create_project(
@@ -89,7 +90,7 @@ def create_project(
     db.commit()
     db.refresh(project)
     _add_log(db, str(project.id), "info", f"Projeto '{name}' criado.")
-    return _project_to_dict(project)
+    return _project_to_dict(project, db=db)
 
 
 def get_project(db: Session, workspace_id: str, project_id: str) -> Optional[dict]:
@@ -97,7 +98,7 @@ def get_project(db: Session, workspace_id: str, project_id: str) -> Optional[dic
     if not p:
         return None
     eta = _calc_project_eta(db, project_id) if p.status == "running" else None
-    return _project_to_dict(p, _get_source_label(db, workspace_id, p), eta_seconds=eta)
+    return _project_to_dict(p, _get_source_label(db, workspace_id, p), eta_seconds=eta, db=db)
 
 
 def update_project(db: Session, workspace_id: str, project_id: str, **kwargs) -> Optional[dict]:
@@ -120,7 +121,7 @@ def update_project(db: Session, workspace_id: str, project_id: str, **kwargs) ->
     p.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(p)
-    return _project_to_dict(p)
+    return _project_to_dict(p, db=db)
 
 
 def delete_project(db: Session, workspace_id: str, project_id: str) -> bool:
@@ -247,7 +248,7 @@ def get_project_stats(db: Session, workspace_id: str, project_id: str) -> dict:
     ).count()
 
     return {
-        **_project_to_dict(p),
+        **_project_to_dict(p, db=db),
         "by_status": by_status,
         "by_phase": by_phase,
         "total_messages": int(total_messages),
@@ -397,7 +398,7 @@ def set_project_status(
     db.commit()
     db.refresh(p)
     _add_log(db, project_id, "info", f"Status alterado para '{status}'.")
-    return _project_to_dict(p)
+    return _project_to_dict(p, db=db)
 
 
 # ── Internals ─────────────────────────────────────────────────────────────────
@@ -454,10 +455,20 @@ def _add_log(db: Session, project_id: str, level: str, message: str, details: di
 
 
 def _project_to_dict(p: MigrationProject, source_label: str = "",
-                     eta_seconds: int = None) -> dict:
+                     eta_seconds: int = None, db: Session = None) -> dict:
     total = p.mailbox_count or 0
     done = p.completed_count or 0
     progress = round((done / total * 100) if total > 0 else 0)
+
+    # Conta usuários distintos (por source_email) — base para consumo de licenças
+    user_count = 0
+    if db is not None:
+        user_count = (
+            db.query(func.count(func.distinct(MigrationMailbox.source_email)))
+            .filter(MigrationMailbox.project_id == p.id)
+            .scalar()
+        ) or 0
+
     return {
         "id": str(p.id),
         "name": p.name,
@@ -465,6 +476,7 @@ def _project_to_dict(p: MigrationProject, source_label: str = "",
         "migration_type": p.migration_type,
         "status": p.status,
         "mailbox_count": total,
+        "user_count": user_count,
         "completed_count": done,
         "failed_count": p.failed_count or 0,
         "verified_count": p.verified_count or 0,

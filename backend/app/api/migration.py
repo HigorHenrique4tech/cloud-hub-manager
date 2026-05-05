@@ -274,12 +274,13 @@ async def set_project_status(
         # Retomar de pausa (paused → running) NÃO consome licenças novamente
         project_data = svc.get_project(db, str(member.workspace_id), project_id)
         if project_data and project_data.get("status") in ("draft", "ready"):
-            pending_count = project_data.get("mailbox_count", 0)
+            # Licenças são por usuário distinto (source_email), não por objeto
+            pending_count = project_data.get("user_count", 0) or project_data.get("mailbox_count", 0)
             if pending_count > 0 and remaining is not None:
                 if not consume_migration_license(db, member.organization_id, pending_count):
                     raise HTTPException(
                         status_code=403,
-                        detail=f"Licenças insuficientes. Necessário: {pending_count}, disponível: {remaining}. Solicite mais licenças."
+                        detail=f"Licenças insuficientes. Necessário: {pending_count} (usuários distintos), disponível: {remaining}. Solicite mais licenças."
                     )
 
     project = svc.set_project_status(db, str(member.workspace_id), project_id, body.status)
@@ -1098,6 +1099,12 @@ def _query_tenant_objects(cfg: dict, object_type: str, search: str) -> list[dict
         if q:
             url += f"&$search=\"displayName:{q}\""
         r = _rq.get(url, headers=hdrs, timeout=20)
+        if r.status_code == 403:
+            raise ValueError(
+                "Permissão negada ao listar grupos M365. "
+                "Verifique se o App Registration tem a permissão "
+                "'Group.Read.All' (Application) com admin consent no Entra ID."
+            )
         r.raise_for_status()
         return [
             {
