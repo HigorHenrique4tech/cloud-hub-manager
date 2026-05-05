@@ -59,34 +59,58 @@ class M365GroupsEngine(MigrationEngine):
     # ── Localização de grupo por e-mail ──────────────────────────────────────────
 
     def _find_group(self, email: str, headers: dict) -> dict | None:
-        """Busca grupo pelo e-mail. Tenta filter por 'mail' e fallback por 'mailNickname'."""
-        enc = quote(email, safe="@.")
-        # Tentativa 1: filter por mail
-        url = (f"{GRAPH_V1}/groups"
-               f"?$filter=mail eq '{enc}'"
-               f"&$select=id,displayName,description,visibility,mailNickname,mail")
+        """
+        Busca grupo pelo e-mail em 3 tentativas progressivas.
+        $filter em propriedades de diretório requer ConsistencyLevel: eventual
+        + $count=true — sem eles o Graph retorna [] mesmo que o grupo exista.
+        """
+        select = "$select=id,displayName,description,visibility,mailNickname,mail"
+        # Headers necessários para $filter avançado em grupos
+        eventual_hdrs = {**headers, "ConsistencyLevel": "eventual"}
+
+        # Tentativa 1: filter por mail (endereço primário SMTP)
+        url1 = (f"{GRAPH_V1}/groups?$count=true"
+                f"&$filter=mail eq '{quote(email, safe='@.')}'&{select}")
         try:
-            r = self.retry_on_throttle(lambda: requests.get(url, headers=headers, timeout=15))
+            r = self.retry_on_throttle(
+                lambda: requests.get(url1, headers=eventual_hdrs, timeout=15)
+            )
             if r.ok:
                 items = r.json().get("value", [])
                 if items:
                     return items[0]
         except Exception as exc:
-            logger.debug(f"_find_group filter falhou para {email}: {exc}")
+            logger.debug(f"_find_group (mail filter) falhou para {email}: {exc}")
 
-        # Tentativa 2: filter pelo mailNickname (parte antes do @)
+        # Tentativa 2: filter por mailNickname (parte antes do @)
         nickname = email.split("@")[0]
-        url2 = (f"{GRAPH_V1}/groups"
-                f"?$filter=mailNickname eq '{nickname}'"
-                f"&$select=id,displayName,description,visibility,mailNickname,mail")
+        url2 = (f"{GRAPH_V1}/groups?$count=true"
+                f"&$filter=mailNickname eq '{quote(nickname, safe='')}'&{select}")
         try:
-            r2 = self.retry_on_throttle(lambda: requests.get(url2, headers=headers, timeout=15))
+            r2 = self.retry_on_throttle(
+                lambda: requests.get(url2, headers=eventual_hdrs, timeout=15)
+            )
             if r2.ok:
                 items2 = r2.json().get("value", [])
                 if items2:
                     return items2[0]
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.debug(f"_find_group (nickname filter) falhou para {email}: {exc}")
+
+        # Tentativa 3: $search por displayName ou mail (mais tolerante a variações)
+        search_term = quote(f'"{email}"', safe='@."')
+        url3 = (f"{GRAPH_V1}/groups?$count=true"
+                f"&$search=\"mail:{search_term}\"&{select}")
+        try:
+            r3 = self.retry_on_throttle(
+                lambda: requests.get(url3, headers=eventual_hdrs, timeout=15)
+            )
+            if r3.ok:
+                items3 = r3.json().get("value", [])
+                if items3:
+                    return items3[0]
+        except Exception as exc:
+            logger.debug(f"_find_group ($search mail) falhou para {email}: {exc}")
 
         return None
 
