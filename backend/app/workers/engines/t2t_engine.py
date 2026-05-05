@@ -1,15 +1,19 @@
 """Tenant-to-Tenant engine — M365 Graph API → M365 Graph API.
 
-Import via MIME bruto (base64 + text/plain) com preservação total:
-sender, datas, Message-ID, anexos e headers. PATCH posterior com
-PidTagMessageFlags limpa o bit de rascunho (mfUnsent).
+Import via IMAP APPEND (preferencial) ou Graph API como fallback.
+IMAP APPEND preserva flags diretamente (\Seen, sem \Draft), eliminando
+o problema de mensagens importadas aparecerem como rascunho no Outlook.
+Requer permissão IMAP.AccessAsApp no Exchange Online do tenant destino.
 """
 import base64
 import email as email_lib
 from email import generator as email_generator
 import hashlib
+import imaplib
 import io
 import logging
+import socket
+from email.utils import parsedate_to_datetime
 from urllib.parse import quote
 
 import requests
@@ -109,15 +113,30 @@ class TenantToTenantEngine(MigrationEngine):
         """URL-encode de UPN para segmento de path."""
         return quote(user_id or "", safe="@.")
 
-    # ── EWS fallback para limpar flag de rascunho ────────────────────────────
-    # O Graph API não consegue atualizar PR_MESSAGE_FLAGS de forma confiável
-    # (PATCH retorna 200 mas Exchange não propaga a mudança). EWS tem acesso
-    # direto às propriedades MAPI e é o único caminho garantido.
-    # Requer permissão 'full_access_as_app' em Office 365 Exchange Online
-    # no App Registration do tenant DESTINO (com admin consent).
+    # ── IMAP APPEND — método primário de importação ───────────────────────────
+    # IMAP APPEND insere a mensagem diretamente com flags explícitas (\Seen),
+    # sem o bit MSGFLAG_UNSENT que o Graph POST/messages sempre coloca.
+    # Isso é exatamente o que ferramentas como AvePoint fazem internamente.
+    #
+    # Permissões necessárias no App Registration do tenant DESTINO:
+    #   - Exchange Online → IMAP.AccessAsApp (Application, admin consent)
+    #   - OU Office 365 Exchange Online → full_access_as_app (Application)
+    # Ambas usam o mesmo escopo OAuth: https://outlook.office365.com/.default
 
-    def _get_ews_token(self) -> str:
-        """OAuth token com escopo EWS (diferente do Graph API)."""
+    # Mapeamento de displayName do Graph → nome IMAP no Exchange Online
+    _IMAP_FOLDER_MAP: dict = {
+        "inbox": "INBOX",
+        "caixa de entrada": "INBOX",
+        "sent items": "Sent Items",
+        "itens enviados": "Sent Items",
+        "archive": "Archive",
+        "arquivo morto": "Archive",
+        "deleted items": "Deleted Items",
+        "itens excluídos": "Deleted Items",
+    }
+
+    def _get_exchange_token(self) -> str:
+        """OAuth token com escopo outlook.office365.com (IMAP e EWS compartilham)."""
         url = f"https://login.microsoftonline.com/{self.dest_cfg['tenant_id']}/oauth2/v2.0/token"
         resp = requests.post(url, data={
             "grant_type": "client_credentials",
@@ -128,182 +147,92 @@ class TenantToTenantEngine(MigrationEngine):
         resp.raise_for_status()
         return resp.json()["access_token"]
 
-    def _get_internet_message_id(self, base_user: str, message_id: str, graph_auth: str) -> tuple[str | None, str]:
-        """Busca internetMessageId (Message-ID header) da mensagem via Graph."""
-        url = f"{base_user}/messages/{quote(message_id, safe='')}?$select=internetMessageId"
-        try:
-            r = requests.get(url, headers={"Authorization": graph_auth}, timeout=15)
-            if not r.ok:
-                return None, f"GET internetMessageId HTTP {r.status_code}: {r.text[:200]}"
-            imid = r.json().get("internetMessageId", "")
-            if not imid:
-                return None, "internetMessageId vazio"
-            return imid, "OK"
-        except Exception as exc:
-            return None, f"GET internetMessageId exc: {str(exc)[:200]}"
+    def _imap_connect(self, dest_user: str, token: str) -> imaplib.IMAP4_SSL:
+        """Abre e autentica uma conexão IMAP com XOAUTH2."""
+        # XOAUTH2: base64("user=<email>\x01auth=Bearer <token>\x01\x01")
+        auth_str = f"user={dest_user}\x01auth=Bearer {token}\x01\x01"
+        conn = imaplib.IMAP4_SSL("outlook.office365.com", 993)
+        conn.socket().settimeout(60)
+        conn.authenticate("XOAUTH2", lambda _: auth_str.encode())
+        return conn
 
-    def _ews_find_by_message_id(self, ews_token: str, dest_user: str, internet_msg_id: str) -> tuple[str | None, str]:
-        """Localiza mensagem no mailbox via EWS FindItem por InternetMessageId. Retorna EwsId."""
-        from xml.sax.saxutils import escape as xml_escape
-        user_esc = xml_escape(dest_user)
-        imid_esc = xml_escape(internet_msg_id)
-        soap = (
-            '<?xml version="1.0" encoding="utf-8"?>'
-            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
-            ' xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"'
-            ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
-            '<soap:Header>'
-            '<t:RequestServerVersion Version="Exchange2016" />'
-            '<t:ExchangeImpersonation>'
-            f'<t:ConnectingSID><t:PrimarySmtpAddress>{user_esc}</t:PrimarySmtpAddress></t:ConnectingSID>'
-            '</t:ExchangeImpersonation>'
-            '</soap:Header>'
-            '<soap:Body>'
-            '<m:FindItem Traversal="Deep">'
-            '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape></m:ItemShape>'
-            '<m:IndexedPageItemView MaxEntriesReturned="1" Offset="0" BasePoint="Beginning" />'
-            '<m:Restriction>'
-            '<t:IsEqualTo>'
-            '<t:FieldURI FieldURI="message:InternetMessageId" />'
-            f'<t:FieldURIOrConstant><t:Constant Value="{imid_esc}" /></t:FieldURIOrConstant>'
-            '</t:IsEqualTo>'
-            '</m:Restriction>'
-            '<m:ParentFolderIds>'
-            '<t:DistinguishedFolderId Id="msgfolderroot" />'
-            '</m:ParentFolderIds>'
-            '</m:FindItem>'
-            '</soap:Body></soap:Envelope>'
-        )
-        try:
-            r = requests.post(
-                "https://outlook.office365.com/EWS/Exchange.asmx",
-                data=soap.encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {ews_token}",
-                    "Content-Type": "text/xml; charset=utf-8",
-                    "X-AnchorMailbox": dest_user,
-                },
-                timeout=30,
-            )
-            import re
-            fault_m = re.search(r'<faultstring[^>]*>([^<]+)</faultstring>', r.text)
-            if fault_m:
-                return None, f"FindItem Fault: {fault_m.group(1)}"
-            if r.status_code != 200:
-                return None, f"FindItem HTTP {r.status_code}: {r.text[:200]}"
-            # Resposta: <t:Message><t:ItemId Id="..." ChangeKey="..." /></t:Message>
-            m = re.search(r'<t:ItemId[^>]*\bId="([^"]+)"', r.text)
-            if m:
-                return m.group(1), "FindItem OK"
-            return None, f"FindItem sem ItemId: {r.text[:300]}"
-        except Exception as exc:
-            return None, f"FindItem exc: {str(exc)[:200]}"
-
-    def _ews_convert_id(self, ews_token: str, dest_user: str, hex_entry_id: str) -> tuple[str | None, str]:
+    def _imap_select_folder(self, conn: imaplib.IMAP4_SSL, folder_name: str) -> str | None:
         """
-        Converte HexEntryId → EwsId via SOAP ConvertId no próprio EWS.
-        Retorna (ews_id, status_msg). Usa apenas full_access_as_app.
+        Seleciona pasta IMAP no Exchange Online.
+        Cria a pasta se não existir. Retorna o nome IMAP usado ou None se falhou.
         """
-        from xml.sax.saxutils import escape as xml_escape
-        user_esc = xml_escape(dest_user)
-        id_esc = xml_escape(hex_entry_id)
-        soap = (
-            '<?xml version="1.0" encoding="utf-8"?>'
-            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
-            ' xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"'
-            ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
-            '<soap:Header>'
-            '<t:RequestServerVersion Version="Exchange2016" />'
-            '<t:ExchangeImpersonation>'
-            f'<t:ConnectingSID><t:PrimarySmtpAddress>{user_esc}</t:PrimarySmtpAddress></t:ConnectingSID>'
-            '</t:ExchangeImpersonation>'
-            '</soap:Header>'
-            '<soap:Body>'
-            '<m:ConvertId DestinationFormat="EwsId">'
-            '<m:SourceIds>'
-            f'<t:AlternateId Format="HexEntryId" Id="{id_esc}" Mailbox="{user_esc}" />'
-            '</m:SourceIds>'
-            '</m:ConvertId>'
-            '</soap:Body></soap:Envelope>'
-        )
-        try:
-            r = requests.post(
-                "https://outlook.office365.com/EWS/Exchange.asmx",
-                data=soap.encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {ews_token}",
-                    "Content-Type": "text/xml; charset=utf-8",
-                    "X-AnchorMailbox": dest_user,
-                },
-                timeout=20,
-            )
-            # Extrai a razão do fault SOAP se houver
-            import re
-            fault_m = re.search(r'<faultstring[^>]*>([^<]+)</faultstring>', r.text)
-            fault_reason = fault_m.group(1) if fault_m else ""
+        imap_name = self._IMAP_FOLDER_MAP.get(folder_name.lower(), folder_name)
+        # Quotar o nome para suportar espaços e caracteres especiais
+        quoted = f'"{imap_name}"'
 
-            if r.status_code != 200:
-                return None, f"ConvertId HTTP {r.status_code}: {fault_reason or r.text[:200]}"
-            if fault_reason:
-                return None, f"ConvertId Fault: {fault_reason}"
-            # Resposta: <t:AlternateId Format="EwsId" Id="EWS_ID" Mailbox="..." />
-            m = re.search(r'<t:AlternateId[^>]*\bId="([^"]+)"', r.text)
-            if m:
-                return m.group(1), "ConvertId OK"
-            return None, f"ConvertId sem AlternateId: {r.text[:300]}"
-        except Exception as exc:
-            return None, f"ConvertId exc: {str(exc)[:200]}"
+        typ, _ = conn.select(quoted)
+        if typ == "OK":
+            return imap_name
 
-    def _ews_clear_draft(self, dest_user: str, ews_id: str, ews_token: str) -> tuple[bool, str]:
-        """Envia EWS UpdateItem para zerar PR_MESSAGE_FLAGS. Retorna (ok, status_msg)."""
-        # Escapa o ID para uso em XML
-        from xml.sax.saxutils import escape as xml_escape
-        ews_id_esc = xml_escape(ews_id)
-        user_esc = xml_escape(dest_user)
-        soap = (
-            '<?xml version="1.0" encoding="utf-8"?>'
-            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
-            ' xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"'
-            ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
-            '<soap:Header>'
-            '<t:RequestServerVersion Version="Exchange2016" />'
-            '<t:ExchangeImpersonation>'
-            f'<t:ConnectingSID><t:PrimarySmtpAddress>{user_esc}</t:PrimarySmtpAddress></t:ConnectingSID>'
-            '</t:ExchangeImpersonation>'
-            '</soap:Header>'
-            '<soap:Body>'
-            '<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">'
-            '<m:ItemChanges><t:ItemChange>'
-            f'<t:ItemId Id="{ews_id_esc}" />'
-            '<t:Updates><t:SetItemField>'
-            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
-            '<t:Message><t:ExtendedProperty>'
-            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
-            '<t:Value>1</t:Value>'
-            '</t:ExtendedProperty></t:Message>'
-            '</t:SetItemField></t:Updates>'
-            '</t:ItemChange></m:ItemChanges>'
-            '</m:UpdateItem>'
-            '</soap:Body></soap:Envelope>'
-        )
+        # Pasta não existe — criar e selecionar
+        conn.create(quoted)
+        typ, _ = conn.select(quoted)
+        if typ == "OK":
+            return imap_name
+
+        return None
+
+    def _imap_append(
+        self,
+        dest_user: str,
+        folder_name: str,
+        raw_mime_bytes: bytes,
+    ) -> bool:
+        """
+        Importa mensagem via IMAP APPEND com XOAUTH2.
+        Flags: \\Seen (sem \\Draft) — elimina o problema de rascunho.
+        Reutiliza self._imap_conn entre chamadas consecutivas.
+        Retorna True se importada com sucesso.
+        """
+        # Lazy-init: conectar apenas na primeira mensagem
+        if not getattr(self, "_imap_conn", None):
+            token = self._get_exchange_token()
+            self._imap_conn = self._imap_connect(dest_user, token)
+            self._imap_cur_folder: str | None = None
+
+        # Mudar de pasta apenas quando necessário
+        imap_folder = self._IMAP_FOLDER_MAP.get(folder_name.lower(), folder_name)
+        if getattr(self, "_imap_cur_folder", None) != imap_folder:
+            actual = self._imap_select_folder(self._imap_conn, folder_name)
+            if not actual:
+                return False
+            self._imap_cur_folder = actual
+
+        # Extrair data original para preservar timestamp
+        msg_date = None
         try:
-            r = requests.post(
-                "https://outlook.office365.com/EWS/Exchange.asmx",
-                data=soap.encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {ews_token}",
-                    "Content-Type": "text/xml; charset=utf-8",
-                    "X-AnchorMailbox": dest_user,
-                },
-                timeout=30,
-            )
-            if r.status_code != 200:
-                return False, f"EWS HTTP {r.status_code}: {r.text[:200]}"
-            if 'ResponseClass="Success"' in r.text:
-                return True, "EWS Success"
-            return False, f"EWS NoSuccess: {r.text[:300]}"
-        except Exception as exc:
-            return False, f"EWS exc: {str(exc)[:200]}"
+            parsed_hdr = email_lib.message_from_bytes(raw_mime_bytes)
+            date_str = parsed_hdr.get("Date")
+            if date_str:
+                dt = parsedate_to_datetime(date_str)
+                msg_date = imaplib.Time2Internaldate(dt.timestamp())
+        except Exception:
+            pass  # usa hora do servidor se falhar
+
+        quoted_folder = f'"{self._imap_cur_folder}"'
+        typ, _ = self._imap_conn.append(
+            quoted_folder,
+            "\\Seen",   # lida, sem \Draft
+            msg_date,
+            raw_mime_bytes,
+        )
+        return typ == "OK"
+
+    def _imap_close(self) -> None:
+        """Fecha conexão IMAP se aberta."""
+        conn = getattr(self, "_imap_conn", None)
+        if conn:
+            try:
+                conn.logout()
+            except Exception:
+                pass
+            self._imap_conn = None
+            self._imap_cur_folder = None
 
     # ── MIP label stripping ───────────────────────────────────────────────────
 
@@ -354,28 +283,63 @@ class TenantToTenantEngine(MigrationEngine):
         raw_mime_bytes: bytes,
         dst_hdrs: dict,
         dest_folder_id: str,
+        folder_name: str = "",
     ) -> str:
         """
-        Importa mensagem com fidelidade total via 3 chamadas.
+        Importa mensagem com preservação completa de flags.
 
-        Passo 1: POST base64(MIME) em /users/{id}/messages (text/plain).
-                 ATENÇÃO: o endpoint /mailFolders/{id}/messages NÃO aceita
-                 MIME — só JSON. Por isso criamos no top-level (vai para
-                 Drafts) e depois movemos.
+        Estratégia primária — IMAP APPEND (sem rascunho):
+          Insere o MIME diretamente na pasta com flag \\Seen.
+          Exige IMAP.AccessAsApp (Exchange Online) no App Registration destino.
+          Retorna ID sintético "imap:<hash>" — suficiente para dedup por Message-ID.
 
-        Passo 2: POST /messages/{id}/move com destinationId = pasta alvo.
-                 O move cria cópia e deleta original — retorna novo ID.
-
-        Passo 3: PATCH /messages/{moved_id} com singleValueExtendedProperties
-                 PR_MESSAGE_FLAGS=1 (mfRead, sem mfUnsent) → limpa flag de
-                 rascunho e marca como lida.
-
-        Retorna o ID final da mensagem no destino.
+        Fallback — Graph POST + MOVE (cria rascunho, inevitável):
+          Passo 1: POST base64(MIME) em /users/{id}/messages → vai para Drafts.
+          Passo 2: POST /messages/{id}/move → pasta alvo, retorna novo ID.
+          Passo 3: PATCH singleValueExtendedProperties PR_MESSAGE_FLAGS=1
+                   (funciona em alguns tenants; é no-op em outros).
         """
+        # ── Método primário: IMAP APPEND ─────────────────────────────────────
+        # Tentamos apenas uma vez por mailbox; se falhar, usamos Graph para
+        # todas as mensagens desse mailbox (evita overhead de retry por msg).
+        imap_available = getattr(self, "_imap_available", None)  # None = ainda não testado
+
+        if folder_name and imap_available is not False:
+            try:
+                ok = self._imap_append(dest_user, folder_name, raw_mime_bytes)
+                if ok:
+                    if imap_available is None:
+                        self.add_log(
+                            "✓ IMAP APPEND ativo — emails serão importados sem status de rascunho.",
+                            "info",
+                        )
+                        self._imap_available = True
+                    digest = hashlib.sha256(raw_mime_bytes[:512]).hexdigest()[:20]
+                    return f"imap:{digest}"
+                else:
+                    if imap_available is None:
+                        self._imap_available = False
+                        self.add_log(
+                            "IMAP APPEND indisponível (pasta não criada?) — usando Graph API como fallback.",
+                            "warning",
+                        )
+            except Exception as exc:
+                if imap_available is None:
+                    self._imap_available = False
+                    self._imap_close()
+                    self.add_log(
+                        f"IMAP APPEND indisponível ({str(exc)[:200]}). "
+                        "Para eliminar o problema de rascunho, adicione a permissão "
+                        "'Exchange Online → IMAP.AccessAsApp' (Application) ao App "
+                        "Registration do tenant destino e faça admin consent.",
+                        "warning",
+                    )
+
+        # ── Fallback: Graph POST + MOVE ───────────────────────────────────────
         base_user = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}"
         auth = dst_hdrs["Authorization"]
 
-        # ── Passo 1: upload do MIME em base64 no endpoint top-level ─────────
+        # Passo 1: upload do MIME em base64 no endpoint top-level (vai para Drafts)
         b64_mime = base64.b64encode(raw_mime_bytes).decode("ascii")
         post_hdrs = {
             "Authorization": auth,
@@ -408,7 +372,7 @@ class TenantToTenantEngine(MigrationEngine):
         if not draft_id:
             raise Exception("Graph não retornou ID da mensagem importada")
 
-        # ── Passo 2: mover para a pasta alvo (cria cópia, retorna novo ID) ──
+        # Passo 2: mover para a pasta alvo
         json_hdrs = {
             "Authorization": auth,
             "Content-Type": "application/json",
@@ -439,71 +403,31 @@ class TenantToTenantEngine(MigrationEngine):
         moved = self.retry_on_throttle(post_move)
         moved_id = moved.get("id", draft_id)
 
-        # ── Passo 3: limpar flag de rascunho ─────────────────────────────────
-        # Graph API retorna 200 mas Exchange não atualiza PR_MESSAGE_FLAGS
-        # de fato (limitação conhecida). Estratégia em 2 níveis:
-        #   1. Tenta PATCH Graph (rápido — quando Exchange aceita, evita EWS)
-        #   2. Fallback EWS (sempre funciona se app tem full_access_as_app)
+        # Passo 3: tentar limpar flag de rascunho (Graph — funciona em alguns tenants)
         patch_url = f"{base_user}/messages/{quote(moved_id, safe='')}"
-        verify_url = f"{patch_url}?$select=isDraft"
-        success = False
-        last_status = ""
-
-        # Nível 1: Graph PATCH (poderia funcionar dependendo da versão da API)
         try:
-            pr = requests.patch(patch_url, headers=json_hdrs, json={
+            requests.patch(patch_url, headers=json_hdrs, json={
                 "isRead": True,
                 "singleValueExtendedProperties": [
                     {"id": "Integer 0x0E070003", "value": "1"}
                 ],
             }, timeout=30)
-            if pr.ok:
-                vr = requests.get(verify_url, headers=json_hdrs, timeout=15)
-                if vr.ok and vr.json().get("isDraft") is False:
-                    success = True
-                else:
-                    last_status = f"Graph PATCH 200 mas isDraft={vr.json().get('isDraft') if vr.ok else '?'}"
-            else:
-                last_status = f"Graph PATCH HTTP {pr.status_code}"
-        except Exception as exc:
-            last_status = f"Graph PATCH exc: {str(exc)[:100]}"
+        except Exception:
+            pass
 
-        # Nível 2: EWS FindItem + UpdateItem (a única forma confiável)
-        if not success:
-            try:
-                # 2a: pega o internetMessageId da mensagem via Graph
-                imid, imid_status = self._get_internet_message_id(base_user, moved_id, auth)
-                if not imid:
-                    last_status = f"{last_status} | {imid_status}"
-                else:
-                    ews_token = self._get_ews_token()
-                    # 2b: localiza a mensagem via EWS FindItem por InternetMessageId
-                    ews_id, find_status = self._ews_find_by_message_id(ews_token, dest_user, imid)
-                    if not ews_id:
-                        last_status = f"{last_status} | {find_status}"
-                    else:
-                        # 2c: UpdateItem zerando MSGFLAG_UNSENT
-                        ok, ews_status = self._ews_clear_draft(dest_user, ews_id, ews_token)
-                        if ok:
-                            success = True
-                        else:
-                            last_status = f"{last_status} | {ews_status}"
-            except Exception as exc:
-                last_status = f"{last_status} | EWS exc: {str(exc)[:100]}"
-
-        if not success and not getattr(self, "_warned_draft", False):
+        if not getattr(self, "_warned_graph_draft", False):
             self.add_log(
-                f"⚠️ Mensagens importadas aparecerão como rascunho. {last_status}. "
-                "Solução: adicionar permissão 'Office 365 Exchange Online → "
-                "full_access_as_app' (Application) ao App Registration do tenant "
-                "destino e fazer admin consent.",
+                "⚠️ Usando Graph API para importar — mensagens podem aparecer como "
+                "rascunho. Para resolver definitivamente: adicione a permissão "
+                "'Exchange Online → IMAP.AccessAsApp' (Application) ao App "
+                "Registration do tenant destino e faça admin consent.",
                 "warning",
             )
-            self._warned_draft = True
+            self._warned_graph_draft = True
 
         logger.debug(
-            f"Importado: draft={draft_id[:20]}... → moved={moved_id[:20]}... "
-            f"folder={dest_folder_id[:20]}... bytes={len(raw_mime_bytes)}"
+            f"Graph import: {draft_id[:20]}…→{moved_id[:20]}… "
+            f"folder={dest_folder_id[:20]}… {len(raw_mime_bytes)}B"
         )
         return moved_id
 
@@ -857,7 +781,8 @@ class TenantToTenantEngine(MigrationEngine):
                             dest_user, folder_name, dst_hdrs, _folder_cache
                         )
                         dest_id = self._import_message(
-                            dest_user, raw_bytes, dst_hdrs, dest_folder_id
+                            dest_user, raw_bytes, dst_hdrs, dest_folder_id,
+                            folder_name=folder_name,
                         )
                         self.record_copied(
                             folder=folder_name,
@@ -888,6 +813,8 @@ class TenantToTenantEngine(MigrationEngine):
             self.save_checkpoint(folder_name, last_uid, batch_count, completed=True)
             self.add_log(f"Pasta '{folder_name}' concluída: {batch_count} msgs processadas.")
             on_progress(total_migrated, self.mailbox.items_total or 0, 0)
+
+        self._imap_close()
 
     # ── Fase 2b: Regras de caixa de entrada ───────────────────────────────────
 
@@ -1164,7 +1091,8 @@ class TenantToTenantEngine(MigrationEngine):
                             dest_user, folder_name, dst_hdrs, _folder_cache
                         )
                         dest_id = self._import_message(
-                            dest_user, raw_bytes, dst_hdrs, dest_folder_id
+                            dest_user, raw_bytes, dst_hdrs, dest_folder_id,
+                            folder_name=folder_name,
                         )
                         self.record_copied(
                             folder=folder_name,
@@ -1183,3 +1111,5 @@ class TenantToTenantEngine(MigrationEngine):
                         )
 
                 url = page.get("@odata.nextLink")
+
+        self._imap_close()
