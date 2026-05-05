@@ -377,10 +377,7 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                       onChange={e => setForm(p => ({ ...p, strip_mip_labels: e.target.checked }))}
                       className="sr-only"
                     />
-                    <div
-                      onClick={() => setForm(p => ({ ...p, strip_mip_labels: !p.strip_mip_labels }))}
-                      className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.strip_mip_labels ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-                    >
+                    <div className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.strip_mip_labels ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
                       <span className={`block w-4 h-4 mt-0.5 rounded-full bg-white shadow transition-transform ${form.strip_mip_labels ? 'translate-x-5' : 'translate-x-0.5'}`} />
                     </div>
                   </div>
@@ -407,10 +404,7 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                       onChange={e => setForm(p => ({ ...p, preserve_sp_permissions: e.target.checked }))}
                       className="sr-only"
                     />
-                    <div
-                      onClick={() => setForm(p => ({ ...p, preserve_sp_permissions: !p.preserve_sp_permissions }))}
-                      className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.preserve_sp_permissions ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-                    >
+                    <div className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.preserve_sp_permissions ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
                       <span className={`block w-4 h-4 mt-0.5 rounded-full bg-white shadow transition-transform ${form.preserve_sp_permissions ? 'translate-x-5' : 'translate-x-0.5'}`} />
                     </div>
                   </div>
@@ -438,10 +432,7 @@ const CreateProjectWizard = ({ onClose, onCreated }) => {
                       onChange={e => setForm(p => ({ ...p, migrate_inbox_rules: e.target.checked }))}
                       className="sr-only"
                     />
-                    <div
-                      onClick={() => setForm(p => ({ ...p, migrate_inbox_rules: !p.migrate_inbox_rules }))}
-                      className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.migrate_inbox_rules ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
-                    >
+                    <div className={`w-10 h-5 rounded-full transition-colors cursor-pointer ${form.migrate_inbox_rules ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}>
                       <span className={`block w-4 h-4 mt-0.5 rounded-full bg-white shadow transition-transform ${form.migrate_inbox_rules ? 'translate-x-5' : 'translate-x-0.5'}`} />
                     </div>
                   </div>

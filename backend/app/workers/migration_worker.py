@@ -211,13 +211,14 @@ def _migrate_one_mailbox(project_id: str, mailbox_id: str,
         MigrationMetrics.record_task_completion(migration_type, source_type, duration_seconds)
 
         # Atualiza contadores atomicamente para evitar race condition com as outras threads.
+        # Nota: .values() aceita dict com column objects como chave — não usar **kwargs.
         update_vals = {MigrationProject.completed_count: MigrationProject.completed_count + 1}
         if mb.verify_result and mb.verify_result.get("ok"):
             update_vals[MigrationProject.verified_count] = MigrationProject.verified_count + 1
         db.execute(
             sa_update(MigrationProject)
             .where(MigrationProject.id == project_id)
-            .values(**update_vals)
+            .values(update_vals)
         )
         db.commit()
 

@@ -36,6 +36,25 @@ def _encode(path: str) -> str:
     return quote(path or "", safe="/")
 
 
+def _normalize_site_id(raw: str) -> str:
+    """
+    Converte uma URL de site SharePoint para o formato aceito pela Graph API.
+    Exemplos:
+      https://contoso.sharepoint.com/sites/foo  →  contoso.sharepoint.com:/sites/foo
+      contoso.sharepoint.com:/sites/foo          →  (inalterado)
+      abc123-guid                                →  (inalterado)
+    """
+    if not raw:
+        return raw
+    raw = raw.strip().rstrip("/")
+    if raw.startswith("https://") or raw.startswith("http://"):
+        from urllib.parse import urlparse
+        parsed = urlparse(raw)
+        path = parsed.path or ""
+        return f"{parsed.netloc}:{path}"
+    return raw
+
+
 class SharePointEngine(MigrationEngine):
     """
     Fonte:   Site SharePoint no tenant de origem.
@@ -494,9 +513,11 @@ class SharePointEngine(MigrationEngine):
 
     def test_connection(self) -> dict:
         # Sem site_id (ex.: wizard step 2): só valida OAuth — evita exigir Organization.Read.All.
-        test_site = self.source_cfg.get("test_site_id") or (
-            self.mailbox.source_email if self.mailbox else None
-        )
+        test_site = _normalize_site_id(
+            self.source_cfg.get("test_site_id") or (
+                self.mailbox.source_email if self.mailbox else None
+            ) or ""
+        ) or None
         try:
             token = self._get_token(
                 self.source_cfg["tenant_id"],
@@ -538,7 +559,7 @@ class SharePointEngine(MigrationEngine):
             return {"ok": False, "message": f"Falha ao conectar: {exc}"}
 
     def assess(self) -> dict:
-        src_site = self.mailbox.source_email
+        src_site = _normalize_site_id(self.mailbox.source_email)
         src_hdrs = self._src_headers()
         drives = self._get_site_drives(src_site, src_hdrs)
 
@@ -559,8 +580,8 @@ class SharePointEngine(MigrationEngine):
         }
 
     def migrate_mailbox(self, on_progress: ProgressCallback) -> None:
-        src_site = self.mailbox.source_email
-        dst_site = self.mailbox.destination_email
+        src_site = _normalize_site_id(self.mailbox.source_email)
+        dst_site = _normalize_site_id(self.mailbox.destination_email)
         src_hdrs = self._src_headers()
         dst_hdrs = self._dst_headers()
         total_migrated = self.mailbox.items_migrated or 0

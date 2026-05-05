@@ -738,6 +738,20 @@ class TenantToTenantEngine(MigrationEngine):
         body.pop("id", None)
         body.pop("hasError", None)
 
+        # Graph API exige que todos os valores em arrays de condições sejam strings.
+        # Algumas regras retornam null ou outros tipos — filtrar para evitar 400.
+        conditions = body.get("conditions", {})
+        _str_array_fields = (
+            "bodyContains", "bodyOrSubjectContains", "senderContains",
+            "subjectContains", "recipientContains", "headerContains",
+            "messageActionFlag",
+        )
+        for _field in _str_array_fields:
+            if _field in conditions and isinstance(conditions[_field], list):
+                conditions[_field] = [v for v in conditions[_field] if isinstance(v, str)]
+                if not conditions[_field]:
+                    conditions.pop(_field)
+
         actions = body.get("actions", {})
         for action_key in ("moveToFolder", "copyToFolder"):
             src_folder_id = actions.get(action_key)
