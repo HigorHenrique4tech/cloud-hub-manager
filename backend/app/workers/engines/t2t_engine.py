@@ -109,6 +109,98 @@ class TenantToTenantEngine(MigrationEngine):
         """URL-encode de UPN para segmento de path."""
         return quote(user_id or "", safe="@.")
 
+    # ── EWS fallback para limpar flag de rascunho ────────────────────────────
+    # O Graph API não consegue atualizar PR_MESSAGE_FLAGS de forma confiável
+    # (PATCH retorna 200 mas Exchange não propaga a mudança). EWS tem acesso
+    # direto às propriedades MAPI e é o único caminho garantido.
+    # Requer permissão 'full_access_as_app' em Office 365 Exchange Online
+    # no App Registration do tenant DESTINO (com admin consent).
+
+    def _get_ews_token(self) -> str:
+        """OAuth token com escopo EWS (diferente do Graph API)."""
+        url = f"https://login.microsoftonline.com/{self.dest_cfg['tenant_id']}/oauth2/v2.0/token"
+        resp = requests.post(url, data={
+            "grant_type": "client_credentials",
+            "client_id": self.dest_cfg["client_id"],
+            "client_secret": self.dest_cfg["client_secret"],
+            "scope": "https://outlook.office365.com/.default",
+        }, timeout=30)
+        resp.raise_for_status()
+        return resp.json()["access_token"]
+
+    def _translate_to_ews_id(self, dest_user: str, graph_id: str, graph_auth: str) -> str | None:
+        """Converte ID do Graph para EWS via translateExchangeIds."""
+        url = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}/translateExchangeIds"
+        body = {
+            "inputIds": [graph_id],
+            "targetIdType": "ewsId",
+            "sourceIdType": "restId",
+        }
+        try:
+            r = requests.post(url, headers={
+                "Authorization": graph_auth,
+                "Content-Type": "application/json",
+            }, json=body, timeout=15)
+            if not r.ok:
+                return None
+            arr = r.json().get("value", [])
+            if arr and arr[0].get("targetId"):
+                return arr[0]["targetId"]
+        except Exception:
+            pass
+        return None
+
+    def _ews_clear_draft(self, dest_user: str, ews_id: str, ews_token: str) -> tuple[bool, str]:
+        """Envia EWS UpdateItem para zerar PR_MESSAGE_FLAGS. Retorna (ok, status_msg)."""
+        # Escapa o ID para uso em XML
+        from xml.sax.saxutils import escape as xml_escape
+        ews_id_esc = xml_escape(ews_id)
+        user_esc = xml_escape(dest_user)
+        soap = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
+            ' xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"'
+            ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
+            '<soap:Header>'
+            '<t:RequestServerVersion Version="Exchange2016" />'
+            '<t:ExchangeImpersonation>'
+            f'<t:ConnectingSID><t:PrimarySmtpAddress>{user_esc}</t:PrimarySmtpAddress></t:ConnectingSID>'
+            '</t:ExchangeImpersonation>'
+            '</soap:Header>'
+            '<soap:Body>'
+            '<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">'
+            '<m:ItemChanges><t:ItemChange>'
+            f'<t:ItemId Id="{ews_id_esc}" />'
+            '<t:Updates><t:SetItemField>'
+            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
+            '<t:Message><t:ExtendedProperty>'
+            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
+            '<t:Value>1</t:Value>'
+            '</t:ExtendedProperty></t:Message>'
+            '</t:SetItemField></t:Updates>'
+            '</t:ItemChange></m:ItemChanges>'
+            '</m:UpdateItem>'
+            '</soap:Body></soap:Envelope>'
+        )
+        try:
+            r = requests.post(
+                "https://outlook.office365.com/EWS/Exchange.asmx",
+                data=soap.encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {ews_token}",
+                    "Content-Type": "text/xml; charset=utf-8",
+                    "X-AnchorMailbox": dest_user,
+                },
+                timeout=30,
+            )
+            if r.status_code != 200:
+                return False, f"EWS HTTP {r.status_code}: {r.text[:200]}"
+            if 'ResponseClass="Success"' in r.text:
+                return True, "EWS Success"
+            return False, f"EWS NoSuccess: {r.text[:300]}"
+        except Exception as exc:
+            return False, f"EWS exc: {str(exc)[:200]}"
+
     # ── MIP label stripping ───────────────────────────────────────────────────
 
     # Headers that carry Microsoft Information Protection (MIP/AIP) sensitivity
@@ -244,60 +336,60 @@ class TenantToTenantEngine(MigrationEngine):
         moved_id = moved.get("id", draft_id)
 
         # ── Passo 3: limpar flag de rascunho ─────────────────────────────────
-        # Graph API NÃO permite atualizar isDraft diretamente (read-only).
-        # Única abordagem: PR_MESSAGE_FLAGS via singleValueExtendedProperties.
-        # Tentamos múltiplos formatos do PropertyTag — Microsoft documenta
-        # ambos (4-dígitos e 8-dígitos), e o aceite varia por versão da API.
+        # Graph API retorna 200 mas Exchange não atualiza PR_MESSAGE_FLAGS
+        # de fato (limitação conhecida). Estratégia em 2 níveis:
+        #   1. Tenta PATCH Graph (rápido — quando Exchange aceita, evita EWS)
+        #   2. Fallback EWS (sempre funciona se app tem full_access_as_app)
         patch_url = f"{base_user}/messages/{quote(moved_id, safe='')}"
-        verify_url = f"{patch_url}?$select=isDraft,isRead"
+        verify_url = f"{patch_url}?$select=isDraft"
+        success = False
+        last_status = ""
 
-        # Tentativas em ordem de probabilidade de sucesso
-        patch_bodies = [
-            # 1. Tag completo MAPI (PropID + Type) — mais correto formalmente
-            {
+        # Nível 1: Graph PATCH (poderia funcionar dependendo da versão da API)
+        try:
+            pr = requests.patch(patch_url, headers=json_hdrs, json={
                 "isRead": True,
                 "singleValueExtendedProperties": [
                     {"id": "Integer 0x0E070003", "value": "1"}
                 ],
-            },
-            # 2. Apenas PropID — o que estávamos usando
-            {
-                "singleValueExtendedProperties": [
-                    {"id": "Integer 0x0E07", "value": "1"}
-                ],
-            },
-        ]
-
-        success = False
-        last_status = ""
-        for body in patch_bodies:
-            try:
-                r = requests.patch(patch_url, headers=json_hdrs, json=body, timeout=30)
-                last_status = f"HTTP {r.status_code}"
-                if not r.ok:
-                    continue
-                # Verifica se o isDraft realmente saiu de True para False
+            }, timeout=30)
+            if pr.ok:
                 vr = requests.get(verify_url, headers=json_hdrs, timeout=15)
                 if vr.ok and vr.json().get("isDraft") is False:
                     success = True
-                    break
                 else:
-                    last_status = f"PATCH 200 mas isDraft ainda={vr.json().get('isDraft', 'desconhecido') if vr.ok else 'erro GET'}"
-            except Exception as exc:
-                last_status = str(exc)[:120]
+                    last_status = f"Graph PATCH 200 mas isDraft={vr.json().get('isDraft') if vr.ok else '?'}"
+            else:
+                last_status = f"Graph PATCH HTTP {pr.status_code}"
+        except Exception as exc:
+            last_status = f"Graph PATCH exc: {str(exc)[:100]}"
 
+        # Nível 2: EWS UpdateItem (a única forma confiável)
         if not success:
-            # Log uma vez por mailbox (não por mensagem) — guarda em atributo
-            if not getattr(self, "_warned_draft", False):
-                self.add_log(
-                    f"⚠️ Mensagens importadas aparecerão como rascunho. "
-                    f"Última tentativa: {last_status}. "
-                    "Limitação conhecida do Graph API para PR_MESSAGE_FLAGS — "
-                    "use PowerShell pós-migração para limpar via "
-                    "Set-MailboxFolderPermission ou abra/feche cada msg no Outlook.",
-                    "warning",
-                )
-                self._warned_draft = True
+            try:
+                # Reusa o token Graph (já temos no header `auth`) para translate
+                ews_id = self._translate_to_ews_id(dest_user, moved_id, auth)
+                if ews_id:
+                    ews_token = self._get_ews_token()
+                    ok, ews_status = self._ews_clear_draft(dest_user, ews_id, ews_token)
+                    if ok:
+                        success = True
+                    else:
+                        last_status = f"{last_status} | {ews_status}"
+                else:
+                    last_status = f"{last_status} | translateExchangeIds falhou"
+            except Exception as exc:
+                last_status = f"{last_status} | EWS exc: {str(exc)[:100]}"
+
+        if not success and not getattr(self, "_warned_draft", False):
+            self.add_log(
+                f"⚠️ Mensagens importadas aparecerão como rascunho. {last_status}. "
+                "Solução: adicionar permissão 'Office 365 Exchange Online → "
+                "full_access_as_app' (Application) ao App Registration do tenant "
+                "destino e fazer admin consent.",
+                "warning",
+            )
+            self._warned_draft = True
 
         logger.debug(
             f"Importado: draft={draft_id[:20]}... → moved={moved_id[:20]}... "
