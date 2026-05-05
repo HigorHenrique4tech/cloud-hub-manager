@@ -243,40 +243,34 @@ class TenantToTenantEngine(MigrationEngine):
         moved = self.retry_on_throttle(post_move)
         moved_id = moved.get("id", draft_id)
 
-        # ── Passo 3: limpar flag de rascunho via extended property ──────────
-        # PR_MESSAGE_FLAGS = 0x0E07 (PT_LONG)
-        #   0x01 mfRead    — lida
-        #   0x08 mfUnsent  — rascunho (queremos APAGAR este bit)
-        # Valor "1" = mfRead apenas → lida, não rascunho.
-        # isRead:true como reforço (propriedade nativa Graph).
+        # ── Passo 3: limpar flag de rascunho ─────────────────────────────────
+        # Tentativa 1: isDraft=false (propriedade nativa Graph API — mais confiável)
+        # Tentativa 2: PR_MESSAGE_FLAGS via singleValueExtendedProperties (fallback)
         patch_url = f"{base_user}/messages/{quote(moved_id, safe='')}"
-        patch_body = {
-            "isRead": True,
-            "singleValueExtendedProperties": [
-                {"id": "Integer 0x0E07", "value": "1"}
-            ],
-        }
 
-        _patch_ok = False
-
-        def patch_flags():
-            r = requests.patch(patch_url, headers=json_hdrs, json=patch_body, timeout=30)
+        def _try_patch(body: dict) -> bool:
+            r = requests.patch(patch_url, headers=json_hdrs, json=body, timeout=30)
             if r.status_code == 429:
                 raise Exception("429 throttle")
-            if not r.ok:
-                raise Exception(
-                    f"HTTP {r.status_code} [{r.json().get('error', {}).get('code', '') if r.text else ''}]: "
-                    f"{r.text[:300]}"
-                )
-            return True
+            return r.ok
 
         try:
-            _patch_ok = self.retry_on_throttle(patch_flags)
+            ok = self.retry_on_throttle(
+                lambda: _try_patch({"isDraft": False, "isRead": True})
+            )
+            if not ok:
+                # Fallback: extended property PR_MESSAGE_FLAGS sem MSGFLAG_UNSENT (0x08)
+                self.retry_on_throttle(
+                    lambda: _try_patch({
+                        "singleValueExtendedProperties": [
+                            {"id": "Integer 0x0E07", "value": "1"}
+                        ]
+                    })
+                )
         except Exception as exc:
-            # Loga no banco para ficar visível nos logs do projeto
             self.add_log(
-                f"Aviso: mensagem importada mas PATCH de rascunho falhou ({exc}). "
-                "Verifique se o App tem permissão 'Mail.ReadWrite' no Entra ID.",
+                f"Aviso: PATCH de rascunho falhou ({exc}). "
+                "Verifique permissão 'Mail.ReadWrite' (Application) no Entra ID do tenant destino.",
                 "warning",
             )
 
