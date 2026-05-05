@@ -1088,14 +1088,15 @@ def _query_tenant_objects(cfg: dict, object_type: str, search: str) -> list[dict
         ]
 
     if object_type == "m365_group":
+        # $filter com any() em coleções exige ConsistencyLevel + $count obrigatoriamente
+        hdrs["ConsistencyLevel"] = "eventual"
         url = (
-            f"{graph}/groups"
-            f"?$filter=groupTypes/any(c:c eq 'Unified')"
+            f"{graph}/groups?$count=true"
+            f"&$filter=groupTypes/any(c:c eq 'Unified')"
             f"&$select=displayName,mail,id&$top=50"
         )
         if q:
             url += f"&$search=\"displayName:{q}\""
-            hdrs["ConsistencyLevel"] = "eventual"
         r = _rq.get(url, headers=hdrs, timeout=20)
         r.raise_for_status()
         return [
