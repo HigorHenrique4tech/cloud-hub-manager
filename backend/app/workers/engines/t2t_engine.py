@@ -1,20 +1,19 @@
 """Tenant-to-Tenant engine — M365 Graph API → M365 Graph API.
 
-Import via IMAP APPEND (preferencial) ou Graph API como fallback.
-IMAP APPEND preserva flags diretamente (\Seen, sem \Draft), eliminando
-o problema de mensagens importadas aparecerem como rascunho no Outlook.
-Requer permissão IMAP.AccessAsApp no Exchange Online do tenant destino.
+Import via EWS CreateItem (preferencial) ou Graph API como fallback.
+EWS CreateItem com MessageDisposition="SaveOnly" insere mensagens sem o
+bit MSGFLAG_UNSENT, eliminando o problema de rascunho no Outlook.
+Requer permissão 'full_access_as_app' (Exchange Online) com admin consent.
 """
 import base64
 import email as email_lib
 from email import generator as email_generator
 import hashlib
-import imaplib
 import io
 import logging
-import socket
-from email.utils import parsedate_to_datetime
+import re as _re
 from urllib.parse import quote
+from xml.sax.saxutils import escape as _xml_escape
 
 import requests
 
@@ -113,30 +112,34 @@ class TenantToTenantEngine(MigrationEngine):
         """URL-encode de UPN para segmento de path."""
         return quote(user_id or "", safe="@.")
 
-    # ── IMAP APPEND — método primário de importação ───────────────────────────
-    # IMAP APPEND insere a mensagem diretamente com flags explícitas (\Seen),
-    # sem o bit MSGFLAG_UNSENT que o Graph POST/messages sempre coloca.
-    # Isso é exatamente o que ferramentas como AvePoint fazem internamente.
+    # ── EWS CreateItem — método primário de importação ───────────────────────
+    # EWS CreateItem com MessageDisposition="SaveOnly" insere a mensagem
+    # diretamente na pasta com IsRead=true, sem o bit MSGFLAG_UNSENT.
+    # É o método usado por ferramentas de migração profissionais (AvePoint, etc.)
+    # quando operam via EWS.
     #
-    # Permissões necessárias no App Registration do tenant DESTINO:
-    #   - Exchange Online → IMAP.AccessAsApp (Application, admin consent)
-    #   - OU Office 365 Exchange Online → full_access_as_app (Application)
-    # Ambas usam o mesmo escopo OAuth: https://outlook.office365.com/.default
+    # Requer no App Registration do tenant DESTINO:
+    #   Office 365 Exchange Online → full_access_as_app  (Application, admin consent)
+    # NÃO requer PowerShell de Exchange Online — apenas admin consent do Azure AD.
 
-    # Mapeamento de displayName do Graph → nome IMAP no Exchange Online
-    _IMAP_FOLDER_MAP: dict = {
-        "inbox": "INBOX",
-        "caixa de entrada": "INBOX",
-        "sent items": "Sent Items",
-        "itens enviados": "Sent Items",
-        "archive": "Archive",
-        "arquivo morto": "Archive",
-        "deleted items": "Deleted Items",
-        "itens excluídos": "Deleted Items",
+    # Pastas well-known do Exchange → DistinguishedFolderId EWS
+    _EWS_DISTINGUISHED: dict = {
+        "inbox":             "inbox",
+        "caixa de entrada":  "inbox",
+        "sent items":        "sentitems",
+        "itens enviados":    "sentitems",
+        "archive":           "archive",
+        "arquivo morto":     "archive",
+        "deleted items":     "deleteditems",
+        "itens excluídos":   "deleteditems",
+        "junk email":        "junkemail",
+        "lixo eletrônico":   "junkemail",
+        "outbox":            "outbox",
+        "caixa de saída":    "outbox",
     }
 
     def _get_exchange_token(self) -> str:
-        """OAuth token com escopo outlook.office365.com (IMAP e EWS compartilham)."""
+        """OAuth token com escopo outlook.office365.com (EWS)."""
         url = f"https://login.microsoftonline.com/{self.dest_cfg['tenant_id']}/oauth2/v2.0/token"
         resp = requests.post(url, data={
             "grant_type": "client_credentials",
@@ -147,92 +150,150 @@ class TenantToTenantEngine(MigrationEngine):
         resp.raise_for_status()
         return resp.json()["access_token"]
 
-    def _imap_connect(self, dest_user: str, token: str) -> imaplib.IMAP4_SSL:
-        """Abre e autentica uma conexão IMAP com XOAUTH2."""
-        # XOAUTH2: base64("user=<email>\x01auth=Bearer <token>\x01\x01")
-        auth_str = f"user={dest_user}\x01auth=Bearer {token}\x01\x01"
-        conn = imaplib.IMAP4_SSL("outlook.office365.com", 993)
-        conn.socket().settimeout(60)
-        conn.authenticate("XOAUTH2", lambda _: auth_str.encode())
-        return conn
+    def _ews_post(self, dest_user: str, soap: str, token: str, timeout: int = 60) -> requests.Response:
+        """Envia requisição SOAP para EWS com ExchangeImpersonation."""
+        return requests.post(
+            "https://outlook.office365.com/EWS/Exchange.asmx",
+            data=soap.encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "text/xml; charset=utf-8",
+                "X-AnchorMailbox": dest_user,
+            },
+            timeout=timeout,
+        )
 
-    def _imap_select_folder(self, conn: imaplib.IMAP4_SSL, folder_name: str) -> str | None:
+    def _ews_impersonation_header(self, dest_user: str) -> str:
+        return (
+            "<t:ExchangeImpersonation>"
+            f"<t:ConnectingSID><t:PrimarySmtpAddress>{_xml_escape(dest_user)}</t:PrimarySmtpAddress></t:ConnectingSID>"
+            "</t:ExchangeImpersonation>"
+        )
+
+    def _ews_envelope(self, dest_user: str, body: str) -> str:
+        return (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
+            ' xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"'
+            ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
+            "<soap:Header>"
+            '<t:RequestServerVersion Version="Exchange2016" />'
+            f"{self._ews_impersonation_header(dest_user)}"
+            "</soap:Header>"
+            f"<soap:Body>{body}</soap:Body>"
+            "</soap:Envelope>"
+        )
+
+    def _ews_resolve_folder(self, dest_user: str, folder_name: str, token: str) -> str:
         """
-        Seleciona pasta IMAP no Exchange Online.
-        Cria a pasta se não existir. Retorna o nome IMAP usado ou None se falhou.
+        Retorna XML do SavedItemFolderId para usar em CreateItem.
+        Tenta: DistinguishedFolderId → FindFolder → CreateFolder → fallback inbox.
+        Resultado em cache por pasta (self._ews_folder_cache).
         """
-        imap_name = self._IMAP_FOLDER_MAP.get(folder_name.lower(), folder_name)
-        # Quotar o nome para suportar espaços e caracteres especiais
-        quoted = f'"{imap_name}"'
+        if not hasattr(self, "_ews_folder_cache"):
+            self._ews_folder_cache: dict = {}
 
-        typ, _ = conn.select(quoted)
-        if typ == "OK":
-            return imap_name
+        cache_key = folder_name.lower()
+        if cache_key in self._ews_folder_cache:
+            return self._ews_folder_cache[cache_key]
 
-        # Pasta não existe — criar e selecionar
-        conn.create(quoted)
-        typ, _ = conn.select(quoted)
-        if typ == "OK":
-            return imap_name
+        # 1) Pasta well-known
+        wk = self._EWS_DISTINGUISHED.get(cache_key)
+        if wk:
+            xml = f'<t:DistinguishedFolderId Id="{wk}" />'
+            self._ews_folder_cache[cache_key] = xml
+            return xml
 
-        return None
+        # 2) FindFolder por displayName
+        name_esc = _xml_escape(folder_name)
+        find_body = (
+            f'<m:FindFolder Traversal="Deep">'
+            "<m:FolderShape>"
+            "<t:BaseShape>IdOnly</t:BaseShape>"
+            "<t:AdditionalProperties><t:FieldURI FieldURI=\"folder:DisplayName\"/></t:AdditionalProperties>"
+            "</m:FolderShape>"
+            "<m:Restriction>"
+            "<t:IsEqualTo>"
+            '<t:FieldURI FieldURI="folder:DisplayName"/>'
+            f"<t:FieldURIOrConstant><t:Constant Value=\"{name_esc}\"/></t:FieldURIOrConstant>"
+            "</t:IsEqualTo>"
+            "</m:Restriction>"
+            "<m:ParentFolderIds><t:DistinguishedFolderId Id=\"msgfolderroot\" /></m:ParentFolderIds>"
+            "</m:FindFolder>"
+        )
+        try:
+            r = self._ews_post(dest_user, self._ews_envelope(dest_user, find_body), token, timeout=20)
+            if r.ok:
+                m = _re.search(r'<t:FolderId Id="([^"]+)" ChangeKey="([^"]+)"', r.text)
+                if m:
+                    xml = f'<t:FolderId Id="{_xml_escape(m.group(1))}" ChangeKey="{_xml_escape(m.group(2))}" />'
+                    self._ews_folder_cache[cache_key] = xml
+                    return xml
+        except Exception as exc:
+            logger.debug(f"EWS FindFolder '{folder_name}': {exc}")
 
-    def _imap_append(
+        # 3) Criar pasta
+        create_body = (
+            "<m:CreateFolder>"
+            "<m:ParentFolderId><t:DistinguishedFolderId Id=\"msgfolderroot\" /></m:ParentFolderId>"
+            "<m:Folders>"
+            f"<t:Folder><t:DisplayName>{name_esc}</t:DisplayName></t:Folder>"
+            "</m:Folders>"
+            "</m:CreateFolder>"
+        )
+        try:
+            r2 = self._ews_post(dest_user, self._ews_envelope(dest_user, create_body), token, timeout=20)
+            if r2.ok:
+                m2 = _re.search(r'<t:FolderId Id="([^"]+)" ChangeKey="([^"]+)"', r2.text)
+                if m2:
+                    xml = f'<t:FolderId Id="{_xml_escape(m2.group(1))}" ChangeKey="{_xml_escape(m2.group(2))}" />'
+                    self._ews_folder_cache[cache_key] = xml
+                    return xml
+        except Exception as exc:
+            logger.debug(f"EWS CreateFolder '{folder_name}': {exc}")
+
+        # 4) Fallback: inbox
+        logger.warning(f"EWS: pasta '{folder_name}' não resolvida para {dest_user} — usando inbox")
+        xml = '<t:DistinguishedFolderId Id="inbox" />'
+        self._ews_folder_cache[cache_key] = xml
+        return xml
+
+    def _ews_create_item(
         self,
         dest_user: str,
         folder_name: str,
-        raw_mime_bytes: bytes,
+        mime_bytes: bytes,
+        token: str,
     ) -> bool:
         """
-        Importa mensagem via IMAP APPEND com XOAUTH2.
-        Flags: \\Seen (sem \\Draft) — elimina o problema de rascunho.
-        Reutiliza self._imap_conn entre chamadas consecutivas.
-        Retorna True se importada com sucesso.
+        Importa mensagem via EWS CreateItem com MimeContent.
+        MessageDisposition="SaveOnly" + IsRead=true → sem rascunho.
+        Retorna True se inserido com sucesso.
         """
-        # Lazy-init: conectar apenas na primeira mensagem
-        if not getattr(self, "_imap_conn", None):
-            token = self._get_exchange_token()
-            self._imap_conn = self._imap_connect(dest_user, token)
-            self._imap_cur_folder: str | None = None
+        folder_xml = self._ews_resolve_folder(dest_user, folder_name, token)
+        mime_b64 = base64.b64encode(mime_bytes).decode("ascii")
 
-        # Mudar de pasta apenas quando necessário
-        imap_folder = self._IMAP_FOLDER_MAP.get(folder_name.lower(), folder_name)
-        if getattr(self, "_imap_cur_folder", None) != imap_folder:
-            actual = self._imap_select_folder(self._imap_conn, folder_name)
-            if not actual:
-                return False
-            self._imap_cur_folder = actual
-
-        # Extrair data original para preservar timestamp
-        msg_date = None
-        try:
-            parsed_hdr = email_lib.message_from_bytes(raw_mime_bytes)
-            date_str = parsed_hdr.get("Date")
-            if date_str:
-                dt = parsedate_to_datetime(date_str)
-                msg_date = imaplib.Time2Internaldate(dt.timestamp())
-        except Exception:
-            pass  # usa hora do servidor se falhar
-
-        quoted_folder = f'"{self._imap_cur_folder}"'
-        typ, _ = self._imap_conn.append(
-            quoted_folder,
-            "\\Seen",   # lida, sem \Draft
-            msg_date,
-            raw_mime_bytes,
+        body = (
+            '<m:CreateItem MessageDisposition="SaveOnly">'
+            f"<m:SavedItemFolderId>{folder_xml}</m:SavedItemFolderId>"
+            "<m:Items>"
+            "<t:Message>"
+            f'<t:MimeContent CharacterSet="UTF-8">{mime_b64}</t:MimeContent>'
+            "<t:IsRead>true</t:IsRead>"
+            "</t:Message>"
+            "</m:Items>"
+            "</m:CreateItem>"
         )
-        return typ == "OK"
 
-    def _imap_close(self) -> None:
-        """Fecha conexão IMAP se aberta."""
-        conn = getattr(self, "_imap_conn", None)
-        if conn:
-            try:
-                conn.logout()
-            except Exception:
-                pass
-            self._imap_conn = None
-            self._imap_cur_folder = None
+        r = self._ews_post(dest_user, self._ews_envelope(dest_user, body), token, timeout=120)
+
+        if r.status_code == 200 and 'ResponseClass="Success"' in r.text:
+            return True
+
+        # Extrair mensagem de erro para diagnóstico
+        msg_m = _re.search(r"<m:MessageText>([^<]+)</m:MessageText>", r.text)
+        err_text = msg_m.group(1) if msg_m else r.text[:300]
+        raise Exception(f"EWS CreateItem HTTP {r.status_code}: {err_text}")
 
     # ── MIP label stripping ───────────────────────────────────────────────────
 
@@ -288,50 +349,47 @@ class TenantToTenantEngine(MigrationEngine):
         """
         Importa mensagem com preservação completa de flags.
 
-        Estratégia primária — IMAP APPEND (sem rascunho):
-          Insere o MIME diretamente na pasta com flag \\Seen.
-          Exige IMAP.AccessAsApp (Exchange Online) no App Registration destino.
-          Retorna ID sintético "imap:<hash>" — suficiente para dedup por Message-ID.
+        Estratégia primária — EWS CreateItem (sem rascunho):
+          SOAP CreateItem com MessageDisposition="SaveOnly" + IsRead=true.
+          Requer full_access_as_app (Exchange Online) com admin consent.
+          Retorna ID sintético "ews:<hash>" — dedup é feito pelo Message-ID header.
 
-        Fallback — Graph POST + MOVE (cria rascunho, inevitável):
+        Fallback — Graph POST + MOVE (cria rascunho, inevitável via Graph):
           Passo 1: POST base64(MIME) em /users/{id}/messages → vai para Drafts.
           Passo 2: POST /messages/{id}/move → pasta alvo, retorna novo ID.
-          Passo 3: PATCH singleValueExtendedProperties PR_MESSAGE_FLAGS=1
-                   (funciona em alguns tenants; é no-op em outros).
+          Passo 3: PATCH PR_MESSAGE_FLAGS=1 (best-effort, Exchange ignora às vezes).
         """
-        # ── Método primário: IMAP APPEND ─────────────────────────────────────
-        # Tentamos apenas uma vez por mailbox; se falhar, usamos Graph para
-        # todas as mensagens desse mailbox (evita overhead de retry por msg).
-        imap_available = getattr(self, "_imap_available", None)  # None = ainda não testado
+        # ── Método primário: EWS CreateItem ──────────────────────────────────
+        # Tentamos EWS na primeira mensagem de cada mailbox. Se funcionar,
+        # usamos EWS para todas as mensagens desse mailbox. Se falhar, usamos
+        # Graph API como fallback (com aviso sobre rascunho).
+        ews_available = getattr(self, "_ews_available", None)  # None = ainda não testado
 
-        if folder_name and imap_available is not False:
+        if folder_name and ews_available is not False:
             try:
-                ok = self._imap_append(dest_user, folder_name, raw_mime_bytes)
+                # Token EWS em cache por mailbox (evita roundtrip OAuth por msg)
+                if not getattr(self, "_ews_token_cache", None):
+                    self._ews_token_cache = self._get_exchange_token()
+
+                ok = self._ews_create_item(dest_user, folder_name, raw_mime_bytes, self._ews_token_cache)
                 if ok:
-                    if imap_available is None:
+                    if ews_available is None:
                         self.add_log(
-                            "✓ IMAP APPEND ativo — emails serão importados sem status de rascunho.",
+                            "✓ EWS CreateItem ativo — emails importados sem status de rascunho.",
                             "info",
                         )
-                        self._imap_available = True
+                        self._ews_available = True
                     digest = hashlib.sha256(raw_mime_bytes[:512]).hexdigest()[:20]
-                    return f"imap:{digest}"
-                else:
-                    if imap_available is None:
-                        self._imap_available = False
-                        self.add_log(
-                            "IMAP APPEND indisponível (pasta não criada?) — usando Graph API como fallback.",
-                            "warning",
-                        )
+                    return f"ews:{digest}"
             except Exception as exc:
-                if imap_available is None:
-                    self._imap_available = False
-                    self._imap_close()
+                if ews_available is None:
+                    self._ews_available = False
+                    self._ews_token_cache = None
                     self.add_log(
-                        f"IMAP APPEND indisponível ({str(exc)[:200]}). "
-                        "Para eliminar o problema de rascunho, adicione a permissão "
-                        "'Exchange Online → IMAP.AccessAsApp' (Application) ao App "
-                        "Registration do tenant destino e faça admin consent.",
+                        f"EWS CreateItem indisponível ({str(exc)[:250]}). "
+                        "Verifique se a permissão 'Office 365 Exchange Online → "
+                        "full_access_as_app' (Application) está concedida no App "
+                        "Registration do tenant destino com admin consent.",
                         "warning",
                     )
 
@@ -417,10 +475,10 @@ class TenantToTenantEngine(MigrationEngine):
 
         if not getattr(self, "_warned_graph_draft", False):
             self.add_log(
-                "⚠️ Usando Graph API para importar — mensagens podem aparecer como "
-                "rascunho. Para resolver definitivamente: adicione a permissão "
-                "'Exchange Online → IMAP.AccessAsApp' (Application) ao App "
-                "Registration do tenant destino e faça admin consent.",
+                "⚠️ Usando Graph API para importar — mensagens aparecerão como rascunho. "
+                "Para resolver: adicione a permissão 'Office 365 Exchange Online → "
+                "full_access_as_app' (Application) ao App Registration do tenant destino "
+                "e faça admin consent.",
                 "warning",
             )
             self._warned_graph_draft = True
@@ -814,7 +872,8 @@ class TenantToTenantEngine(MigrationEngine):
             self.add_log(f"Pasta '{folder_name}' concluída: {batch_count} msgs processadas.")
             on_progress(total_migrated, self.mailbox.items_total or 0, 0)
 
-        self._imap_close()
+        # Limpa cache de token EWS ao fim do mailbox (token expira em 1h)
+        self._ews_token_cache = None
 
     # ── Fase 2b: Regras de caixa de entrada ───────────────────────────────────
 
@@ -1112,4 +1171,5 @@ class TenantToTenantEngine(MigrationEngine):
 
                 url = page.get("@odata.nextLink")
 
-        self._imap_close()
+        # Limpa cache de token EWS ao fim do mailbox (token expira em 1h)
+        self._ews_token_cache = None
