@@ -86,7 +86,6 @@ const ManagedOrgsPage = lazy(() => import('./pages/ManagedOrgsPage'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const Billing = lazy(() => import('./pages/Billing'));
 const BillingSuccess = lazy(() => import('./pages/BillingSuccess'));
-const PartnerCenterBilling = lazy(() => import('./pages/billing/PartnerCenterBilling'));
 const PaymentConfirmation = lazy(() => import('./pages/PaymentConfirmation'));
 const PlanSelection = lazy(() => import('./pages/PlanSelection'));
 
@@ -200,7 +199,6 @@ function App() {
                 {/* Billing */}
                 <Route path="/billing" element={<PR><Billing /></PR>} />
                 <Route path="/billing/success" element={<PR><BillingSuccess /></PR>} />
-                <Route path="/billing/partner-center" element={<PR><PartnerCenterBilling /></PR>} />
                 {/* Multi-tenant settings */}
                 <Route path="/org/settings" element={<PR><OrgSettings /></PR>} />
                 <Route path="/org/managed" element={<PR><ManagedOrgsPage /></PR>} />

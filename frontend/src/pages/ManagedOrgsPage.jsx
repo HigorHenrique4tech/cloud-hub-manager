@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -8,6 +8,7 @@ import {
   ChevronLeft, ChevronRight, CheckSquare, Square, Power, PowerOff,
   Store, Link2, ShieldCheck, AlertCircle, Check, RefreshCcw, Shield,
   Globe, CalendarClock, Package, Activity, CreditCard, Zap,
+  Receipt, Download, FileText, DollarSign, Clock,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
@@ -962,6 +963,164 @@ const CustomerDetailDrawer = ({ customer, workspaceId, orgSlug, onClose }) => {
   );
 };
 
+/* ── Partner Center — Invoice helpers ────────────────────────────────────── */
+
+const fmtInvDate = (iso) => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+};
+
+const fmtInvCurrency = (value, currency) => {
+  if (value == null) return '—';
+  try { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: currency || 'USD' }).format(value); }
+  catch { return `${currency || ''} ${Number(value).toFixed(2)}`; }
+};
+
+const INV_STATUS = {
+  paid:    { label: 'Paga',      cls: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300', Icon: CheckCircle },
+  unpaid:  { label: 'Em aberto', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300', Icon: Clock },
+  pending: { label: 'Pendente',  cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',     Icon: Clock },
+  overdue: { label: 'Vencida',   cls: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',         Icon: AlertCircle },
+};
+
+function InvStatusBadge({ status }) {
+  const cfg = INV_STATUS[(status || '').toLowerCase()] || { label: status || '—', cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400', Icon: FileText };
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${cfg.cls}`}>
+      <cfg.Icon size={11} /> {cfg.label}
+    </span>
+  );
+}
+
+function InvoiceDrawer({ invoice, orgSlug, workspaceId, onClose }) {
+  useEscapeKey(true, onClose);
+  const [tab, setTab] = useState(0);
+  const TABS = ['Resumo', 'Itens M365 / Onetime', 'Uso Azure'];
+
+  const onetimeQ = useQuery({
+    queryKey: ['pc-invoice-lineitems', invoice.id, 'onetime'],
+    queryFn: () => orgService.pcGetInvoiceLineItems(orgSlug, workspaceId, invoice.id, { provider: 'onetime', line_item_type: 'billinglineitems' }),
+    enabled: tab === 1,
+    staleTime: 30 * 60_000,
+  });
+
+  const azureQ = useQuery({
+    queryKey: ['pc-invoice-lineitems', invoice.id, 'azure'],
+    queryFn: () => orgService.pcGetInvoiceLineItems(orgSlug, workspaceId, invoice.id, { provider: 'azure', line_item_type: 'usagelineitems' }),
+    enabled: tab === 2,
+    staleTime: 30 * 60_000,
+  });
+
+  const groupedOnetime = useMemo(() => {
+    const items = onetimeQ.data?.items || [];
+    const groups = new Map();
+    for (const item of items) {
+      const key = item.customer_name || item.customer_id || 'Sem cliente';
+      if (!groups.has(key)) groups.set(key, { items: [], totals: {} });
+      const g = groups.get(key);
+      g.items.push(item);
+      const cur = item.currency || 'USD';
+      g.totals[cur] = (g.totals[cur] || 0) + (Number(item.amount) || 0);
+    }
+    return Array.from(groups.entries());
+  }, [onetimeQ.data]);
+
+  return (
+    <>
+      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col bg-white dark:bg-gray-900 shadow-2xl border-l border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900 dark:text-gray-100 truncate">Fatura {invoice.id}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {fmtInvDate(invoice.invoice_date)} · {fmtInvCurrency(invoice.total_amount, invoice.currency_code)}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700 flex-shrink-0 px-6">
+          {TABS.map((t, i) => (
+            <button key={t} onClick={() => setTab(i)}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${tab === i ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400' : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+          {tab === 0 && (
+            <div className="grid grid-cols-2 gap-3">
+              {[
+                { label: 'Período', value: `${fmtInvDate(invoice.billing_period_start)} → ${fmtInvDate(invoice.billing_period_end)}` },
+                { label: 'Data da fatura', value: fmtInvDate(invoice.invoice_date) },
+                { label: 'Vencimento', value: fmtInvDate(invoice.due_date) },
+                { label: 'Valor total', value: fmtInvCurrency(invoice.total_amount, invoice.currency_code) },
+                { label: 'Valor pago', value: fmtInvCurrency(invoice.paid_amount, invoice.currency_code) },
+                { label: 'Status', value: <InvStatusBadge status={invoice.status} /> },
+              ].map(({ label, value }) => (
+                <div key={label} className="card p-3">
+                  <p className="text-[11px] text-gray-500 dark:text-gray-400 uppercase tracking-wide">{label}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mt-1">{value}</p>
+                </div>
+              ))}
+            </div>
+          )}
+          {tab === 1 && (
+            onetimeQ.isLoading ? <div className="flex justify-center py-10"><LoadingSpinner /></div>
+            : onetimeQ.isError ? <p className="text-sm text-red-500 py-10 text-center">{onetimeQ.error?.response?.data?.detail || 'Erro ao carregar itens'}</p>
+            : groupedOnetime.length === 0 ? <p className="text-sm text-gray-400 text-center py-10">Nenhum item Onetime nesta fatura.</p>
+            : <div className="space-y-4">
+                {groupedOnetime.map(([customer, { items, totals }]) => (
+                  <div key={customer} className="card p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Building2 size={14} className="text-blue-500" />{customer}</p>
+                      <div className="text-right text-xs text-gray-500">
+                        {Object.entries(totals).map(([cur, sum]) => <p key={cur} className="font-medium text-gray-900 dark:text-gray-100">{fmtInvCurrency(sum, cur)}</p>)}
+                        <p>{items.length} item(s)</p>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                      {items.map((it, idx) => (
+                        <div key={idx} className="py-2 flex items-start gap-3 text-xs">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{it.product_name || it.subscription_description || it.sku_name}</p>
+                            <p className="text-gray-400 truncate">{it.charge_type} · qty {it.quantity} · {fmtInvDate(it.charge_start_date)} → {fmtInvDate(it.charge_end_date)}</p>
+                          </div>
+                          <p className="font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{fmtInvCurrency(it.amount, it.currency)}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+          )}
+          {tab === 2 && (
+            azureQ.isLoading ? <div className="flex justify-center py-10"><LoadingSpinner /></div>
+            : azureQ.isError ? <p className="text-sm text-red-500 py-10 text-center">{azureQ.error?.response?.data?.detail || 'Erro ao carregar uso Azure'}</p>
+            : (azureQ.data?.items || []).length === 0 ? <p className="text-sm text-gray-400 text-center py-10">Nenhum item de uso Azure nesta fatura.</p>
+            : <div className="card p-4">
+                <p className="text-xs text-gray-500 mb-3">{azureQ.data.items.length} registro(s)</p>
+                <div className="divide-y divide-gray-100 dark:divide-gray-700/60 max-h-[60vh] overflow-y-auto">
+                  {azureQ.data.items.slice(0, 200).map((it, idx) => (
+                    <div key={idx} className="py-2 flex items-start gap-3 text-xs">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-800 dark:text-gray-200 truncate">{it.customer_name} — {it.product_name || it.sku_name}</p>
+                        <p className="text-gray-400 truncate">qty {it.quantity} · {fmtInvDate(it.charge_start_date)}</p>
+                      </div>
+                      <p className="font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{fmtInvCurrency(it.amount, it.currency)}</p>
+                    </div>
+                  ))}
+                  {azureQ.data.items.length > 200 && <p className="text-xs text-gray-400 text-center py-2">Mostrando 200 de {azureQ.data.items.length}</p>}
+                </div>
+              </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 /* ── Partner Center Tab ──────────────────────────────────────────────────── */
 
 const PC_PER_PAGE = 20;
@@ -972,6 +1131,7 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
   const [gdapCustomer, setGdapCustomer] = useState(null);
   const [pcSearch, setPcSearch] = useState('');
   const [pcPage, setPcPage] = useState(1);
+  const [pcSubTab, setPcSubTab] = useState('clientes');
 
   const statusQ = useQuery({
     queryKey: ['pc-status', orgSlug, workspaceId],
@@ -1009,6 +1169,50 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
       qc.invalidateQueries({ queryKey: ['managed-orgs'] });
     },
   });
+
+  // Faturas
+  const [invSearch, setInvSearch] = useState('');
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [downloading, setDownloading] = useState(null);
+
+  const invoicesQ = useQuery({
+    queryKey: ['pc-invoices', orgSlug, workspaceId],
+    queryFn: () => orgService.pcListInvoices(orgSlug, workspaceId, { size: 200, offset: 0 }),
+    enabled: Boolean(pcSubTab === 'faturas' && statusQ.data?.configured && statusQ.data?.token_valid),
+    staleTime: 30 * 60_000,
+  });
+
+  const filteredInvoices = useMemo(() => {
+    const list = invoicesQ.data?.invoices || [];
+    if (!invSearch.trim()) return list;
+    const q = invSearch.toLowerCase();
+    return list.filter(inv => (inv.id || '').toLowerCase().includes(q) || (inv.status || '').toLowerCase().includes(q));
+  }, [invoicesQ.data, invSearch]);
+
+  const invStats = useMemo(() => {
+    const list = invoicesQ.data?.invoices || [];
+    const totals = {}, dueTotals = {};
+    for (const inv of list) {
+      const cur = inv.currency_code || 'USD';
+      totals[cur] = (totals[cur] || 0) + (Number(inv.total_amount) || 0);
+      if (['unpaid','pending','overdue'].includes((inv.status || '').toLowerCase())) {
+        dueTotals[cur] = (dueTotals[cur] || 0) + Math.max(0, (Number(inv.total_amount) || 0) - (Number(inv.paid_amount) || 0));
+      }
+    }
+    return { totals, dueTotals, count: list.length };
+  }, [invoicesQ.data]);
+
+  const downloadPdf = async (invoiceId) => {
+    setDownloading(invoiceId);
+    try {
+      const { url } = await orgService.pcGetInvoicePdfUrl(orgSlug, workspaceId, invoiceId);
+      if (url) window.open(url, '_blank', 'noopener');
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Falha ao obter PDF.');
+    } finally {
+      setDownloading(null);
+    }
+  };
 
   // Loading state
   if (statusQ.isLoading) {
@@ -1098,6 +1302,15 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
           onClose={() => setGdapCustomer(null)}
         />
       )}
+      {selectedInvoice && (
+        <InvoiceDrawer
+          invoice={selectedInvoice}
+          orgSlug={orgSlug}
+          workspaceId={workspaceId}
+          onClose={() => setSelectedInvoice(null)}
+        />
+      )}
+
       {/* Stats bar */}
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
         <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm">
@@ -1123,6 +1336,24 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
         </div>
       </div>
 
+      {/* Sub-abas: Clientes / Faturas */}
+      <div className="flex gap-0 border-b border-gray-200 dark:border-gray-700">
+        {[
+          { key: 'clientes', label: 'Clientes', Icon: Building2 },
+          { key: 'faturas',  label: 'Faturas',  Icon: Receipt },
+        ].map(({ key, label, Icon }) => (
+          <button key={key} onClick={() => setPcSubTab(key)}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+              pcSubTab === key
+                ? 'border-blue-600 text-blue-600 dark:text-blue-400 dark:border-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}>
+            <Icon size={14} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {pcSubTab === 'clientes' && <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex items-center gap-3 flex-wrap">
         {/* Busca */}
@@ -1295,6 +1526,115 @@ const PartnerCenterTab = ({ orgSlug, workspaceId }) => {
                   <ChevronRight size={14} />
                 </button>
               </div>
+            </div>
+          )}
+        </div>
+      )}
+      </div>}
+
+      {/* ── Faturas tab ─────────────────────────────────────────────────── */}
+      {pcSubTab === 'faturas' && (
+        <div className="space-y-4">
+          {/* Stats faturas */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+                <FileText size={16} className="text-blue-500" />
+              </div>
+              <div>
+                <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{invoicesQ.isLoading ? '...' : invStats.count}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Faturas no período</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-green-50 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0">
+                <DollarSign size={16} className="text-green-500" />
+              </div>
+              <div>
+                {Object.entries(invStats.totals).length === 0
+                  ? <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{invoicesQ.isLoading ? '...' : '—'}</p>
+                  : Object.entries(invStats.totals).map(([cur, sum]) => <p key={cur} className="text-lg font-bold text-gray-900 dark:text-gray-100">{fmtInvCurrency(sum, cur)}</p>)
+                }
+                <p className="text-xs text-gray-500 dark:text-gray-400">Valor total</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-4 shadow-sm flex items-center gap-3">
+              <div className="w-9 h-9 rounded-lg bg-amber-50 dark:bg-amber-900/30 flex items-center justify-center flex-shrink-0">
+                <Clock size={16} className="text-amber-500" />
+              </div>
+              <div>
+                {Object.entries(invStats.dueTotals).length === 0
+                  ? <p className="text-xl font-bold text-gray-900 dark:text-gray-100">{invoicesQ.isLoading ? '...' : '—'}</p>
+                  : Object.entries(invStats.dueTotals).map(([cur, sum]) => <p key={cur} className="text-lg font-bold text-gray-900 dark:text-gray-100">{fmtInvCurrency(sum, cur)}</p>)
+                }
+                <p className="text-xs text-gray-500 dark:text-gray-400">Em aberto</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Search faturas */}
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input type="text" value={invSearch} onChange={(e) => setInvSearch(e.target.value)}
+              placeholder="Buscar por ID ou status…"
+              className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          {/* Table faturas */}
+          {invoicesQ.isLoading ? (
+            <div className="flex justify-center py-12"><LoadingSpinner /></div>
+          ) : invoicesQ.isError ? (
+            <div className="rounded-xl border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 p-6 text-center">
+              <AlertCircle size={20} className="text-red-500 mx-auto mb-2" />
+              <p className="text-sm text-red-600 dark:text-red-400">{invoicesQ.error?.response?.data?.detail || 'Erro ao carregar faturas'}</p>
+            </div>
+          ) : filteredInvoices.length === 0 ? (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 p-12 text-center">
+              <Receipt size={28} className="text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">Nenhuma fatura encontrada.</p>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800/60 overflow-hidden shadow-sm">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-800/60 border-b border-gray-200 dark:border-gray-700">
+                  <tr>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Fatura</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden md:table-cell">Período</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide hidden md:table-cell">Vencimento</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Total</th>
+                    <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Status</th>
+                    <th className="text-right px-4 py-2.5 text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">Ações</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700/60">
+                  {filteredInvoices.map(inv => (
+                    <tr key={inv.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                      <td className="px-4 py-3">
+                        <p className="font-mono text-xs text-gray-900 dark:text-gray-100">{inv.id}</p>
+                        <p className="text-xs text-gray-400">{inv.document_type || '—'}</p>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 hidden md:table-cell">
+                        {fmtInvDate(inv.billing_period_start)}<span className="mx-1 text-gray-400">→</span>{fmtInvDate(inv.billing_period_end)}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-600 dark:text-gray-300 hidden md:table-cell">{fmtInvDate(inv.due_date)}</td>
+                      <td className="px-4 py-3 text-right text-sm font-medium text-gray-900 dark:text-gray-100">{fmtInvCurrency(inv.total_amount, inv.currency_code)}</td>
+                      <td className="px-4 py-3"><InvStatusBadge status={inv.status} /></td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="inline-flex items-center gap-1">
+                          <button onClick={() => setSelectedInvoice(inv)}
+                            className="p-1.5 rounded text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors" title="Ver detalhes">
+                            <ExternalLink size={14} />
+                          </button>
+                          <button onClick={() => downloadPdf(inv.id)} disabled={downloading === inv.id}
+                            className="p-1.5 rounded text-gray-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-50 transition-colors" title="Baixar PDF">
+                            {downloading === inv.id ? <RefreshCcw size={14} className="animate-spin" /> : <Download size={14} />}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>

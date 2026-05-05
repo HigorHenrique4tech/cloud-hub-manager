@@ -4,7 +4,7 @@ import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
   ShieldCheck, Bell, PackageSearch, GitPullRequestArrow, ChevronDown,
-  BookOpen, Receipt,
+  BookOpen,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AwsIcon, AzureIcon, GcpIcon, M365Icon } from '../common/CloudProviderIcons';
@@ -30,7 +30,6 @@ const _prefetchMap = {
   '/logs': () => import('../../pages/logs'),
   '/security/automation': () => import('../../pages/security/SecurityAutomation'),
   '/billing': () => import('../../pages/Billing'),
-  '/billing/partner-center': () => import('../../pages/billing/PartnerCenterBilling'),
   '/org/settings': () => import('../../pages/OrgSettings'),
   '/workspace/settings': () => import('../../pages/WorkspaceSettings'),
   '/org/managed': () => import('../../pages/ManagedOrgsPage'),
@@ -188,9 +187,6 @@ const Sidebar = ({ mobileOpen, onClose }) => {
           <PermissionGate permission="costs.view">
             <NavItem to="/billing" label="Faturamento" icon={CreditCard} />
           </PermissionGate>
-          {isEnterprise && isMasterOrg && (
-            <NavItem to="/billing/partner-center" label="Faturas Partner Center" icon={Receipt} />
-          )}
           {['owner', 'admin', 'billing'].includes(currentOrg?.role) && (
             <NavItem to="/org/settings" label="Organização" icon={Building2} />
           )}
