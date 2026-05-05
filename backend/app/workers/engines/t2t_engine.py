@@ -244,35 +244,60 @@ class TenantToTenantEngine(MigrationEngine):
         moved_id = moved.get("id", draft_id)
 
         # ── Passo 3: limpar flag de rascunho ─────────────────────────────────
-        # Tentativa 1: isDraft=false (propriedade nativa Graph API — mais confiável)
-        # Tentativa 2: PR_MESSAGE_FLAGS via singleValueExtendedProperties (fallback)
+        # Graph API NÃO permite atualizar isDraft diretamente (read-only).
+        # Única abordagem: PR_MESSAGE_FLAGS via singleValueExtendedProperties.
+        # Tentamos múltiplos formatos do PropertyTag — Microsoft documenta
+        # ambos (4-dígitos e 8-dígitos), e o aceite varia por versão da API.
         patch_url = f"{base_user}/messages/{quote(moved_id, safe='')}"
+        verify_url = f"{patch_url}?$select=isDraft,isRead"
 
-        def _try_patch(body: dict) -> bool:
-            r = requests.patch(patch_url, headers=json_hdrs, json=body, timeout=30)
-            if r.status_code == 429:
-                raise Exception("429 throttle")
-            return r.ok
+        # Tentativas em ordem de probabilidade de sucesso
+        patch_bodies = [
+            # 1. Tag completo MAPI (PropID + Type) — mais correto formalmente
+            {
+                "isRead": True,
+                "singleValueExtendedProperties": [
+                    {"id": "Integer 0x0E070003", "value": "1"}
+                ],
+            },
+            # 2. Apenas PropID — o que estávamos usando
+            {
+                "singleValueExtendedProperties": [
+                    {"id": "Integer 0x0E07", "value": "1"}
+                ],
+            },
+        ]
 
-        try:
-            ok = self.retry_on_throttle(
-                lambda: _try_patch({"isDraft": False, "isRead": True})
-            )
-            if not ok:
-                # Fallback: extended property PR_MESSAGE_FLAGS sem MSGFLAG_UNSENT (0x08)
-                self.retry_on_throttle(
-                    lambda: _try_patch({
-                        "singleValueExtendedProperties": [
-                            {"id": "Integer 0x0E07", "value": "1"}
-                        ]
-                    })
+        success = False
+        last_status = ""
+        for body in patch_bodies:
+            try:
+                r = requests.patch(patch_url, headers=json_hdrs, json=body, timeout=30)
+                last_status = f"HTTP {r.status_code}"
+                if not r.ok:
+                    continue
+                # Verifica se o isDraft realmente saiu de True para False
+                vr = requests.get(verify_url, headers=json_hdrs, timeout=15)
+                if vr.ok and vr.json().get("isDraft") is False:
+                    success = True
+                    break
+                else:
+                    last_status = f"PATCH 200 mas isDraft ainda={vr.json().get('isDraft', 'desconhecido') if vr.ok else 'erro GET'}"
+            except Exception as exc:
+                last_status = str(exc)[:120]
+
+        if not success:
+            # Log uma vez por mailbox (não por mensagem) — guarda em atributo
+            if not getattr(self, "_warned_draft", False):
+                self.add_log(
+                    f"⚠️ Mensagens importadas aparecerão como rascunho. "
+                    f"Última tentativa: {last_status}. "
+                    "Limitação conhecida do Graph API para PR_MESSAGE_FLAGS — "
+                    "use PowerShell pós-migração para limpar via "
+                    "Set-MailboxFolderPermission ou abra/feche cada msg no Outlook.",
+                    "warning",
                 )
-        except Exception as exc:
-            self.add_log(
-                f"Aviso: PATCH de rascunho falhou ({exc}). "
-                "Verifique permissão 'Mail.ReadWrite' (Application) no Entra ID do tenant destino.",
-                "warning",
-            )
+                self._warned_draft = True
 
         logger.debug(
             f"Importado: draft={draft_id[:20]}... → moved={moved_id[:20]}... "
