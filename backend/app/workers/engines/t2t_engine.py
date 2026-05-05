@@ -144,6 +144,9 @@ class TenantToTenantEngine(MigrationEngine):
             ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
             '<soap:Header>'
             '<t:RequestServerVersion Version="Exchange2016" />'
+            '<t:ExchangeImpersonation>'
+            f'<t:ConnectingSID><t:PrimarySmtpAddress>{user_esc}</t:PrimarySmtpAddress></t:ConnectingSID>'
+            '</t:ExchangeImpersonation>'
             '</soap:Header>'
             '<soap:Body>'
             '<m:ConvertId DestinationFormat="EwsId">'
@@ -164,10 +167,16 @@ class TenantToTenantEngine(MigrationEngine):
                 },
                 timeout=20,
             )
-            if r.status_code != 200:
-                return None, f"ConvertId HTTP {r.status_code}: {r.text[:200]}"
-            # Resposta: <t:AlternateId Format="EwsId" Id="EWS_ID" Mailbox="..." />
+            # Extrai a razão do fault SOAP se houver
             import re
+            fault_m = re.search(r'<faultstring[^>]*>([^<]+)</faultstring>', r.text)
+            fault_reason = fault_m.group(1) if fault_m else ""
+
+            if r.status_code != 200:
+                return None, f"ConvertId HTTP {r.status_code}: {fault_reason or r.text[:200]}"
+            if fault_reason:
+                return None, f"ConvertId Fault: {fault_reason}"
+            # Resposta: <t:AlternateId Format="EwsId" Id="EWS_ID" Mailbox="..." />
             m = re.search(r'<t:AlternateId[^>]*\bId="([^"]+)"', r.text)
             if m:
                 return m.group(1), "ConvertId OK"
