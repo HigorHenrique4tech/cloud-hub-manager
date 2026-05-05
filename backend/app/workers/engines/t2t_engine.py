@@ -128,15 +128,39 @@ class TenantToTenantEngine(MigrationEngine):
         resp.raise_for_status()
         return resp.json()["access_token"]
 
-    def _ews_convert_id(self, ews_token: str, dest_user: str, graph_id: str) -> tuple[str | None, str]:
+    def _get_entry_id_hex(self, base_user: str, message_id: str, graph_auth: str) -> tuple[str | None, str]:
         """
-        Converte RestId (Graph) → EwsId via SOAP ConvertId no próprio EWS.
-        Retorna (ews_id, status_msg). Usa apenas a permissão full_access_as_app
-        — não precisa de User.Read.All do Graph.
+        Busca PR_ENTRYID (MAPI 0x0FF9, Binary) da mensagem via Graph e
+        retorna como hex string (formato aceito pelo EWS HexEntryId).
+        """
+        url = (
+            f"{base_user}/messages/{quote(message_id, safe='')}"
+            "?$expand=singleValueExtendedProperties($filter=id eq 'Binary 0x0FF9')"
+        )
+        try:
+            r = requests.get(url, headers={"Authorization": graph_auth}, timeout=15)
+            if not r.ok:
+                return None, f"GET PR_ENTRYID HTTP {r.status_code}: {r.text[:200]}"
+            data = r.json()
+            props = data.get("singleValueExtendedProperties", [])
+            for p in props:
+                if "0x0FF9" in p.get("id", ""):
+                    b64 = p.get("value", "")
+                    if b64:
+                        import base64
+                        return base64.b64decode(b64).hex().upper(), "OK"
+            return None, "PR_ENTRYID não encontrado na resposta Graph"
+        except Exception as exc:
+            return None, f"PR_ENTRYID exc: {str(exc)[:200]}"
+
+    def _ews_convert_id(self, ews_token: str, dest_user: str, hex_entry_id: str) -> tuple[str | None, str]:
+        """
+        Converte HexEntryId → EwsId via SOAP ConvertId no próprio EWS.
+        Retorna (ews_id, status_msg). Usa apenas full_access_as_app.
         """
         from xml.sax.saxutils import escape as xml_escape
         user_esc = xml_escape(dest_user)
-        id_esc = xml_escape(graph_id)
+        id_esc = xml_escape(hex_entry_id)
         soap = (
             '<?xml version="1.0" encoding="utf-8"?>'
             '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
@@ -151,7 +175,7 @@ class TenantToTenantEngine(MigrationEngine):
             '<soap:Body>'
             '<m:ConvertId DestinationFormat="EwsId">'
             '<m:SourceIds>'
-            f'<t:AlternateId Format="RestId" Id="{id_esc}" Mailbox="{user_esc}" />'
+            f'<t:AlternateId Format="HexEntryId" Id="{id_esc}" Mailbox="{user_esc}" />'
             '</m:SourceIds>'
             '</m:ConvertId>'
             '</soap:Body></soap:Envelope>'
@@ -401,16 +425,23 @@ class TenantToTenantEngine(MigrationEngine):
         # Nível 2: EWS UpdateItem (a única forma confiável)
         if not success:
             try:
-                ews_token = self._get_ews_token()
-                ews_id, conv_status = self._ews_convert_id(ews_token, dest_user, moved_id)
-                if ews_id:
-                    ok, ews_status = self._ews_clear_draft(dest_user, ews_id, ews_token)
-                    if ok:
-                        success = True
-                    else:
-                        last_status = f"{last_status} | {ews_status}"
+                # 2a: pega PR_ENTRYID da mensagem via Graph (formato aceito pelo EWS)
+                hex_id, hex_status = self._get_entry_id_hex(base_user, moved_id, auth)
+                if not hex_id:
+                    last_status = f"{last_status} | {hex_status}"
                 else:
-                    last_status = f"{last_status} | {conv_status}"
+                    ews_token = self._get_ews_token()
+                    # 2b: converte HexEntryId → EwsId via EWS ConvertId
+                    ews_id, conv_status = self._ews_convert_id(ews_token, dest_user, hex_id)
+                    if not ews_id:
+                        last_status = f"{last_status} | {conv_status}"
+                    else:
+                        # 2c: UpdateItem zerando MSGFLAG_UNSENT
+                        ok, ews_status = self._ews_clear_draft(dest_user, ews_id, ews_token)
+                        if ok:
+                            success = True
+                        else:
+                            last_status = f"{last_status} | {ews_status}"
             except Exception as exc:
                 last_status = f"{last_status} | EWS exc: {str(exc)[:100]}"
 
