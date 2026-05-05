@@ -157,7 +157,10 @@ def list_customers(
         from app.services.partner_center_service import list_customers as _list
         pc_token = _pc_token(creds)
         customers = _list(pc_token)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
     except Exception as exc:
+        logger.error("Erro ao listar clientes Partner Center: %s", exc, exc_info=True)
         raise HTTPException(502, f"Erro ao consultar Partner Center: {exc}")
 
     # Enrich with import status (already synced as managed org?)

@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 PC_API = "https://api.partnercenter.microsoft.com"
 PC_SCOPE = "https://api.partnercenter.microsoft.com/.default"
+PC_SCOPE_DELEGATED = "https://api.partnercenter.microsoft.com/user_impersonation"
 GRAPH_V1 = "https://graph.microsoft.com/v1.0"
 
 
@@ -35,15 +36,17 @@ def get_partner_center_token(partner_tenant_id: str, client_id: str,
     """
     url = f"https://login.microsoftonline.com/{partner_tenant_id}/oauth2/v2.0/token"
     if username and password:
+        # ROPC (delegated): scope user_impersonation — token herda permissões Partner Center do usuário
         data = {
             "grant_type": "password",
             "client_id": client_id,
             "client_secret": client_secret,
             "username": username,
             "password": password,
-            "scope": PC_SCOPE,
+            "scope": PC_SCOPE_DELEGATED,
         }
     else:
+        # App-only: requer que o service principal tenha Admin Agent no Partner Center
         data = {
             "grant_type": "client_credentials",
             "client_id": client_id,
@@ -91,6 +94,12 @@ def list_customers(pc_token: str) -> list[dict]:
     items = []
     while url:
         resp = requests.get(url, headers=headers, timeout=30)
+        if resp.status_code in (401, 403):
+            raise ValueError(
+                f"Acesso negado pelo Partner Center ({resp.status_code}). "
+                "Verifique se as credenciais estão corretas e se o usuário possui o role 'Admin Agent' "
+                "em partner.microsoft.com → Configurações → Gerenciamento de usuários."
+            )
         resp.raise_for_status()
         data = resp.json()
         items.extend(data.get("items", []))
