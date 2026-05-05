@@ -247,32 +247,38 @@ class TenantToTenantEngine(MigrationEngine):
         # PR_MESSAGE_FLAGS = 0x0E07 (PT_LONG)
         #   0x01 mfRead    — lida
         #   0x08 mfUnsent  — rascunho (queremos APAGAR este bit)
-        #   0x20 mfFromMe  — enviada pelo dono
         # Valor "1" = mfRead apenas → lida, não rascunho.
+        # isRead:true como reforço (propriedade nativa Graph).
         patch_url = f"{base_user}/messages/{quote(moved_id, safe='')}"
         patch_body = {
+            "isRead": True,
             "singleValueExtendedProperties": [
                 {"id": "Integer 0x0E07", "value": "1"}
-            ]
+            ],
         }
+
+        _patch_ok = False
 
         def patch_flags():
             r = requests.patch(patch_url, headers=json_hdrs, json=patch_body, timeout=30)
             if r.status_code == 429:
                 raise Exception("429 throttle")
             if not r.ok:
-                # Não fatal — conteúdo já está lá, só fica como rascunho.
-                logger.warning(
-                    f"PATCH flags falhou para msg {moved_id}: "
-                    f"HTTP {r.status_code} {r.text[:200]}"
+                raise Exception(
+                    f"HTTP {r.status_code} [{r.json().get('error', {}).get('code', '') if r.text else ''}]: "
+                    f"{r.text[:300]}"
                 )
-                return False
             return True
 
         try:
-            self.retry_on_throttle(patch_flags)
+            _patch_ok = self.retry_on_throttle(patch_flags)
         except Exception as exc:
-            logger.warning(f"PATCH flags erro para msg {moved_id}: {exc}")
+            # Loga no banco para ficar visível nos logs do projeto
+            self.add_log(
+                f"Aviso: mensagem importada mas PATCH de rascunho falhou ({exc}). "
+                "Verifique se o App tem permissão 'Mail.ReadWrite' no Entra ID.",
+                "warning",
+            )
 
         logger.debug(
             f"Importado: draft={draft_id[:20]}... → moved={moved_id[:20]}... "
