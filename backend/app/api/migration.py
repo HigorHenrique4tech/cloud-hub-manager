@@ -1033,17 +1033,29 @@ def _query_tenant_objects(cfg: dict, object_type: str, search: str) -> list[dict
     q = (search or "").strip()
 
     if object_type in ("email", "onedrive"):
-        # Lista usuários com mailbox/OneDrive
-        url = (
-            f"{graph}/users?$select=displayName,mail,userPrincipalName"
-            f"&$top=50&$orderby=displayName"
-        )
+        # $search requer ConsistencyLevel + $count; sem search usamos $filter startsWith
         if q:
-            url += f"&$search=\"displayName:{q}\" OR \"mail:{q}\" OR \"userPrincipalName:{q}\""
+            url = (
+                f"{graph}/users?$select=displayName,mail,userPrincipalName&$top=50&$count=true"
+                f"&$search=\"displayName:{q}\" OR \"mail:{q}\" OR \"userPrincipalName:{q}\""
+            )
             hdrs["ConsistencyLevel"] = "eventual"
+            pages = 1  # $search não suporta nextLink
+        else:
+            url = (
+                f"{graph}/users?$select=displayName,mail,userPrincipalName&$top=100"
+            )
+            pages = 3  # até 300 usuários sem filtro
+
         items: list[dict] = []
-        while url and len(items) < 200:
+        fetched = 0
+        while url and fetched < pages:
             r = _rq.get(url, headers=hdrs, timeout=20)
+            if r.status_code == 403:
+                raise ValueError(
+                    "Permissão negada ao listar usuários. "
+                    "Verifique se o App Registration tem a permissão 'User.Read.All' (Application) no Entra ID."
+                )
             r.raise_for_status()
             data = r.json()
             for u in data.get("value", []):
@@ -1056,7 +1068,8 @@ def _query_tenant_objects(cfg: dict, object_type: str, search: str) -> list[dict
                     "value": email,
                     "secondary": email,
                 })
-            url = data.get("@odata.nextLink") if not q else None  # sem nextLink em $search
+            url = data.get("@odata.nextLink")
+            fetched += 1
         return items
 
     if object_type == "sharepoint":

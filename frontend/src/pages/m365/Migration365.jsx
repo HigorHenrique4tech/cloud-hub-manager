@@ -751,8 +751,9 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
                     </div>
                   )}
                   {srcQ.isError && (
-                    <div className="py-4 px-3 text-xs text-red-500 text-center">
-                      {srcQ.error?.response?.data?.detail || 'Erro ao carregar objetos. Verifique as credenciais do projeto.'}
+                    <div className="py-4 px-3 text-xs text-red-500 text-center space-y-1">
+                      <p className="font-medium">Erro ao carregar objetos da origem</p>
+                      <p className="text-red-400">{srcQ.error?.response?.data?.detail || 'Verifique as credenciais e permissões do App Registration.'}</p>
                     </div>
                   )}
                   {srcQ.isSuccess && srcItems.length === 0 && (
