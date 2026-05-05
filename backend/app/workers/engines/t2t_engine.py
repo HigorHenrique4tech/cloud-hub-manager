@@ -128,30 +128,76 @@ class TenantToTenantEngine(MigrationEngine):
         resp.raise_for_status()
         return resp.json()["access_token"]
 
-    def _get_entry_id_hex(self, base_user: str, message_id: str, graph_auth: str) -> tuple[str | None, str]:
-        """
-        Busca PR_ENTRYID (MAPI 0x0FF9, Binary) da mensagem via Graph e
-        retorna como hex string (formato aceito pelo EWS HexEntryId).
-        """
-        url = (
-            f"{base_user}/messages/{quote(message_id, safe='')}"
-            "?$expand=singleValueExtendedProperties($filter=id eq 'Binary 0x0FF9')"
-        )
+    def _get_internet_message_id(self, base_user: str, message_id: str, graph_auth: str) -> tuple[str | None, str]:
+        """Busca internetMessageId (Message-ID header) da mensagem via Graph."""
+        url = f"{base_user}/messages/{quote(message_id, safe='')}?$select=internetMessageId"
         try:
             r = requests.get(url, headers={"Authorization": graph_auth}, timeout=15)
             if not r.ok:
-                return None, f"GET PR_ENTRYID HTTP {r.status_code}: {r.text[:200]}"
-            data = r.json()
-            props = data.get("singleValueExtendedProperties", [])
-            for p in props:
-                if "0x0FF9" in p.get("id", ""):
-                    b64 = p.get("value", "")
-                    if b64:
-                        import base64
-                        return base64.b64decode(b64).hex().upper(), "OK"
-            return None, "PR_ENTRYID não encontrado na resposta Graph"
+                return None, f"GET internetMessageId HTTP {r.status_code}: {r.text[:200]}"
+            imid = r.json().get("internetMessageId", "")
+            if not imid:
+                return None, "internetMessageId vazio"
+            return imid, "OK"
         except Exception as exc:
-            return None, f"PR_ENTRYID exc: {str(exc)[:200]}"
+            return None, f"GET internetMessageId exc: {str(exc)[:200]}"
+
+    def _ews_find_by_message_id(self, ews_token: str, dest_user: str, internet_msg_id: str) -> tuple[str | None, str]:
+        """Localiza mensagem no mailbox via EWS FindItem por InternetMessageId. Retorna EwsId."""
+        from xml.sax.saxutils import escape as xml_escape
+        user_esc = xml_escape(dest_user)
+        imid_esc = xml_escape(internet_msg_id)
+        soap = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
+            ' xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"'
+            ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
+            '<soap:Header>'
+            '<t:RequestServerVersion Version="Exchange2016" />'
+            '<t:ExchangeImpersonation>'
+            f'<t:ConnectingSID><t:PrimarySmtpAddress>{user_esc}</t:PrimarySmtpAddress></t:ConnectingSID>'
+            '</t:ExchangeImpersonation>'
+            '</soap:Header>'
+            '<soap:Body>'
+            '<m:FindItem Traversal="Deep">'
+            '<m:ItemShape><t:BaseShape>IdOnly</t:BaseShape></m:ItemShape>'
+            '<m:IndexedPageItemView MaxEntriesReturned="1" Offset="0" BasePoint="Beginning" />'
+            '<m:Restriction>'
+            '<t:IsEqualTo>'
+            '<t:FieldURI FieldURI="message:InternetMessageId" />'
+            f'<t:FieldURIOrConstant><t:Constant Value="{imid_esc}" /></t:FieldURIOrConstant>'
+            '</t:IsEqualTo>'
+            '</m:Restriction>'
+            '<m:ParentFolderIds>'
+            '<t:DistinguishedFolderId Id="msgfolderroot" />'
+            '</m:ParentFolderIds>'
+            '</m:FindItem>'
+            '</soap:Body></soap:Envelope>'
+        )
+        try:
+            r = requests.post(
+                "https://outlook.office365.com/EWS/Exchange.asmx",
+                data=soap.encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {ews_token}",
+                    "Content-Type": "text/xml; charset=utf-8",
+                    "X-AnchorMailbox": dest_user,
+                },
+                timeout=30,
+            )
+            import re
+            fault_m = re.search(r'<faultstring[^>]*>([^<]+)</faultstring>', r.text)
+            if fault_m:
+                return None, f"FindItem Fault: {fault_m.group(1)}"
+            if r.status_code != 200:
+                return None, f"FindItem HTTP {r.status_code}: {r.text[:200]}"
+            # Resposta: <t:Message><t:ItemId Id="..." ChangeKey="..." /></t:Message>
+            m = re.search(r'<t:ItemId[^>]*\bId="([^"]+)"', r.text)
+            if m:
+                return m.group(1), "FindItem OK"
+            return None, f"FindItem sem ItemId: {r.text[:300]}"
+        except Exception as exc:
+            return None, f"FindItem exc: {str(exc)[:200]}"
 
     def _ews_convert_id(self, ews_token: str, dest_user: str, hex_entry_id: str) -> tuple[str | None, str]:
         """
@@ -422,19 +468,19 @@ class TenantToTenantEngine(MigrationEngine):
         except Exception as exc:
             last_status = f"Graph PATCH exc: {str(exc)[:100]}"
 
-        # Nível 2: EWS UpdateItem (a única forma confiável)
+        # Nível 2: EWS FindItem + UpdateItem (a única forma confiável)
         if not success:
             try:
-                # 2a: pega PR_ENTRYID da mensagem via Graph (formato aceito pelo EWS)
-                hex_id, hex_status = self._get_entry_id_hex(base_user, moved_id, auth)
-                if not hex_id:
-                    last_status = f"{last_status} | {hex_status}"
+                # 2a: pega o internetMessageId da mensagem via Graph
+                imid, imid_status = self._get_internet_message_id(base_user, moved_id, auth)
+                if not imid:
+                    last_status = f"{last_status} | {imid_status}"
                 else:
                     ews_token = self._get_ews_token()
-                    # 2b: converte HexEntryId → EwsId via EWS ConvertId
-                    ews_id, conv_status = self._ews_convert_id(ews_token, dest_user, hex_id)
+                    # 2b: localiza a mensagem via EWS FindItem por InternetMessageId
+                    ews_id, find_status = self._ews_find_by_message_id(ews_token, dest_user, imid)
                     if not ews_id:
-                        last_status = f"{last_status} | {conv_status}"
+                        last_status = f"{last_status} | {find_status}"
                     else:
                         # 2c: UpdateItem zerando MSGFLAG_UNSENT
                         ok, ews_status = self._ews_clear_draft(dest_user, ews_id, ews_token)
