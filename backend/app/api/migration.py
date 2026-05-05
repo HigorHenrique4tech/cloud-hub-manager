@@ -997,6 +997,157 @@ async def retry_failed(
     return result
 
 
+# ── Listagem de objetos do tenant (source / destination) ─────────────────────
+
+def _get_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
+    import requests as _rq
+    resp = _rq.post(
+        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://graph.microsoft.com/.default",
+        },
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
+
+def _query_tenant_objects(cfg: dict, object_type: str, search: str) -> list[dict]:
+    """Consulta Graph API e retorna lista de objetos do tenant."""
+    import requests as _rq
+
+    tenant_id  = cfg.get("tenant_id", "")
+    client_id  = cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+    if not (tenant_id and client_id and client_secret):
+        raise ValueError("Credenciais do tenant incompletas.")
+
+    token = _get_graph_token(tenant_id, client_id, client_secret)
+    hdrs  = {"Authorization": f"Bearer {token}"}
+    graph = "https://graph.microsoft.com/v1.0"
+
+    # query param para filtro por nome (server-side quando suportado)
+    q = (search or "").strip()
+
+    if object_type in ("email", "onedrive"):
+        # Lista usuários com mailbox/OneDrive
+        url = (
+            f"{graph}/users?$select=displayName,mail,userPrincipalName"
+            f"&$top=50&$orderby=displayName"
+        )
+        if q:
+            url += f"&$search=\"displayName:{q}\" OR \"mail:{q}\" OR \"userPrincipalName:{q}\""
+            hdrs["ConsistencyLevel"] = "eventual"
+        items: list[dict] = []
+        while url and len(items) < 200:
+            r = _rq.get(url, headers=hdrs, timeout=20)
+            r.raise_for_status()
+            data = r.json()
+            for u in data.get("value", []):
+                email = u.get("mail") or u.get("userPrincipalName") or ""
+                if not email:
+                    continue
+                items.append({
+                    "id": u.get("id", ""),
+                    "label": u.get("displayName") or email,
+                    "value": email,
+                    "secondary": email,
+                })
+            url = data.get("@odata.nextLink") if not q else None  # sem nextLink em $search
+        return items
+
+    if object_type == "sharepoint":
+        url = f"{graph}/sites?search={q or '*'}&$select=displayName,webUrl,id&$top=50"
+        r = _rq.get(url, headers=hdrs, timeout=20)
+        r.raise_for_status()
+        return [
+            {
+                "id": s.get("id", ""),
+                "label": s.get("displayName") or s.get("webUrl", ""),
+                "value": s.get("webUrl", ""),
+                "secondary": s.get("webUrl", ""),
+            }
+            for s in r.json().get("value", [])
+            if s.get("webUrl")
+        ]
+
+    if object_type == "m365_group":
+        url = (
+            f"{graph}/groups"
+            f"?$filter=groupTypes/any(c:c eq 'Unified')"
+            f"&$select=displayName,mail,id&$top=50"
+        )
+        if q:
+            url += f"&$search=\"displayName:{q}\""
+            hdrs["ConsistencyLevel"] = "eventual"
+        r = _rq.get(url, headers=hdrs, timeout=20)
+        r.raise_for_status()
+        return [
+            {
+                "id": g.get("id", ""),
+                "label": g.get("displayName") or g.get("mail", ""),
+                "value": g.get("mail", ""),
+                "secondary": g.get("mail", ""),
+            }
+            for g in r.json().get("value", [])
+            if g.get("mail")
+        ]
+
+    raise ValueError(f"object_type inválido: {object_type}")
+
+
+def _get_project_cfg(db, workspace_id, project_id, side: str) -> dict:
+    """Retorna source_cfg ou dest_cfg descriptografado de um projeto."""
+    from app.models.db_models import MigrationProject
+    project = db.query(MigrationProject).filter(
+        MigrationProject.id == project_id,
+        MigrationProject.workspace_id == workspace_id,
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    source_cfg, dest_cfg = svc.decrypt_project_configs(db, project)
+    return dest_cfg if side == "destination" else source_cfg
+
+
+@ws_router.get("/projects/{project_id}/source-objects")
+async def list_source_objects(
+    project_id: str,
+    object_type: str = "email",
+    search: str = "",
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista objetos disponíveis no tenant de ORIGEM para seleção no wizard."""
+    cfg = _get_project_cfg(db, member.workspace_id, project_id, "source")
+    try:
+        return {"items": _query_tenant_objects(cfg, object_type, search)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao consultar tenant de origem: {exc}")
+
+
+@ws_router.get("/projects/{project_id}/dest-objects")
+async def list_dest_objects(
+    project_id: str,
+    object_type: str = "email",
+    search: str = "",
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista objetos disponíveis no tenant de DESTINO para mapeamento."""
+    cfg = _get_project_cfg(db, member.workspace_id, project_id, "destination")
+    try:
+        return {"items": _query_tenant_objects(cfg, object_type, search)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao consultar tenant de destino: {exc}")
+
+
 # ── Helper: dispatch Celery ───────────────────────────────────────────────────
 
 def _dispatch_migration_worker(project_id: str, verify_only: bool = False,

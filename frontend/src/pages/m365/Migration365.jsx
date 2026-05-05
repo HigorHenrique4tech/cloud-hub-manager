@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -40,6 +40,8 @@ const migrationApi = {
   resolveSpSite:    (project_id, url, side = 'source') =>
                       api.post(wsUrl('/migration/resolve-sharepoint-site'), { project_id, url, side }).then(r => r.data),
   getMailboxLedger: (pid, mid)      => api.get(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}/ledger`)).then(r => r.data),
+  listSourceObjects: (pid, type, search) => api.get(wsUrl(`/migration/projects/${pid}/source-objects`), { params: { object_type: type, search: search || '' } }).then(r => r.data),
+  listDestObjects:   (pid, type, search) => api.get(wsUrl(`/migration/projects/${pid}/dest-objects`),   { params: { object_type: type, search: search || '' } }).then(r => r.data),
   getLicenseSummary: ()             => api.get(wsUrl('/migration/license-summary')).then(r => r.data),
   requestLicenses:  (data)         => api.post(wsUrl('/migration/licenses/request'), data).then(r => r.data),
   getLicenseHistory: ()             => api.get(wsUrl('/migration/licenses/history')).then(r => r.data),
@@ -577,7 +579,65 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
   const cfg = OBJECT_TYPE_CONFIG[objectType] || OBJECT_TYPE_CONFIG.email;
   const { title: modalTitle, srcLabel, dstLabel, hint, textareaPlaceholder, csvHint, validate, invalidMsg, itemLabel } = cfg;
   const qc = useQueryClient();
-  const [tab, setTab] = useState('text');  // 'text' | 'csv'
+  const [tab, setTab] = useState('picker');  // 'picker' | 'text' | 'csv'
+
+  // ── Aba Selecionar ────────────────────────────────────────────────────────
+  const [srcSearch, setSrcSearch] = useState('');
+  const [dstSearch, setDstSearch] = useState('');
+  const [srcDebounced, setSrcDebounced] = useState('');
+  const [dstDebounced, setDstDebounced] = useState('');
+  // selected: { [srcValue]: { src, dst, label } }
+  const [selected, setSelected] = useState({});
+  // which row has its dst field open
+  const [editingDst, setEditingDst] = useState(null);
+
+  // debounce de 400 ms para os search
+  const srcTimer = useRef(null);
+  const dstTimer = useRef(null);
+  useEffect(() => {
+    clearTimeout(srcTimer.current);
+    srcTimer.current = setTimeout(() => setSrcDebounced(srcSearch), 400);
+    return () => clearTimeout(srcTimer.current);
+  }, [srcSearch]);
+  useEffect(() => {
+    clearTimeout(dstTimer.current);
+    dstTimer.current = setTimeout(() => setDstDebounced(dstSearch), 400);
+    return () => clearTimeout(dstTimer.current);
+  }, [dstSearch]);
+
+  const srcQ = useQuery({
+    queryKey: ['migration-src-objects', projectId, objectType, srcDebounced],
+    queryFn: () => migrationApi.listSourceObjects(projectId, objectType, srcDebounced),
+    staleTime: 60_000,
+    enabled: tab === 'picker',
+  });
+  const dstQ = useQuery({
+    queryKey: ['migration-dst-objects', projectId, objectType, dstDebounced],
+    queryFn: () => migrationApi.listDestObjects(projectId, objectType, dstDebounced),
+    staleTime: 60_000,
+    enabled: tab === 'picker' && editingDst !== null,
+  });
+
+  const srcItems = srcQ.data?.items || [];
+  const dstItems = dstQ.data?.items || [];
+
+  const toggleSelect = (item) => {
+    setSelected(prev => {
+      if (prev[item.value]) {
+        const next = { ...prev };
+        delete next[item.value];
+        return next;
+      }
+      return { ...prev, [item.value]: { src: item.value, dst: item.value, label: item.label } };
+    });
+  };
+
+  const pickerEntries = Object.values(selected).map(s => ({
+    source_email: s.src,
+    destination_email: s.dst,
+    display_name: s.label,
+    object_type: objectType,
+  }));
 
   // ── Aba texto ─────────────────────────────────────────────────────────────
   const [input, setInput] = useState('');
@@ -621,10 +681,12 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
     csvMut.mutate(file);
   };
 
-  // ── Adicionar (comum às duas abas) ────────────────────────────────────────
-  const entries = tab === 'text'
-    ? parsed
-    : (csvPreview?.valid || []);
+  // ── Adicionar (comum às três abas) ────────────────────────────────────────
+  const entries = tab === 'picker'
+    ? pickerEntries
+    : tab === 'text'
+      ? parsed
+      : (csvPreview?.valid || []);
 
   const addMut = useMutation({
     mutationFn: () => migrationApi.addMailboxes(projectId, {
@@ -653,7 +715,7 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
 
         {/* Tabs */}
         <div className="flex border-b border-gray-200 dark:border-gray-700 px-5">
-          {[{ id: 'text', label: 'Colar texto' }, { id: 'csv', label: 'Upload CSV' }].map(t => (
+          {[{ id: 'picker', label: 'Selecionar' }, { id: 'text', label: 'Colar texto' }, { id: 'csv', label: 'Upload CSV' }].map(t => (
             <button key={t.id} onClick={() => setTab(t.id)}
               className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
                 tab === t.id ? 'border-blue-500 text-blue-600 dark:text-blue-400' : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
@@ -664,6 +726,136 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+          {/* Aba: Selecionar do tenant */}
+          {tab === 'picker' && (
+            <div className="space-y-3">
+              {/* Busca na origem */}
+              <div>
+                <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">{srcLabel}</p>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
+                  <input
+                    value={srcSearch}
+                    onChange={e => setSrcSearch(e.target.value)}
+                    placeholder="Buscar por nome ou e-mail..."
+                    className="w-full pl-8 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Lista de objetos da origem */}
+                <div className="mt-2 max-h-48 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                  {srcQ.isPending && (
+                    <div className="flex items-center justify-center py-6 text-xs text-gray-400">
+                      <RefreshCw className="w-4 h-4 animate-spin mr-2" /> Carregando...
+                    </div>
+                  )}
+                  {srcQ.isError && (
+                    <div className="py-4 px-3 text-xs text-red-500 text-center">
+                      {srcQ.error?.response?.data?.detail || 'Erro ao carregar objetos. Verifique as credenciais do projeto.'}
+                    </div>
+                  )}
+                  {srcQ.isSuccess && srcItems.length === 0 && (
+                    <div className="py-4 text-xs text-gray-400 text-center">Nenhum resultado encontrado.</div>
+                  )}
+                  {srcItems.map(item => {
+                    const isSel = !!selected[item.value];
+                    return (
+                      <div
+                        key={item.value}
+                        onClick={() => toggleSelect(item)}
+                        className={`flex items-center gap-3 px-3 py-2.5 cursor-pointer border-b border-gray-100 dark:border-gray-800 last:border-0 transition-colors ${
+                          isSel ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                        }`}
+                      >
+                        <div className={`w-4 h-4 rounded border-2 flex-shrink-0 flex items-center justify-center transition-colors ${
+                          isSel ? 'bg-blue-500 border-blue-500' : 'border-gray-300 dark:border-gray-600'
+                        }`}>
+                          {isSel && <CheckCircle className="w-3 h-3 text-white" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">{item.label}</p>
+                          {item.secondary !== item.label && (
+                            <p className="text-[11px] text-gray-400 truncate">{item.secondary}</p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Selecionados — com campo de destino editável */}
+              {Object.keys(selected).length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                    {Object.keys(selected).length} selecionado(s) — edite o destino se necessário
+                  </p>
+                  <div className="space-y-1.5 max-h-52 overflow-y-auto">
+                    {Object.entries(selected).map(([srcVal, row]) => (
+                      <div key={srcVal} className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                        {/* Origem (readonly) */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] text-gray-400">Origem</p>
+                          <p className="text-xs text-gray-700 dark:text-gray-300 truncate">{row.src}</p>
+                        </div>
+                        <div className="text-gray-300 dark:text-gray-600 text-xs">→</div>
+                        {/* Destino — pode ser picker de destino ou input livre */}
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] text-gray-400">Destino</p>
+                          {editingDst === srcVal ? (
+                            <div className="space-y-1">
+                              <input
+                                autoFocus
+                                value={dstSearch}
+                                onChange={e => setDstSearch(e.target.value)}
+                                placeholder="Buscar ou digitar..."
+                                className="w-full px-2 py-1 text-xs rounded border border-blue-400 dark:border-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none"
+                              />
+                              {/* Sugestões do destino */}
+                              {dstItems.length > 0 && (
+                                <div className="rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 max-h-32 overflow-y-auto shadow-lg z-10">
+                                  {dstItems.slice(0, 8).map(d => (
+                                    <div key={d.value}
+                                      onClick={() => {
+                                        setSelected(prev => ({ ...prev, [srcVal]: { ...prev[srcVal], dst: d.value } }));
+                                        setEditingDst(null); setDstSearch('');
+                                      }}
+                                      className="px-2 py-1.5 text-xs cursor-pointer hover:bg-blue-50 dark:hover:bg-blue-900/20 text-gray-700 dark:text-gray-300 truncate">
+                                      {d.label}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="flex gap-1">
+                                <button onClick={() => {
+                                  if (dstSearch.trim()) setSelected(prev => ({ ...prev, [srcVal]: { ...prev[srcVal], dst: dstSearch.trim() } }));
+                                  setEditingDst(null); setDstSearch('');
+                                }} className="px-2 py-0.5 text-[11px] rounded bg-blue-500 text-white">OK</button>
+                                <button onClick={() => { setEditingDst(null); setDstSearch(''); }}
+                                  className="px-2 py-0.5 text-[11px] rounded bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <button onClick={() => { setEditingDst(srcVal); setDstSearch(row.dst); }}
+                              className="text-xs text-gray-700 dark:text-gray-300 truncate w-full text-left hover:text-blue-500 flex items-center gap-1 group">
+                              <span className="truncate">{row.dst}</span>
+                              <span className="text-gray-300 group-hover:text-blue-400 flex-shrink-0 text-[10px]">✎</span>
+                            </button>
+                          )}
+                        </div>
+                        {/* Remover */}
+                        <button onClick={() => toggleSelect({ value: srcVal })}
+                          className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20 text-gray-400 hover:text-red-500 flex-shrink-0">
+                          <X className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Aba: Colar texto */}
           {tab === 'text' && (
