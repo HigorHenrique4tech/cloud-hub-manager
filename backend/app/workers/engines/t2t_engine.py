@@ -128,27 +128,52 @@ class TenantToTenantEngine(MigrationEngine):
         resp.raise_for_status()
         return resp.json()["access_token"]
 
-    def _translate_to_ews_id(self, dest_user: str, graph_id: str, graph_auth: str) -> str | None:
-        """Converte ID do Graph para EWS via translateExchangeIds."""
-        url = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}/translateExchangeIds"
-        body = {
-            "inputIds": [graph_id],
-            "targetIdType": "ewsId",
-            "sourceIdType": "restId",
-        }
+    def _ews_convert_id(self, ews_token: str, dest_user: str, graph_id: str) -> tuple[str | None, str]:
+        """
+        Converte RestId (Graph) → EwsId via SOAP ConvertId no próprio EWS.
+        Retorna (ews_id, status_msg). Usa apenas a permissão full_access_as_app
+        — não precisa de User.Read.All do Graph.
+        """
+        from xml.sax.saxutils import escape as xml_escape
+        user_esc = xml_escape(dest_user)
+        id_esc = xml_escape(graph_id)
+        soap = (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
+            ' xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"'
+            ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
+            '<soap:Header>'
+            '<t:RequestServerVersion Version="Exchange2016" />'
+            '</soap:Header>'
+            '<soap:Body>'
+            '<m:ConvertId DestinationFormat="EwsId">'
+            '<m:SourceIds>'
+            f'<t:AlternateId Format="RestId" Id="{id_esc}" Mailbox="{user_esc}" />'
+            '</m:SourceIds>'
+            '</m:ConvertId>'
+            '</soap:Body></soap:Envelope>'
+        )
         try:
-            r = requests.post(url, headers={
-                "Authorization": graph_auth,
-                "Content-Type": "application/json",
-            }, json=body, timeout=15)
-            if not r.ok:
-                return None
-            arr = r.json().get("value", [])
-            if arr and arr[0].get("targetId"):
-                return arr[0]["targetId"]
-        except Exception:
-            pass
-        return None
+            r = requests.post(
+                "https://outlook.office365.com/EWS/Exchange.asmx",
+                data=soap.encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {ews_token}",
+                    "Content-Type": "text/xml; charset=utf-8",
+                    "X-AnchorMailbox": dest_user,
+                },
+                timeout=20,
+            )
+            if r.status_code != 200:
+                return None, f"ConvertId HTTP {r.status_code}: {r.text[:200]}"
+            # Resposta: <t:AlternateId Format="EwsId" Id="EWS_ID" Mailbox="..." />
+            import re
+            m = re.search(r'<t:AlternateId[^>]*\bId="([^"]+)"', r.text)
+            if m:
+                return m.group(1), "ConvertId OK"
+            return None, f"ConvertId sem AlternateId: {r.text[:300]}"
+        except Exception as exc:
+            return None, f"ConvertId exc: {str(exc)[:200]}"
 
     def _ews_clear_draft(self, dest_user: str, ews_id: str, ews_token: str) -> tuple[bool, str]:
         """Envia EWS UpdateItem para zerar PR_MESSAGE_FLAGS. Retorna (ok, status_msg)."""
@@ -367,17 +392,16 @@ class TenantToTenantEngine(MigrationEngine):
         # Nível 2: EWS UpdateItem (a única forma confiável)
         if not success:
             try:
-                # Reusa o token Graph (já temos no header `auth`) para translate
-                ews_id = self._translate_to_ews_id(dest_user, moved_id, auth)
+                ews_token = self._get_ews_token()
+                ews_id, conv_status = self._ews_convert_id(ews_token, dest_user, moved_id)
                 if ews_id:
-                    ews_token = self._get_ews_token()
                     ok, ews_status = self._ews_clear_draft(dest_user, ews_id, ews_token)
                     if ok:
                         success = True
                     else:
                         last_status = f"{last_status} | {ews_status}"
                 else:
-                    last_status = f"{last_status} | translateExchangeIds falhou"
+                    last_status = f"{last_status} | {conv_status}"
             except Exception as exc:
                 last_status = f"{last_status} | EWS exc: {str(exc)[:100]}"
 
