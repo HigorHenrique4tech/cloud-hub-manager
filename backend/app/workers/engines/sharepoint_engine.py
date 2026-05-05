@@ -95,6 +95,40 @@ class SharePointEngine(MigrationEngine):
         )
         return {"Authorization": f"Bearer {token}"}
 
+    # ── Resolução de site ────────────────────────────────────────────────────────
+
+    def _resolve_site(self, site_id: str, headers: dict) -> str:
+        """
+        Converte qualquer formato de site_id para o ID canônico GUID do Graph
+        (ex: "contoso.sharepoint.com,abc,def"). Necessário porque path-based IDs
+        ("hostname:/sites/name") causam 404 quando concatenados com /drives, /lists
+        etc. sem o terminador ":" (ex: /sites/hostname:/path/drives vs /path:/drives).
+        Resolve via GET /sites/{site_id}?$select=id e retorna o id GUID canônico.
+        """
+        url = f"{GRAPH_V1}/sites/{site_id}?$select=id,displayName"
+
+        def fetch():
+            r = requests.get(url, headers=headers, timeout=15)
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(
+                        f"HTTP {r.status_code} [{err.get('code', '')}]: "
+                        f"{err.get('message', '')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {r.status_code}: {r.text[:200]}")
+            return r.json()
+
+        data = self.retry_on_throttle(fetch)
+        canonical = data.get("id", site_id)
+        name = data.get("displayName", "")
+        if name:
+            self.add_log(f"Site resolvido: '{name}' ({canonical[:40]}…)")
+        return canonical
+
     # ── Graph walk (generator) ──────────────────────────────────────────────────
 
     def _get_site_drives(self, site_id: str, headers: dict) -> list[dict]:
@@ -559,8 +593,8 @@ class SharePointEngine(MigrationEngine):
             return {"ok": False, "message": f"Falha ao conectar: {exc}"}
 
     def assess(self) -> dict:
-        src_site = _normalize_site_id(self.mailbox.source_email)
         src_hdrs = self._src_headers()
+        src_site = self._resolve_site(_normalize_site_id(self.mailbox.source_email), src_hdrs)
         drives = self._get_site_drives(src_site, src_hdrs)
 
         total_files = 0
@@ -580,10 +614,10 @@ class SharePointEngine(MigrationEngine):
         }
 
     def migrate_mailbox(self, on_progress: ProgressCallback) -> None:
-        src_site = _normalize_site_id(self.mailbox.source_email)
-        dst_site = _normalize_site_id(self.mailbox.destination_email)
         src_hdrs = self._src_headers()
         dst_hdrs = self._dst_headers()
+        src_site = self._resolve_site(_normalize_site_id(self.mailbox.source_email), src_hdrs)
+        dst_site = self._resolve_site(_normalize_site_id(self.mailbox.destination_email), dst_hdrs)
         total_migrated = self.mailbox.items_migrated or 0
         total_files = self.mailbox.items_total or 0
 
@@ -675,10 +709,10 @@ class SharePointEngine(MigrationEngine):
         if not self.mailbox.started_at:
             return
 
-        src_site = self.mailbox.source_email
-        dst_site = self.mailbox.destination_email
         src_hdrs = self._src_headers()
         dst_hdrs = self._dst_headers()
+        src_site = self._resolve_site(_normalize_site_id(self.mailbox.source_email), src_hdrs)
+        dst_site = self._resolve_site(_normalize_site_id(self.mailbox.destination_email), dst_hdrs)
         total_migrated = self.mailbox.items_migrated or 0
 
         cutoff = self.mailbox.started_at.strftime("%Y-%m-%dT%H:%M:%SZ")
