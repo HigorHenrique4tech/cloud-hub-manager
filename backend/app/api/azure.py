@@ -858,6 +858,14 @@ async def ws_get_azure_costs(
     member: MemberContext = Depends(require_permission("costs.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = (
+        f"azure:{member.workspace_id}:costs:"
+        f"{account_id or 'default'}:{start_date}:{end_date}:{granularity}"
+    )
+    cached = cache_get(cache_key)
+    if cached is not None:
+        return cached
+
     if account_id:
         account = db.query(CloudAccount).filter(
             CloudAccount.id == account_id,
@@ -877,11 +885,15 @@ async def ws_get_azure_costs(
     if not result.get('success'):
         error_msg = result.get('error', '')
         if '429' in error_msg:
-            # Rate limited — return empty data instead of 500
             logger.warning("Azure Cost Management rate-limited, returning empty data")
-            return {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD",
-                    "warning": "Dados de custo temporariamente indisponiveis (rate limit). Tente novamente em alguns minutos."}
+            # Cache empty result por 2 minutos para não sobrecarregar mais ainda
+            empty = {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD",
+                     "warning": "Dados de custo temporariamente indisponíveis (rate limit). Tente novamente em alguns minutos."}
+            cache_set(cache_key, empty, ttl=120)
+            return empty
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo Azure'))
+    # Cache por 15 minutos — dados de custo Azure atualizam 1x ao dia
+    cache_set(cache_key, result, ttl=900)
     return result
 
 

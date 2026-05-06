@@ -698,7 +698,7 @@ class AzureService:
                     grouping=[QueryGrouping(type="Dimension", name="ServiceName")],
                 ),
             )
-            # Retry on 429 (rate limit) with exponential backoff
+            # Retry on 429 (rate limit) respecting the Retry-After header when present
             import time as _time
             _max_retries = 3
             for _attempt in range(_max_retries):
@@ -706,12 +706,22 @@ class AzureService:
                     result = cost_client.query.usage(scope=scope, parameters=query)
                     break
                 except Exception as _rate_err:
-                    if "429" in str(_rate_err) and _attempt < _max_retries - 1:
-                        _wait = (2 ** _attempt) * 5  # 5s, 10s, 20s
-                        logger.warning("Cost Management 429 rate-limited, retrying in %ds (attempt %d/%d)", _wait, _attempt + 1, _max_retries)
-                        _time.sleep(_wait)
-                    else:
+                    if "429" not in str(_rate_err) or _attempt >= _max_retries - 1:
                         raise
+                    # Tenta ler o Retry-After do header da resposta
+                    _wait = (2 ** _attempt) * 5  # fallback: 5s, 10s
+                    try:
+                        _hdrs = _rate_err.response.headers  # type: ignore[union-attr]
+                        for _hdr in ("x-ms-ratelimit-microsoft.costmanagement-entity-retry-after",
+                                     "x-ms-ratelimit-microsoft.costmanagement-clienttype-retry-after",
+                                     "Retry-After"):
+                            if _hdr.lower() in {k.lower() for k in _hdrs}:
+                                _wait = int(next(v for k, v in _hdrs.items() if k.lower() == _hdr.lower()))
+                                break
+                    except Exception:
+                        pass
+                    logger.warning("Cost Management 429 rate-limited, retrying in %ds (attempt %d/%d)", _wait, _attempt + 1, _max_retries)
+                    _time.sleep(_wait)
             rows = result.rows or []
             columns = [col.name for col in (result.columns or [])]
             logger.info("Azure cost columns: %s", columns)
