@@ -26,6 +26,7 @@ from app.services.email_service import send_verification_email, send_otp_email, 
 from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
 from app.core.limiter import limiter
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
