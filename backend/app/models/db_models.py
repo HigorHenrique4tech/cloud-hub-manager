@@ -236,6 +236,20 @@ class User(Base):
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     org_memberships  = relationship("OrganizationMember", foreign_keys="OrganizationMember.user_id", back_populates="user")
+    terms_acceptances = relationship("TermsAcceptance", back_populates="user", cascade="all, delete-orphan")
+
+
+class TermsAcceptance(Base):
+    __tablename__ = "terms_acceptances"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    version     = Column(String(20), nullable=False)
+    accepted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    ip_address  = Column(String(45), nullable=True)
+    user_agent  = Column(String(500), nullable=True)
+
+    user = relationship("User", back_populates="terms_acceptances")
 
 
 class CostAlert(Base):

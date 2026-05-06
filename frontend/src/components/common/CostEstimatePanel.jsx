@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { DollarSign, Info, TrendingUp, Tag, Wifi, WifiOff } from 'lucide-react';
 import pricingService from '../../services/pricingService';
+import { useCurrency } from '../../hooks/useCurrency';
 
 // ── Static fallback tables (us-east-1 / East US, On-Demand, Linux) ───────────
 // Used instantly while the live API call is in flight, and as backup on error.
@@ -185,6 +186,9 @@ function shouldFetchLive(type, form) {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 const CostEstimatePanel = ({ type, form }) => {
+  const { fmtCost, currency } = useCurrency();
+  const fmt = (v) => fmtCost(v, 'USD');
+
   // Debounce form changes to avoid firing the API on every keystroke
   const [debounced, setDebounced] = useState(form);
   useEffect(() => {
@@ -238,11 +242,11 @@ const CostEstimatePanel = ({ type, form }) => {
               ) : (
                 <>
                   <div className="text-2xl font-bold">
-                    ~${monthly.toFixed(2)}<span className="text-sm font-normal opacity-75">/mês</span>
+                    ~{fmt(monthly)}<span className="text-sm font-normal opacity-75">/mês</span>
                   </div>
                   <div className="text-xs opacity-70 flex items-center gap-1 justify-end mt-0.5">
                     <TrendingUp className="w-3 h-3" />
-                    ~${hourly.toFixed(4)}/hora
+                    ~{fmt(hourly)}/hora
                   </div>
                 </>
               )}
@@ -268,7 +272,7 @@ const CostEstimatePanel = ({ type, form }) => {
                     ? 'text-amber-700 dark:text-amber-400'
                     : 'text-gray-900 dark:text-gray-100'
               }`}>
-                {item.amount === 0 ? 'Grátis' : `$${item.amount.toFixed(2)}`}
+                {item.amount === 0 ? 'Grátis' : fmt(item.amount)}
               </span>
             </div>
           ))}
@@ -277,7 +281,7 @@ const CostEstimatePanel = ({ type, form }) => {
             <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
               <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Total</span>
               <span className="text-sm font-bold text-emerald-700 dark:text-emerald-400">
-                {monthly === 0 ? '$0.00' : `~$${monthly.toFixed(2)}`}/mês
+                {monthly === 0 ? (currency === 'BRL' ? 'R$ 0,00' : '$0.00') : `~${fmt(monthly)}`}/mês
               </span>
             </div>
           )}

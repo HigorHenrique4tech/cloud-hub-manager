@@ -28,7 +28,9 @@
       "Bash(python3 -c \"import hmac; print\\(dir\\(hmac\\)\\)\")",
       "Bash(python -c \"import hmac; print\\(dir\\(hmac\\)\\)\")",
       "Bash(grep -E \"\\(^|/\\)\\\\.env\\($|\\\\.\\)\")",
-      "Bash(grep -E \"\\\\.\\(js|jsx\\)$\")"
+      "Bash(grep -E \"\\\\.\\(js|jsx\\)$\")",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\" -Recurse -Directory)",
+      "Bash(Select-Object -First 20)"
     ]
   }
 }

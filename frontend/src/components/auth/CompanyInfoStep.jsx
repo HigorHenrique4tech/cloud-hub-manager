@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Building2, Phone, FileText, User, CheckCircle2, XCircle, Loader2, ArrowRight } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 import authService from '../../services/authService';
+import TermsModal from './TermsModal';
 
 const formatCnpj = (v) => {
   const d = v.replace(/\D/g, '').slice(0, 14);
@@ -34,6 +35,8 @@ export default function CompanyInfoStep() {
   const [cnpjData, setCnpjData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showTerms, setShowTerms] = useState(false);
+  const [pendingSubmit, setPendingSubmit] = useState(null);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -71,22 +74,35 @@ export default function CompanyInfoStep() {
       setError('O nome da empresa é obrigatório');
       return;
     }
+    // Guardar dados e exibir modal de termos antes de prosseguir
+    setPendingSubmit({
+      name: form.name || undefined,
+      company_name: form.company_name,
+      cnpj: form.cnpj.replace(/\D/g, '') || undefined,
+      phone: form.phone || undefined,
+    });
+    setShowTerms(true);
+  };
+
+  const handleTermsAccept = async () => {
     setLoading(true);
     setError('');
     try {
-      const updated = await authService.updateCompanyInfo({
-        name: form.name || undefined,
-        company_name: form.company_name,
-        cnpj: form.cnpj.replace(/\D/g, '') || undefined,
-        phone: form.phone || undefined,
-      });
-      if (setUser) setUser(updated);
+      await authService.acceptTerms();
+      const updated = await authService.updateCompanyInfo(pendingSubmit);
+      if (setUser) setUser({ ...updated, terms_accepted: true });
       navigate('/select-plan', { replace: true });
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao salvar informações');
+      setShowTerms(false);
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleTermsDecline = () => {
+    setShowTerms(false);
+    setPendingSubmit(null);
   };
 
   const inputStyle = {
@@ -107,6 +123,13 @@ export default function CompanyInfoStep() {
 
   return (
     <>
+      {showTerms && (
+        <TermsModal
+          onAccept={handleTermsAccept}
+          onDecline={handleTermsDecline}
+          loading={loading}
+        />
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Sans:wght@300;400;500&display=swap');
         .ci-page { font-family: 'DM Sans', system-ui, sans-serif; }

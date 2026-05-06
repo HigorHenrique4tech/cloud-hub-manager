@@ -8,7 +8,7 @@ import {
   History, FileDown, RefreshCw, Power, PowerOff, StickyNote, Save,
   Server, Cloud, Activity, BarChart2, LayoutGrid, Settings, Zap,
   TrendingUp, ChevronLeft, CheckSquare, Square, Bell, ArrowRightLeft,
-  Headphones, Gauge, MessageCircle, Star, Tag,
+  Headphones, Gauge, MessageCircle, Star, Tag, Timer,
 } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import { useEscapeKey } from '../hooks/useEscapeKey';
@@ -366,6 +366,28 @@ const OrgsTab = () => {
               {PLAN_LABEL[org.plan_tier] || org.plan_tier}
             </span>
           </td>
+          <td className="py-3 px-4">
+            {org.trial?.has_trial ? (
+              org.trial.trial_active ? (
+                <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
+                  org.trial.days_remaining <= 3
+                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    : org.trial.days_remaining <= 7
+                      ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                      : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                }`}>
+                  <Timer className="w-3 h-3" />
+                  {org.trial.days_remaining}d
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
+                  Expirado
+                </span>
+              )
+            ) : (
+              <span className="text-gray-300 dark:text-gray-600 text-xs">—</span>
+            )}
+          </td>
           <td className="py-3 px-4 text-gray-600 dark:text-gray-400 text-xs capitalize">{org.org_type}</td>
           <td className="py-3 px-4 text-gray-600 dark:text-gray-400 text-sm">{org.members_count}</td>
           <td className="py-3 px-4 text-gray-500 text-xs">{fmtDate(org.created_at)}</td>
@@ -493,6 +515,7 @@ const OrgsTab = () => {
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Organização</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Slug</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Plano</th>
+                <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Trial</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Tipo</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Membros</th>
                 <th className="text-left py-3 px-4 text-gray-500 dark:text-gray-400 font-medium">Criada em</th>

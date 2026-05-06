@@ -50,6 +50,9 @@ class Settings(BaseSettings):
     MICROSOFT_CLIENT_SECRET: str = ""
     MICROSOFT_TENANT_ID: str = "common"  # "common" = multi-tenant; set to your tenant ID for single-tenant
 
+    # Termos de Uso — incrementar para forçar re-aceitação de usuários existentes
+    TERMS_VERSION: str = "1.0"
+
     # AbacatePay
     ABACATEPAY_API_KEY: str = ""
     ABACATEPAY_API_URL: str = "https://api.abacatepay.com/v1"

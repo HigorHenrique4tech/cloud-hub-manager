@@ -9,6 +9,7 @@ import AwsSecondarySidebar from './AwsSecondarySidebar';
 import GcpSecondarySidebar from './GcpSecondarySidebar';
 import M365SecondarySidebar from './M365SecondarySidebar';
 import TrialBanner from '../common/TrialBanner';
+import TermsGate from '../common/TermsGate';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import { useAuth } from '../../contexts/AuthContext';
 
@@ -260,31 +261,33 @@ const Layout = ({ children }) => {
   }
 
   return (
-    <div className="h-screen bg-gray-100 dark:bg-gray-900 flex flex-col overflow-hidden">
-      {/* Skip navigation — visible only on keyboard focus */}
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-lg focus:text-sm focus:font-medium focus:shadow-lg"
-      >
-        Pular para o conteúdo principal
-      </a>
-      <TrialBanner />
-      <Header onMenuToggle={() => setSidebarOpen(v => !v)} />
-      <div className="flex flex-1 overflow-hidden">
-        {/* Mobile overlay */}
-        {sidebarOpen && (
-          <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
-        )}
-        <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-        {isAzurePath && <AzureSecondarySidebar />}
-        {isAwsPath && <AwsSecondarySidebar />}
-        {isGcpPath && <GcpSecondarySidebar />}
-        {isM365Path && <M365SecondarySidebar />}
-        <main id="main-content" key={currentWorkspace?.id || 'none'} className="flex-1 px-4 py-6 sm:px-6 sm:py-8 overflow-auto">
-          {children}
-        </main>
+    <TermsGate>
+      <div className="h-screen bg-gray-100 dark:bg-gray-900 flex flex-col overflow-hidden">
+        {/* Skip navigation — visible only on keyboard focus */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:px-4 focus:py-2 focus:bg-primary focus:text-white focus:rounded-lg focus:text-sm focus:font-medium focus:shadow-lg"
+        >
+          Pular para o conteúdo principal
+        </a>
+        <TrialBanner />
+        <Header onMenuToggle={() => setSidebarOpen(v => !v)} />
+        <div className="flex flex-1 overflow-hidden">
+          {/* Mobile overlay */}
+          {sidebarOpen && (
+            <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={() => setSidebarOpen(false)} />
+          )}
+          <Sidebar mobileOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+          {isAzurePath && <AzureSecondarySidebar />}
+          {isAwsPath && <AwsSecondarySidebar />}
+          {isGcpPath && <GcpSecondarySidebar />}
+          {isM365Path && <M365SecondarySidebar />}
+          <main id="main-content" key={currentWorkspace?.id || 'none'} className="flex-1 px-4 py-6 sm:px-6 sm:py-8 overflow-auto">
+            {children}
+          </main>
+        </div>
       </div>
-    </div>
+    </TermsGate>
   );
 };
 

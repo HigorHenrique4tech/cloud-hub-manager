@@ -259,9 +259,61 @@ def logout(payload: LogoutRequest, request: Request, db: Session = Depends(get_d
 
 
 @router.get("/me", response_model=UserResponse)
-def me(current_user: User = Depends(get_current_user)):
+def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get current authenticated user"""
-    return UserResponse.model_validate(current_user)
+    from app.models.db_models import TermsAcceptance
+    current_version = settings.TERMS_VERSION
+    acceptance = (
+        db.query(TermsAcceptance)
+        .filter(TermsAcceptance.user_id == current_user.id, TermsAcceptance.version == current_version)
+        .first()
+    )
+    data = UserResponse.model_validate(current_user)
+    data.terms_accepted = acceptance is not None
+    data.terms_version = current_version
+    return data
+
+
+@router.get("/terms")
+def get_terms():
+    """Return current terms version. Public endpoint."""
+    return {"version": settings.TERMS_VERSION}
+
+
+@router.post("/terms/accept", status_code=201)
+def accept_terms(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Record user acceptance of current terms of use."""
+    from app.models.db_models import TermsAcceptance
+    current_version = settings.TERMS_VERSION
+
+    existing = (
+        db.query(TermsAcceptance)
+        .filter(TermsAcceptance.user_id == current_user.id, TermsAcceptance.version == current_version)
+        .first()
+    )
+    if existing:
+        return {"accepted": True, "version": current_version, "already_accepted": True}
+
+    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
+    if ip:
+        ip = ip.split(",")[0].strip()
+    ua = request.headers.get("User-Agent", "")[:500]
+
+    record = TermsAcceptance(
+        user_id=current_user.id,
+        version=current_version,
+        ip_address=ip,
+        user_agent=ua,
+    )
+    db.add(record)
+    db.commit()
+
+    logger.info("Usuário %s aceitou os termos v%s (IP: %s)", current_user.email, current_version, ip)
+    return {"accepted": True, "version": current_version, "accepted_at": record.accepted_at.isoformat()}
 
 
 @router.get("/my-orgs")

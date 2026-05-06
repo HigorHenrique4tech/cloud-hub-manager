@@ -126,6 +126,8 @@ class UserResponse(BaseModel):
     mfa_enabled: bool = False
     onboarding_completed: bool = False
     created_at: datetime
+    terms_accepted: bool = False
+    terms_version: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

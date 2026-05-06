@@ -105,6 +105,12 @@ const authService = {
     return data;
   },
 
+  // Termos de uso
+  acceptTerms: async () => {
+    const { data } = await api.post('/auth/terms/accept');
+    return data;
+  },
+
   // OAuth
   googleCallback: async (code, redirectUri) => {
     const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri });
