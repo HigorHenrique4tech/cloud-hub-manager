@@ -358,7 +358,7 @@ _CNPJ_TTL = 600  # 10 minutes
 
 @router.get("/cnpj/{cnpj}")
 async def lookup_cnpj(cnpj: str):
-    """Validate and look up a Brazilian CNPJ via BrasilAPI. Public endpoint."""
+    """Validate and look up a Brazilian CNPJ. Tries BrasilAPI then cnpj.ws as fallback."""
     digits = _re.sub(r"\D", "", cnpj)
     if len(digits) != 14:
         raise HTTPException(status_code=400, detail="CNPJ deve ter 14 dígitos")
@@ -370,28 +370,49 @@ async def lookup_cnpj(cnpj: str):
             raise HTTPException(status_code=404, detail="CNPJ não encontrado ou inválido")
         return cached["data"]
 
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as client:
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        # Tentativa 1: BrasilAPI
+        try:
             resp = await client.get(f"https://brasilapi.com.br/api/cnpj/v1/{digits}")
-        if resp.status_code in (400, 404):
-            _cnpj_cache[digits] = {"ts": now, "error": True}
-            raise HTTPException(status_code=404, detail="CNPJ não encontrado ou inválido")
-        resp.raise_for_status()
-        raw = resp.json()
-        result = {
-            "cnpj": digits,
-            "razao_social": raw.get("razao_social", ""),
-            "nome_fantasia": raw.get("nome_fantasia", ""),
-            "situacao_cadastral": raw.get("descricao_situacao_cadastral", ""),
-            "uf": raw.get("uf", ""),
-            "municipio": raw.get("municipio", ""),
-        }
-        _cnpj_cache[digits] = {"ts": now, "data": result}
-        return result
-    except HTTPException:
-        raise
-    except Exception:
-        raise HTTPException(status_code=502, detail="Falha ao consultar a Receita Federal. Tente novamente.")
+            if resp.status_code == 200:
+                raw = resp.json()
+                result = {
+                    "cnpj": digits,
+                    "razao_social": raw.get("razao_social", ""),
+                    "nome_fantasia": raw.get("nome_fantasia", ""),
+                    "situacao_cadastral": raw.get("descricao_situacao_cadastral", ""),
+                    "uf": raw.get("uf", ""),
+                    "municipio": raw.get("municipio", ""),
+                }
+                _cnpj_cache[digits] = {"ts": now, "data": result}
+                return result
+        except Exception:
+            pass
+
+        # Tentativa 2: cnpj.ws (Receita Federal direta)
+        try:
+            resp2 = await client.get(f"https://publica.cnpj.ws/cnpj/{digits}")
+            if resp2.status_code == 200:
+                raw2 = resp2.json()
+                estabelecimento = raw2.get("estabelecimento", {})
+                situacao = estabelecimento.get("situacao_cadastral", "")
+                municipio = (estabelecimento.get("cidade") or {}).get("nome", "")
+                uf = estabelecimento.get("estado", {}).get("sigla", "") if isinstance(estabelecimento.get("estado"), dict) else estabelecimento.get("uf", "")
+                result = {
+                    "cnpj": digits,
+                    "razao_social": raw2.get("razao_social", ""),
+                    "nome_fantasia": estabelecimento.get("nome_fantasia", "") or raw2.get("razao_social", ""),
+                    "situacao_cadastral": situacao,
+                    "uf": uf,
+                    "municipio": municipio,
+                }
+                _cnpj_cache[digits] = {"ts": now, "data": result}
+                return result
+        except Exception:
+            pass
+
+    _cnpj_cache[digits] = {"ts": now, "error": True}
+    raise HTTPException(status_code=404, detail="CNPJ não encontrado ou inválido")
 
 
 @router.put("/me/password")
