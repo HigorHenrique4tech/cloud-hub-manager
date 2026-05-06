@@ -27,7 +27,8 @@
       "Bash(python -m py_compile app/api/partner_center.py)",
       "Bash(python3 -c \"import hmac; print\\(dir\\(hmac\\)\\)\")",
       "Bash(python -c \"import hmac; print\\(dir\\(hmac\\)\\)\")",
-      "Bash(grep -E \"\\(^|/\\)\\\\.env\\($|\\\\.\\)\")"
+      "Bash(grep -E \"\\(^|/\\)\\\\.env\\($|\\\\.\\)\")",
+      "Bash(grep -E \"\\\\.\\(js|jsx\\)$\")"
     ]
   }
 }

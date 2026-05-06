@@ -3,8 +3,9 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Building2, UserPlus, Trash2, Shield, Copy, Clock, ArrowUpRight, Search,
-  ChevronRight, Palette,
+  ChevronRight, Palette, CheckCircle2, XCircle, Loader2,
 } from 'lucide-react';
+import authService from '../services/authService';
 import Header from '../components/layout/header';
 import Sidebar from '../components/layout/sidebar';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
@@ -78,6 +79,9 @@ const OrgSettings = () => {
   const [selectedMember, setSelectedMember] = useState(null);
   const [showDeleteOrg, setShowDeleteOrg]   = useState(false);
   const [orgName, setOrgName]               = useState('');
+  const [cnpj, setCnpj]                     = useState('');
+  const [cnpjStatus, setCnpjStatus]         = useState(null); // null | 'loading' | 'valid' | 'invalid'
+  const [cnpjData, setCnpjData]             = useState(null);
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   const inviteMutation = useMutation({
@@ -129,10 +133,52 @@ const OrgSettings = () => {
     onSuccess: () => refreshOrgs(),
   });
 
+  const cnpjUpdateMutation = useMutation({
+    mutationFn: (cnpjDigits) => orgService.updateOrg(slug, { cnpj: cnpjDigits }),
+    onSuccess: () => { refreshOrgs(); setCnpjStatus(null); setCnpj(''); setCnpjData(null); },
+  });
+
   const deleteOrgMutation = useMutation({
     mutationFn: () => orgService.deleteOrg(slug),
     onSuccess: () => { refreshOrgs(); window.location.reload(); },
   });
+
+  // ── CNPJ helpers ─────────────────────────────────────────────────────────
+  const formatCnpj = (v) => {
+    const d = v.replace(/\D/g, '').slice(0, 14);
+    if (d.length <= 2) return d;
+    if (d.length <= 5) return `${d.slice(0,2)}.${d.slice(2)}`;
+    if (d.length <= 8) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5)}`;
+    if (d.length <= 12) return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8)}`;
+    return `${d.slice(0,2)}.${d.slice(2,5)}.${d.slice(5,8)}/${d.slice(8,12)}-${d.slice(12)}`;
+  };
+
+  const handleCnpjChange = (e) => {
+    setCnpj(formatCnpj(e.target.value));
+    setCnpjStatus(null);
+    setCnpjData(null);
+  };
+
+  const handleValidateCnpj = async () => {
+    const digits = cnpj.replace(/\D/g, '');
+    if (digits.length !== 14) return;
+    setCnpjStatus('loading');
+    try {
+      const data = await authService.validateCnpj(digits);
+      setCnpjData(data);
+      setCnpjStatus('valid');
+    } catch {
+      setCnpjStatus('invalid');
+      setCnpjData(null);
+    }
+  };
+
+  const handleSaveCnpj = () => {
+    const digits = cnpj.replace(/\D/g, '');
+    if (cnpjStatus === 'valid' && digits.length === 14) {
+      cnpjUpdateMutation.mutate(digits);
+    }
+  };
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const filteredMembers = members.filter(
@@ -207,7 +253,68 @@ const OrgSettings = () => {
                   Salvar
                 </button>
               </div>
-              <p className="mt-2 text-xs text-gray-400">Slug: <code>{currentOrg.slug}</code> | Plano: <code>{currentOrg.plan_tier}</code></p>
+              <p className="mt-2 text-xs text-gray-400">
+                Slug: <code>{currentOrg.slug}</code> | Plano: <code>{currentOrg.plan_tier}</code>
+              </p>
+            </div>
+
+            {/* CNPJ */}
+            <div className="mt-5 pt-5 border-t border-gray-100 dark:border-gray-700">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">CNPJ</label>
+              {currentOrg.cnpj && !cnpj && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                  Atual: <code className="bg-gray-100 dark:bg-gray-700 px-1 rounded">
+                    {currentOrg.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5')}
+                  </code>
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <input
+                    type="text"
+                    placeholder="00.000.000/0000-00"
+                    value={cnpj}
+                    onChange={handleCnpjChange}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600
+                               bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm pr-8"
+                  />
+                  {cnpjStatus === 'valid' && (
+                    <CheckCircle2 className="absolute right-2 top-2.5 w-4 h-4 text-green-500" />
+                  )}
+                  {cnpjStatus === 'invalid' && (
+                    <XCircle className="absolute right-2 top-2.5 w-4 h-4 text-red-500" />
+                  )}
+                  {cnpjStatus === 'loading' && (
+                    <Loader2 className="absolute right-2 top-2.5 w-4 h-4 text-gray-400 animate-spin" />
+                  )}
+                </div>
+                <button
+                  onClick={handleValidateCnpj}
+                  disabled={cnpj.replace(/\D/g, '').length !== 14 || cnpjStatus === 'loading'}
+                  className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 text-sm
+                             text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700
+                             disabled:opacity-40 whitespace-nowrap"
+                >
+                  Validar
+                </button>
+                <button
+                  onClick={handleSaveCnpj}
+                  disabled={cnpjStatus !== 'valid' || cnpjUpdateMutation.isPending}
+                  className="px-3 py-2 bg-primary text-white rounded-lg text-sm font-medium
+                             hover:bg-primary/90 disabled:opacity-40 whitespace-nowrap"
+                >
+                  {cnpjUpdateMutation.isPending ? 'Salvando…' : 'Salvar'}
+                </button>
+              </div>
+              {cnpjStatus === 'valid' && cnpjData && (
+                <p className="mt-1.5 text-xs text-green-600 dark:text-green-400">
+                  {cnpjData.razao_social} — {cnpjData.situacao_cadastral}
+                  {cnpjData.municipio && ` · ${cnpjData.municipio}/${cnpjData.uf}`}
+                </p>
+              )}
+              {cnpjStatus === 'invalid' && (
+                <p className="mt-1.5 text-xs text-red-500">CNPJ não encontrado ou inválido.</p>
+              )}
             </div>
           </RoleGate>
 

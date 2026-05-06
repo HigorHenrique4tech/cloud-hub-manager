@@ -5,25 +5,168 @@ import Layout from '../components/layout/layout';
 import logsService from '../services/logsService';
 
 const ACTION_LABELS = {
-  'ec2.start':          'EC2 Iniciada',
-  'ec2.stop':           'EC2 Parada',
-  'azurevm.start':      'VM Azure Iniciada',
-  'azurevm.stop':       'VM Azure Parada',
-  'appservice.start':   'App Service Iniciado',
-  'appservice.stop':    'App Service Parado',
-  'credential.add':     'Credencial Adicionada',
-  'credential.remove':  'Credencial Removida',
-  'alert.create':       'Alerta Criado',
-  'alert.delete':       'Alerta Excluído',
-  'auth.login':         'Login',
-  'auth.register':      'Cadastro',
-  'schedule.create':    'Agendamento Criado',
-  'schedule.update':    'Agendamento Atualizado',
-  'schedule.delete':    'Agendamento Excluído',
-  'finops.apply':       'Recomendação Aplicada',
-  'finops.dismiss':     'Recomendação Ignorada',
-  'finops.scan':        'Scan FinOps',
+  // AWS
+  'ec2.create':                       'EC2 Criada',
+  'ec2.start':                        'EC2 Iniciada',
+  'ec2.stop':                         'EC2 Parada',
+  'ec2.delete':                       'EC2 Excluída',
+  's3.create':                        'S3 Bucket Criado',
+  's3.delete':                        'S3 Bucket Excluído',
+  'rds.create':                       'RDS Criado',
+  'rds.delete':                       'RDS Excluído',
+  'lambda.create':                    'Lambda Criada',
+  'lambda.delete':                    'Lambda Excluída',
+  'vpc.create':                       'VPC Criada',
+  'vpc.delete':                       'VPC Excluída',
+  'backup.create':                    'Backup Criado',
+  'backup.delete':                    'Backup Excluído',
+  'backup.scan':                      'Scan de Backup',
+  // Azure
+  'azurevm.create':                   'VM Azure Criada',
+  'azurevm.start':                    'VM Azure Iniciada',
+  'azurevm.stop':                     'VM Azure Parada',
+  'vm.delete':                        'VM Azure Excluída',
+  'storage.create':                   'Storage Azure Criado',
+  'storage.delete':                   'Storage Azure Excluído',
+  'appservice.create':                'App Service Criado',
+  'appservice.start':                 'App Service Iniciado',
+  'appservice.stop':                  'App Service Parado',
+  'appservice.delete':                'App Service Excluído',
+  'sql.create':                       'SQL Azure Criado',
+  'sql.delete':                       'SQL Azure Excluído',
+  'vnet.create':                      'VNet Criada',
+  'vnet.delete':                      'VNet Excluída',
+  'nsg.rule.create':                  'Regra NSG Criada',
+  'nsg.rule.delete':                  'Regra NSG Excluída',
+  // GCP
+  'gcp.compute.start':                'GCP VM Iniciada',
+  'gcp.compute.stop':                 'GCP VM Parada',
+  'gcp.compute.delete':               'GCP VM Excluída',
+  'gcp.storage.create_bucket':        'GCP Bucket Criado',
+  'gcp.storage.delete_bucket':        'GCP Bucket Excluído',
+  'gcp.sql.delete':                   'GCP SQL Excluído',
+  'gcp.functions.delete':             'GCP Function Excluída',
+  'gcp.network.create':               'GCP Rede Criada',
+  'gcp.network.delete':               'GCP Rede Excluída',
+  // Microsoft 365 / GDAP
+  'gdap.create':                      'GDAP Criado',
+  'gdap.renew':                       'GDAP Renovado',
+  'gdap.terminate':                   'GDAP Encerrado',
+  // Partner Center
+  'partner_center.subscription_create': 'PC Assinatura Criada',
+  'partner_center.quantity_update':     'PC Quantidade Atualizada',
+  // FinOps
+  'finops.scan':                      'Scan FinOps',
+  'finops.apply_recommendation':      'Recomendação Aplicada',
+  'finops.dismiss_recommendation':    'Recomendação Ignorada',
+  'finops.request_approval':          'Aprovação FinOps Solicitada',
+  'finops.rollback':                  'Rollback FinOps',
+  'finops.schedule_recommendation':   'Recomendação Agendada',
+  'finops.scan_schedule.upsert':      'Schedule de Scan Atualizado',
+  'finops.scan_schedule.delete':      'Schedule de Scan Excluído',
+  'finops.report_schedule.upsert':    'Schedule de Relatório Atualizado',
+  'finops.report_schedule.delete':    'Schedule de Relatório Excluído',
+  // Agendamentos
+  'schedule.create':                  'Agendamento Criado',
+  'schedule.update':                  'Agendamento Atualizado',
+  'schedule.delete':                  'Agendamento Excluído',
+  'schedule.run_now':                 'Agendamento Executado',
+  // Alertas
+  'alert.create':                     'Alerta Criado',
+  'alert.delete':                     'Alerta Excluído',
+  'approval.approved':                'Aprovação Concedida',
+  'approval.rejected':                'Aprovação Rejeitada',
+  // Templates & Políticas
+  'template.create':                  'Template Criado',
+  'template.delete':                  'Template Excluído',
+  'policy.create':                    'Política Criada',
+  'policy.delete':                    'Política Excluída',
+  // Credenciais & Contas
+  'account.create':                   'Conta Cloud Adicionada',
+  'account.delete':                   'Conta Cloud Removida',
+  'credential.add':                   'Credencial Adicionada',
+  'credential.remove':                'Credencial Removida',
+  // Organização & Membros
+  'org.create':                       'Organização Criada',
+  'org.delete':                       'Organização Excluída',
+  'org.plan.update':                  'Plano Atualizado',
+  'org.branding.update':              'Branding Atualizado',
+  'org.branding.reset':               'Branding Redefinido',
+  'org.managed.create':               'Org Parceira Adicionada',
+  'org.managed.remove':               'Org Parceira Removida',
+  'org.member.invite':                'Membro Convidado',
+  'org.member.invite_accepted':       'Convite Aceito',
+  'org.member.add':                   'Membro Adicionado',
+  'org.member.remove':                'Membro Removido',
+  'org.member.update':                'Membro Atualizado',
+  'workspace.create':                 'Workspace Criado',
+  'workspace.delete':                 'Workspace Excluído',
+  'workspace.member.add':             'Membro Adicionado ao Workspace',
+  // Billing
+  'billing.checkout':                 'Checkout Realizado',
+  'billing.paid':                     'Pagamento Confirmado',
+  'billing.downgrade':                'Plano Rebaixado',
+  // Autenticação
+  'auth.login':                       'Login',
+  'auth.register':                    'Cadastro',
+  'auth.email_verified':              'Email Verificado',
+  'auth.mfa_toggle':                  'MFA Alterado',
 };
+
+const ACTION_GROUPS = [
+  {
+    label: 'AWS',
+    keys: ['ec2.create','ec2.start','ec2.stop','ec2.delete','s3.create','s3.delete','rds.create','rds.delete','lambda.create','lambda.delete','vpc.create','vpc.delete','backup.create','backup.delete','backup.scan'],
+  },
+  {
+    label: 'Azure',
+    keys: ['azurevm.create','azurevm.start','azurevm.stop','vm.delete','storage.create','storage.delete','appservice.create','appservice.start','appservice.stop','appservice.delete','sql.create','sql.delete','vnet.create','vnet.delete','nsg.rule.create','nsg.rule.delete'],
+  },
+  {
+    label: 'GCP',
+    keys: ['gcp.compute.start','gcp.compute.stop','gcp.compute.delete','gcp.storage.create_bucket','gcp.storage.delete_bucket','gcp.sql.delete','gcp.functions.delete','gcp.network.create','gcp.network.delete'],
+  },
+  {
+    label: 'Microsoft 365 / GDAP',
+    keys: ['gdap.create','gdap.renew','gdap.terminate'],
+  },
+  {
+    label: 'Partner Center',
+    keys: ['partner_center.subscription_create','partner_center.quantity_update'],
+  },
+  {
+    label: 'FinOps',
+    keys: ['finops.scan','finops.apply_recommendation','finops.dismiss_recommendation','finops.request_approval','finops.rollback','finops.schedule_recommendation','finops.scan_schedule.upsert','finops.scan_schedule.delete','finops.report_schedule.upsert','finops.report_schedule.delete'],
+  },
+  {
+    label: 'Agendamentos',
+    keys: ['schedule.create','schedule.update','schedule.delete','schedule.run_now'],
+  },
+  {
+    label: 'Alertas & Aprovações',
+    keys: ['alert.create','alert.delete','approval.approved','approval.rejected'],
+  },
+  {
+    label: 'Templates & Políticas',
+    keys: ['template.create','template.delete','policy.create','policy.delete'],
+  },
+  {
+    label: 'Credenciais & Contas',
+    keys: ['account.create','account.delete','credential.add','credential.remove'],
+  },
+  {
+    label: 'Organização & Membros',
+    keys: ['org.create','org.delete','org.plan.update','org.branding.update','org.branding.reset','org.managed.create','org.managed.remove','org.member.invite','org.member.invite_accepted','org.member.add','org.member.remove','org.member.update','workspace.create','workspace.delete','workspace.member.add'],
+  },
+  {
+    label: 'Faturamento',
+    keys: ['billing.checkout','billing.paid','billing.downgrade'],
+  },
+  {
+    label: 'Autenticação',
+    keys: ['auth.login','auth.register','auth.email_verified','auth.mfa_toggle'],
+  },
+];
 
 const STATUS_COLORS = {
   success: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
@@ -31,10 +174,12 @@ const STATUS_COLORS = {
 };
 
 const PROVIDER_COLORS = {
-  aws:    'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-  azure:  'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-  gcp:    'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
-  system: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+  aws:            'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+  azure:          'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  gcp:            'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400',
+  m365:           'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-400',
+  partner_center: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+  system:         'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
 };
 
 function timeAgo(dateStr) {
@@ -128,8 +273,12 @@ const Logs = () => {
               onChange={e => handleFilter('action', e.target.value)}
             >
               <option value="">Todas</option>
-              {Object.entries(ACTION_LABELS).map(([val, label]) => (
-                <option key={val} value={val}>{label}</option>
+              {ACTION_GROUPS.map(group => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.keys.map(key => (
+                    <option key={key} value={key}>{ACTION_LABELS[key]}</option>
+                  ))}
+                </optgroup>
               ))}
             </select>
           </div>
@@ -144,6 +293,8 @@ const Logs = () => {
               <option value="aws">AWS</option>
               <option value="azure">Azure</option>
               <option value="gcp">GCP</option>
+              <option value="m365">Microsoft 365</option>
+              <option value="partner_center">Partner Center</option>
               <option value="system">Sistema</option>
             </select>
           </div>
