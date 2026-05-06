@@ -886,15 +886,114 @@ async def ws_get_azure_costs(
         error_msg = result.get('error', '')
         if '429' in error_msg:
             logger.warning("Azure Cost Management rate-limited, returning empty data")
-            # Cache empty result por 2 minutos para não sobrecarregar mais ainda
             empty = {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD",
                      "warning": "Dados de custo temporariamente indisponíveis (rate limit). Tente novamente em alguns minutos."}
             cache_set(cache_key, empty, ttl=120)
             return empty
+
+        # 403 = assinatura CSP sem Cost Management habilitado → fallback Partner Center
+        if '403' in error_msg or 'BillingAccountNotFound' in error_msg or 'IndirectCostDisabled' in error_msg:
+            logger.info("Cost Management retornou 403 (CSP) — tentando Partner Center como fallback")
+            csp_result = await _csp_cost_fallback(db, member, account_id, start_date, end_date)
+            if csp_result:
+                cache_set(cache_key, csp_result, ttl=900)
+                return csp_result
+
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo Azure'))
+
     # Cache por 15 minutos — dados de custo Azure atualizam 1x ao dia
     cache_set(cache_key, result, ttl=900)
     return result
+
+
+async def _csp_cost_fallback(db: Session, member: MemberContext, account_id, start_date: str, end_date: str) -> dict | None:
+    """
+    Busca custos via Partner Center API para assinaturas CSP.
+    Retorna None se Partner Center não estiver configurado ou falhar.
+    """
+    try:
+        from app.services.partner_center_service import decrypt_pc_credentials, get_partner_center_token
+        from app.services.csp_cost_service import CspCostService
+
+        pc_creds = decrypt_pc_credentials(db, member.workspace_id)
+        if not pc_creds:
+            logger.info("Partner Center não configurado — sem fallback CSP disponível")
+            return None
+
+        token = get_partner_center_token(
+            pc_creds["partner_tenant_id"],
+            pc_creds["client_id"],
+            pc_creds["client_secret"],
+            username=pc_creds.get("username"),
+            password=pc_creds.get("password"),
+        )
+
+        # Identificar customer_id via conta Azure ou Partner Center customers
+        customer_id = None
+        if account_id:
+            account = db.query(CloudAccount).filter(
+                CloudAccount.id == account_id,
+                CloudAccount.workspace_id == member.workspace_id,
+            ).first()
+            if account:
+                from app.services.auth_service import decrypt_for_account
+                cred_data = decrypt_for_account(db, account)
+                customer_id = cred_data.get("customer_id") or cred_data.get("subscription_id")
+        else:
+            account = db.query(CloudAccount).filter(
+                CloudAccount.workspace_id == member.workspace_id,
+                CloudAccount.provider == "azure",
+                CloudAccount.is_active == True,
+            ).order_by(CloudAccount.created_at.desc()).first()
+            if account:
+                from app.services.auth_service import decrypt_for_account
+                cred_data = decrypt_for_account(db, account)
+                customer_id = cred_data.get("customer_id") or cred_data.get("subscription_id")
+
+        if not customer_id:
+            logger.warning("customer_id não encontrado para fallback CSP")
+            return None
+
+        csp_svc = CspCostService(token, customer_id)
+        usage_records = await asyncio.to_thread(csp_svc.get_usage_records)
+        if not usage_records:
+            return None
+
+        costs = csp_svc.normalize_to_cost_format(usage_records)
+
+        # Aplicar markup se configurado na org
+        from app.models.db_models import Organization, Workspace
+        ws = db.query(Workspace).filter(Workspace.id == member.workspace_id).first()
+        if ws and ws.organization and getattr(ws.organization, 'cost_markup_pct', 0) > 0:
+            costs = CspCostService.apply_markup(costs, ws.organization.cost_markup_pct)
+
+        # Montar resposta no mesmo formato do Cost Management
+        total = sum(c['cost'] for c in costs)
+        service_map: dict = {}
+        daily_map: dict = {}
+        currency = costs[0]['currency'] if costs else 'USD'
+        for c in costs:
+            svc_name = c.get('meter_category') or 'Other'
+            service_map[svc_name] = service_map.get(svc_name, 0.0) + c['cost']
+            date = c.get('date', '')[:10]
+            if date:
+                daily_map[date] = daily_map.get(date, 0.0) + c['cost']
+
+        return {
+            'success': True,
+            'total': round(total, 4),
+            'currency': currency,
+            'by_service': sorted(
+                [{'name': k, 'amount': round(v, 4)} for k, v in service_map.items()],
+                key=lambda x: x['amount'], reverse=True,
+            ),
+            'daily': [{'date': k, 'total': round(v, 4)} for k, v in sorted(daily_map.items())],
+            'source': 'partner_center',
+            'warning': 'Dados via Partner Center (delay de 24-48h em relação ao consumo real)',
+        }
+    except Exception as exc:
+        logger.error("Falha no fallback CSP cost: %s", exc)
+        return None
 
 
 # ── Cost Drill-down ──────────────────────────────────────────────────────────
