@@ -33,6 +33,20 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/auth", tags=["Auth"])
 
 
+def _user_response(user, db: Session) -> "UserResponse":
+    """Build UserResponse with terms_accepted always populated."""
+    from app.models.db_models import TermsAcceptance
+    acceptance = (
+        db.query(TermsAcceptance)
+        .filter(TermsAcceptance.user_id == user.id, TermsAcceptance.version == settings.TERMS_VERSION)
+        .first()
+    )
+    data = UserResponse.model_validate(user)
+    data.terms_accepted = acceptance is not None
+    data.terms_version = settings.TERMS_VERSION
+    return data
+
+
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 class RefreshRequest(BaseModel):
@@ -170,7 +184,7 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
+        user=_user_response(user, db),
         needs_company_info=needs_info,
     )
 
@@ -214,6 +228,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     _ensure_personal_org(db, user)
     db.refresh(user)
 
+
     log_activity(db, user, 'auth.login', 'User', resource_id=str(user.id),
                  resource_name=user.email, provider='system')
 
@@ -226,7 +241,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
+        user=_user_response(user, db),
     )
 
 
@@ -247,7 +262,7 @@ def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get
     return TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh,
-        user=UserResponse.model_validate(user),
+        user=_user_response(user, db),
     )
 
 
@@ -262,17 +277,7 @@ def logout(payload: LogoutRequest, request: Request, db: Session = Depends(get_d
 @router.get("/me", response_model=UserResponse)
 def me(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     """Get current authenticated user"""
-    from app.models.db_models import TermsAcceptance
-    current_version = settings.TERMS_VERSION
-    acceptance = (
-        db.query(TermsAcceptance)
-        .filter(TermsAcceptance.user_id == current_user.id, TermsAcceptance.version == current_version)
-        .first()
-    )
-    data = UserResponse.model_validate(current_user)
-    data.terms_accepted = acceptance is not None
-    data.terms_version = current_version
-    return data
+    return _user_response(current_user, db)
 
 
 @router.get("/terms")
@@ -534,7 +539,7 @@ def verify_mfa(payload: MFAVerifyRequest, request: Request, db: Session = Depend
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
+        user=_user_response(user, db),
     )
 
 
@@ -890,7 +895,7 @@ def _oauth_login_or_register(
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
-        user=UserResponse.model_validate(user),
+        user=_user_response(user, db),
         needs_company_info=is_new_user,
     )
 
