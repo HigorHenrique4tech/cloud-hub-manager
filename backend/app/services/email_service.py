@@ -109,8 +109,23 @@ def _email_base(
         if subtitle else ""
     )
 
+    # Logo: only render when the org is actually white-labeled and provided one.
+    # The branding URL is relative (e.g. "/api/v1/orgs/<slug>/branding/logo-light"),
+    # so we prefix with FRONTEND_URL to give email clients an absolute URL.
+    logo_block = ""
+    b = branding or {}
+    if b.get("is_white_labeled") and b.get("logo_light_url"):
+        logo_url = b["logo_light_url"]
+        if logo_url.startswith("/"):
+            logo_url = f"{settings.FRONTEND_URL.rstrip('/')}{logo_url}"
+        logo_block = (
+            f'<img src="{logo_url}" alt="{platform}" height="36" '
+            f'style="display:block;max-height:36px;margin:0 0 12px;border:0;outline:none;'
+            f'text-decoration:none;background:transparent;">'
+        )
+
     powered = ""
-    if (branding or {}).get("powered_by", True):
+    if b.get("powered_by", True):
         powered = '<p style="margin:4px 0 0;font-size:10px;color:#CBD5E1;">Powered by CloudAtlas</p>'
 
     return f"""<!DOCTYPE html>
@@ -135,6 +150,7 @@ def _email_base(
         <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
           <tr>
             <td style="background:{color};padding:28px 32px;border-radius:16px 16px 0 0;">
+              {logo_block}
               <p style="margin:0;font-size:11px;color:rgba(255,255,255,0.65);letter-spacing:1px;
                         text-transform:uppercase;font-weight:600;">{platform}</p>
               <h1 style="margin:8px 0 0;font-size:22px;color:#ffffff;font-weight:700;
