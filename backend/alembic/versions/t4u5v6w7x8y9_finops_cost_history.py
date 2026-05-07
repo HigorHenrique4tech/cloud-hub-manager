@@ -9,6 +9,7 @@ historic monthly spend instead of the current MTD value.
 """
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import UUID
 
 
 revision = 't4u5v6w7x8y9'
@@ -20,8 +21,8 @@ depends_on = None
 def upgrade():
     op.create_table(
         'finops_cost_history',
-        sa.Column('id', sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column('workspace_id', sa.dialects.postgresql.UUID(as_uuid=True),
+        sa.Column('id', UUID(as_uuid=True), primary_key=True),
+        sa.Column('workspace_id', UUID(as_uuid=True),
                   sa.ForeignKey('workspaces.id', ondelete='CASCADE'),
                   nullable=False, index=True),
         sa.Column('provider', sa.String(20), nullable=False),
