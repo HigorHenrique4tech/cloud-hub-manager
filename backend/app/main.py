@@ -86,17 +86,15 @@ async def inject_user_for_limiter(request: Request, call_next):
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         try:
-            import jwt as pyjwt
+            from app.services.auth_service import decode_token_claims
             token = auth_header[7:]
-            payload = pyjwt.decode(
-                token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
-            )
-
-            class _MinimalUser:
-                def __init__(self, uid): self.id = uid
-            user_id = payload.get("sub") or payload.get("user_id")
-            if user_id:
-                request.state.user = _MinimalUser(int(user_id))
+            payload = decode_token_claims(token)
+            if payload:
+                class _MinimalUser:
+                    def __init__(self, uid): self.id = uid
+                user_id = payload.get("sub") or payload.get("user_id")
+                if user_id:
+                    request.state.user = _MinimalUser(int(user_id))
         except Exception:
             pass  # invalid/expired token — limiter falls back to IP
     response = await call_next(request)
@@ -113,10 +111,29 @@ async def inject_user_for_limiter(request: Request, call_next):
 # For JWT-based SPAs, browsers can't add custom headers in cross-origin requests
 # (form posts, image tags, etc.). Requiring X-Requested-With blocks CSRF attacks.
 _CSRF_SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-_CSRF_EXEMPT_PATHS = {"/health", "/", "/metrics"}
+_CSRF_EXEMPT_PATHS = {
+    "/health", "/", "/metrics",
+    # Public/unauthenticated auth endpoints — pre-token, can't carry custom headers
+    "/api/v1/auth/register",
+    "/api/v1/auth/login",
+    "/api/v1/auth/refresh",
+    "/api/v1/auth/logout",
+    "/api/v1/auth/forgot-password",
+    "/api/v1/auth/reset-password",
+    "/api/v1/auth/resend-verification",
+    "/api/v1/auth/google/callback",
+    "/api/v1/auth/github/callback",
+    "/api/v1/auth/microsoft/callback",
+    "/api/v1/auth/mfa/verify",
+    "/api/v1/auth/mfa/resend",
+    "/api/v1/auth/oauth/state",
+}
 _CSRF_EXEMPT_PREFIXES = (
-    "/api/v1/billing/webhook",   # payment provider callbacks
-    "/api/v1/auth/",             # auth endpoints (login, register, OAuth callbacks)
+    "/api/v1/billing/webhook",   # payment provider callbacks (HMAC-validated)
+    # Email verification / email-change confirm: tokenized public links
+    "/api/v1/auth/verify-email/",
+    "/api/v1/auth/email/confirm/",
+    "/api/v1/auth/invitations/",  # /invitations/{token}/accept
 )
 
 @app.middleware("http")
@@ -142,13 +159,16 @@ async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-    # CSP: restrict resource loading to same-origin; allow inline styles for Tailwind
+    response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
+    # CSP for API responses — strict policy since the backend only serves JSON.
+    # blob: removed (not needed for API), data: limited to images only.
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data: blob:; "
+        "img-src 'self' data:image/png data:image/jpeg data:image/gif data:image/webp data:image/svg+xml; "
         "font-src 'self'; "
         "connect-src 'self'; "
         "frame-ancestors 'none'; "
@@ -156,7 +176,7 @@ async def add_security_headers(request: Request, call_next):
         "form-action 'self'"
     )
     if not settings.DEBUG:
-        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains; preload"
     return response
 
 # ── CORS ─────────────────────────────────────────────────────────────────────
@@ -307,6 +327,15 @@ async def startup_event():
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Debug mode: {settings.DEBUG}")
     logger.info(f"AWS Region: {settings.AWS_DEFAULT_REGION}")
+
+    if not settings.DEBUG:
+        logger.warning(
+            "SECURITY: Running in production mode. "
+            "Ensure a reverse proxy (nginx/traefik/ALB) is configured to set "
+            "X-Forwarded-For and X-Real-IP. Without this, per-IP rate limiting "
+            "and audit log IPs will reflect the load balancer address instead of "
+            "the real client IP. Verify get_real_ip() returns expected client IPs."
+        )
     # In production, migrations run via entrypoint.sh BEFORE gunicorn starts.
     # In dev (uvicorn single-process), run them here.
     if settings.DEBUG:

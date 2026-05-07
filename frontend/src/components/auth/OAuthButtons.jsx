@@ -1,4 +1,5 @@
 import { GOOGLE_CLIENT_ID, GITHUB_CLIENT_ID, MICROSOFT_CLIENT_ID } from '../../config';
+import authService from '../../services/authService';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GITHUB_AUTH_URL = 'https://github.com/login/oauth/authorize';
@@ -31,8 +32,21 @@ export default function OAuthButtons({ redirectTarget }) {
     if (redirectTarget) sessionStorage.setItem('oauth_redirect', redirectTarget);
   };
 
-  const handleGoogle = () => {
+  const beginOAuth = async (provider) => {
     storeRedirect();
+    try {
+      const state = await authService.createOAuthState(provider);
+      sessionStorage.setItem(`oauth_state_${provider}`, state);
+      return state;
+    } catch (err) {
+      alert('Não foi possível iniciar o login com ' + provider + '. Tente novamente em alguns segundos.');
+      throw err;
+    }
+  };
+
+  const handleGoogle = async () => {
+    const state = await beginOAuth('google').catch(() => null);
+    if (!state) return;
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
       redirect_uri: `${window.location.origin}/auth/google/callback`,
@@ -40,27 +54,32 @@ export default function OAuthButtons({ redirectTarget }) {
       scope: 'email profile',
       access_type: 'offline',
       prompt: 'select_account',
+      state,
     });
     window.location.href = `${GOOGLE_AUTH_URL}?${params}`;
   };
 
-  const handleGitHub = () => {
-    storeRedirect();
+  const handleGitHub = async () => {
+    const state = await beginOAuth('github').catch(() => null);
+    if (!state) return;
     const params = new URLSearchParams({
       client_id: GITHUB_CLIENT_ID,
       scope: 'user:email',
+      state,
     });
     window.location.href = `${GITHUB_AUTH_URL}?${params}`;
   };
 
-  const handleMicrosoft = () => {
-    storeRedirect();
+  const handleMicrosoft = async () => {
+    const state = await beginOAuth('microsoft').catch(() => null);
+    if (!state) return;
     const params = new URLSearchParams({
       client_id: MICROSOFT_CLIENT_ID,
       redirect_uri: `${window.location.origin}/auth/microsoft/callback`,
       response_type: 'code',
       scope: 'openid profile email User.Read',
       response_mode: 'query',
+      state,
     });
     window.location.href = `${MICROSOFT_AUTH_URL}?${params}`;
   };

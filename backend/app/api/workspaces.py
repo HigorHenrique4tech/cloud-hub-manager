@@ -1,5 +1,5 @@
 import re
-from fastapi import APIRouter, HTTPException, Depends, Path
+from fastapi import APIRouter, HTTPException, Depends, Path, Request
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -228,11 +228,12 @@ async def update_workspace(
 
 @router.delete("/{workspace_id}", status_code=204)
 async def delete_workspace(
+    request: Request,
     workspace_id: str = Path(...),
     member: MemberContext = Depends(require_org_permission("workspace.delete")),
     db: Session = Depends(get_db),
 ):
-    """Delete workspace (admin+ required). Cascades to cloud accounts, alerts."""
+    """Delete workspace (admin+ required). Requires X-Confirm-Name header with the workspace name."""
     ws = db.query(Workspace).filter(
         Workspace.id == workspace_id,
         Workspace.organization_id == member.organization_id,
@@ -240,6 +241,13 @@ async def delete_workspace(
     ).first()
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace não encontrado")
+
+    confirm = request.headers.get("X-Confirm-Name", "")
+    if confirm != ws.name:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Confirmação inválida. Envie o header 'X-Confirm-Name: {ws.name}' para confirmar a exclusão.",
+        )
 
     ws_name = ws.name
 
@@ -425,6 +433,12 @@ async def update_workspace_member_role(
     ).first()
     org_role = org_member.role if org_member else "viewer"
 
+    log_activity(
+        db, member.user, "workspace.member.role_update", "WorkspaceMember",
+        resource_id=str(ws.id),
+        resource_name=f"user:{user_id} role:{payload.role_override or 'inherit'}",
+    )
+
     return {
         "user_id": user_id,
         "role_override": payload.role_override,
@@ -450,5 +464,9 @@ async def remove_workspace_member(
     if ws_member:
         db.delete(ws_member)
         db.commit()
+        log_activity(
+            db, member.user, "workspace.member.remove", "WorkspaceMember",
+            resource_id=str(ws.id), resource_name=f"user:{user_id}",
+        )
 
     return None

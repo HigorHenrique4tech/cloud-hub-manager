@@ -2,7 +2,7 @@ import re
 import secrets
 from math import ceil
 from datetime import datetime, timedelta
-from fastapi import APIRouter, HTTPException, Depends, Path, Query
+from fastapi import APIRouter, HTTPException, Depends, Path, Query, Request
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func as sa_func, desc
 from pydantic import BaseModel
@@ -223,11 +223,18 @@ async def update_org(
 
 @router.delete("/{org_slug}", status_code=204)
 async def delete_org(
+    request: Request,
     member: MemberContext = Depends(require_org_permission("org.delete")),
     db: Session = Depends(get_db),
 ):
-    """Delete organization (owner only)."""
+    """Delete organization (owner only). Requires X-Confirm-Name header with the org name."""
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    confirm = request.headers.get("X-Confirm-Name", "")
+    if confirm != org.name:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Confirmação inválida. Envie o header 'X-Confirm-Name: {org.name}' para confirmar a exclusão.",
+        )
     log_activity(db, member.user, "org.delete", "Organization",
                  resource_id=str(org.id), resource_name=org.name)
     db.delete(org)  # CASCADE deletes members, workspaces, cloud_accounts
@@ -244,10 +251,20 @@ async def update_plan(
     member: MemberContext = Depends(require_org_permission("org.settings.edit")),
     db: Session = Depends(get_db),
 ):
-    """Update the organization's plan tier (owner/admin only)."""
+    """Self-service plan change. Restricted to downgrades to 'free' — paid tiers
+    must go through /billing/checkout (AbacatePay). Platform admins can switch to
+    any tier via /admin endpoints."""
     valid_tiers = {"free", "basic", "standard", "enterprise", "enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"}
     if payload.plan_tier not in valid_tiers:
         raise HTTPException(status_code=400, detail=f"Plano inválido. Opções: {', '.join(sorted(valid_tiers))}")
+
+    # Self-service can only downgrade to 'free' (cancel paid plan).
+    # Upgrades to paid tiers must go through the billing/checkout flow.
+    if payload.plan_tier != "free":
+        raise HTTPException(
+            status_code=403,
+            detail="Mudança para planos pagos requer checkout em /billing. Para fazer upgrade, acesse a página de cobrança.",
+        )
 
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     org.plan_tier = payload.plan_tier

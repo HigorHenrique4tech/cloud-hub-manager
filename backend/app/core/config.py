@@ -114,6 +114,11 @@ class Settings(BaseSettings):
                     "SECRET_KEY está com o valor padrão inseguro. "
                     "Gere uma chave com: openssl rand -hex 32"
                 )
+            elif len(self.SECRET_KEY) < 32:
+                errors.append(
+                    f"SECRET_KEY muito curta ({len(self.SECRET_KEY)} chars). "
+                    "Mínimo 32 caracteres. Gere com: openssl rand -hex 32"
+                )
             if not self.ENCRYPTION_KEY:
                 errors.append(
                     "ENCRYPTION_KEY está vazia. Gere uma com: "

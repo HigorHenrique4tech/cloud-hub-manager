@@ -81,6 +81,33 @@ class AzureResourceGroupListResponse(BaseModel):
 
 # ── Auth & User schemas ──────────────────────────────────────────────────────
 
+def _validate_phone(v: str) -> str:
+    import re
+    digits = re.sub(r'\D', '', v)
+    if not (8 <= len(digits) <= 15):
+        raise ValueError('Telefone inválido: deve conter entre 8 e 15 dígitos')
+    return v
+
+
+def _validate_cnpj(v: str) -> str:
+    import re
+    digits = re.sub(r'\D', '', v)
+    if len(digits) != 14:
+        raise ValueError('CNPJ inválido: deve conter 14 dígitos')
+    if len(set(digits)) == 1:
+        raise ValueError('CNPJ inválido')
+    # Validar dígitos verificadores (algoritmo módulo 11)
+    def _calc(d, weights):
+        total = sum(int(d[i]) * w for i, w in enumerate(weights))
+        remainder = total % 11
+        return 0 if remainder < 2 else 11 - remainder
+    w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    w2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    if _calc(digits, w1) != int(digits[12]) or _calc(digits, w2) != int(digits[13]):
+        raise ValueError('CNPJ inválido: dígitos verificadores incorretos')
+    return v
+
+
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
@@ -88,6 +115,20 @@ class UserCreate(BaseModel):
     phone: Optional[str] = None
     company_name: Optional[str] = None
     cnpj: Optional[str] = None
+
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        if v is None:
+            return v
+        return _validate_phone(v)
+
+    @field_validator('cnpj')
+    @classmethod
+    def validate_cnpj(cls, v: str) -> str:
+        if v is None:
+            return v
+        return _validate_cnpj(v)
 
     @field_validator('password')
     @classmethod

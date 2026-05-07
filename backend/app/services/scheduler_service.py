@@ -1159,8 +1159,48 @@ def load_report_schedules(db) -> int:
     except Exception as exc:
         logger.error(f"Failed to register support_sla_scan job: {exc}")
 
+    # Register LGPD IP anonymization job — runs daily at 02:00 UTC
+    try:
+        scheduler.add_job(
+            _anonymize_old_terms_ips,
+            CronTrigger(hour=2, minute=0),
+            id="lgpd_ip_anonymize_daily",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("LGPD IP anonymization job registered (daily 02:00 UTC)")
+    except Exception as exc:
+        logger.error(f"Failed to register lgpd_ip_anonymize_daily job: {exc}")
+
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count
+
+
+def _anonymize_old_terms_ips(retention_days: int = 365) -> None:
+    """Nullify ip_address on terms_acceptances older than retention_days (LGPD compliance)."""
+    from app.database import SessionLocal
+    from app.models.db_models import TermsAcceptance
+
+    db = SessionLocal()
+    try:
+        cutoff = datetime.utcnow() - timedelta(days=retention_days)
+        updated = (
+            db.query(TermsAcceptance)
+            .filter(
+                TermsAcceptance.accepted_at < cutoff,
+                TermsAcceptance.ip_address.isnot(None),
+            )
+            .update({"ip_address": None}, synchronize_session=False)
+        )
+        if updated:
+            db.commit()
+            logger.info(f"LGPD: anonymized ip_address on {updated} terms_acceptances rows")
+    except Exception as exc:
+        logger.error(f"LGPD IP anonymization failed: {exc}")
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _run_sla_scan() -> None:

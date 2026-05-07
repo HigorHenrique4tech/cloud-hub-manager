@@ -87,6 +87,7 @@ def create_access_token(subject: str) -> str:
         "iat": now,
         "exp": expire,
         "jti": uuid.uuid4().hex,
+        "type": "access",
     }
     return pyjwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
@@ -102,10 +103,16 @@ def decode_token_claims(token: str) -> Optional[dict]:
 
     Checks the Redis revocation list — a token whose `jti` is revoked is
     treated as invalid. Fails open if Redis is down (best-effort defense).
+    Rejects tokens whose `type` claim is set and not 'access' (e.g., MFA-stage
+    tokens). Tokens minted before the type claim was added are accepted for
+    backward compat — they expire within ACCESS_TOKEN_EXPIRE_MINUTES.
     """
     try:
         payload = pyjwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
     except PyJWTError:
+        return None
+    token_type = payload.get("type")
+    if token_type is not None and token_type != "access":
         return None
     jti = payload.get("jti")
     if jti:
@@ -275,7 +282,7 @@ def decode_mfa_token(token: str) -> Optional[str]:
 
 # ── Refresh tokens ───────────────────────────────────────────────────────────
 
-REFRESH_TOKEN_EXPIRE_DAYS = 7
+REFRESH_TOKEN_EXPIRE_DAYS = 3
 
 
 def _hash_token(token: str) -> str:

@@ -112,18 +112,23 @@ const authService = {
   },
 
   // OAuth
-  googleCallback: async (code, redirectUri) => {
-    const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri });
+  createOAuthState: async (provider) => {
+    const { data } = await api.post('/auth/oauth/state', { provider });
+    return data.state;
+  },
+
+  googleCallback: async (code, redirectUri, state) => {
+    const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri, state });
     return data;
   },
 
-  githubCallback: async (code) => {
-    const { data } = await api.post('/auth/github/callback', { code });
+  githubCallback: async (code, state) => {
+    const { data } = await api.post('/auth/github/callback', { code, state });
     return data;
   },
 
-  microsoftCallback: async (code, redirectUri) => {
-    const { data } = await api.post('/auth/microsoft/callback', { code, redirect_uri: redirectUri });
+  microsoftCallback: async (code, redirectUri, state) => {
+    const { data } = await api.post('/auth/microsoft/callback', { code, redirect_uri: redirectUri, state });
     return data;
   },
 };

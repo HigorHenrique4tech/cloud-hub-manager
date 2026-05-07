@@ -3,10 +3,11 @@ import re as _re
 import secrets
 import time
 from datetime import datetime, timedelta
+from typing import Optional
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 
 from app.database import get_db
 from app.models.db_models import (
@@ -195,6 +196,10 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
 @limiter.limit("5/minute")
 def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     """Login with email and password. Returns TokenResponse or MFARequiredResponse."""
+    from app.core.redis_client import (
+        is_login_locked, record_login_failure, clear_login_failures,
+    )
+
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
 
     if not user:
@@ -203,11 +208,29 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
             detail="Email ou senha incorretos",
         )
 
+    # Per-user lockout (in addition to per-IP rate limit) to mitigate
+    # distributed brute-force.
+    if is_login_locked(str(user.id)):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Conta temporariamente bloqueada por excesso de tentativas. Tente novamente em alguns minutos.",
+        )
+
     valid, new_hash = verify_and_rehash(payload.password, user.hashed_password)
     if not valid:
+        record_login_failure(str(user.id))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Email ou senha incorretos",
+        )
+    clear_login_failures(str(user.id))
+
+    # Block login until email is verified, except for OAuth-onboarded users
+    # whose provider already validated the address.
+    if not user.is_verified and not user.oauth_provider:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Email não verificado. Verifique sua caixa de entrada ou solicite o reenvio do link.",
         )
     # Transparently upgrade legacy bcrypt hashes to bcrypt_sha256
     if new_hash:
@@ -496,6 +519,22 @@ class CompanyInfoPayload(BaseModel):
     company_name: str | None = None
     cnpj: str | None = None
 
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v):
+        if v is None:
+            return v
+        from app.models.schemas import _validate_phone
+        return _validate_phone(v)
+
+    @field_validator('cnpj')
+    @classmethod
+    def validate_cnpj(cls, v):
+        if v is None:
+            return v
+        from app.models.schemas import _validate_cnpj
+        return _validate_cnpj(v)
+
 
 @router.put("/me/company-info", response_model=UserResponse)
 def update_company_info(
@@ -781,15 +820,14 @@ def verify_email(token: str, db: Session = Depends(get_db)):
 @limiter.limit("3/minute")
 def resend_verification(payload: ResendVerificationRequest, request: Request, db: Session = Depends(get_db)):
     """Resend the verification email."""
+    _GENERIC_RESEND = {"detail": "Se o email estiver cadastrado e não verificado, enviaremos o link de verificação"}
     user = db.query(User).filter(User.email == payload.email, User.is_active == True).first()
-    if not user:
-        # Don't reveal if email exists
-        return {"detail": "Se o email estiver cadastrado, enviaremos o link de verificação"}
-    if user.is_verified:
-        return {"detail": "Email já verificado"}
+    if not user or user.is_verified:
+        # Unified response — don't reveal if email exists or is already verified
+        return _GENERIC_RESEND
 
     if not check_email_cooldown(user.email, "verification"):
-        return {"detail": "Se o email estiver cadastrado, enviaremos o link de verificação"}
+        return _GENERIC_RESEND
 
     # Generate new token
     new_token = secrets.token_urlsafe(32)
@@ -798,7 +836,7 @@ def resend_verification(payload: ResendVerificationRequest, request: Request, db
     db.commit()
 
     send_verification_email(user.email, user.name, new_token)
-    return {"detail": "Se o email estiver cadastrado, enviaremos o link de verificação"}
+    return _GENERIC_RESEND
 
 
 # ── Password reset ────────────────────────────────────────────────────────────
@@ -825,7 +863,11 @@ def forgot_password(request: Request, payload: ForgotPasswordRequest, db: Sessio
         user.password_reset_token = token
         user.password_reset_expires_at = datetime.utcnow() + timedelta(hours=1)
         db.commit()
-        send_password_reset_email(user.email, user.name, token)
+        try:
+            send_password_reset_email(user.email, user.name, token)
+        except Exception as exc:
+            # Log the error WITHOUT the token to prevent credential leakage in logs
+            logger.error("Failed to send password reset email to %s: %s", user.email, type(exc).__name__)
 
     return {"detail": "Se o email estiver cadastrado, você receberá as instruções em breve."}
 
@@ -959,6 +1001,16 @@ def accept_invitation(
 class OAuthCallback(BaseModel):
     code: str
     redirect_uri: str = ""
+    state: Optional[str] = None
+
+
+def _verify_oauth_state(provider: str, state: Optional[str]) -> None:
+    """Validate the OAuth state token (anti-CSRF). Raises 400 on failure."""
+    from app.core.redis_client import consume_oauth_state
+    if not state:
+        raise HTTPException(status_code=400, detail="OAuth state ausente. Reinicie o login.")
+    if not consume_oauth_state(state, provider):
+        raise HTTPException(status_code=400, detail="OAuth state inválido ou expirado. Reinicie o login.")
 
 
 def _oauth_login_or_register(
@@ -1075,6 +1127,29 @@ def _oauth_login_or_register(
     )
 
 
+@router.post("/oauth/state")
+@limiter.limit("20/minute")
+async def create_oauth_state(
+    request: Request,
+):
+    """Generate a single-use OAuth state token (anti-CSRF). The frontend must
+    pass this in the OAuth provider URL (`?state=<token>`) and back to the
+    callback endpoint, where it is consumed exactly once."""
+    from app.core.redis_client import store_oauth_state
+    body = {}
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    provider = (body or {}).get("provider", "")
+    if provider not in ("google", "github", "microsoft"):
+        raise HTTPException(status_code=400, detail="Provider inválido")
+    state = secrets.token_urlsafe(32)
+    if not store_oauth_state(state, provider, ttl_seconds=600):
+        raise HTTPException(status_code=503, detail="Não foi possível gerar state OAuth (Redis indisponível). Tente novamente.")
+    return {"state": state}
+
+
 @router.post("/google/callback", response_model=TokenResponse)
 @limiter.limit("5/minute")
 async def google_callback(
@@ -1083,6 +1158,7 @@ async def google_callback(
     db: Session = Depends(get_db),
 ):
     """Login or register via Google OAuth2."""
+    _verify_oauth_state("google", payload.state)
     try:
         info = await google_get_user_info(payload.code, payload.redirect_uri)
     except Exception as exc:
@@ -1108,6 +1184,7 @@ async def github_callback(
     db: Session = Depends(get_db),
 ):
     """Login or register via GitHub OAuth2."""
+    _verify_oauth_state("github", payload.state)
     try:
         info = await github_get_user_info(payload.code)
     except Exception as exc:
@@ -1133,6 +1210,7 @@ async def microsoft_callback(
     db: Session = Depends(get_db),
 ):
     """Login or register via Microsoft OAuth2."""
+    _verify_oauth_state("microsoft", payload.state)
     try:
         redirect_uri = payload.redirect_uri or f"{settings.FRONTEND_URL}/auth/microsoft/callback"
         info = await microsoft_get_user_info(payload.code, redirect_uri)

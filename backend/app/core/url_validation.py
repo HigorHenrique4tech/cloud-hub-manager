@@ -72,3 +72,16 @@ def validate_webhook_url(url: str) -> str:
                 )
 
     return url
+
+
+def safe_request(method: str, url: str, **kwargs):
+    """Validate URL right before issuing the HTTP request to mitigate DNS
+    rebinding (TOCTOU between create-time validation and delivery-time DNS
+    resolution). Uses `requests` since most callers do.
+
+    All callers that previously did `requests.post(user_url, ...)` should
+    use this helper instead.
+    """
+    import requests as _requests
+    validate_webhook_url(url)
+    return _requests.request(method, url, **kwargs)

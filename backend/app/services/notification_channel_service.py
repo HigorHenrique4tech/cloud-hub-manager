@@ -172,7 +172,8 @@ def _telegram_text(event_type: str, payload: dict) -> str:
 
 def _deliver_teams(url: str, event_type: str, payload: dict) -> tuple[bool, str | None]:
     try:
-        resp = requests.post(url, json=_teams_payload(event_type, payload), timeout=10)
+        from app.core.url_validation import safe_request
+        resp = safe_request("POST", url, json=_teams_payload(event_type, payload), timeout=10)
         if resp.status_code < 300:
             return True, None
         return False, f"HTTP {resp.status_code}: {resp.text[:200]}"

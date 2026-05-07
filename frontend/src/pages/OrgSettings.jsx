@@ -139,7 +139,7 @@ const OrgSettings = () => {
   });
 
   const deleteOrgMutation = useMutation({
-    mutationFn: () => orgService.deleteOrg(slug),
+    mutationFn: () => orgService.deleteOrg(slug, currentOrg?.name),
     onSuccess: () => { refreshOrgs(); window.location.reload(); },
   });
 

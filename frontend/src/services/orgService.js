@@ -6,7 +6,9 @@ export const orgService = {
   createOrg: async (name, slug) => (await api.post('/orgs', { name, slug })).data,
   getOrg: async (slug) => (await api.get(`/orgs/${slug}`)).data,
   updateOrg: async (slug, data) => (await api.put(`/orgs/${slug}`, data)).data,
-  deleteOrg: async (slug) => (await api.delete(`/orgs/${slug}`)).data,
+  deleteOrg: async (slug, orgName) => (await api.delete(`/orgs/${slug}`, {
+    headers: { 'X-Confirm-Name': orgName },
+  })).data,
   updatePlan: async (slug, plan_tier) =>
     (await api.put(`/orgs/${slug}/plan`, { plan_tier })).data,
 
@@ -36,8 +38,10 @@ export const orgService = {
     (await api.get(`/orgs/${slug}/workspaces/${wsId}`)).data,
   updateWorkspace: async (slug, wsId, data) =>
     (await api.put(`/orgs/${slug}/workspaces/${wsId}`, data)).data,
-  deleteWorkspace: async (slug, wsId) =>
-    (await api.delete(`/orgs/${slug}/workspaces/${wsId}`)).data,
+  deleteWorkspace: async (slug, wsId, wsName) =>
+    (await api.delete(`/orgs/${slug}/workspaces/${wsId}`, {
+      headers: { 'X-Confirm-Name': wsName },
+    })).data,
 
   // ── Workspace Members ────────────────────────────────────────────────────
   listWorkspaceMembers: async (slug, wsId) =>

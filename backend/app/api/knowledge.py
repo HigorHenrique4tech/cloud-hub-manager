@@ -338,6 +338,15 @@ def confirm_video_upload(
     if not article:
         raise HTTPException(status_code=404, detail="Artigo não encontrado")
 
+    # Block clients from registering arbitrary s3_keys — must match the
+    # namespace produced by build_key for this article.
+    expected_prefix = f"kb/articles/{article_id}/"
+    if not payload.s3_key.startswith(expected_prefix):
+        raise HTTPException(
+            status_code=400,
+            detail="s3_key fora do namespace do artigo. Use a chave retornada pelo endpoint /presign.",
+        )
+
     video = KBArticleVideo(
         article_id=article_id,
         title=payload.title,

@@ -101,6 +101,10 @@ def _deliver(db, ep, event_type: str, payload_dict: dict, delivery=None) -> None
     delivery.attempt_count += 1
 
     try:
+        # Re-validate URL right before delivery to mitigate DNS rebinding
+        # (attacker could swap A record between create-time validation and now).
+        from app.core.url_validation import validate_webhook_url
+        validate_webhook_url(ep.url)
         resp = httpx.post(
             ep.url,
             content=body_bytes,

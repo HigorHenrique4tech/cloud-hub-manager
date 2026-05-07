@@ -318,7 +318,7 @@ const WorkspaceSettings = () => {
   const [showDeleteWs, setShowDeleteWs]       = useState(false);
 
   const deleteWsMutation = useMutation({
-    mutationFn: () => orgService.deleteWorkspace(slug, wsId),
+    mutationFn: () => orgService.deleteWorkspace(slug, wsId, currentWorkspace?.name),
     onSuccess: () => { refreshWorkspaces(); navigate('/'); },
   });
 

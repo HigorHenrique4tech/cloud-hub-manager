@@ -15,10 +15,18 @@ export default function OAuthCallback({ provider }) {
     calledRef.current = true;
 
     const code = searchParams.get('code');
+    const stateFromUrl = searchParams.get('state');
+    const stateStored = sessionStorage.getItem(`oauth_state_${provider}`);
     if (!code) {
       setError('Código de autorização não encontrado.');
       return;
     }
+    if (!stateFromUrl || !stateStored || stateFromUrl !== stateStored) {
+      setError('Sessão OAuth inválida ou expirada. Reinicie o login.');
+      sessionStorage.removeItem(`oauth_state_${provider}`);
+      return;
+    }
+    sessionStorage.removeItem(`oauth_state_${provider}`);
 
     let cancelled = false;
 
@@ -27,12 +35,12 @@ export default function OAuthCallback({ provider }) {
         let data;
         if (provider === 'google') {
           const redirectUri = `${window.location.origin}/auth/google/callback`;
-          data = await authService.googleCallback(code, redirectUri);
+          data = await authService.googleCallback(code, redirectUri, stateFromUrl);
         } else if (provider === 'microsoft') {
           const redirectUri = `${window.location.origin}/auth/microsoft/callback`;
-          data = await authService.microsoftCallback(code, redirectUri);
+          data = await authService.microsoftCallback(code, redirectUri, stateFromUrl);
         } else {
-          data = await authService.githubCallback(code);
+          data = await authService.githubCallback(code, stateFromUrl);
         }
         if (cancelled) return;
         loginWithTokens(data);

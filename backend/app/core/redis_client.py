@@ -84,3 +84,85 @@ def is_jti_revoked(jti: str) -> bool:
     except Exception as exc:
         logger.warning("redis is_jti_revoked failed: %s", exc)
         return False
+
+
+# ── Login attempt lockout ────────────────────────────────────────────────────
+
+_LOGIN_FAILS_PREFIX = "auth:fails:"
+_LOGIN_LOCKED_PREFIX = "auth:locked:"
+
+
+def is_login_locked(user_id: str) -> bool:
+    """Return True if this user is currently in cool-down after too many fails."""
+    if not user_id or not _client:
+        return False
+    try:
+        return _client.exists(f"{_LOGIN_LOCKED_PREFIX}{user_id}") > 0
+    except Exception as exc:
+        logger.warning("redis is_login_locked failed: %s", exc)
+        return False
+
+
+def record_login_failure(user_id: str, max_attempts: int = 10, window_seconds: int = 900,
+                          lock_seconds: int = 900) -> int:
+    """Increment fail counter; lock the user if max_attempts reached. Returns count."""
+    if not user_id or not _client:
+        return 0
+    try:
+        key = f"{_LOGIN_FAILS_PREFIX}{user_id}"
+        count = _client.incr(key)
+        if count == 1:
+            _client.expire(key, window_seconds)
+        if count >= max_attempts:
+            _client.setex(f"{_LOGIN_LOCKED_PREFIX}{user_id}", lock_seconds, "1")
+            _client.delete(key)
+        return int(count)
+    except Exception as exc:
+        logger.warning("redis record_login_failure failed: %s", exc)
+        return 0
+
+
+def clear_login_failures(user_id: str) -> None:
+    """Reset fail counter (called on successful login)."""
+    if not user_id or not _client:
+        return
+    try:
+        _client.delete(f"{_LOGIN_FAILS_PREFIX}{user_id}")
+        _client.delete(f"{_LOGIN_LOCKED_PREFIX}{user_id}")
+    except Exception as exc:
+        logger.warning("redis clear_login_failures failed: %s", exc)
+
+
+# ── OAuth state (CSRF anti-forgery) ──────────────────────────────────────────
+
+_OAUTH_STATE_PREFIX = "oauth_state:"
+
+
+def store_oauth_state(state: str, provider: str, ttl_seconds: int = 600) -> bool:
+    """Store an OAuth state token bound to a provider. TTL default 10min."""
+    if not state or not _client:
+        return False
+    try:
+        _client.setex(f"{_OAUTH_STATE_PREFIX}{state}", ttl_seconds, provider)
+        return True
+    except Exception as exc:
+        logger.warning("redis store_oauth_state failed: %s", exc)
+        return False
+
+
+def consume_oauth_state(state: str, provider: str) -> bool:
+    """Atomically validate + delete an OAuth state. One-time use."""
+    if not state or not _client:
+        # Fail-closed: if Redis is down, OAuth state can't be validated.
+        # Conservative choice for a security-critical check.
+        return False
+    try:
+        key = f"{_OAUTH_STATE_PREFIX}{state}"
+        stored = _client.get(key)
+        if stored != provider:
+            return False
+        _client.delete(key)
+        return True
+    except Exception as exc:
+        logger.warning("redis consume_oauth_state failed: %s", exc)
+        return False
