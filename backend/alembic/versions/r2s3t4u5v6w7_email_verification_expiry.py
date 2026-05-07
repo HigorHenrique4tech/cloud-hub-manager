@@ -1,13 +1,13 @@
 """verification_token_expires_at on users
 
-Revision ID: o5p6q7r8s9t0
+Revision ID: r2s3t4u5v6w7
 Revises: n5o6p7q8r9s0
 Create Date: 2026-05-07
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = 'o5p6q7r8s9t0'
+revision = 'r2s3t4u5v6w7'
 down_revision = 'n5o6p7q8r9s0'
 branch_labels = None
 depends_on = None

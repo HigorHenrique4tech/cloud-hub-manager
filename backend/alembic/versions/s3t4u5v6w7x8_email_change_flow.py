@@ -1,14 +1,14 @@
-"""email change flow (pending_email + tokens)
+"""email change flow fields on users (pending_email, email_change_token, email_change_expires_at)
 
-Revision ID: p6q7r8s9t0u1
-Revises: o5p6q7r8s9t0
+Revision ID: s3t4u5v6w7x8
+Revises: r2s3t4u5v6w7
 Create Date: 2026-05-07
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = 'p6q7r8s9t0u1'
-down_revision = 'o5p6q7r8s9t0'
+revision = 's3t4u5v6w7x8'
+down_revision = 'r2s3t4u5v6w7'
 branch_labels = None
 depends_on = None
 
@@ -16,8 +16,8 @@ depends_on = None
 def upgrade():
     op.add_column('users', sa.Column('pending_email', sa.String(255), nullable=True))
     op.add_column('users', sa.Column('email_change_token', sa.String(64), nullable=True))
-    op.add_column('users', sa.Column('email_change_expires_at', sa.DateTime, nullable=True))
-    op.create_index('ix_users_email_change_token', 'users', ['email_change_token'])
+    op.add_column('users', sa.Column('email_change_expires_at', sa.DateTime(timezone=True), nullable=True))
+    op.create_index('ix_users_email_change_token', 'users', ['email_change_token'], unique=False)
 
 
 def downgrade():
