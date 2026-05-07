@@ -1357,9 +1357,9 @@ def send_test_branding_email(to_email: str, user_name: str, branding: dict = Non
     name = _brand_name(branding)
 
     color_swatch = (
-        f'<span style="display:inline-block;width:14px;height:14px;background:{c};'
-        f'border-radius:4px;vertical-align:middle;margin-right:4px;"></span>'
-        f'<code style="font-size:11px;">{c}</code>'
+        '<span style="display:inline-block;width:14px;height:14px;background:{c};'
+        'border-radius:4px;vertical-align:middle;margin-right:4px;"></span>'
+        '<code style="font-size:11px;">{c}</code>'
     )
 
     body = f"""
