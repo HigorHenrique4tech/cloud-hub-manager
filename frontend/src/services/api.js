@@ -89,6 +89,21 @@ api.interceptors.response.use(
       }
     }
 
+    // Normalize FastAPI/Pydantic 422 errors: `detail` can be an array of
+    // {loc, msg, type}. Many components render `detail` directly as text,
+    // which crashes when it's an array of objects.
+    if (error.response?.data && Array.isArray(error.response.data.detail)) {
+      const items = error.response.data.detail;
+      const msg = items
+        .map((it) => {
+          const field = Array.isArray(it.loc) ? it.loc.slice(-1)[0] : '';
+          return field ? `${field}: ${it.msg}` : it.msg;
+        })
+        .filter(Boolean)
+        .join('; ');
+      error.response.data.detail = msg || 'Dados inválidos';
+    }
+
     // Org suspended/deleted — notify context to refresh org list
     if (error.response?.status === 404 && error.response?.data?.detail === 'Organização não encontrada') {
       window.dispatchEvent(new Event('org-suspended'));
