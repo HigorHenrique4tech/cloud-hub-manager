@@ -1067,16 +1067,19 @@ def load_report_schedules(db) -> int:
     except Exception as exc:
         logger.error(f"Failed to register policy_engine job: {exc}")
 
-    # Register Monthly Executive Reports job (1st of each month at 08:00 UTC)
+    # Register Executive Reports job (daily at 08:00 UTC — picks settings whose
+    # send_day matches today, since each workspace can choose its own send day).
     try:
         from app.services.report_service import monthly_reports_job
         scheduler.add_job(
             monthly_reports_job,
-            CronTrigger(day=1, hour=8, minute=0),
+            CronTrigger(hour=8, minute=0),
             id="executive_reports_monthly",
             replace_existing=True,
+            max_instances=1,
+            coalesce=True,
         )
-        logger.info("Monthly executive reports job registered")
+        logger.info("Executive reports job registered (daily 08:00 UTC, filtered by send_day)")
     except Exception as exc:
         logger.error(f"Failed to register executive_reports_monthly job: {exc}")
 
@@ -1159,6 +1162,20 @@ def load_report_schedules(db) -> int:
     except Exception as exc:
         logger.error(f"Failed to register support_sla_scan job: {exc}")
 
+    # Register monthly cost-history consolidation (day 1, 03:30 UTC)
+    try:
+        scheduler.add_job(
+            _consolidate_previous_month_costs,
+            CronTrigger(day=1, hour=3, minute=30),
+            id="cost_history_monthly",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        logger.info("Monthly cost-history job registered (day 1, 03:30 UTC)")
+    except Exception as exc:
+        logger.error(f"Failed to register cost_history_monthly job: {exc}")
+
     # Register LGPD IP anonymization job — runs daily at 02:00 UTC
     try:
         scheduler.add_job(
@@ -1175,6 +1192,40 @@ def load_report_schedules(db) -> int:
 
     logger.info(f"Loaded {count} report schedules into APScheduler")
     return count
+
+
+def _consolidate_previous_month_costs() -> None:
+    """Consolidate the previous month's cloud spend for every workspace and
+    store one row per (workspace, provider) in finops_cost_history."""
+    from app.database import SessionLocal
+    from app.models.db_models import Workspace
+    from app.services.finops.cost_history_service import consolidate_period
+    from datetime import date
+
+    today = date.today()
+    if today.month == 1:
+        target_year, target_month = today.year - 1, 12
+    else:
+        target_year, target_month = today.year, today.month - 1
+    target_period = f"{target_year:04d}-{target_month:02d}"
+
+    db = SessionLocal()
+    try:
+        workspaces = db.query(Workspace).filter(Workspace.is_active == True).all()
+        ok, failed = 0, 0
+        for ws in workspaces:
+            try:
+                consolidate_period(db, ws.id, target_period, force=False)
+                ok += 1
+            except Exception as exc:
+                failed += 1
+                logger.warning("cost_history_monthly: ws=%s period=%s failed: %s", ws.id, target_period, exc)
+        logger.info("cost_history_monthly: period=%s ok=%d failed=%d", target_period, ok, failed)
+    except Exception as exc:
+        logger.error("cost_history_monthly job failed: %s", exc)
+        db.rollback()
+    finally:
+        db.close()
 
 
 def _anonymize_old_terms_ips(retention_days: int = 365) -> None:

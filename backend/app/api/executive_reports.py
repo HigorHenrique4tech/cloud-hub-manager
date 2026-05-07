@@ -134,6 +134,60 @@ def upsert_settings(
 # ── Report endpoints ──────────────────────────────────────────────────────────
 
 
+@ws_router.get("/cost-history")
+def list_cost_history(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Return all month/provider snapshots stored for this workspace."""
+    from app.models.db_models import FinOpsCostHistory
+    rows = (
+        db.query(FinOpsCostHistory)
+        .filter(FinOpsCostHistory.workspace_id == member.workspace_id)
+        .order_by(FinOpsCostHistory.year_month.desc(), FinOpsCostHistory.provider)
+        .all()
+    )
+    return {
+        "history": [
+            {
+                "period": r.year_month,
+                "provider": r.provider,
+                "spend": float(r.spend),
+                "currency": r.currency,
+                "is_partial": r.is_partial,
+                "source": r.source,
+                "collected_at": r.collected_at.isoformat() if r.collected_at else None,
+            }
+            for r in rows
+        ],
+    }
+
+
+class ConsolidateRequest(BaseModel):
+    period: str          # 'YYYY-MM'
+    force: bool = False  # overwrite even if a closed-month entry exists
+
+
+@ws_router.post("/cost-history/consolidate", status_code=202)
+def trigger_cost_consolidation(
+    body: ConsolidateRequest,
+    member: MemberContext = Depends(require_permission("resources.manage")),
+    db: Session = Depends(get_db),
+):
+    """Force consolidation of a specific month from the cloud provider APIs.
+    Use to backfill historic data or to refresh a partially-collected month."""
+    from app.services.finops.cost_history_service import consolidate_period
+    try:
+        datetime.strptime(body.period, "%Y-%m")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Período inválido. Use o formato YYYY-MM.")
+    try:
+        result = consolidate_period(db, member.workspace_id, body.period, force=body.force)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"period": body.period, "by_provider": result}
+
+
 @ws_router.get("")
 def list_reports(
     member: MemberContext = Depends(require_permission("resources.view")),

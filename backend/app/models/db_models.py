@@ -388,6 +388,30 @@ class FinOpsBudget(Base):
     spend_breakdown   = Column(Text, nullable=True)  # JSON: {"aws": X, "azure": Y, "gcp": Z}
 
 
+class FinOpsCostHistory(Base):
+    """Per-month spend snapshot. Populated by a scheduled job on day 1
+    of each month (consolidating the previous month) and on demand by
+    the executive report flow when a requested month is missing."""
+    __tablename__ = "finops_cost_history"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id  = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"),
+                           nullable=False, index=True)
+    provider      = Column(String(20), nullable=False)            # aws | azure | gcp
+    year_month    = Column(String(7), nullable=False)             # 'YYYY-MM'
+    spend         = Column(Numeric(14, 2), nullable=False, default=0)
+    currency      = Column(String(3), nullable=False, default="USD")
+    source        = Column(String(20), nullable=False, default="api")  # api | manual | snapshot
+    is_partial    = Column(Boolean, nullable=False, default=False)     # True for current-month MTD
+    collected_at  = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "provider", "year_month",
+                         name="uq_cost_history_ws_provider_period"),
+        Index("ix_cost_history_ws_period", "workspace_id", "year_month"),
+    )
+
+
 class FinOpsAction(Base):
     __tablename__ = "finops_actions"
 

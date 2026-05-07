@@ -96,70 +96,70 @@ def _collect_summary_data(db: Session, workspace_id: UUID, period: str, report_s
 
     # ── Costs ────────────────────────────────────────────────────────────────
     if report_settings.include_costs:
+        from app.services.finops.cost_history_service import (
+            ensure_period, get_history, get_period_spend,
+        )
+
         budgets = db.query(FinOpsBudget).filter(
             FinOpsBudget.workspace_id == workspace_id,
             FinOpsBudget.is_active == True,
         ).all()
 
+        # Real spend for the requested period — read from finops_cost_history
+        # (auto-consolidates closed past months on demand).
+        period_spend_total = ensure_period(db, workspace_id, period) or 0.0
+        is_current_month = period == datetime.utcnow().strftime("%Y-%m")
+        is_partial = is_current_month  # MTD if user picked current month
+
+        # Per-budget breakdown: split the period total proportionally across
+        # the budgets matching each provider so the % used reflects the
+        # selected period, not the live MTD.
         cost_summary = []
-        total_spend = 0.0
         for b in budgets:
-            spend = b.last_spend or 0.0
-            total_spend += spend
+            if b.provider == "all":
+                spend_for_budget = period_spend_total
+            else:
+                spend_for_budget = get_period_spend(db, workspace_id, period, b.provider) or 0.0
             cost_summary.append({
                 "provider": b.provider,
                 "budget_name": b.name,
                 "budget_amount": b.amount,
-                "last_spend": round(spend, 2),
-                "pct_used": round((spend / b.amount * 100) if b.amount > 0 else 0, 1),
+                "last_spend": round(spend_for_budget, 2),
+                "pct_used": round((spend_for_budget / b.amount * 100) if b.amount > 0 else 0, 1),
             })
 
-        # Delta vs previous month
+        total_spend = round(period_spend_total, 2)
+
+        # Delta vs previous month — use cost_history, not previous reports
         prev_month = month - 1 if month > 1 else 12
         prev_year = year if month > 1 else year - 1
         prev_period = f"{prev_year}-{prev_month:02d}"
-
-        prev_report = (
-            db.query(ExecutiveReport)
-            .filter(
-                ExecutiveReport.workspace_id == workspace_id,
-                ExecutiveReport.period == prev_period,
-                ExecutiveReport.status == "ready",
-            )
-            .first()
-        )
-        prev_spend = 0.0
-        if prev_report and prev_report.summary_data:
-            prev_spend = (prev_report.summary_data.get("costs") or {}).get("total_spend", 0.0)
+        prev_spend = ensure_period(db, workspace_id, prev_period) or 0.0
 
         delta_pct = None
         if prev_spend > 0:
             delta_pct = round((total_spend - prev_spend) / prev_spend * 100, 1)
 
-        # Cost history — last 3 months from existing reports
-        history = []
+        # Cost history — last 3 closed months from cost_history
+        history_periods = []
         for i in range(3, 0, -1):
             hy = year if month - i > 0 else year - 1
             hm = (month - i) if month - i > 0 else (month - i + 12)
-            hp = f"{hy}-{hm:02d}"
-            hr = (
-                db.query(ExecutiveReport)
-                .filter(
-                    ExecutiveReport.workspace_id == workspace_id,
-                    ExecutiveReport.period == hp,
-                    ExecutiveReport.status == "ready",
-                )
-                .first()
-            )
-            h_spend = 0.0
-            if hr and hr.summary_data:
-                h_spend = (hr.summary_data.get("costs") or {}).get("total_spend", 0.0)
-            history.append({"period": hp, "spend": round(h_spend, 2)})
-        history.append({"period": period, "spend": round(total_spend, 2)})
+            history_periods.append(f"{hy}-{hm:02d}")
+        # Ensure each period is consolidated (best effort)
+        for hp in history_periods:
+            ensure_period(db, workspace_id, hp)
+        hist_map = get_history(db, workspace_id, history_periods + [period])
+        history = [
+            {"period": hp, "spend": round(hist_map.get(hp, 0.0), 2)}
+            for hp in history_periods
+        ]
+        history.append({"period": period, "spend": total_spend})
 
         data["costs"] = {
             "summary": cost_summary,
-            "total_spend": round(total_spend, 2),
+            "total_spend": total_spend,
+            "is_partial": is_partial,
             "prev_period": prev_period,
             "prev_spend": round(prev_spend, 2),
             "delta_pct": delta_pct,
@@ -432,6 +432,7 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
 
     total_spend     = costs.get("total_spend", 0) if costs else 0
     delta_pct       = costs.get("delta_pct") if costs else None
+    is_partial      = bool(costs.get("is_partial")) if costs else False
     potential_saving = recs_data.get("total_potential_saving", 0) if recs_data else 0
     anom_count      = len(anomalies) if anomalies else 0
 
@@ -463,9 +464,11 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
 
     kpi_table = Table(
         [[
-            _kpi("GASTO TOTAL",
+            _kpi("GASTO TOTAL" + (" (parcial)" if is_partial else ""),
                  f'<font color="#1D4ED8" size="19"><b>{_fmt(total_spend)}</b></font>',
-                 delta_str or '<font color="#9CA3AF" size="8">vs mês anterior</font>',
+                 (delta_str or '<font color="#9CA3AF" size="8">vs mês anterior</font>')
+                 if not is_partial
+                 else '<font color="#9CA3AF" size="8">mês em curso (MTD)</font>',
                  "#EFF6FF"),
             _kpi("ANOMALIAS",
                  f'<font color="#D97706" size="19"><b>{anom_count}</b></font>',
@@ -1170,11 +1173,13 @@ def send_report(db: Session, report_id: UUID, recipients: List[str], branding: d
 
 def monthly_reports_job():
     """
-    APScheduler entry point — runs on the 1st of each month at 08:00 UTC.
-    Generates and sends executive reports for all enabled workspaces.
+    APScheduler entry point — runs daily at 08:00 UTC. Each ExecutiveReportSettings
+    row carries a `send_day` (1-28); we only generate/send for the rows whose
+    send_day matches today's UTC day. The generated report covers the previous
+    calendar month (relatório retrospectivo).
     """
     from app.database import SessionLocal
-    from app.models.db_models import ExecutiveReportSettings
+    from app.models.db_models import ExecutiveReport, ExecutiveReportSettings
 
     db = SessionLocal()
     try:
@@ -1182,21 +1187,36 @@ def monthly_reports_job():
         first_of_month    = now.replace(day=1)
         last_month        = first_of_month - timedelta(days=1)
         period            = last_month.strftime("%Y-%m")
+        today_day         = now.day
 
         settings_list = db.query(ExecutiveReportSettings).filter(
             ExecutiveReportSettings.is_enabled == True,
+            ExecutiveReportSettings.send_day == today_day,
         ).all()
 
         logger.info(
-            "Monthly reports job: generating %d reports for period %s",
-            len(settings_list), period,
+            "Executive reports job: today=%d, %d workspaces match send_day, period=%s",
+            today_day, len(settings_list), period,
         )
 
         for rs in settings_list:
             if not rs.recipients:
+                logger.info("Skip ws=%s: no recipients", rs.workspace_id)
                 continue
+
+            # Idempotency: skip if a ready report already exists for this period
+            existing = db.query(ExecutiveReport).filter(
+                ExecutiveReport.workspace_id == rs.workspace_id,
+                ExecutiveReport.period == period,
+                ExecutiveReport.status == "ready",
+            ).first()
+            if existing and existing.sent_at:
+                logger.info("Skip ws=%s: report for %s already sent at %s",
+                            rs.workspace_id, period, existing.sent_at)
+                continue
+
             try:
-                report = generate_report(db, rs.workspace_id, period)
+                report = existing or generate_report(db, rs.workspace_id, period)
                 if report.status == "ready":
                     send_report(db, report.id, rs.recipients)
             except Exception as exc:
