@@ -94,6 +94,7 @@ const Onboarding = lazy(() => import('./pages/Onboarding'));
 const InviteAccept = lazy(() => import('./pages/InviteAccept'));
 const VerifyEmail = lazy(() => import('./pages/VerifyEmail'));
 const VerifyCallback = lazy(() => import('./pages/VerifyCallback'));
+const EmailChangeConfirm = lazy(() => import('./pages/EmailChangeConfirm'));
 const OAuthCallback = lazy(() => import('./pages/OAuthCallback'));
 const CompanyInfoStep = lazy(() => import('./components/auth/CompanyInfoStep'));
 
@@ -143,6 +144,7 @@ function App() {
                 <Route path="/invite/:token" element={<InviteAccept />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/verify/:token" element={<VerifyCallback />} />
+                <Route path="/email-change/confirm/:token" element={<EmailChangeConfirm />} />
                 <Route path="/payment/confirmed" element={<PaymentConfirmation />} />
                 <Route path="/select-plan" element={<PR><PlanSelection /></PR>} />
                 <Route path="/onboarding" element={<PR><Onboarding /></PR>} />

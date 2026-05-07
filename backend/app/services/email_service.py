@@ -239,6 +239,72 @@ def _fmt_brl(v: float) -> str:
 
 # ── Email templates ──────────────────────────────────────────────────────────
 
+def send_email_change_confirmation(to_email: str, user_name: str, token: str, branding: dict = None) -> bool:
+    """Confirmation link sent to the *new* email address during email change."""
+    confirm_url = f"{settings.FRONTEND_URL}/email-change/confirm/{token}"
+    platform = _brand_name(branding)
+    color = _brand_color(branding)
+
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured. Email change confirmation link: %s", confirm_url)
+        return True
+
+    body = f"""
+    <p style="margin:0 0 8px;">Olá <strong>{user_name}</strong>,</p>
+    <p style="color:#475569;margin:0 0 24px;">
+      Recebemos uma solicitação para alterar o email de acesso da sua conta no
+      <strong>{platform}</strong> para este endereço. Confirme abaixo para concluir:
+    </p>
+    {_cta_button(confirm_url, "Confirmar novo email", color)}
+    <p style="margin:24px 0 0;color:#94A3B8;font-size:12px;text-align:center;">
+      Se o botão não funcionar, copie e cole este link no navegador:<br/>
+      <a href="{confirm_url}" style="color:{color};word-break:break-all;">{confirm_url}</a>
+    </p>
+    <p style="margin:12px 0 0;color:#94A3B8;font-size:12px;text-align:center;">
+      Este link expira em <strong>24 horas</strong>. Se você não solicitou esta alteração, ignore este email.
+    </p>"""
+
+    html = _email_base(platform=platform, color=color, icon="✉️",
+                       title="Confirme seu novo email",
+                       subtitle=f"Alteração de email — {platform}",
+                       body_html=body, branding=branding)
+    return _send_email(to_email, f"{platform} — Confirme seu novo email", html,
+                       sender_name=_brand_sender(branding))
+
+
+def send_email_change_notification(to_email: str, user_name: str, new_email: str, branding: dict = None) -> bool:
+    """Notification to the *previous* email address after a change is confirmed."""
+    platform = _brand_name(branding)
+    color = _brand_color(branding)
+
+    if not settings.SMTP_HOST:
+        logger.warning("SMTP not configured. Email change notification suppressed.")
+        return True
+
+    support_email = "suporte@cloudatlas.app.br"
+    body = f"""
+    <p style="margin:0 0 8px;">Olá <strong>{user_name}</strong>,</p>
+    <p style="color:#475569;margin:0 0 16px;">
+      O email de acesso da sua conta no <strong>{platform}</strong> foi alterado para
+      <strong>{new_email}</strong>.
+    </p>
+    {_alert_box(
+        f"Se foi você quem solicitou, nenhuma ação é necessária. "
+        f"Se NÃO foi você, entre em contato imediatamente com {support_email}.",
+        "#FEF3C7", "#FCD34D", "#92400E"
+    )}
+    <p style="margin:24px 0 0;color:#94A3B8;font-size:12px;text-align:center;">
+      Por segurança, todas as sessões ativas foram encerradas e será necessário fazer login novamente.
+    </p>"""
+
+    html = _email_base(platform=platform, color=color, icon="🔔",
+                       title="Email da conta alterado",
+                       subtitle=f"Notificação de segurança — {platform}",
+                       body_html=body, branding=branding)
+    return _send_email(to_email, f"{platform} — Email da conta alterado", html,
+                       sender_name=_brand_sender(branding))
+
+
 def send_verification_email(to_email: str, user_name: str, token: str, branding: dict = None) -> bool:
     verify_url = f"{settings.FRONTEND_URL}/verify/{token}"
     platform = _brand_name(branding)

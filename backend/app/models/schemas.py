@@ -163,6 +163,7 @@ class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
     onboarding_completed: Optional[bool] = None
+    current_password: Optional[str] = None  # Required when changing email
 
 
 class PasswordChange(BaseModel):

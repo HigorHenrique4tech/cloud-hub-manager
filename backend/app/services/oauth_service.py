@@ -44,6 +44,8 @@ async def google_get_user_info(code: str, redirect_uri: str) -> dict:
         "name": data.get("name", data["email"].split("@")[0]),
         "oauth_id": str(data["id"]),
         "avatar_url": data.get("picture"),
+        # Google /userinfo returns "verified_email"; OpenID Connect returns "email_verified"
+        "email_verified": bool(data.get("verified_email") or data.get("email_verified")),
     }
 
 
@@ -74,14 +76,15 @@ async def github_get_user_info(code: str) -> dict:
         data = user_resp.json()
 
         email = data.get("email")
+        email_verified = False
 
-        # 3. If email is private, fetch from /user/emails
-        if not email:
-            emails_resp = await client.get(GITHUB_EMAILS_URL, headers=headers)
-            emails_resp.raise_for_status()
+        # Always fetch /user/emails to authoritatively learn verification status
+        emails_resp = await client.get(GITHUB_EMAILS_URL, headers=headers)
+        if emails_resp.is_success:
             for e in emails_resp.json():
-                if e.get("primary") and e.get("verified"):
+                if e.get("primary"):
                     email = e["email"]
+                    email_verified = bool(e.get("verified"))
                     break
 
     if not email:
@@ -92,6 +95,7 @@ async def github_get_user_info(code: str) -> dict:
         "name": data.get("name") or data.get("login", "GitHub User"),
         "oauth_id": str(data["id"]),
         "avatar_url": data.get("avatar_url"),
+        "email_verified": email_verified,
     }
 
 
@@ -130,9 +134,17 @@ async def microsoft_get_user_info(code: str, redirect_uri: str) -> dict:
 
     name = data.get("displayName") or data.get("givenName") or email.split("@")[0]
 
+    # Microsoft Graph /me does not expose an email_verified flag directly. For
+    # work/school accounts (`userPrincipalName` matches an Entra-managed domain)
+    # the email is implicitly verified by the tenant. For consumer MSA accounts
+    # we conservatively treat as verified — Microsoft requires email confirmation
+    # for MSA sign-up, and `mail` is only populated after verification.
+    email_verified = bool(data.get("mail")) or "@" in (data.get("userPrincipalName") or "")
+
     return {
         "email": email,
         "name": name,
         "oauth_id": data["id"],
         "avatar_url": None,  # Graph photo requires a separate call; skip for simplicity
+        "email_verified": email_verified,
     }

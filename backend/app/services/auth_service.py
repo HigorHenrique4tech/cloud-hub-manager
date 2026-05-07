@@ -4,8 +4,9 @@ import logging
 import hashlib
 import base64
 import secrets
+import uuid
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Optional, Tuple
 
 import jwt as pyjwt
 from jwt.exceptions import PyJWTError
@@ -79,18 +80,64 @@ def verify_and_rehash(plain_password: str, hashed_password: str) -> tuple[bool, 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
 def create_access_token(subject: str) -> str:
-    expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
-    payload = {"sub": subject, "exp": expire}
+    now = datetime.utcnow()
+    expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {
+        "sub": subject,
+        "iat": now,
+        "exp": expire,
+        "jti": uuid.uuid4().hex,
+    }
     return pyjwt.encode(payload, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
 def decode_token(token: str) -> Optional[str]:
-    """Returns the subject (user id) or None if invalid."""
+    """Returns the subject (user id) or None if invalid/revoked."""
+    claims = decode_token_claims(token)
+    return claims.get("sub") if claims else None
+
+
+def decode_token_claims(token: str) -> Optional[dict]:
+    """Returns full JWT payload or None if invalid/revoked.
+
+    Checks the Redis revocation list — a token whose `jti` is revoked is
+    treated as invalid. Fails open if Redis is down (best-effort defense).
+    """
     try:
         payload = pyjwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        return payload.get("sub")
     except PyJWTError:
         return None
+    jti = payload.get("jti")
+    if jti:
+        try:
+            from app.core.redis_client import is_jti_revoked
+            if is_jti_revoked(jti):
+                return None
+        except Exception:
+            pass
+    return payload
+
+
+def revoke_access_jti(jti: str, exp_unix: Optional[int] = None) -> bool:
+    """Add an access token's jti to the Redis revocation list.
+
+    The TTL matches the remaining lifetime of the token so we don't waste
+    storage on already-expired entries.
+    """
+    if not jti:
+        return False
+    if exp_unix is None:
+        ttl = int(settings.ACCESS_TOKEN_EXPIRE_MINUTES) * 60
+    else:
+        ttl = max(int(exp_unix - datetime.utcnow().timestamp()), 0)
+    if ttl <= 0:
+        return False
+    try:
+        from app.core.redis_client import revoke_jti
+        return revoke_jti(jti, ttl)
+    except Exception as exc:
+        logger.warning("revoke_access_jti failed: %s", exc)
+        return False
 
 
 # ── Per-org encryption keys ───────────────────────────────────────────────────
@@ -298,3 +345,16 @@ def revoke_refresh_token(db: Session, raw_token: str) -> bool:
         db.commit()
         return True
     return False
+
+
+def revoke_all_user_tokens(db: Session, user_id) -> int:
+    """Revoke every active refresh token for a user. Returns count revoked."""
+    from app.models.db_models import RefreshToken
+
+    count = (
+        db.query(RefreshToken)
+        .filter(RefreshToken.user_id == user_id, RefreshToken.revoked == False)
+        .update({"revoked": True}, synchronize_session=False)
+    )
+    db.commit()
+    return count

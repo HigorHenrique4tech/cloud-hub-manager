@@ -215,6 +215,7 @@ class User(Base):
     is_active          = Column(Boolean, default=True, nullable=False)
     is_verified        = Column(Boolean, default=False, nullable=False)
     verification_token = Column(String(255), nullable=True, index=True)
+    verification_token_expires_at = Column(DateTime, nullable=True)
     default_org_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     oauth_provider     = Column(String(50), nullable=True)    # "google" | "github" | None
     oauth_id           = Column(String(255), nullable=True)   # Provider's user ID
@@ -232,6 +233,9 @@ class User(Base):
     cnpj               = Column(String(18), nullable=True)
     password_reset_token      = Column(String(255), nullable=True, index=True)
     password_reset_expires_at = Column(DateTime, nullable=True)
+    pending_email             = Column(String(255), nullable=True)
+    email_change_token        = Column(String(64), nullable=True, index=True)
+    email_change_expires_at   = Column(DateTime, nullable=True)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

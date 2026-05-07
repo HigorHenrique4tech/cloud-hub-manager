@@ -19,13 +19,14 @@ from app.models.schemas import (
 from app.services.auth_service import (
     hash_password, verify_password, verify_and_rehash, create_access_token,
     create_refresh_token, validate_refresh_token, revoke_refresh_token,
+    revoke_all_user_tokens, decode_token_claims, revoke_access_jti,
     generate_otp, hash_otp, verify_otp_hash, create_mfa_token, decode_mfa_token,
 )
 from app.services.oauth_service import google_get_user_info, github_get_user_info, microsoft_get_user_info
 from app.services.email_service import send_verification_email, send_otp_email, check_email_cooldown
 from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
-from app.core.limiter import limiter
+from app.core.limiter import limiter, get_real_ip
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -156,6 +157,7 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         hashed_password=hash_password(payload.password),
         is_verified=False,
         verification_token=verification_token,
+        verification_token_expires_at=datetime.utcnow() + timedelta(hours=48),
         phone=payload.phone,
         company_name=payload.company_name,
         cnpj=payload.cnpj,
@@ -178,7 +180,7 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
     refresh_token = create_refresh_token(
         db, user.id,
         user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
     )
     needs_info = not payload.company_name
     return TokenResponse(
@@ -236,7 +238,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
     refresh_token = create_refresh_token(
         db, user.id,
         user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
     )
     return TokenResponse(
         access_token=access_token,
@@ -269,8 +271,16 @@ def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get
 @router.post("/logout")
 @limiter.limit("10/minute")
 def logout(payload: LogoutRequest, request: Request, db: Session = Depends(get_db)):
-    """Revoke a refresh token."""
+    """Revoke the refresh token AND the current access token's jti."""
     revoke_refresh_token(db, payload.refresh_token)
+
+    # Best-effort: revoke the access token presented in the Authorization header
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        claims = decode_token_claims(auth[7:])
+        if claims and claims.get("jti"):
+            revoke_access_jti(claims["jti"], claims.get("exp"))
+
     return {"detail": "Logout realizado com sucesso"}
 
 
@@ -304,9 +314,7 @@ def accept_terms(
     if existing:
         return {"accepted": True, "version": current_version, "already_accepted": True}
 
-    ip = request.headers.get("X-Forwarded-For", request.client.host if request.client else None)
-    if ip:
-        ip = ip.split(",")[0].strip()
+    ip = get_real_ip(request)
     ua = request.headers.get("User-Agent", "")[:500]
 
     record = TermsAcceptance(
@@ -350,12 +358,51 @@ def update_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Update current user's name and/or email."""
+    """Update current user's name and/or email.
+
+    Email changes use a double-opt-in flow: a confirmation link is sent to the
+    new address, and the email field on the user is only updated after the link
+    is clicked. The old email remains valid in the meantime.
+    """
+    email_change_requested = False
     if payload.email and payload.email != current_user.email:
-        existing = db.query(User).filter(User.email == payload.email, User.id != current_user.id).first()
+        # OAuth-only users cannot change email here (no password to verify)
+        if current_user.oauth_provider and not current_user.hashed_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Contas vinculadas a SSO devem alterar o email no provedor.",
+            )
+
+        # Require current password to authorize the change
+        if not payload.current_password:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Informe sua senha atual para alterar o email.",
+            )
+        if not verify_password(payload.current_password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Senha atual incorreta.",
+            )
+
+        # Reject if the new email is already taken (current OR pending)
+        existing = (
+            db.query(User)
+            .filter(
+                ((User.email == payload.email) | (User.pending_email == payload.email)),
+                User.id != current_user.id,
+            )
+            .first()
+        )
         if existing:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Este email já está em uso")
-        current_user.email = payload.email
+
+        # Stash the new email and issue a confirmation token. Do NOT touch
+        # current_user.email yet — the old address remains the login of record.
+        current_user.pending_email = payload.email
+        current_user.email_change_token = secrets.token_urlsafe(32)
+        current_user.email_change_expires_at = datetime.utcnow() + timedelta(hours=24)
+        email_change_requested = True
 
     if payload.name is not None:
         current_user.name = payload.name
@@ -365,7 +412,80 @@ def update_profile(
 
     db.commit()
     db.refresh(current_user)
-    return UserResponse.model_validate(current_user)
+
+    if email_change_requested:
+        try:
+            from app.services.email_service import send_email_change_confirmation
+            send_email_change_confirmation(
+                to_email=current_user.pending_email,
+                user_name=current_user.name or current_user.pending_email.split("@")[0],
+                token=current_user.email_change_token,
+            )
+        except Exception as exc:
+            logger.warning("Failed to send email change confirmation: %s", exc)
+
+    return _user_response(current_user, db)
+
+
+class EmailChangeConfirmRequest(BaseModel):
+    token: str
+
+
+@router.post("/email/confirm", status_code=200)
+@limiter.limit("5/minute")
+def confirm_email_change(payload: EmailChangeConfirmRequest, request: Request, db: Session = Depends(get_db)):
+    """Promote pending_email → email after the user clicks the confirmation link."""
+    user = (
+        db.query(User)
+        .filter(User.email_change_token == payload.token, User.is_active == True)
+        .first()
+    )
+    if not user or not user.email_change_expires_at or user.email_change_expires_at < datetime.utcnow():
+        raise HTTPException(status_code=400, detail="Link de confirmação inválido ou expirado.")
+    if not user.pending_email:
+        raise HTTPException(status_code=400, detail="Nenhuma alteração de email pendente.")
+
+    # Race: another user may have grabbed this email since the request was made
+    taken = (
+        db.query(User)
+        .filter(User.email == user.pending_email, User.id != user.id)
+        .first()
+    )
+    if taken:
+        user.pending_email = None
+        user.email_change_token = None
+        user.email_change_expires_at = None
+        db.commit()
+        raise HTTPException(status_code=409, detail="Este email foi cadastrado por outra conta. Tente outro endereço.")
+
+    old_email = user.email
+    new_email = user.pending_email
+    user.email = new_email
+    user.pending_email = None
+    user.email_change_token = None
+    user.email_change_expires_at = None
+    db.commit()
+
+    # Force re-login on all devices for safety
+    revoke_all_user_tokens(db, user.id)
+
+    # Notify the previous email so the user can react if it wasn't them
+    try:
+        from app.services.email_service import send_email_change_notification
+        send_email_change_notification(
+            to_email=old_email,
+            user_name=user.name or old_email.split("@")[0],
+            new_email=new_email,
+        )
+    except Exception as exc:
+        logger.warning("Failed to notify old email of change: %s", exc)
+
+    log_activity(
+        db, user, "auth.email_changed", "User",
+        resource_id=str(user.id),
+        detail=f"{old_email} -> {new_email}",
+    )
+    return {"detail": "Email atualizado com sucesso. Faça login novamente."}
 
 
 # ── Company Info ──────────────────────────────────────────────────────────────
@@ -405,28 +525,37 @@ def update_company_info(
         org.cnpj = payload.cnpj
     db.commit()
     db.refresh(current_user)
-    return UserResponse.model_validate(current_user)
+    return _user_response(current_user, db)
 
 
-# ── CNPJ Lookup (public) ──────────────────────────────────────────────────────
+# ── CNPJ Lookup (authenticated) ──────────────────────────────────────────────
 
-_cnpj_cache: dict = {}
-_CNPJ_TTL = 600  # 10 minutes
+_CNPJ_CACHE_TTL = 86400  # 24h — CNPJ data changes infrequently
+_CNPJ_NEG_CACHE_TTL = 600  # 10min — short TTL for not-found (data may appear)
 
 
 @router.get("/cnpj/{cnpj}")
-async def lookup_cnpj(cnpj: str):
+@limiter.limit("10/minute")
+async def lookup_cnpj(
+    cnpj: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+):
     """Validate and look up a Brazilian CNPJ. Tries BrasilAPI then cnpj.ws as fallback."""
+    import json
+    from app.core.redis_client import cache_get, cache_set
+
     digits = _re.sub(r"\D", "", cnpj)
     if len(digits) != 14:
         raise HTTPException(status_code=400, detail="CNPJ deve ter 14 dígitos")
 
-    now = time.time()
-    cached = _cnpj_cache.get(digits)
-    if cached and now - cached["ts"] < _CNPJ_TTL:
-        if cached.get("error"):
+    cache_key = f"cnpj_cache:{digits}"
+    cached = cache_get(cache_key)
+    if cached:
+        payload = json.loads(cached)
+        if payload.get("error"):
             raise HTTPException(status_code=404, detail="CNPJ não encontrado ou inválido")
-        return cached["data"]
+        return payload["data"]
 
     async with httpx.AsyncClient(timeout=8.0) as client:
         # Tentativa 1: BrasilAPI
@@ -442,7 +571,7 @@ async def lookup_cnpj(cnpj: str):
                     "uf": raw.get("uf", ""),
                     "municipio": raw.get("municipio", ""),
                 }
-                _cnpj_cache[digits] = {"ts": now, "data": result}
+                cache_set(cache_key, json.dumps({"data": result}), _CNPJ_CACHE_TTL)
                 return result
         except Exception:
             pass
@@ -464,18 +593,19 @@ async def lookup_cnpj(cnpj: str):
                     "uf": uf,
                     "municipio": municipio,
                 }
-                _cnpj_cache[digits] = {"ts": now, "data": result}
+                cache_set(cache_key, json.dumps({"data": result}), _CNPJ_CACHE_TTL)
                 return result
         except Exception:
             pass
 
-    _cnpj_cache[digits] = {"ts": now, "error": True}
+    cache_set(cache_key, json.dumps({"error": True}), _CNPJ_NEG_CACHE_TTL)
     raise HTTPException(status_code=404, detail="CNPJ não encontrado ou inválido")
 
 
 @router.put("/me/password")
 def change_password(
     payload: PasswordChange,
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -485,6 +615,15 @@ def change_password(
 
     current_user.hashed_password = hash_password(payload.new_password)
     db.commit()
+    revoke_all_user_tokens(db, current_user.id)
+
+    # Also revoke the access token currently in use so the 30-min window is closed.
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        claims = decode_token_claims(auth[7:])
+        if claims and claims.get("jti"):
+            revoke_access_jti(claims["jti"], claims.get("exp"))
+
     return {"detail": "Senha alterada com sucesso"}
 
 
@@ -534,7 +673,7 @@ def verify_mfa(payload: MFAVerifyRequest, request: Request, db: Session = Depend
     refresh_token = create_refresh_token(
         db, user.id,
         user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
     )
     return TokenResponse(
         access_token=access_token,
@@ -611,8 +750,15 @@ def verify_email(token: str, db: Session = Depends(get_db)):
     if user.is_verified:
         return {"detail": "Email já verificado", "already_verified": True}
 
+    if user.verification_token_expires_at and user.verification_token_expires_at < datetime.utcnow():
+        raise HTTPException(
+            status_code=400,
+            detail="Token de verificação expirado. Solicite um novo link de verificação.",
+        )
+
     user.is_verified = True
     user.verification_token = None
+    user.verification_token_expires_at = None
     db.commit()
 
     log_activity(db, user, "auth.email_verified", "User",
@@ -648,6 +794,7 @@ def resend_verification(payload: ResendVerificationRequest, request: Request, db
     # Generate new token
     new_token = secrets.token_urlsafe(32)
     user.verification_token = new_token
+    user.verification_token_expires_at = datetime.utcnow() + timedelta(hours=48)
     db.commit()
 
     send_verification_email(user.email, user.name, new_token)
@@ -706,8 +853,13 @@ def reset_password(request: Request, payload: ResetPasswordRequest, db: Session 
     user.password_reset_token = None
     user.password_reset_expires_at = None
     db.commit()
+    revoke_all_user_tokens(db, user.id)
 
-    log_activity(db, user.id, None, "password_reset", "Senha redefinida via link de email")
+    log_activity(
+        db, user, "auth.password_reset", "User",
+        resource_id=str(user.id),
+        detail="Senha redefinida via link de email",
+    )
     return {"detail": "Senha redefinida com sucesso. Você já pode fazer login."}
 
 
@@ -818,12 +970,15 @@ def _oauth_login_or_register(
     provider: str,
     oauth_id: str,
     avatar_url: str | None,
+    email_verified: bool = False,
 ) -> TokenResponse:
     """Shared logic for Google / GitHub OAuth callback.
 
     1. Find user by oauth_id+provider OR by email.
     2. If not found → create new user (verified, random password).
-    3. If found without OAuth → link OAuth fields.
+    3. If found without OAuth → link OAuth fields, but only if the provider
+       confirms the email is verified (prevents account takeover via spoofed
+       email at the OAuth provider).
     4. Ensure personal org exists.
     5. Return JWT + refresh token.
     """
@@ -840,31 +995,51 @@ def _oauth_login_or_register(
 
     is_new_user = False
     if user:
-        # Link OAuth if not yet linked
+        # If user exists but is not yet linked to this provider, only allow
+        # auto-link when the provider asserts the email is verified.
         if not user.oauth_provider:
+            if not email_verified:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Já existe uma conta com este email. Faça login com "
+                        f"senha e vincule sua conta {provider} nas configurações."
+                    ),
+                )
             user.oauth_provider = provider
             user.oauth_id = oauth_id
         if avatar_url and not user.avatar_url:
             user.avatar_url = avatar_url
-        if not user.is_verified:
+        # Only auto-verify when provider confirmed verification
+        if not user.is_verified and email_verified:
             user.is_verified = True
             user.verification_token = None
+            user.verification_token_expires_at = None
         db.commit()
         action = "auth.oauth_login"
     else:
-        # Create new user
+        # Create new user — defer verification when provider didn't confirm
         user = User(
             email=email,
             name=name,
             hashed_password=hash_password(secrets.token_urlsafe(32)),
-            is_verified=True,
+            is_verified=bool(email_verified),
             oauth_provider=provider,
             oauth_id=oauth_id,
             avatar_url=avatar_url,
         )
+        if not email_verified:
+            # Issue a verification token so the user can confirm via email
+            user.verification_token = secrets.token_urlsafe(32)
+            user.verification_token_expires_at = datetime.utcnow() + timedelta(hours=48)
         db.add(user)
         db.commit()
         db.refresh(user)
+        if not email_verified:
+            try:
+                send_verification_email(user.email, user.name, user.verification_token)
+            except Exception as exc:
+                logger.warning("Failed to send OAuth verification email to %s: %s", user.email, exc)
         action = "auth.oauth_register"
         is_new_user = True
 
@@ -890,7 +1065,7 @@ def _oauth_login_or_register(
     refresh_token = create_refresh_token(
         db, user.id,
         user_agent=request.headers.get("user-agent"),
-        ip_address=request.client.host if request.client else None,
+        ip_address=get_real_ip(request),
     )
     return TokenResponse(
         access_token=access_token,
@@ -921,6 +1096,7 @@ async def google_callback(
         provider="google",
         oauth_id=info["oauth_id"],
         avatar_url=info.get("avatar_url"),
+        email_verified=bool(info.get("email_verified")),
     )
 
 
@@ -945,6 +1121,7 @@ async def github_callback(
         provider="github",
         oauth_id=info["oauth_id"],
         avatar_url=info.get("avatar_url"),
+        email_verified=bool(info.get("email_verified")),
     )
 
 
@@ -970,4 +1147,5 @@ async def microsoft_callback(
         provider="microsoft",
         oauth_id=info["oauth_id"],
         avatar_url=info.get("avatar_url"),
+        email_verified=bool(info.get("email_verified")),
     )

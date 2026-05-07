@@ -42,15 +42,27 @@ const Settings = () => {
   // ── Profile form state ─────────────────────────────────────
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
+  const [emailChangePwd, setEmailChangePwd] = useState('');
   const [profileMsg, setProfileMsg] = useState(null); // { type: 'success'|'error', text }
 
   const profileMutation = useMutation({
     mutationFn: (data) => authService.updateProfile(data),
-    onSuccess: (updatedUser) => {
+    onSuccess: (updatedUser, vars) => {
       setUser(updatedUser);
-      setProfileMsg({ type: 'success', text: 'Perfil atualizado com sucesso!' });
+      setEmailChangePwd('');
+      // If the email actually changed in the backend, react. Otherwise it's a
+      // pending double-opt-in (link sent to the new address).
+      if (vars?.email && updatedUser.email !== vars.email) {
+        setEmail(updatedUser.email);
+        setProfileMsg({
+          type: 'success',
+          text: `Enviamos um link de confirmação para ${vars.email}. Clique nele para concluir a alteração.`,
+        });
+      } else {
+        setProfileMsg({ type: 'success', text: 'Perfil atualizado com sucesso!' });
+      }
       clearTimeout(profileTimerRef.current);
-      profileTimerRef.current = setTimeout(() => setProfileMsg(null), 4000);
+      profileTimerRef.current = setTimeout(() => setProfileMsg(null), 6000);
     },
     onError: (err) => {
       const detail = err.response?.data?.detail || 'Erro ao atualizar perfil';
@@ -63,7 +75,10 @@ const Settings = () => {
     setProfileMsg(null);
     const updates = {};
     if (name !== user?.name) updates.name = name;
-    if (email !== user?.email) updates.email = email;
+    if (email !== user?.email) {
+      updates.email = email;
+      updates.current_password = emailChangePwd;
+    }
     if (Object.keys(updates).length === 0) return;
     profileMutation.mutate(updates);
   };
@@ -204,11 +219,36 @@ const Settings = () => {
               placeholder="seu@email.com"
               required
             />
+            {email !== user?.email && (
+              <p className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+                Por segurança, enviaremos um link de confirmação para o novo endereço antes de alterar.
+              </p>
+            )}
           </div>
+          {email !== user?.email && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Senha atual <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="password"
+                value={emailChangePwd}
+                onChange={(e) => setEmailChangePwd(e.target.value)}
+                className={inputClass}
+                placeholder="Confirme sua senha para alterar o email"
+                required
+                autoComplete="current-password"
+              />
+            </div>
+          )}
           <div className="flex justify-end">
             <button
               type="submit"
-              disabled={!profileChanged || profileMutation.isPending}
+              disabled={
+                !profileChanged ||
+                profileMutation.isPending ||
+                (email !== user?.email && !emailChangePwd)
+              }
               className="btn-primary inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Save className="w-4 h-4" />
