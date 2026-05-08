@@ -141,9 +141,21 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
 
     const avgDaily = combined.length ? total / combined.length : 0;
     const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-    const daysLeft = daysInMonth - today.getDate();
-    const hasProviders = total > 0;
-    const projection = hasProviders ? avgDaily * daysLeft + total : 0;
+
+    // Month-to-date projection: extract only entries from day 1 of the current
+    // month onward, compute the daily run-rate based on those, and extrapolate
+    // to the full month. Independent of the selected filter (30d/90d/6m/1y).
+    const yyyy = today.getFullYear();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const monthStart = `${yyyy}-${mm}-01`;
+    const todayStr = today.toISOString().slice(0, 10);
+    const mtdEntries = combined.filter(
+      (d) => d.date >= monthStart && d.date <= todayStr,
+    );
+    const spentMTD = mtdEntries.reduce((s, d) => s + (d.total || 0), 0);
+    const dayOfMonth = today.getDate();
+    const avgDailyMTD = dayOfMonth > 0 ? spentMTD / dayOfMonth : 0;
+    const projection = avgDailyMTD > 0 ? avgDailyMTD * daysInMonth : 0;
     const topService = data.by_service?.[0];
 
     // Deltas vs previous period (normalize prev too)

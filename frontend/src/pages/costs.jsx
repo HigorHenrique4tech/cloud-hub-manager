@@ -18,10 +18,11 @@ const today = new Date();
 const fmt = (d) => d.toISOString().slice(0, 10);
 
 const PERIODS = [
-  { label: '30d',   days: 30  },
-  { label: '90d',   days: 90  },
-  { label: '6m',    days: 180 },
-  { label: '1 ano', days: 365 },
+  { label: 'Mês atual', mtd: true },
+  { label: '30d',       days: 30  },
+  { label: '90d',       days: 90  },
+  { label: '6m',        days: 180 },
+  { label: '1 ano',     days: 365 },
 ];
 
 const PROVIDER_FILTERS = [
@@ -44,9 +45,13 @@ const Costs = () => {
   const [drilldownService, setDrilldownService] = useState(null);
 
   // ── Date range ─────────────────────────────────────────────────────────────
-  const { days } = PERIODS[periodIdx];
-  const endDate   = isCustom && customEnd   ? customEnd   : fmt(today);
-  const startDate = isCustom && customStart ? customStart : fmt(new Date(today.getTime() - days * 86400000));
+  const period = PERIODS[periodIdx];
+  const endDate = isCustom && customEnd ? customEnd : fmt(today);
+  const startDate = isCustom && customStart
+    ? customStart
+    : period.mtd
+      ? fmt(new Date(today.getFullYear(), today.getMonth(), 1))
+      : fmt(new Date(today.getTime() - period.days * 86400000));
 
   // ── Hook ───────────────────────────────────────────────────────────────────
   const {

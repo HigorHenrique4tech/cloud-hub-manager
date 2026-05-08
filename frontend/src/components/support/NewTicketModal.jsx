@@ -1,34 +1,54 @@
 import { useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { X, Layers, AlertTriangle, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
+import { X, Building2, Layers, AlertTriangle, Loader2, CheckCircle2, ExternalLink } from 'lucide-react';
 import supportService from '../../services/supportService';
 import orgService from '../../services/orgService';
+import api from '../../services/api';
 
 const DESK_URL = 'https://desk.cloudatlas.app.br';
 
 export default function NewTicketModal({ onClose }) {
-  const orgSlug = localStorage.getItem('selectedOrg');
+  const currentSlug = localStorage.getItem('selectedOrg') || '';
   const [form, setForm] = useState({
-    title: '', category: 'technical', priority: 'normal', message: '', workspace_id: '',
+    title: '', category: 'technical', priority: 'normal', message: '',
+    workspace_id: '', org_slug: currentSlug,
   });
   const [submitted, setSubmitted] = useState(null); // ticket id after success
   const [error, setError] = useState('');
 
+  const orgsQ = useQuery({
+    queryKey: ['my-orgs'],
+    queryFn: () => orgService.listOrgs(),
+  });
+  const orgs = orgsQ.data?.organizations || orgsQ.data || [];
+
   const workspacesQ = useQuery({
-    queryKey: ['workspaces', orgSlug],
-    queryFn: () => orgService.listWorkspaces(orgSlug),
-    enabled: !!orgSlug,
+    queryKey: ['workspaces', form.org_slug],
+    queryFn: () => orgService.listWorkspaces(form.org_slug),
+    enabled: !!form.org_slug,
   });
   const workspaces = workspacesQ.data?.workspaces || workspacesQ.data || [];
 
+  // supportService.create uses orgUrl() which reads selectedOrg from localStorage.
+  // To create a ticket for a different org without switching context, post directly.
   const mut = useMutation({
-    mutationFn: () =>
-      supportService.create({ ...form, workspace_id: form.workspace_id || undefined }),
+    mutationFn: () => {
+      const { org_slug, workspace_id, ...rest } = form;
+      const body = { ...rest, workspace_id: workspace_id || undefined };
+      return api.post(`/orgs/${org_slug}/tickets`, body).then((r) => r.data);
+    },
     onSuccess: (data) => setSubmitted(data.id),
     onError: (e) => setError(e.response?.data?.detail || 'Erro ao criar chamado'),
   });
 
-  const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+  const set = (k) => (e) => {
+    const v = e.target.value;
+    setForm((p) =>
+      k === 'org_slug'
+        ? { ...p, org_slug: v, workspace_id: '' }  // reset workspace when org changes
+        : { ...p, [k]: v }
+    );
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -73,6 +93,28 @@ export default function NewTicketModal({ onClose }) {
           /* ── Form ── */
           <>
             <div className="px-6 py-5 space-y-4">
+              {/* Organization */}
+              <label className="block">
+                <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
+                  <Building2 className="w-3.5 h-3.5" /> Organização
+                </span>
+                <select
+                  value={form.org_slug}
+                  onChange={set('org_slug')}
+                  disabled={orgs.length <= 1}
+                  className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700
+                             px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary
+                             disabled:opacity-70 disabled:cursor-not-allowed"
+                >
+                  {orgs.length === 0 && <option value="">Carregando…</option>}
+                  {orgs.map((o) => (
+                    <option key={o.slug} value={o.slug}>
+                      {o.name}{o.slug === currentSlug ? '  (atual)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
               {/* Workspace */}
               <label className="block">
                 <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">

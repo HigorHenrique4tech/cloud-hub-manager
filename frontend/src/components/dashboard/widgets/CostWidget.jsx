@@ -8,9 +8,10 @@ import orgService from '../../../services/orgService';
 import { useOrgWorkspace } from '../../../contexts/OrgWorkspaceContext';
 import { fmtBRL, fmtUSD } from '../../../utils/formatters';
 
-const today   = new Date();
-const end30   = today.toISOString().slice(0, 10);
-const start30 = new Date(today.getTime() - 30 * 86400000).toISOString().slice(0, 10);
+const today    = new Date();
+const endMTD   = today.toISOString().slice(0, 10);
+const startMTD = new Date(today.getFullYear(), today.getMonth(), 1)
+  .toISOString().slice(0, 10);
 
 const CostWidget = () => {
   const { currentOrg, currentWorkspace } = useOrgWorkspace();
@@ -29,8 +30,8 @@ const CostWidget = () => {
   const rate = rateData?.exchange_rate_brl || rateData?.bcb_rate || null;
 
   const { data: rawData, isLoading, isError, refetch } = useQuery({
-    queryKey: ['dashboard-costs', start30, end30],
-    queryFn: () => costService.getCombinedCosts(start30, end30, 'DAILY'),
+    queryKey: ['dashboard-costs', startMTD, endMTD],
+    queryFn: () => costService.getCombinedCosts(startMTD, endMTD, 'DAILY'),
     enabled: wsReady,
     retry: false,
     staleTime: 5 * 60 * 1000,
@@ -77,9 +78,9 @@ const CostWidget = () => {
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2">
           <TrendingUp className="w-4 h-4 text-primary" />
-          Previsão de Custos
+          Custos do Mês
         </h2>
-        <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">30d</span>
+        <span className="text-xs text-gray-400 bg-gray-100 dark:bg-gray-700 px-2 py-0.5 rounded-full">MTD</span>
       </div>
 
       {isLoading ? (
@@ -110,7 +111,7 @@ const CostWidget = () => {
           <p className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-0.5">
             {fmt(data?.total)}
           </p>
-          <p className="text-xs text-gray-400 mb-4">{start30} → {end30}</p>
+          <p className="text-xs text-gray-400 mb-4">{startMTD} → {endMTD} (mês atual)</p>
 
           <div style={{ height: 160 }}>
             <ResponsiveContainer width="100%" height="100%">
