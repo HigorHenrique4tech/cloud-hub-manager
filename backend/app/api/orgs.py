@@ -16,6 +16,7 @@ from app.core.dependencies import (
     get_current_user, get_current_member, require_org_permission,
 )
 from app.core.auth_context import MemberContext
+from app.core.limiter import limiter
 from app.core.permissions import VALID_ROLES
 from app.services.log_service import log_activity
 from app.services.plan_service import check_member_limit, check_managed_org_limit, check_workspace_limit, get_org_usage, get_effective_plan, PLAN_PRICES
@@ -1239,6 +1240,8 @@ async def update_branding(
         pn = payload.platform_name.strip()
         if len(pn) < 2 or len(pn) > 100:
             raise HTTPException(status_code=400, detail="Nome da plataforma deve ter entre 2 e 100 caracteres")
+        if "\r" in pn or "\n" in pn:
+            raise HTTPException(status_code=400, detail="Nome da plataforma não pode conter quebras de linha")
         org.wl_platform_name = pn
 
     if payload.color_primary is not None:
@@ -1286,6 +1289,8 @@ async def update_branding(
         esn = payload.email_sender_name.strip()
         if len(esn) < 2 or len(esn) > 100:
             raise HTTPException(status_code=400, detail="Nome do remetente deve ter entre 2 e 100 caracteres")
+        if "\r" in esn or "\n" in esn:
+            raise HTTPException(status_code=400, detail="Nome do remetente não pode conter quebras de linha")
         org.wl_email_sender_name = esn
 
     db.commit()
@@ -1326,11 +1331,14 @@ async def reset_branding(
 
 
 @router.get("/{org_slug}/branding/logo-light")
+@limiter.limit("30/minute")
 async def serve_logo_light(
+    request: Request,
     org_slug: str = Path(...),
     db: Session = Depends(get_db),
 ):
-    """Serve the light-background logo (public, cached)."""
+    """Serve the light-background logo (public, cached). Rate-limited to
+    discourage org-slug enumeration via fuzzing."""
     import base64
     from fastapi.responses import Response
 
@@ -1347,11 +1355,14 @@ async def serve_logo_light(
 
 
 @router.get("/{org_slug}/branding/logo-dark")
+@limiter.limit("30/minute")
 async def serve_logo_dark(
+    request: Request,
     org_slug: str = Path(...),
     db: Session = Depends(get_db),
 ):
-    """Serve the dark-background logo (public, cached)."""
+    """Serve the dark-background logo (public, cached). Rate-limited to
+    discourage org-slug enumeration via fuzzing."""
     import base64
     from fastapi.responses import Response
 
@@ -1368,11 +1379,14 @@ async def serve_logo_dark(
 
 
 @router.get("/{org_slug}/branding/favicon")
+@limiter.limit("30/minute")
 async def serve_favicon(
+    request: Request,
     org_slug: str = Path(...),
     db: Session = Depends(get_db),
 ):
-    """Serve the org favicon (public, cached)."""
+    """Serve the org favicon (public, cached). Rate-limited to discourage
+    org-slug enumeration via fuzzing."""
     import base64
     from fastapi.responses import Response
 

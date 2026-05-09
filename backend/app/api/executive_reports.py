@@ -7,13 +7,14 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
 
 from app.core.auth_context import MemberContext
 from app.core.dependencies import require_permission
+from app.core.limiter import limiter
 from app.database import get_db
 from app.models.db_models import ExecutiveReport, ExecutiveReportSettings
 from app.services.log_service import log_activity
@@ -169,22 +170,57 @@ class ConsolidateRequest(BaseModel):
 
 
 @ws_router.post("/cost-history/consolidate", status_code=202)
+@limiter.limit("5/minute")
 def trigger_cost_consolidation(
     body: ConsolidateRequest,
+    request: Request,
     member: MemberContext = Depends(require_permission("resources.manage")),
     db: Session = Depends(get_db),
 ):
     """Force consolidation of a specific month from the cloud provider APIs.
-    Use to backfill historic data or to refresh a partially-collected month."""
+    Use to backfill historic data or to refresh a partially-collected month.
+
+    Each consolidation calls AWS Cost Explorer (USD 0.01/req) and Azure Cost
+    Management for every cloud account in the workspace, so we apply both a
+    per-user rate limit AND a Redis lock per (workspace, period) to dedupe
+    concurrent calls.
+    """
+    from app.core.redis_client import get_client
     from app.services.finops.cost_history_service import consolidate_period
+
     try:
         datetime.strptime(body.period, "%Y-%m")
     except ValueError:
         raise HTTPException(status_code=400, detail="Período inválido. Use o formato YYYY-MM.")
+
+    # Single-flight lock: 60s TTL prevents accidental floods (page refresh,
+    # double-click) from running the same expensive consolidation in parallel.
+    rc = get_client()
+    lock_key = f"cost_history:lock:{member.workspace_id}:{body.period}"
+    if rc:
+        try:
+            acquired = rc.set(lock_key, "1", ex=60, nx=True)
+            if not acquired:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Já existe uma consolidação em andamento para este período. Aguarde 1 minuto.",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # Redis unreachable: fall through; the limiter still protects us.
+
     try:
         result = consolidate_period(db, member.workspace_id, body.period, force=body.force)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        if rc:
+            try:
+                rc.delete(lock_key)
+            except Exception:
+                pass
+
     return {"period": body.period, "by_provider": result}
 
 

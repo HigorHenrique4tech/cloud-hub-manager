@@ -51,6 +51,15 @@ def _send_email(to_email: str, subject: str, html_body: str, sender_name: str = 
     if not settings.SMTP_HOST:
         logger.warning("SMTP not configured. Email to %s not sent.", to_email)
         return True
+    # Defense-in-depth against header injection: any CRLF in fields that flow
+    # into headers (Subject, From, To) is sanitized to a single space.
+    def _hdr(v: str) -> str:
+        if v is None:
+            return ""
+        return str(v).replace("\r", " ").replace("\n", " ").strip()
+    subject = _hdr(subject)
+    sender_name = _hdr(sender_name) or "CloudAtlas"
+    to_email = _hdr(to_email)
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject

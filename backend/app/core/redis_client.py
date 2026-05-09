@@ -150,19 +150,31 @@ def store_oauth_state(state: str, provider: str, ttl_seconds: int = 600) -> bool
         return False
 
 
+_CONSUME_OAUTH_STATE_LUA = """
+local v = redis.call('GET', KEYS[1])
+if not v then return nil end
+if v ~= ARGV[1] then return v end
+redis.call('DEL', KEYS[1])
+return v
+"""
+
+
 def consume_oauth_state(state: str, provider: str) -> bool:
-    """Atomically validate + delete an OAuth state. One-time use."""
+    """Atomically validate + delete an OAuth state. One-time use.
+
+    Uses a Lua script so GET+DEL run in a single Redis call — prevents two
+    concurrent callbacks from both succeeding on the same state.
+    """
     if not state or not _client:
         # Fail-closed: if Redis is down, OAuth state can't be validated.
         # Conservative choice for a security-critical check.
         return False
     try:
         key = f"{_OAUTH_STATE_PREFIX}{state}"
-        stored = _client.get(key)
-        if stored != provider:
-            return False
-        _client.delete(key)
-        return True
+        result = _client.eval(_CONSUME_OAUTH_STATE_LUA, 1, key, provider)
+        # Lua returns the matched provider string when consumed, the stored
+        # value (mismatched provider) on conflict, or nil if absent.
+        return result == provider
     except Exception as exc:
         logger.warning("redis consume_oauth_state failed: %s", exc)
         return False
