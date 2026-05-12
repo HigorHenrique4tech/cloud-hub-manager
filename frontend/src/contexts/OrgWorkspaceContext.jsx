@@ -26,6 +26,7 @@ export const OrgWorkspaceProvider = ({ children }) => {
       return;
     }
 
+    setLoading(true);
     const load = async () => {
       try {
         const { organizations } = await orgService.listOrgs();
