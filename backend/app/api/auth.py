@@ -218,7 +218,7 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         user=_user_response(user, db),
         needs_company_info=needs_info,
     )
-    response = JSONResponse(content=resp_payload.model_dump(), status_code=201)
+    response = JSONResponse(content=resp_payload.model_dump(mode='json'), status_code=201)
     _set_refresh_cookie(response, refresh_token)
     return response
 
@@ -299,7 +299,7 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
         refresh_token=refresh_token,
         user=_user_response(user, db),
     )
-    response = JSONResponse(content=payload.model_dump())
+    response = JSONResponse(content=payload.model_dump(mode='json'))
     _set_refresh_cookie(response, refresh_token)
     return response
 
@@ -326,7 +326,7 @@ def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get
         refresh_token=new_refresh,
         user=_user_response(user, db),
     )
-    response = JSONResponse(content=resp_payload.model_dump())
+    response = JSONResponse(content=resp_payload.model_dump(mode='json'))
     _set_refresh_cookie(response, new_refresh)
     return response
 
@@ -763,7 +763,7 @@ def verify_mfa(payload: MFAVerifyRequest, request: Request, db: Session = Depend
         refresh_token=refresh_token,
         user=_user_response(user, db),
     )
-    response = JSONResponse(content=resp_payload.model_dump())
+    response = JSONResponse(content=resp_payload.model_dump(mode='json'))
     _set_refresh_cookie(response, refresh_token)
     return response
 
@@ -1172,7 +1172,7 @@ def _oauth_login_or_register(
         user=_user_response(user, db),
         needs_company_info=is_new_user,
     )
-    response = JSONResponse(content=resp_payload.model_dump())
+    response = JSONResponse(content=resp_payload.model_dump(mode='json'))
     _set_refresh_cookie(response, refresh_token)
     return response
 
