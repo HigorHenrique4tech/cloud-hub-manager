@@ -3,6 +3,7 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   timeout: 60000,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
     'X-Requested-With': 'XMLHttpRequest',
@@ -47,13 +48,6 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      const storedRefresh = localStorage.getItem('refreshToken');
-      if (!storedRefresh) {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-        return Promise.reject(error);
-      }
-
       if (isRefreshing) {
         // Queue subsequent requests while refresh is in progress
         return new Promise((resolve, reject) => {
@@ -68,12 +62,13 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        // Refresh token is sent automatically via HttpOnly cookie
         const { data } = await axios.post(
           `${api.defaults.baseURL}/auth/refresh`,
-          { refresh_token: storedRefresh }
+          {},
+          { withCredentials: true }
         );
         localStorage.setItem('token', data.access_token);
-        localStorage.setItem('refreshToken', data.refresh_token);
         api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
         processQueue(null, data.access_token);
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
@@ -81,7 +76,6 @@ api.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError);
         localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {

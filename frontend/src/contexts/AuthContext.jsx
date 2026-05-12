@@ -16,7 +16,6 @@ export const AuthProvider = ({ children }) => {
           setUser(me);
         } catch {
           localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
           setToken(null);
         }
       }
@@ -30,9 +29,6 @@ export const AuthProvider = ({ children }) => {
     // MFA required — return early so login.jsx can handle the OTP step
     if (data.mfa_required) return data;
     localStorage.setItem('token', data.access_token);
-    if (data.refresh_token) {
-      localStorage.setItem('refreshToken', data.refresh_token);
-    }
     setToken(data.access_token);
     setUser(data.user);
     return data;
@@ -41,9 +37,6 @@ export const AuthProvider = ({ children }) => {
   const register = async (name, email, password) => {
     const data = await authService.register(name, email, password);
     localStorage.setItem('token', data.access_token);
-    if (data.refresh_token) {
-      localStorage.setItem('refreshToken', data.refresh_token);
-    }
     setToken(data.access_token);
     setUser(data.user);
     return data;
@@ -52,20 +45,13 @@ export const AuthProvider = ({ children }) => {
   /** Set auth state from a TokenResponse (used by OAuth callback) */
   const loginWithTokens = (data) => {
     localStorage.setItem('token', data.access_token);
-    if (data.refresh_token) {
-      localStorage.setItem('refreshToken', data.refresh_token);
-    }
     setToken(data.access_token);
     setUser(data.user);
   };
 
   const logout = async () => {
-    const rt = localStorage.getItem('refreshToken');
-    if (rt) {
-      await authService.logoutServer(rt);
-    }
+    await authService.logoutServer();
     localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
     localStorage.removeItem('selectedOrg');
     localStorage.removeItem('selectedWorkspace');
     setToken(null);

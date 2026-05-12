@@ -22,7 +22,6 @@ export default function EmailChangeConfirm() {
         });
         // Force re-login since the backend revoked all sessions
         localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
       })
       .catch((err) => {
         setState({

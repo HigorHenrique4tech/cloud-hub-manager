@@ -13,7 +13,9 @@ from app.models.db_models import Organization, Workspace
 logger = logging.getLogger(__name__)
 
 _HEX_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
-_ALLOWED_MIME = {"image/png", "image/jpeg", "image/webp", "image/svg+xml", "image/x-icon", "image/vnd.microsoft.icon"}
+_ALLOWED_MIME = {"image/png", "image/jpeg", "image/webp", "image/x-icon", "image/vnd.microsoft.icon"}
+# SVG is intentionally excluded: XSS via embedded <script>, XXE via DOCTYPE,
+# and SSRF via external references cannot be reliably neutralised with regex alone.
 
 DEFAULT_BRANDING = {
     "platform_name": "CloudAtlas",

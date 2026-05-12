@@ -168,7 +168,7 @@ async def add_security_headers(request: Request, call_next):
         "default-src 'self'; "
         "script-src 'self'; "
         "style-src 'self' 'unsafe-inline'; "
-        "img-src 'self' data:image/png data:image/jpeg data:image/gif data:image/webp data:image/svg+xml; "
+        "img-src 'self' data:image/png data:image/jpeg data:image/gif data:image/webp; "
         "font-src 'self'; "
         "connect-src 'self'; "
         "frame-ancestors 'none'; "

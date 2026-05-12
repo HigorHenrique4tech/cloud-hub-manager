@@ -29,10 +29,38 @@ from app.services.log_service import log_activity
 from app.core.dependencies import get_current_user
 from app.core.limiter import limiter, get_real_ip
 from app.core.config import settings
+from fastapi.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["Auth"])
+
+# ── Refresh token cookie helpers ─────────────────────────────────────────────
+_RT_COOKIE = "rt"
+_RT_MAX_AGE = 30 * 24 * 3600  # 30 days
+
+
+def _set_refresh_cookie(response, token: str) -> None:
+    """Set the refresh token as an HttpOnly cookie restricted to auth endpoints."""
+    response.set_cookie(
+        key=_RT_COOKIE,
+        value=token,
+        httponly=True,
+        secure=not settings.DEBUG,
+        samesite="lax",
+        max_age=_RT_MAX_AGE,
+        path="/api/v1/auth",
+    )
+
+
+def _clear_refresh_cookie(response) -> None:
+    response.delete_cookie(key=_RT_COOKIE, path="/api/v1/auth",
+                           httponly=True, secure=not settings.DEBUG, samesite="lax")
+
+
+def _get_refresh_token(request: Request, body_token: Optional[str] = None) -> Optional[str]:
+    """Prefer cookie; fall back to body field (backward compat for old clients)."""
+    return request.cookies.get(_RT_COOKIE) or body_token
 
 
 def _user_response(user, db: Session) -> "UserResponse":
@@ -52,11 +80,11 @@ def _user_response(user, db: Session) -> "UserResponse":
 # ── Schemas ──────────────────────────────────────────────────────────────────
 
 class RefreshRequest(BaseModel):
-    refresh_token: str
+    refresh_token: Optional[str] = None
 
 
 class LogoutRequest(BaseModel):
-    refresh_token: str
+    refresh_token: Optional[str] = None
 
 
 class ResendVerificationRequest(BaseModel):
@@ -140,7 +168,7 @@ def _ensure_personal_org(db: Session, user: User) -> Organization:
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 
-@router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/register", status_code=status.HTTP_201_CREATED)
 @limiter.limit("3/minute")
 def register(payload: UserCreate, request: Request, db: Session = Depends(get_db)):
     """Register a new user"""
@@ -184,12 +212,15 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
         ip_address=get_real_ip(request),
     )
     needs_info = not payload.company_name
-    return TokenResponse(
+    resp_payload = TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         user=_user_response(user, db),
         needs_company_info=needs_info,
     )
+    response = JSONResponse(content=resp_payload.model_dump(), status_code=201)
+    _set_refresh_cookie(response, refresh_token)
+    return response
 
 
 @router.post("/login")
@@ -263,19 +294,25 @@ def login(payload: UserLogin, request: Request, db: Session = Depends(get_db)):
         user_agent=request.headers.get("user-agent"),
         ip_address=get_real_ip(request),
     )
-    return TokenResponse(
+    payload = TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         user=_user_response(user, db),
     )
+    response = JSONResponse(content=payload.model_dump())
+    _set_refresh_cookie(response, refresh_token)
+    return response
 
 
-@router.post("/refresh", response_model=TokenResponse)
+@router.post("/refresh")
 @limiter.limit("10/minute")
 def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get_db)):
     """Exchange a refresh token for a new access + refresh token pair."""
+    token = _get_refresh_token(request, payload.refresh_token)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token não fornecido")
     try:
-        user_id, new_refresh = validate_refresh_token(db, payload.refresh_token)
+        user_id, new_refresh = validate_refresh_token(db, token)
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
 
@@ -284,18 +321,23 @@ def refresh(payload: RefreshRequest, request: Request, db: Session = Depends(get
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário não encontrado")
 
     access_token = create_access_token(str(user.id))
-    return TokenResponse(
+    resp_payload = TokenResponse(
         access_token=access_token,
         refresh_token=new_refresh,
         user=_user_response(user, db),
     )
+    response = JSONResponse(content=resp_payload.model_dump())
+    _set_refresh_cookie(response, new_refresh)
+    return response
 
 
 @router.post("/logout")
 @limiter.limit("10/minute")
 def logout(payload: LogoutRequest, request: Request, db: Session = Depends(get_db)):
     """Revoke the refresh token AND the current access token's jti."""
-    revoke_refresh_token(db, payload.refresh_token)
+    token = _get_refresh_token(request, payload.refresh_token)
+    if token:
+        revoke_refresh_token(db, token)
 
     # Best-effort: revoke the access token presented in the Authorization header
     auth = request.headers.get("Authorization", "")
@@ -304,7 +346,9 @@ def logout(payload: LogoutRequest, request: Request, db: Session = Depends(get_d
         if claims and claims.get("jti"):
             revoke_access_jti(claims["jti"], claims.get("exp"))
 
-    return {"detail": "Logout realizado com sucesso"}
+    response = JSONResponse(content={"detail": "Logout realizado com sucesso"})
+    _clear_refresh_cookie(response)
+    return response
 
 
 @router.get("/me", response_model=UserResponse)
@@ -669,7 +713,7 @@ def change_password(
 # ── MFA ──────────────────────────────────────────────────────────────────────
 
 
-@router.post("/mfa/verify", response_model=TokenResponse)
+@router.post("/mfa/verify")
 @limiter.limit("5/minute")
 def verify_mfa(payload: MFAVerifyRequest, request: Request, db: Session = Depends(get_db)):
     """Verify OTP and complete MFA login. Returns full TokenResponse."""
@@ -714,11 +758,14 @@ def verify_mfa(payload: MFAVerifyRequest, request: Request, db: Session = Depend
         user_agent=request.headers.get("user-agent"),
         ip_address=get_real_ip(request),
     )
-    return TokenResponse(
+    resp_payload = TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         user=_user_response(user, db),
     )
+    response = JSONResponse(content=resp_payload.model_dump())
+    _set_refresh_cookie(response, refresh_token)
+    return response
 
 
 @router.post("/mfa/resend")
@@ -1119,12 +1166,15 @@ def _oauth_login_or_register(
         user_agent=request.headers.get("user-agent"),
         ip_address=get_real_ip(request),
     )
-    return TokenResponse(
+    resp_payload = TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         user=_user_response(user, db),
         needs_company_info=is_new_user,
     )
+    response = JSONResponse(content=resp_payload.model_dump())
+    _set_refresh_cookie(response, refresh_token)
+    return response
 
 
 @router.post("/oauth/state")
@@ -1150,7 +1200,7 @@ async def create_oauth_state(
     return {"state": state}
 
 
-@router.post("/google/callback", response_model=TokenResponse)
+@router.post("/google/callback")
 @limiter.limit("5/minute")
 async def google_callback(
     payload: OAuthCallback,
@@ -1176,7 +1226,7 @@ async def google_callback(
     )
 
 
-@router.post("/github/callback", response_model=TokenResponse)
+@router.post("/github/callback")
 @limiter.limit("5/minute")
 async def github_callback(
     payload: OAuthCallback,
@@ -1202,7 +1252,7 @@ async def github_callback(
     )
 
 
-@router.post("/microsoft/callback", response_model=TokenResponse)
+@router.post("/microsoft/callback")
 @limiter.limit("5/minute")
 async def microsoft_callback(
     payload: OAuthCallback,
@@ -1227,3 +1277,137 @@ async def microsoft_callback(
         avatar_url=info.get("avatar_url"),
         email_verified=bool(info.get("email_verified")),
     )
+
+
+# ── LGPD — Direito ao Esquecimento e Portabilidade ───────────────────────────
+
+class AccountDeleteRequest(BaseModel):
+    password: str
+
+
+@router.delete("/me/account", status_code=200)
+@limiter.limit("3/minute")
+def delete_account(
+    payload: AccountDeleteRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """LGPD Art. 18 — Direito ao Esquecimento.
+
+    Anonymizes all personal data and deactivates the account. Billing records and
+    audit logs are retained as required by law but are detached from PII.
+    Hard-deletion is deferred to a scheduled cleanup job (90-day retention).
+    """
+    # OAuth users have no password — skip verification if oauth_provider set
+    if not current_user.oauth_provider:
+        if not verify_password(payload.password, current_user.hashed_password):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Senha incorreta.")
+
+    uid = str(current_user.id)
+    anon_email = f"deleted_{uid[:8]}@deleted.local"
+
+    # Revoke all active sessions first
+    revoke_all_user_tokens(db, current_user.id)
+    from app.core.redis_client import revoke_access_jti
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer "):
+        claims = decode_token_claims(auth[7:])
+        if claims and claims.get("jti"):
+            revoke_access_jti(claims["jti"], claims.get("exp"))
+
+    # Anonymize PII — keep id/created_at for audit integrity
+    current_user.email = anon_email
+    current_user.name = "Usuário Deletado"
+    current_user.hashed_password = hash_password(secrets.token_hex(32))
+    current_user.phone = None
+    current_user.company_name = None
+    current_user.cnpj = None
+    current_user.avatar_url = None
+    current_user.verification_token = None
+    current_user.password_reset_token = None
+    current_user.email_change_token = None
+    current_user.pending_email = None
+    current_user.oauth_provider = None
+    current_user.oauth_id = None
+    current_user.is_active = False
+    current_user.is_verified = False
+    current_user.mfa_enabled = False
+    current_user.mfa_otp_hash = None
+
+    db.commit()
+    log_activity(db, current_user, "auth.account_deleted", "User", resource_id=uid,
+                 resource_name=anon_email, provider="system")
+    return {"detail": "Conta encerrada. Seus dados pessoais foram anonimizados conforme a LGPD."}
+
+
+@router.get("/me/export")
+@limiter.limit("5/minute")
+def export_my_data(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """LGPD Art. 18 III — Direito à Portabilidade de Dados.
+
+    Returns all personal data held for the authenticated user in JSON format.
+    """
+    from app.models.db_models import (
+        OrganizationMember, TermsAcceptance, RefreshToken,
+    )
+
+    memberships = db.query(OrganizationMember).filter(
+        OrganizationMember.user_id == current_user.id
+    ).all()
+
+    terms = db.query(TermsAcceptance).filter(
+        TermsAcceptance.user_id == current_user.id
+    ).all()
+
+    sessions = db.query(RefreshToken).filter(
+        RefreshToken.user_id == current_user.id,
+        RefreshToken.revoked == False,
+    ).all()
+
+    return {
+        "exported_at": datetime.utcnow().isoformat() + "Z",
+        "profile": {
+            "id": str(current_user.id),
+            "email": current_user.email,
+            "name": current_user.name,
+            "phone": current_user.phone,
+            "company_name": current_user.company_name,
+            "cnpj": current_user.cnpj,
+            "avatar_url": current_user.avatar_url,
+            "mfa_enabled": current_user.mfa_enabled,
+            "oauth_provider": current_user.oauth_provider,
+            "is_verified": current_user.is_verified,
+            "onboarding_completed": current_user.onboarding_completed,
+            "created_at": current_user.created_at.isoformat() if current_user.created_at else None,
+        },
+        "organizations": [
+            {
+                "organization_id": str(m.organization_id),
+                "role": m.role,
+                "joined_at": m.joined_at.isoformat() if m.joined_at else None,
+            }
+            for m in memberships
+        ],
+        "terms_acceptances": [
+            {
+                "version": t.version,
+                "accepted_at": t.accepted_at.isoformat() if t.accepted_at else None,
+                "ip_address": t.ip_address,
+            }
+            for t in terms
+        ],
+        "active_sessions": [
+            {
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+                "user_agent": s.user_agent,
+                "ip_address": s.ip_address,
+                "expires_at": s.expires_at.isoformat() if s.expires_at else None,
+            }
+            for s in sessions
+        ],
+    }

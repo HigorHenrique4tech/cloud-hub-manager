@@ -19,6 +19,7 @@ import './styles/index.css';
 import Login from './pages/login';
 import Register from './pages/register';
 import ResetPassword from './pages/ResetPassword';
+import PrivacyPolicy from './pages/PrivacyPolicy';
 
 // Core (loaded on demand)
 const Dashboard = lazy(() => import('./pages/dashboard'));
@@ -144,6 +145,7 @@ function App() {
                 <Route path="/invite/:token" element={<InviteAccept />} />
                 <Route path="/verify-email" element={<VerifyEmail />} />
                 <Route path="/verify/:token" element={<VerifyCallback />} />
+                <Route path="/privacy" element={<PrivacyPolicy />} />
                 <Route path="/email-change/confirm/:token" element={<EmailChangeConfirm />} />
                 <Route path="/payment/confirmed" element={<PaymentConfirmation />} />
                 <Route path="/select-plan" element={<PR><PlanSelection /></PR>} />

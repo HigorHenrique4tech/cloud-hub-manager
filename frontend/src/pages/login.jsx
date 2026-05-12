@@ -217,9 +217,8 @@ const Login = () => {
     if (authLoading) return;
     if (!user) return;
     if (redirectParam === 'desk') {
-      const t  = localStorage.getItem('token') || '';
-      const rt = localStorage.getItem('refreshToken') || '';
-      window.location.replace(`${DESK_URL}/auth/callback?token=${t}&refresh=${rt}`);
+      const t = localStorage.getItem('token') || '';
+      window.location.replace(`${DESK_URL}/auth/callback?token=${t}`);
     } else {
       navigate(inviteToken ? `/invite/${inviteToken}` : '/', { replace: true });
     }

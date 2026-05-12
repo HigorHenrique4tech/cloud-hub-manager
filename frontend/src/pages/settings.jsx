@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { LogOut, Save, Eye, EyeOff, Check, AlertCircle, User as UserIcon, Lock, ShieldCheck, Mail, BadgeCheck } from 'lucide-react';
+import { useNavigate, Link } from 'react-router-dom';
+import { LogOut, Save, Eye, EyeOff, Check, AlertCircle, User as UserIcon, Lock, ShieldCheck, Mail, BadgeCheck, Download, Trash2, ExternalLink } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
@@ -519,7 +519,146 @@ const Settings = () => {
           Acesse <strong>Workspace → Configurações</strong> na barra lateral para adicionar ou remover contas.
         </p>
       </div>
+
+      {/* ── LGPD / Privacidade ────────────────────────────── */}
+      <LgpdSection user={user} logout={logout} />
     </Layout>
+  );
+};
+
+// ── LGPD Section ─────────────────────────────────────────────────────────────
+
+const LgpdSection = ({ user, logout }) => {
+  const navigate = useNavigate();
+  const [exportLoading, setExportLoading] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePwd, setDeletePwd] = useState('');
+  const [deleteMsg, setDeleteMsg] = useState(null);
+
+  const handleExport = async () => {
+    setExportLoading(true);
+    try {
+      const data = await authService.exportMyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `meus-dados-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Erro ao exportar dados. Tente novamente.');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const handleDelete = async (e) => {
+    e.preventDefault();
+    setDeleteMsg(null);
+    try {
+      await authService.deleteAccount(deletePwd);
+      logout();
+      navigate('/login');
+    } catch (err) {
+      setDeleteMsg(err.response?.data?.detail || 'Erro ao encerrar conta.');
+    }
+  };
+
+  return (
+    <div className="card border border-gray-200 dark:border-gray-700 space-y-5">
+      <div>
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-0.5">Privacidade e Dados (LGPD)</h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Conforme a Lei Geral de Proteção de Dados (Lei 13.709/2018), você tem direito de acessar, exportar e excluir seus dados.{' '}
+          <Link to="/privacy" target="_blank" className="text-primary hover:underline inline-flex items-center gap-0.5">
+            Política de Privacidade <ExternalLink className="w-3 h-3" />
+          </Link>
+        </p>
+      </div>
+
+      <div className="flex flex-col sm:flex-row gap-3">
+        {/* Exportar */}
+        <button
+          onClick={handleExport}
+          disabled={exportLoading}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600
+                     text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-700
+                     transition-colors disabled:opacity-50"
+        >
+          <Download className="w-4 h-4" />
+          {exportLoading ? 'Exportando...' : 'Exportar meus dados'}
+        </button>
+
+        {/* Encerrar conta */}
+        <button
+          onClick={() => setDeleteOpen(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-red-200 dark:border-red-800
+                     text-red-600 dark:text-red-400 text-sm font-medium hover:bg-red-50 dark:hover:bg-red-900/20
+                     transition-colors"
+        >
+          <Trash2 className="w-4 h-4" />
+          Encerrar minha conta
+        </button>
+      </div>
+
+      {/* Delete confirmation modal */}
+      {deleteOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <Trash2 className="w-5 h-5 text-red-500" />
+              </div>
+              <div>
+                <h4 className="font-semibold text-gray-900 dark:text-gray-100">Encerrar conta</h4>
+                <p className="text-xs text-gray-500 dark:text-gray-400">Esta ação é irreversível</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
+              Seus dados pessoais (nome, e-mail, telefone) serão anonimizados imediatamente. Registros de faturamento
+              e logs de auditoria são retidos pelo prazo legal de 5 anos conforme a LGPD.
+            </p>
+            <form onSubmit={handleDelete} className="space-y-3">
+              {!user?.oauth_provider && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    Confirme sua senha para continuar
+                  </label>
+                  <input
+                    type="password"
+                    value={deletePwd}
+                    onChange={e => setDeletePwd(e.target.value)}
+                    placeholder="Sua senha atual"
+                    className="input w-full"
+                    required
+                  />
+                </div>
+              )}
+              {deleteMsg && (
+                <p className="text-xs text-red-500 dark:text-red-400">{deleteMsg}</p>
+              )}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => { setDeleteOpen(false); setDeletePwd(''); setDeleteMsg(null); }}
+                  className="flex-1 px-4 py-2 rounded-lg border border-gray-300 dark:border-gray-600
+                             text-gray-700 dark:text-gray-300 text-sm font-medium hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-sm font-medium transition-colors"
+                >
+                  Confirmar exclusão
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
   );
 };
 

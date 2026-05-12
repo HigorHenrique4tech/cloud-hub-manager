@@ -16,14 +16,14 @@ const authService = {
     return data;
   },
 
-  refreshToken: async (refreshToken) => {
-    const { data } = await api.post('/auth/refresh', { refresh_token: refreshToken });
+  refreshToken: async () => {
+    const { data } = await api.post('/auth/refresh', {});
     return data;
   },
 
-  logoutServer: async (refreshToken) => {
+  logoutServer: async () => {
     try {
-      await api.post('/auth/logout', { refresh_token: refreshToken });
+      await api.post('/auth/logout', {});
     } catch {
       // Ignore — token may already be expired/revoked
     }
@@ -129,6 +129,17 @@ const authService = {
 
   microsoftCallback: async (code, redirectUri, state) => {
     const { data } = await api.post('/auth/microsoft/callback', { code, redirect_uri: redirectUri, state });
+    return data;
+  },
+
+  // LGPD
+  exportMyData: async () => {
+    const { data } = await api.get('/auth/me/export');
+    return data;
+  },
+
+  deleteAccount: async (password) => {
+    const { data } = await api.delete('/auth/me/account', { data: { password } });
     return data;
   },
 };

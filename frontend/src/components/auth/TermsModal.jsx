@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { X, ScrollText, CheckCircle2 } from 'lucide-react';
+import { X, ScrollText, CheckCircle2, ExternalLink } from 'lucide-react';
 import authService from '../../services/authService';
 
 const TERMS_CONTENT = `
@@ -131,7 +131,18 @@ export default function TermsModal({ onAccept, onDecline, loading = false }) {
               className="mt-0.5 w-4 h-4 rounded border-gray-300 text-primary focus:ring-primary"
             />
             <span className="text-sm text-gray-700 dark:text-gray-300">
-              Li e concordo com os <strong>Termos de Uso e Política de Privacidade</strong> da plataforma.
+              Li e concordo com os <strong>Termos de Uso</strong> e a{' '}
+              <a
+                href="/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-0.5 text-primary hover:underline font-medium"
+                onClick={e => e.stopPropagation()}
+              >
+                Política de Privacidade
+                <ExternalLink className="w-3 h-3" />
+              </a>{' '}
+              da plataforma.
             </span>
           </label>
 
