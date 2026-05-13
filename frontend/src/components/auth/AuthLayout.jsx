@@ -278,10 +278,10 @@ export default function AuthLayout({ children, subtitle }) {
           </div>
         </div>
 
-        {/* ── RIGHT: form panel ── */}
+        {/* ── RIGHT: form panel — full width on mobile, fixed 480px on desktop ── */}
         <div
-          className="flex flex-col w-full overflow-y-auto"
-          style={{ background: '#ffffff', minHeight: '100dvh', maxWidth: '100%' }}
+          className="flex flex-col w-full lg:w-[480px] lg:min-w-[480px] overflow-y-auto"
+          style={{ background: '#ffffff', minHeight: '100dvh' }}
         >
           {/* Centering wrapper */}
           <div
