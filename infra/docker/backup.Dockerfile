@@ -1,13 +1,16 @@
 FROM postgres:16-alpine
 
-# Install Azure CLI (lightweight, alpine-based)
-RUN apk add --no-cache \
-    python3 py3-pip bash curl \
-  && pip3 install --break-system-packages azure-cli \
-  && az version
+# azure-storage-blob (~15 MB) replaces full azure-cli (~500 MB)
+RUN apk add --no-cache python3 py3-pip bash gzip && \
+    pip3 install --no-cache-dir --break-system-packages azure-storage-blob
 
 COPY infra/scripts/pg-backup-azure.sh /usr/local/bin/pg-backup
-RUN chmod +x /usr/local/bin/pg-backup
+COPY infra/scripts/az-blob.py         /usr/local/bin/az-blob
+RUN chmod +x /usr/local/bin/pg-backup /usr/local/bin/az-blob
 
-# Default: run backup once. Use cron in docker-compose or host crontab.
-CMD ["pg-backup"]
+# Run at 03:00 UTC every day
+RUN echo "0 3 * * * /usr/local/bin/pg-backup >> /var/log/pg-backup.log 2>&1" \
+    > /etc/crontabs/root
+
+# crond -f = foreground (keeps container alive); -l 2 = log level notice
+CMD ["crond", "-f", "-l", "2"]

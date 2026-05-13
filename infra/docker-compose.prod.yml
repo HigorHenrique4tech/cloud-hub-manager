@@ -176,29 +176,38 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ── Database Backup (daily to Azure Blob Storage) ───────────────────────────
+  # ── Database Backup (daily at 03:00 UTC to Azure Blob Storage) ──────────────
   backup:
     build:
       context: ..
       dockerfile: infra/docker/backup.Dockerfile
     container_name: cloudatlas-backup
     environment:
+      # PostgreSQL connection
       - PGHOST=postgres
       - PGUSER=${POSTGRES_USER:-cloudatlas}
       - PGPASSWORD=${POSTGRES_PASSWORD:-cloudatlas_pass}
       - PGDATABASE=${POSTGRES_DB:-cloudatlas_db}
+      # Azure Blob Storage — create a dedicated storage account for backups
       - AZURE_STORAGE_ACCOUNT=${BACKUP_AZURE_STORAGE_ACCOUNT:-}
       - AZURE_STORAGE_KEY=${BACKUP_AZURE_STORAGE_KEY:-}
       - AZURE_STORAGE_CONTAINER=${BACKUP_AZURE_CONTAINER:-cloudatlas-backups}
+      # Retention & naming
       - RETENTION_DAYS=${BACKUP_RETENTION_DAYS:-30}
       - BACKUP_PREFIX=cloudatlas
+      # Failure notifications (uses same SMTP as backend)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+      - BACKUP_NOTIFY_EMAIL=${BACKUP_NOTIFY_EMAIL:-}
     networks:
       - cloudatlas-network
     depends_on:
       postgres:
         condition: service_healthy
-    # Runs daily at 03:00 UTC via entrypoint override
-    entrypoint: ["/bin/bash", "-c", "while true; do pg-backup; sleep 86400; done"]
+    # CMD from Dockerfile: crond -f (runs backup daily at 03:00 UTC)
     restart: unless-stopped
 
   # ── Flower (Celery monitoring + /metrics for Prometheus) ─────────────────────
