@@ -94,7 +94,7 @@ export default function OAuthButtons({ redirectTarget }) {
     <>
       <div className="flex items-center gap-3 my-4">
         <div className="flex-1 h-px bg-gray-300" />
-        <span className="text-xs text-gray-400">ou</span>
+        <span className="text-xs text-gray-400">ou continue com</span>
         <div className="flex-1 h-px bg-gray-300" />
       </div>
 
