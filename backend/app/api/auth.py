@@ -174,6 +174,8 @@ def register(payload: UserCreate, request: Request, db: Session = Depends(get_db
     """Register a new user"""
     existing = db.query(User).filter(User.email == payload.email).first()
     if existing:
+        # A3 — normalize timing to prevent email enumeration via response-time analysis
+        verify_password(payload.password, existing.hashed_password)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Não foi possível criar a conta. Verifique os dados e tente novamente."
@@ -1178,7 +1180,7 @@ def _oauth_login_or_register(
 
 
 @router.post("/oauth/state")
-@limiter.limit("20/minute")
+@limiter.limit("5/minute")
 async def create_oauth_state(
     request: Request,
 ):

@@ -15,6 +15,7 @@ Supported actions (v1):
   disable_schedule    — disables a ScheduledAction by ID
 """
 import logging
+import re
 import uuid
 from datetime import datetime, timedelta
 from typing import Optional
@@ -23,6 +24,28 @@ from uuid import UUID
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+# ── Resource ID format validators (C2 — defense against injection) ────────────
+
+_RE_AWS_INSTANCE = re.compile(r'^i-[0-9a-f]{8,17}$')
+_RE_AZURE_SAFE   = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_\-\.]{0,89}$')
+_RE_GCP_INSTANCE = re.compile(r'^[a-z][a-z0-9\-]{0,61}$')
+
+
+def _validate_resource_id(provider: str, resource_id: str) -> None:
+    """Raise ValueError when resource_id doesn't match expected cloud ID format."""
+    if not resource_id or len(resource_id) > 256:
+        raise ValueError("resource_id ausente ou muito longo")
+    if provider == "aws":
+        if not _RE_AWS_INSTANCE.match(resource_id):
+            raise ValueError(f"Formato de resource_id AWS inválido: {resource_id!r}")
+    elif provider == "azure":
+        parts = resource_id.split("/", 1)
+        if len(parts) != 2 or not all(_RE_AZURE_SAFE.match(p) for p in parts):
+            raise ValueError(f"Formato de resource_id Azure inválido: {resource_id!r}")
+    elif provider == "gcp":
+        if not _RE_GCP_INSTANCE.match(resource_id):
+            raise ValueError(f"Formato de resource_id GCP inválido: {resource_id!r}")
 
 # ── Condition evaluation ──────────────────────────────────────────────────────
 
@@ -412,9 +435,17 @@ def execute_action(db: Session, workspace_id: UUID, policy, action: dict, snapsh
                 logger.warning("Policy %s: stop_instance action missing resource_id", policy.id)
                 return "skipped"
 
+            # C1 + C2 — validate format and prevent path/injection attacks
+            try:
+                _validate_resource_id(provider, resource_id)
+            except ValueError as ve:
+                logger.warning("Policy %s: invalid resource_id rejected: %s", policy.id, ve)
+                return "skipped"
+
             from app.models.db_models import CloudAccount
             from app.services.auth_service import decrypt_credential, decrypt_for_account
 
+            # C1 — ownership check: only act on accounts that belong to this workspace
             account = db.query(CloudAccount).filter(
                 CloudAccount.workspace_id == workspace_id,
                 CloudAccount.provider == provider,

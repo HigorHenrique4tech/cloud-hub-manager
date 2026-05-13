@@ -1,5 +1,12 @@
 import axios from 'axios';
 
+// C3 — in-memory token storage (never persisted to localStorage, XSS-safe)
+let _accessToken = null;
+
+export function setAccessToken(t) { _accessToken = t; }
+export function clearAccessToken() { _accessToken = null; }
+export function getAccessToken() { return _accessToken; }
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
   timeout: 60000,
@@ -13,10 +20,8 @@ const api = axios.create({
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // Add auth token if exists
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (_accessToken) {
+      config.headers.Authorization = `Bearer ${_accessToken}`;
     }
     return config;
   },
@@ -68,14 +73,14 @@ api.interceptors.response.use(
           {},
           { withCredentials: true }
         );
-        localStorage.setItem('token', data.access_token);
+        setAccessToken(data.access_token);
         api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
         processQueue(null, data.access_token);
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError);
-        localStorage.removeItem('token');
+        clearAccessToken();
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {

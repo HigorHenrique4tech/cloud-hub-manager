@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { clearAccessToken } from '../../services/api';
 import TermsModal from '../auth/TermsModal';
 import authService from '../../services/authService';
 
@@ -30,8 +31,8 @@ export default function TermsGate({ children }) {
   const handleDecline = () => {
     // Desloga o usuário se recusar os termos
     authService.logoutServer().catch(() => {});
+    clearAccessToken();
     setUser(null);
-    localStorage.removeItem('token');
     window.location.href = '/login';
   };
 

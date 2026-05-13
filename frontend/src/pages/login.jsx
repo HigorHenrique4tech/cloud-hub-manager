@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { Mail, Lock, LogIn, Eye, EyeOff, ShieldCheck, ArrowLeft, RefreshCw, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { getAccessToken } from '../services/api';
 import authService from '../services/authService';
 import OAuthButtons from '../components/auth/OAuthButtons';
 
@@ -217,7 +218,7 @@ const Login = () => {
     if (authLoading) return;
     if (!user) return;
     if (redirectParam === 'desk') {
-      const t = localStorage.getItem('token') || '';
+      const t = getAccessToken() || '';
       window.location.replace(`${DESK_URL}/auth/callback?token=${t}`);
     } else {
       navigate(inviteToken ? `/invite/${inviteToken}` : '/', { replace: true });

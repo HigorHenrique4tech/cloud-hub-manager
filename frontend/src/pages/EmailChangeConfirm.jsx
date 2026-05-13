@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { CheckCircle2, XCircle, Loader2 } from 'lucide-react';
-import api from '../services/api';
+import api, { clearAccessToken } from '../services/api';
 
 export default function EmailChangeConfirm() {
   const { token } = useParams();
@@ -21,7 +21,7 @@ export default function EmailChangeConfirm() {
           message: resp.data?.detail || 'Email atualizado com sucesso. Faça login novamente.',
         });
         // Force re-login since the backend revoked all sessions
-        localStorage.removeItem('token');
+        clearAccessToken();
       })
       .catch((err) => {
         setState({

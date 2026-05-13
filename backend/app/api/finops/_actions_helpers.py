@@ -4,6 +4,7 @@ Also contains _apply_recommendation_logic used by bulk-apply and approvals.
 """
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Optional
 
@@ -22,6 +23,26 @@ from ._helpers import _get_aws_scanner, _get_azure_scanner, _get_gcp_scanner
 
 logger = logging.getLogger(__name__)
 
+# ── A1: resource_id format validators (defense-in-depth) ─────────────────────
+# For FinOps, resource_ids come from the scanner (trusted DB values).
+# These checks guard against unexpected characters only — no strict format.
+_RE_CLOUD_SAFE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9_\-\.:/]{0,254}$')
+
+
+def _check_aws_id(resource_id: str) -> None:
+    if not _RE_CLOUD_SAFE.match(resource_id or ""):
+        raise ValueError(f"resource_id AWS com caracteres inesperados: {resource_id!r}")
+
+
+def _check_azure_name(name: str) -> None:
+    if not _RE_CLOUD_SAFE.match(name or ""):
+        raise ValueError(f"resource_name Azure com caracteres inesperados: {name!r}")
+
+
+def _check_gcp_name(name: str) -> None:
+    if not _RE_CLOUD_SAFE.match(name or ""):
+        raise ValueError(f"resource_id GCP com caracteres inesperados: {name!r}")
+
 
 # ── Apply helpers (AWS) ────────────────────────────────────────────────────────
 
@@ -31,6 +52,7 @@ def _apply_aws(rec: FinOpsRecommendation, scanner: AWSFinOpsScanner) -> dict:
     Execute the AWS action for a recommendation.
     Returns rollback_data dict (can be empty if non-reversible).
     """
+    _check_aws_id(rec.resource_id)
     ec2 = scanner._client("ec2")
     rtype = rec.recommendation_type
     rrestype = rec.resource_type
@@ -117,6 +139,7 @@ def _rollback_aws(action: FinOpsAction, scanner: AWSFinOpsScanner):
 
 
 def _apply_azure(rec: FinOpsRecommendation, scanner: AzureFinOpsScanner) -> dict:
+    _check_azure_name(rec.resource_name)
     rtype = rec.recommendation_type
     rrestype = rec.resource_type
     spec = rec.current_spec or {}
@@ -179,6 +202,7 @@ def _rollback_azure(action: FinOpsAction, scanner: AzureFinOpsScanner):
 
 def _apply_gcp(rec: FinOpsRecommendation, scanner: GCPFinOpsScanner) -> dict:
     """Execute GCP action for a recommendation. Returns rollback_data."""
+    _check_gcp_name(rec.resource_id)
     rtype = rec.recommendation_type
     rrestype = rec.resource_type
     spec = rec.current_spec or {}

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle2, ArrowRight, Shield } from 'lucide-react';
 import Logo from '../components/common/Logo';
+import { getAccessToken } from '../services/api';
 
 const PaymentConfirmation = () => {
   const [show, setShow] = useState(false);
@@ -15,7 +16,7 @@ const PaymentConfirmation = () => {
   }, []);
 
   // Check if user is likely logged in (has token)
-  const isLoggedIn = !!localStorage.getItem('token');
+  const isLoggedIn = !!getAccessToken();
   const appUrl = isLoggedIn ? '/' : '/login';
 
   return (
