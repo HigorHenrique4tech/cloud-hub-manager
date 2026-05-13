@@ -56,7 +56,7 @@ const RecommendationCard = ({ rec, onApply, onRequestApproval, onDismiss, applyL
 
   const canApply      = !isLocked && isPending;
   const isRightsizing = rec.recommendation_type === 'rightsizing';
-  const planOk        = ['pro', 'enterprise'].includes((planTier || 'free').toLowerCase());
+  const planOk        = (planTier || 'free').toLowerCase() !== 'free';
 
   return (
     <div className={`rounded-xl border transition-all ${

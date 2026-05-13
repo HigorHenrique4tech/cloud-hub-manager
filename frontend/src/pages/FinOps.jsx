@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useToast } from '../contexts/ToastContext';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Zap, TrendingDown, History, Wallet, Bell, Mail, Clock, AlertTriangle, X, Server } from 'lucide-react';
 import Layout from '../components/layout/layout';
@@ -35,9 +36,11 @@ const TABS = [
 
 const FinOps = () => {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const { currentOrg } = useOrgWorkspace();
   const planTier = (currentOrg?.effective_plan || currentOrg?.plan_tier || 'free').toLowerCase();
-  const isPro = ['pro', 'enterprise'].includes(planTier);
+  const PAID_PLANS = ['pro', 'basic', 'standard', 'enterprise', 'enterprise_e1', 'enterprise_e2', 'enterprise_e3', 'enterprise_migration'];
+  const isPro = PAID_PLANS.includes(planTier);
 
   /* ── UI state ── */
   const [activeTab, setActiveTab]             = useState('recommendations');
@@ -160,8 +163,13 @@ const FinOps = () => {
       qc.invalidateQueries({ queryKey: ['finops-recs'] });
       qc.invalidateQueries({ queryKey: ['finops-summary'] });
       setDismissingId(null);
+      toast.success('Recomendação ignorada.');
     },
-    onError: () => setDismissingId(null),
+    onError: (err) => {
+      setDismissingId(null);
+      const msg = err?.response?.data?.detail || 'Erro ao ignorar recomendação. Tente novamente.';
+      toast.error(msg);
+    },
   });
 
   const bulkDismissMut = useMutation({

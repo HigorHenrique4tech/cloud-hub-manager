@@ -32,7 +32,6 @@ export default function TermsGate({ children }) {
     authService.logoutServer().catch(() => {});
     setUser(null);
     localStorage.removeItem('token');
-    localStorage.removeItem('refresh_token');
     window.location.href = '/login';
   };
 

@@ -184,13 +184,6 @@ const DashboardInner = () => {
             Personalizar
           </button>
         </div>
-        {/* Decorative hexagon */}
-        <div className="absolute top-4 right-8 opacity-[0.07] pointer-events-none">
-          <svg width="120" height="120" viewBox="0 0 48 48" fill="none">
-            <path d="M24 4L43 14V34L24 44L5 34V14L24 4Z" stroke="white" strokeWidth="1.5" />
-            <circle cx="24" cy="24" r="8" stroke="white" strokeWidth="1.5" />
-          </svg>
-        </div>
       </div>
 
       {/* Draggable widgets — bento grid */}

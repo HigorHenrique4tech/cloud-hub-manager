@@ -516,8 +516,13 @@ function ChannelCard({ channel, onEdit, onDelete, onTest, onToggle }) {
                 {channel.is_active ? 'Ativo' : 'Inativo'}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               <p className="text-xs text-gray-400 dark:text-gray-500">{typeInfo?.label}</p>
+              {channel.events?.length > 0 && (
+                <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                  · {channel.events.length} evento{channel.events.length !== 1 ? 's' : ''}
+                </span>
+              )}
               {channel.total_deliveries > 0 && (
                 <span className="text-[10px] text-gray-400 dark:text-gray-500">
                   · {channel.total_deliveries} entrega{channel.total_deliveries !== 1 ? 's' : ''}
@@ -564,15 +569,6 @@ function ChannelCard({ channel, onEdit, onDelete, onTest, onToggle }) {
             <Trash2 className="w-3.5 h-3.5" />
           </button>
         </div>
-      </div>
-
-      {/* Event badges */}
-      <div className="flex flex-wrap gap-1 mt-3">
-        {(channel.events || []).map((ev) => (
-          <span key={ev} className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${EVENT_COLORS[ev] || 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400'}`}>
-            {EVENT_LABELS[ev] || ev}
-          </span>
-        ))}
       </div>
 
       {/* Last delivery info */}

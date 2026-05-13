@@ -35,7 +35,7 @@ const TYPE_LABEL = {
  */
 const ActionTimeline = ({ actions = [], onRollback, rollbackLoading, planTier = 'free' }) => {
   const { fmtCost } = useCurrency();
-  const planOk = ['pro', 'enterprise'].includes((planTier || 'free').toLowerCase());
+  const planOk = (planTier || 'free').toLowerCase() !== 'free';
 
   if (actions.length === 0) {
     return (
