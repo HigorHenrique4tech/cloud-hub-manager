@@ -46,13 +46,15 @@ const finopsService = {
     return data;
   },
 
-  dismissRecommendation: async (recId, reason = '') => {
-    const { data } = await api.post(wsUrl(`/finops/recommendations/${recId}/dismiss`), { reason });
+  dismissRecommendation: async (recId, reason) => {
+    const body = reason ? { reason } : {};
+    const { data } = await api.post(wsUrl(`/finops/recommendations/${recId}/dismiss`), body);
     return data;
   },
 
-  bulkDismiss: async (recIds, reason = '') => {
-    const { data } = await api.post(wsUrl('/finops/recommendations/bulk-dismiss'), { rec_ids: recIds, reason });
+  bulkDismiss: async (recIds, reason) => {
+    const body = { rec_ids: recIds, ...(reason ? { reason } : {}) };
+    const { data } = await api.post(wsUrl('/finops/recommendations/bulk-dismiss'), body);
     return data;
   },
 

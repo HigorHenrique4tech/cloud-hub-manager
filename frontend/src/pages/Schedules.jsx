@@ -47,6 +47,8 @@ const METRIC_LABELS = {
 
 // Metrics that require selecting a specific resource
 const RESOURCE_METRICS = new Set(['cpu_usage_pct', 'memory_usage_pct']);
+// Actions that require selecting a target resource
+const ACTION_RESOURCE_TYPES = new Set(['stop_instance']);
 
 const OPERATOR_LABELS = {
   gt:           'maior que',
@@ -123,7 +125,8 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
   };
 
   const isResourceMetric = RESOURCE_METRICS.has(form.conditions.metric);
-  const canLoadResources = isResourceMetric && form.provider !== 'all';
+  const isResourceAction = ACTION_RESOURCE_TYPES.has(form.action.type);
+  const canLoadResources = (isResourceMetric || isResourceAction) && form.provider !== 'all';
 
   // Load resources when provider + metric trigger it
   const resourcesQ = useQuery({
@@ -145,6 +148,8 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
   useEffect(() => {
     set('conditions.resource_id', '');
     set('conditions.resource_name', '');
+    set('action.params.resource_id', '');
+    set('action.params.resource_name', '');
   }, [form.provider]);
 
   const handleResourceSelect = (e) => {
@@ -153,7 +158,22 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
     set('conditions.resource_name', selected?.name || e.target.value);
   };
 
-  const canSave = form.name && (!isResourceMetric || (form.provider !== 'all' && form.conditions.resource_id));
+  const handleActionResourceSelect = (e) => {
+    const selected = resources.find(r => r.id === e.target.value);
+    set('action.params.resource_id', e.target.value);
+    set('action.params.resource_name', selected?.name || e.target.value);
+  };
+
+  useEffect(() => {
+    if (!isResourceAction) {
+      set('action.params.resource_id', '');
+      set('action.params.resource_name', '');
+    }
+  }, [form.action.type]);
+
+  const canSave = form.name
+    && (!isResourceMetric || (form.provider !== 'all' && form.conditions.resource_id))
+    && (!isResourceAction || (form.provider !== 'all' && form.action.params?.resource_id));
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -301,6 +321,54 @@ function PolicyModal({ initial, onClose, onSave, isSaving }) {
                   {Object.entries(ACTION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
+
+              {/* Resource picker — for stop_instance action */}
+              {isResourceAction && (
+                <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3 space-y-2">
+                  <p className="text-xs font-medium text-red-700 dark:text-red-300">Recurso alvo</p>
+
+                  {form.provider === 'all' && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      Selecione um provedor específico para escolher o recurso.
+                    </p>
+                  )}
+
+                  {isResourceAction && form.provider !== 'all' && (
+                    <>
+                      {resourcesQ.isLoading && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Carregando instâncias...</p>
+                      )}
+                      {resourcesQ.isError && (
+                        <p className="text-xs text-red-500 dark:text-red-400">Erro ao carregar recursos.</p>
+                      )}
+                      {!resourcesQ.isLoading && resources.length === 0 && (
+                        <p className="text-xs text-gray-500 dark:text-gray-400">Nenhuma instância encontrada.</p>
+                      )}
+                      {resources.length > 0 && (
+                        <select
+                          value={form.action.params?.resource_id || ''}
+                          onChange={handleActionResourceSelect}
+                          className={INPUT_CLS}
+                        >
+                          <option value="">— Selecione uma instância —</option>
+                          {resources.map(r => (
+                            <option key={r.id} value={r.id}>
+                              {r.name}{r.state ? ` (${r.state})` : ''}{r.type ? ` · ${r.type}` : ''}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </>
+                  )}
+
+                  {form.action.params?.resource_id && (
+                    <p className="text-xs text-red-700 dark:text-red-300 font-mono truncate">
+                      ID: {form.action.params.resource_id}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                 <input type="checkbox" checked={form.action.also_notify}
                   onChange={e => set('action.also_notify', e.target.checked)}
@@ -459,11 +527,16 @@ function PolicyCard({ policy, onEdit, onDelete, onToggle, onShowLogs }) {
           </div>
 
           {/* Action badge */}
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className={`inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded ${actionColor}`}>
               <ActionIcon className="w-3 h-3" />
               {ACTION_LABELS[action.type] || action.type}
             </span>
+            {action.params?.resource_name && (
+              <span className="text-xs font-medium text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded font-mono">
+                → {action.params.resource_name}
+              </span>
+            )}
             {action.also_notify && action.type !== 'notify' && (
               <span className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 rounded">
                 <Bell className="w-3 h-3" /> Notificar
