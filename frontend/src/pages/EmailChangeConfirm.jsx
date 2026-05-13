@@ -20,6 +20,7 @@ export default function EmailChangeConfirm() {
           status: 'success',
           message: resp.data?.detail || 'Email atualizado com sucesso. Faça login novamente.',
         });
+        // Force re-login since the backend revoked all sessions
         clearAccessToken();
       })
       .catch((err) => {
@@ -31,82 +32,44 @@ export default function EmailChangeConfirm() {
   }, [token]);
 
   const isSuccess = state.status === 'success';
-  const isError   = state.status === 'error';
-
-  const iconBox = (color, bg, border) => ({
-    width: 64, height: 64, borderRadius: '50%',
-    background: bg, border: `2px solid ${border}`,
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    margin: '0 auto 16px', color,
-  });
+  const isError = state.status === 'error';
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: 'linear-gradient(160deg, #e8f0fe 0%, #dce8fb 50%, #e0eaf7 100%)' }}
-    >
-      <div
-        className="w-full max-w-sm text-center"
-        style={{
-          background: '#fff', borderRadius: 20, padding: '36px 28px',
-          boxShadow: '0 4px 24px rgba(37,99,235,0.08), 0 1px 4px rgba(0,0,0,0.06)',
-        }}
-      >
-        {/* Logo */}
-        <div className="flex items-center justify-center gap-2.5 mb-7">
-          <div style={{
-            width: 36, height: 36, background: '#eff6ff', border: '1.5px solid #bfdbfe',
-            borderRadius: 9, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>
-            <img src="/logo.png" alt="CloudAtlas" style={{ width: 24, height: 24, objectFit: 'contain' }} />
-          </div>
-          <span style={{ fontSize: 20, fontWeight: 800, color: '#111827', fontFamily: "'Plus Jakarta Sans', system-ui" }}>
-            Cloud<span style={{ color: '#2563eb' }}>Atlas</span>
-          </span>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900 p-4">
+      <div className="card max-w-sm w-full text-center p-8">
+        <div
+          className={`mx-auto w-14 h-14 rounded-full flex items-center justify-center mb-4 ${
+            isSuccess
+              ? 'bg-green-100 dark:bg-green-900/30'
+              : isError
+                ? 'bg-red-100 dark:bg-red-900/30'
+                : 'bg-blue-100 dark:bg-blue-900/30'
+          }`}
+        >
+          {state.status === 'loading' && <Loader2 className="w-7 h-7 text-blue-600 dark:text-blue-400 animate-spin" />}
+          {isSuccess && <CheckCircle2 className="w-7 h-7 text-green-600 dark:text-green-400" />}
+          {isError && <XCircle className="w-7 h-7 text-red-600 dark:text-red-400" />}
         </div>
 
-        {state.status === 'loading' && (
-          <div style={{ ...iconBox('#2563eb', '#eff6ff', '#bfdbfe') }}>
-            <Loader2 style={{ width: 28, height: 28, animation: 'spin .9s linear infinite' }} />
-          </div>
-        )}
-        {isSuccess && (
-          <div style={{ ...iconBox('#16a34a', '#f0fdf4', '#bbf7d0') }}>
-            <CheckCircle2 style={{ width: 28, height: 28 }} />
-          </div>
-        )}
-        {isError && (
-          <div style={{ ...iconBox('#dc2626', '#fef2f2', '#fecaca') }}>
-            <XCircle style={{ width: 28, height: 28 }} />
-          </div>
-        )}
-
-        <h1 style={{ fontSize: 18, fontWeight: 700, color: '#111827', marginBottom: 8, fontFamily: "'Plus Jakarta Sans', system-ui" }}>
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
           {state.status === 'loading' && 'Confirmando alteração...'}
           {isSuccess && 'Email atualizado'}
           {isError && 'Falha ao confirmar'}
         </h1>
 
         {state.message && (
-          <p style={{ fontSize: 13, color: '#6b7280', marginBottom: 24 }}>{state.message}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">{state.message}</p>
         )}
 
         {(isSuccess || isError) && (
           <button
             onClick={() => navigate('/login', { replace: true })}
-            style={{
-              width: '100%', padding: '11px', borderRadius: 10, border: 'none',
-              background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
-              color: '#fff', fontSize: 14, fontWeight: 600, cursor: 'pointer',
-              fontFamily: "'Plus Jakarta Sans', system-ui",
-            }}
+            className="btn-primary w-full"
           >
             Ir para login
           </button>
         )}
       </div>
-
-      <style>{`@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }`}</style>
     </div>
   );
 }
