@@ -9,6 +9,7 @@ import { ToastProvider } from './contexts/ToastContext';
 import { BackgroundTasksProvider } from './contexts/BackgroundTasksContext';
 import Toaster from './components/common/Toaster';
 import TaskNotifications from './components/common/TaskNotifications';
+import CookieBanner from './components/common/CookieBanner';
 import ProtectedRoute from './components/common/ProtectedRoute';
 import './styles/index.css';
 
@@ -216,6 +217,7 @@ function App() {
               </Suspense>
               </BrowserRouter>
               <TaskNotifications />
+              <CookieBanner />
               </BackgroundTasksProvider>
               </BrandingProvider>
             </OrgWorkspaceProvider>
