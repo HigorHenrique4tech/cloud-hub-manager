@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useLayoutEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard, DollarSign, Settings, FileText,
@@ -115,6 +115,12 @@ const Sidebar = ({ mobileOpen, onClose }) => {
   const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
   const isEnterprise = ['enterprise_e1', 'enterprise_e2', 'enterprise_e3', 'enterprise_migration'].includes(effectivePlan);
 
+  const navRef = useRef(null);
+  const scrollPos = useRef(0);
+  useLayoutEffect(() => {
+    if (navRef.current) navRef.current.scrollTop = scrollPos.current;
+  });
+
   const pendingCountQ = useQuery({
     queryKey: ['approvals-count'],
     queryFn: approvalService.getCount,
@@ -130,7 +136,12 @@ const Sidebar = ({ mobileOpen, onClose }) => {
       <WorkspaceSwitcher />
 
       {/* Main navigation — scrollable */}
-      <nav className="flex-1 px-2 overflow-y-auto" aria-label="Navegação principal">
+      <nav
+        ref={navRef}
+        onScroll={(e) => { scrollPos.current = e.currentTarget.scrollTop; }}
+        className="flex-1 px-2 overflow-y-auto"
+        aria-label="Navegação principal"
+      >
 
         {/* Dashboard */}
         <div className="mb-1">
