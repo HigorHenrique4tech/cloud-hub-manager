@@ -35,7 +35,9 @@
       "Bash(findstr -i auth)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\" -Recurse -Force)",
       "Bash(Select-Object -ExpandProperty FullName)",
-      "Bash(dir /b \"c:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\")"
+      "Bash(dir /b \"c:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\")",
+      "Skill(frontend-design)",
+      "Skill(frontend-design:*)"
     ]
   }
 }
