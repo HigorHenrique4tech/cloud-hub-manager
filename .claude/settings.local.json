@@ -34,7 +34,8 @@
       "Bash(grep -n \"ALLOWED_ORIGINS\\\\|allow_origins\\\\|\\\\\"\\\\\\\\*\\\\\"\" c:/Users/higor/Downloads/cloud-hub-manager/cloud-hub-manager/backend/app/main.py)",
       "Bash(findstr -i auth)",
       "Bash(Get-ChildItem -Path \"C:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\" -Recurse -Force)",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(dir /b \"c:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\")"
     ]
   }
 }
