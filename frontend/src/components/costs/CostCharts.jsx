@@ -152,7 +152,7 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={axisTickFmt} width={60} />
-              <Tooltip content={<EnhancedTooltip anomalies={anomalies} showComparison={showComparison} fmt={fmtCost} />} />
+              <Tooltip content={<EnhancedTooltip anomalies={anomalies} showComparison={showComparison} fmt={(v) => fmtCost(v, currency)} />} />
               <Legend />
 
               {/* Previous period ghost line */}
@@ -190,7 +190,7 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={axisTickFmt} width={60} />
-              <Tooltip content={<EnhancedTooltip anomalies={anomalies} showComparison={showComparison} fmt={fmtCost} />} />
+              <Tooltip content={<EnhancedTooltip anomalies={anomalies} showComparison={showComparison} fmt={(v) => fmtCost(v, currency)} />} />
               <Legend />
 
               {/* Previous period as ghost bars */}
@@ -245,7 +245,7 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
                   return (
                     <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-xl text-sm">
                       <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">{svc?.name}</p>
-                      <p className="text-primary-dark dark:text-indigo-400 font-mono">{fmtCost(svc?.amount)}</p>
+                      <p className="text-primary-dark dark:text-indigo-400 font-mono">{fmtCost(svc?.amount, currency)}</p>
                       <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{pct}% do total</p>
                       {onServiceClick && <p className="text-[10px] text-primary mt-1">Clique para ver recursos</p>}
                     </div>
@@ -276,7 +276,7 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
                     <Cell key={i} fill={c} />
                   ))}
                 </Pie>
-                <Tooltip formatter={(v) => fmtCost(v)} />
+                <Tooltip formatter={(v) => fmtCost(v, currency)} />
               </PieChart>
             </ResponsiveContainer>
             {hasGcp && data?.gcp?.estimated && (
@@ -291,20 +291,20 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
         {hasAws && (
           <div className={`card border-l-4 border-l-orange-400 transition-all animate-fade-in ${providerFilter !== 'all' && providerFilter !== 'aws' ? 'opacity-40' : ''}`} style={{ animationDelay: '50ms', animationFillMode: 'both' }}>
             <p className="text-xs font-semibold text-orange-400 uppercase tracking-wide mb-1">AWS</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtCost(data.aws?.total)}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtCost(data.aws?.total, currency)}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">período selecionado</p>
             {showComparison && prevData?.aws?.total != null && (
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">anterior: {fmtCost(prevData.aws.total)}</p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">anterior: {fmtCost(prevData.aws.total, currency)}</p>
             )}
           </div>
         )}
         {hasAzure && (
           <div className={`card border-l-4 border-l-sky-400 transition-all animate-fade-in ${providerFilter !== 'all' && providerFilter !== 'azure' ? 'opacity-40' : ''}`} style={{ animationDelay: '100ms', animationFillMode: 'both' }}>
             <p className="text-xs font-semibold text-sky-400 uppercase tracking-wide mb-1">Azure</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtCost(data.azure?.total)}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtCost(data.azure?.total, currency)}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">período selecionado</p>
             {showComparison && prevData?.azure?.total != null && (
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">anterior: {fmtCost(prevData.azure.total)}</p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">anterior: {fmtCost(prevData.azure.total, currency)}</p>
             )}
           </div>
         )}
@@ -316,10 +316,10 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
                 <span className="text-[10px] font-normal bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded px-1 py-0.5">estimado</span>
               )}
             </p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtCost(data.gcp?.total)}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{fmtCost(data.gcp?.total, currency)}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">período selecionado</p>
             {showComparison && prevData?.gcp?.total != null && (
-              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">anterior: {fmtCost(prevData.gcp.total)}</p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-1">anterior: {fmtCost(prevData.gcp.total, currency)}</p>
             )}
           </div>
         )}
