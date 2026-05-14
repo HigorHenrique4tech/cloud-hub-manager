@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Cookie, X, ShieldCheck } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 const STORAGE_KEY = 'cloudatlas_cookie_consent';
 
@@ -50,12 +49,12 @@ export default function CookieBanner() {
             </div>
             <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
               Usamos cookies essenciais para autenticação e funcionamento da plataforma, e cookies analíticos para melhorar sua experiência. Seus dados são tratados conforme nossa{' '}
-              <Link
-                to="/privacy"
+              <a
+                href="/privacy"
                 className="text-primary dark:text-primary-light underline underline-offset-2 hover:no-underline"
               >
                 Política de Privacidade
-              </Link>
+              </a>
               , em conformidade com a LGPD.
             </p>
           </div>
