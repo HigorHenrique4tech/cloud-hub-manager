@@ -312,19 +312,19 @@ export const Spinner = ({ size = 18 }) => (
 );
 
 export const FormLogo = () => (
-  <div className="flex items-center gap-2.5 mb-8 af0">
+  <div className="flex items-center gap-3 mb-8 af0">
     <div style={{
-      width: 38, height: 38, flexShrink: 0,
+      width: 52, height: 52, flexShrink: 0,
       background: '#eff6ff',
       border: '1.5px solid #bfdbfe',
-      borderRadius: 10,
+      borderRadius: 14,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
     }}>
-      <img src="/logo.png" alt="CloudAtlas" style={{ width: 26, height: 26, objectFit: 'contain' }} />
+      <img src="/logo.png" alt="CloudAtlas" style={{ width: 36, height: 36, objectFit: 'contain' }} />
     </div>
     <span
       className="auth-logo-text"
-      style={{ fontSize: 22, fontWeight: 800, color: '#111827', letterSpacing: '-0.3px' }}
+      style={{ fontSize: 30, fontWeight: 800, color: '#111827', letterSpacing: '-0.5px' }}
     >
       Cloud<span style={{ color: '#2563eb' }}>Atlas</span>
     </span>
