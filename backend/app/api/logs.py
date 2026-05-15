@@ -30,12 +30,14 @@ def log_to_dict(entry: ActivityLog) -> dict:
     }
 
 
-def _apply_log_filters(q, action, provider, start_date, end_date, user_email=None):
+def _apply_log_filters(q, action, provider, start_date, end_date, user_email=None, status=None):
     """Shared filter logic."""
     if action:
         q = q.filter(ActivityLog.action == action)
     if provider:
         q = q.filter(ActivityLog.provider == provider)
+    if status:
+        q = q.filter(ActivityLog.status == status)
     if user_email:
         q = q.filter(ActivityLog.user_email.ilike(f"%{user_email}%"))
     if start_date:
@@ -69,6 +71,7 @@ async def ws_list_logs(
     offset:     int            = Query(0,    ge=0),
     action:     Optional[str]  = Query(None, description="Filter by action (e.g. 'ec2.start')"),
     provider:   Optional[str]  = Query(None, description="Filter by provider: aws | azure | gcp | system"),
+    status:     Optional[str]  = Query(None, description="Filter by status: success | error"),
     start_date: Optional[str]  = Query(None, description="ISO date YYYY-MM-DD"),
     end_date:   Optional[str]  = Query(None, description="ISO date YYYY-MM-DD"),
     user_email: Optional[str]  = Query(None, description="Filter by user email (partial match)"),
@@ -83,7 +86,7 @@ async def ws_list_logs(
             ActivityLog.workspace_id == member.workspace_id,
         )
     )
-    q = _apply_log_filters(q, action, provider, start_date, end_date, user_email)
+    q = _apply_log_filters(q, action, provider, start_date, end_date, user_email, status)
 
     total = q.count()
     entries = q.order_by(ActivityLog.created_at.desc()).offset(offset).limit(limit).all()
@@ -100,6 +103,7 @@ async def ws_list_logs(
 async def ws_export_logs(
     action:     Optional[str] = Query(None),
     provider:   Optional[str] = Query(None),
+    status:     Optional[str] = Query(None),
     start_date: Optional[str] = Query(None),
     end_date:   Optional[str] = Query(None),
     user_email: Optional[str] = Query(None),
@@ -114,7 +118,7 @@ async def ws_export_logs(
             ActivityLog.workspace_id == member.workspace_id,
         )
     )
-    q = _apply_log_filters(q, action, provider, start_date, end_date, user_email)
+    q = _apply_log_filters(q, action, provider, start_date, end_date, user_email, status)
     entries = q.order_by(ActivityLog.created_at.desc()).all()
 
     output = io.StringIO()

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { RefreshCw, FileText, ChevronDown, Download } from 'lucide-react';
+import { RefreshCw, FileText, ChevronDown, Download, ChevronRight } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import logsService from '../services/logsService';
+import { useDebounce } from '../hooks/useDebounce';
 
 const ACTION_LABELS = {
   // AWS
@@ -114,58 +115,19 @@ const ACTION_LABELS = {
 };
 
 const ACTION_GROUPS = [
-  {
-    label: 'AWS',
-    keys: ['ec2.create','ec2.start','ec2.stop','ec2.delete','s3.create','s3.delete','rds.create','rds.delete','lambda.create','lambda.delete','vpc.create','vpc.delete','backup.create','backup.delete','backup.scan'],
-  },
-  {
-    label: 'Azure',
-    keys: ['azurevm.create','azurevm.start','azurevm.stop','vm.delete','storage.create','storage.delete','appservice.create','appservice.start','appservice.stop','appservice.delete','sql.create','sql.delete','vnet.create','vnet.delete','nsg.rule.create','nsg.rule.delete'],
-  },
-  {
-    label: 'GCP',
-    keys: ['gcp.compute.start','gcp.compute.stop','gcp.compute.delete','gcp.storage.create_bucket','gcp.storage.delete_bucket','gcp.sql.delete','gcp.functions.delete','gcp.network.create','gcp.network.delete'],
-  },
-  {
-    label: 'Microsoft 365 / GDAP',
-    keys: ['gdap.create','gdap.renew','gdap.terminate'],
-  },
-  {
-    label: 'Partner Center',
-    keys: ['partner_center.subscription_create','partner_center.quantity_update'],
-  },
-  {
-    label: 'FinOps',
-    keys: ['finops.scan','finops.apply_recommendation','finops.dismiss_recommendation','finops.request_approval','finops.rollback','finops.schedule_recommendation','finops.scan_schedule.upsert','finops.scan_schedule.delete','finops.report_schedule.upsert','finops.report_schedule.delete'],
-  },
-  {
-    label: 'Agendamentos',
-    keys: ['schedule.create','schedule.update','schedule.delete','schedule.run_now'],
-  },
-  {
-    label: 'Alertas & Aprovações',
-    keys: ['alert.create','alert.delete','approval.approved','approval.rejected'],
-  },
-  {
-    label: 'Templates & Políticas',
-    keys: ['template.create','template.delete','policy.create','policy.delete'],
-  },
-  {
-    label: 'Credenciais & Contas',
-    keys: ['account.create','account.delete','credential.add','credential.remove'],
-  },
-  {
-    label: 'Organização & Membros',
-    keys: ['org.create','org.delete','org.plan.update','org.branding.update','org.branding.reset','org.managed.create','org.managed.remove','org.member.invite','org.member.invite_accepted','org.member.add','org.member.remove','org.member.update','workspace.create','workspace.delete','workspace.member.add'],
-  },
-  {
-    label: 'Faturamento',
-    keys: ['billing.checkout','billing.paid','billing.downgrade'],
-  },
-  {
-    label: 'Autenticação',
-    keys: ['auth.login','auth.register','auth.email_verified','auth.mfa_toggle'],
-  },
+  { label: 'AWS',                  keys: ['ec2.create','ec2.start','ec2.stop','ec2.delete','s3.create','s3.delete','rds.create','rds.delete','lambda.create','lambda.delete','vpc.create','vpc.delete','backup.create','backup.delete','backup.scan'] },
+  { label: 'Azure',                keys: ['azurevm.create','azurevm.start','azurevm.stop','vm.delete','storage.create','storage.delete','appservice.create','appservice.start','appservice.stop','appservice.delete','sql.create','sql.delete','vnet.create','vnet.delete','nsg.rule.create','nsg.rule.delete'] },
+  { label: 'GCP',                  keys: ['gcp.compute.start','gcp.compute.stop','gcp.compute.delete','gcp.storage.create_bucket','gcp.storage.delete_bucket','gcp.sql.delete','gcp.functions.delete','gcp.network.create','gcp.network.delete'] },
+  { label: 'Microsoft 365 / GDAP', keys: ['gdap.create','gdap.renew','gdap.terminate'] },
+  { label: 'Partner Center',       keys: ['partner_center.subscription_create','partner_center.quantity_update'] },
+  { label: 'FinOps',               keys: ['finops.scan','finops.apply_recommendation','finops.dismiss_recommendation','finops.request_approval','finops.rollback','finops.schedule_recommendation','finops.scan_schedule.upsert','finops.scan_schedule.delete','finops.report_schedule.upsert','finops.report_schedule.delete'] },
+  { label: 'Agendamentos',         keys: ['schedule.create','schedule.update','schedule.delete','schedule.run_now'] },
+  { label: 'Alertas & Aprovações', keys: ['alert.create','alert.delete','approval.approved','approval.rejected'] },
+  { label: 'Templates & Políticas',keys: ['template.create','template.delete','policy.create','policy.delete'] },
+  { label: 'Credenciais & Contas', keys: ['account.create','account.delete','credential.add','credential.remove'] },
+  { label: 'Organização & Membros',keys: ['org.create','org.delete','org.plan.update','org.branding.update','org.branding.reset','org.managed.create','org.managed.remove','org.member.invite','org.member.invite_accepted','org.member.add','org.member.remove','org.member.update','workspace.create','workspace.delete','workspace.member.add'] },
+  { label: 'Faturamento',          keys: ['billing.checkout','billing.paid','billing.downgrade'] },
+  { label: 'Autenticação',         keys: ['auth.login','auth.register','auth.email_verified','auth.mfa_toggle'] },
 ];
 
 const STATUS_COLORS = {
@@ -199,16 +161,43 @@ function formatDate(dateStr) {
   });
 }
 
+function DetailPanel({ detail }) {
+  if (!detail) return null;
+
+  let parsed = null;
+  try { parsed = JSON.parse(detail); } catch { /* not JSON */ }
+
+  if (parsed && typeof parsed === 'object') {
+    return (
+      <pre className="mt-2 text-xs bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 overflow-x-auto text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words">
+        {JSON.stringify(parsed, null, 2)}
+      </pre>
+    );
+  }
+
+  return (
+    <p className="mt-2 text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg p-3 whitespace-pre-wrap break-words">
+      {detail}
+    </p>
+  );
+}
+
 const PAGE_SIZE = 50;
 
 const Logs = () => {
-  const [filters, setFilters] = useState({ action: '', provider: '', startDate: '', endDate: '', userEmail: '' });
+  const [filters, setFilters] = useState({ action: '', provider: '', status: '', startDate: '', endDate: '', userEmail: '' });
+  const [emailInput, setEmailInput] = useState('');
   const [offset, setOffset] = useState(0);
   const [exporting, setExporting] = useState(false);
+  const [expandedId, setExpandedId] = useState(null);
+
+  const debouncedEmail = useDebounce(emailInput, 400);
+
+  const activeFilters = { ...filters, userEmail: debouncedEmail };
 
   const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['logs', filters, offset],
-    queryFn: () => logsService.getLogs({ limit: PAGE_SIZE, offset, ...filters }),
+    queryKey: ['logs', activeFilters, offset],
+    queryFn: () => logsService.getLogs({ limit: PAGE_SIZE, offset, ...activeFilters }),
     keepPreviousData: true,
   });
 
@@ -218,12 +207,21 @@ const Logs = () => {
   const handleFilter = (key, value) => {
     setFilters(f => ({ ...f, [key]: value }));
     setOffset(0);
+    setExpandedId(null);
   };
+
+  const handleEmailChange = (e) => {
+    setEmailInput(e.target.value);
+    setOffset(0);
+    setExpandedId(null);
+  };
+
+  const toggleRow = (id) => setExpandedId(prev => prev === id ? null : id);
 
   const handleExport = async () => {
     setExporting(true);
     try {
-      await logsService.exportLogs(filters);
+      await logsService.exportLogs(activeFilters);
     } finally {
       setExporting(false);
     }
@@ -264,7 +262,7 @@ const Logs = () => {
         </div>
 
         {/* Filters */}
-        <div className="card p-4 mb-5 grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="card p-4 mb-5 grid grid-cols-2 md:grid-cols-6 gap-3">
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Ação</label>
             <select
@@ -299,6 +297,18 @@ const Logs = () => {
             </select>
           </div>
           <div>
+            <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Status</label>
+            <select
+              className="input"
+              value={filters.status}
+              onChange={e => handleFilter('status', e.target.value)}
+            >
+              <option value="">Todos</option>
+              <option value="success">Sucesso</option>
+              <option value="error">Erro</option>
+            </select>
+          </div>
+          <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Data início</label>
             <input
               type="date"
@@ -322,8 +332,8 @@ const Logs = () => {
               type="text"
               className="input"
               placeholder="Buscar por email..."
-              value={filters.userEmail}
-              onChange={e => handleFilter('userEmail', e.target.value)}
+              value={emailInput}
+              onChange={handleEmailChange}
             />
           </div>
         </div>
@@ -345,6 +355,7 @@ const Logs = () => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50">
+                    <th className="w-6 px-3 py-3" />
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Data/Hora</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Usuário</th>
                     <th className="text-left px-4 py-3 font-medium text-gray-600 dark:text-gray-400">Ação</th>
@@ -354,37 +365,57 @@ const Logs = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
-                  {logs.map(log => (
-                    <tr key={log.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
-                      <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
-                        <span title={formatDate(log.created_at)}>{timeAgo(log.created_at)}</span>
-                        <div className="text-xs text-gray-400 dark:text-gray-500">{formatDate(log.created_at)}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="font-medium text-gray-900 dark:text-white text-xs">{log.user_name || '—'}</div>
-                        <div className="text-xs text-gray-400 dark:text-gray-500">{log.user_email}</div>
-                      </td>
-                      <td className="px-4 py-3 text-gray-800 dark:text-gray-200">
-                        {ACTION_LABELS[log.action] || log.action}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                        {log.resource_name || log.resource_id || '—'}
-                        {log.detail && (
-                          <div className="text-xs text-gray-400 dark:text-gray-500">{log.detail}</div>
+                  {logs.map(log => {
+                    const isExpanded = expandedId === log.id;
+                    const hasDetail  = !!log.detail;
+                    return (
+                      <>
+                        <tr
+                          key={log.id}
+                          onClick={() => hasDetail && toggleRow(log.id)}
+                          className={`transition-colors ${hasDetail ? 'cursor-pointer' : ''} hover:bg-gray-50 dark:hover:bg-gray-800/40 ${isExpanded ? 'bg-gray-50 dark:bg-gray-800/40' : ''}`}
+                        >
+                          <td className="px-3 py-3 text-gray-400">
+                            {hasDetail && (
+                              <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-150 ${isExpanded ? 'rotate-90' : ''}`} />
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                            <span title={formatDate(log.created_at)}>{timeAgo(log.created_at)}</span>
+                            <div className="text-xs text-gray-400 dark:text-gray-500">{formatDate(log.created_at)}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-gray-900 dark:text-white text-xs">{log.user_name || '—'}</div>
+                            <div className="text-xs text-gray-400 dark:text-gray-500">{log.user_email}</div>
+                          </td>
+                          <td className="px-4 py-3 text-gray-800 dark:text-gray-200">
+                            {ACTION_LABELS[log.action] || log.action}
+                          </td>
+                          <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                            {log.resource_name || log.resource_id || '—'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${PROVIDER_COLORS[log.provider] || PROVIDER_COLORS.system}`}>
+                              {log.provider}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[log.status] || STATUS_COLORS.success}`}>
+                              {log.status === 'success' ? 'Sucesso' : 'Erro'}
+                            </span>
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`${log.id}-detail`} className="bg-gray-50 dark:bg-gray-800/40">
+                            <td />
+                            <td colSpan={6} className="px-4 pb-4 pt-0">
+                              <DetailPanel detail={log.detail} />
+                            </td>
+                          </tr>
                         )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${PROVIDER_COLORS[log.provider] || PROVIDER_COLORS.system}`}>
-                          {log.provider}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${STATUS_COLORS[log.status] || STATUS_COLORS.success}`}>
-                          {log.status === 'success' ? 'Sucesso' : 'Erro'}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
+                      </>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

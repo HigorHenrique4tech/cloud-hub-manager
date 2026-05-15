@@ -1,19 +1,22 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Cookie, X, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../../contexts/AuthContext';
 
 const STORAGE_KEY = 'cloudatlas_cookie_consent';
 
 export default function CookieBanner() {
+  const { user } = useAuth();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     try {
       if (!localStorage.getItem(STORAGE_KEY)) setVisible(true);
     } catch {
       setVisible(true);
     }
-  }, []);
+  }, [user]);
 
   const save = (value) => {
     try { localStorage.setItem(STORAGE_KEY, value); } catch { /* ignore */ }
