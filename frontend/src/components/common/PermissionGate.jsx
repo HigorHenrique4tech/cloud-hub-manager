@@ -35,7 +35,6 @@ const ROLE_PERMISSIONS = {
     'resources.view', 'resources.create', 'resources.start_stop', 'resources.manage',
     'costs.view',
     'alerts.view', 'alerts.manage',
-    'logs.view',
     'finops.view', 'finops.recommend',
     'schedules.view', 'schedules.manage',
     'templates.view', 'templates.manage',
@@ -49,7 +48,6 @@ const ROLE_PERMISSIONS = {
     'resources.view',
     'costs.view',
     'alerts.view',
-    'logs.view',
     'finops.view',
     'schedules.view',
     'templates.view',
@@ -61,7 +59,6 @@ const ROLE_PERMISSIONS = {
   billing: new Set([
     'costs.view',
     'alerts.view', 'alerts.manage',
-    'logs.view',
     'finops.view', 'finops.recommend', 'finops.budget',
     'schedules.view',
     'templates.view',
