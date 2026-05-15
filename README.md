@@ -95,13 +95,15 @@ Master Org (org_type=master)
 
 **RBAC — Papéis por organização (com override por workspace):**
 
-| Papel | Recursos | Start/Stop | Custos | Alertas | Logs | Membros | Org Settings | Webhooks |
-|-------|----------|------------|--------|---------|------|---------|--------------|----------|
-| `owner` | Ver | Sim | Ver | Gerenciar | Ver | Gerenciar | Editar | Gerenciar |
-| `admin` | Ver | Sim | Ver | Gerenciar | Ver | Gerenciar | — | Gerenciar |
-| `operator` | Ver | Sim | — | — | Ver | — | — | Gerenciar |
-| `viewer` | Ver | — | — | — | Ver | — | — | Ver |
-| `billing` | — | — | Ver | Gerenciar | Ver | — | — | — |
+| Papel | Recursos | Start/Stop | Custos | Alertas | Logs | Membros | Deletar Workspace | Org Settings | Webhooks |
+|-------|----------|------------|--------|---------|------|---------|-------------------|--------------|----------|
+| `owner` | Ver | Sim | Ver | Gerenciar | Ver | Gerenciar | ✅ | Editar | Gerenciar |
+| `admin` | Ver | Sim | Ver | Gerenciar | Ver | Gerenciar | ❌ | — | Gerenciar |
+| `operator` | Ver | Sim | — | — | ❌ | — | ❌ | — | Gerenciar |
+| `viewer` | Ver | — | — | — | ❌ | — | ❌ | — | Ver |
+| `billing` | — | — | Ver | Gerenciar | ❌ | — | ❌ | — | — |
+
+> Logs de auditoria são restritos a **Owner e Admin**. Exclusão de organização é exclusiva do **Owner**.
 
 ---
 
@@ -349,10 +351,62 @@ Módulo completo de detecção de desperdício e automação de economia:
 - Atribuição a agentes helpdesk
 - **Desk Frontend** — portal separado para agentes de suporte (React + Vite)
 
+### Migration365 (`/m365/migration`) — Enterprise
+
+Portal dedicado de migração de caixas de correio Microsoft 365 (Tenant-to-Tenant):
+
+- **Somente T2T** — migração entre tenants M365 via Graph API + EWS (Exchange Web Services)
+- **Wizard de criação** de projeto: origem/destino → configurações (strip MIP labels, preserve SP permissions) → adicionar caixas
+- **Objetos migráveis por projeto:** Correio (email), OneDrive, SharePoint, Grupos M365
+- **Licenciamento por uso:** R$ 70/licença, consumo FIFO. Enterprise Migration = ilimitado. Outros Enterprise = por licença comprada
+- **Engine T2T** — EWS `CreateItem + UpdateItem` como primário (sem problema de rascunho), Graph POST+MOVE como fallback
+- **Worker Celery** — container separado, fila `migration`, execução assíncrona de longa duração
+- **Monitoramento** — logs em tempo real por mailbox, status por etapa (queued/running/completed/failed)
+- **Plan gating:** `enterprise_migration` = ilimitado; `enterprise/e1/e2/e3` = por licença; abaixo de enterprise = bloqueado
+
+**Permissões necessárias (Application, admin consent):**
+
+| Tenant | Permissão | Uso |
+|---|---|---|
+| Origem | `Mail.Read` | Leitura de mensagens e pastas |
+| Destino | `Mail.ReadWrite` | Criação de pastas, mover mensagens |
+| Destino | `full_access_as_app` (Exchange Online) | EWS CreateItem + UpdateItem |
+
+### Base de Conhecimento (`/knowledge`)
+
+Central de ajuda in-app com artigos e tutoriais em vídeo:
+
+- **Artigos em Markdown** — com suporte a GFM (tabelas, checklists, links, código)
+- **Vídeos tutoriais** — armazenados em Azure Blob Storage, reprodução via URL presignada (SAS, 1h)
+- **Busca full-text** — índice GIN PostgreSQL com `to_tsvector('portuguese')` cobrindo título, resumo e conteúdo
+- **Categorias** — organização por módulo/tema
+- **Rascunhos** — visíveis apenas para admins da plataforma
+- **Admin** — painel em `/admin/knowledge` para criação/edição de artigos e upload de vídeos
+- Acesso: qualquer usuário autenticado (sem restrição de plano)
+
+### Security Automation (`/security/automation`) — Enterprise
+
+Detecção de eventos de segurança, automação de resposta e gestão de incidentes:
+
+- **Eventos** — achados de segurança com severidade (critical/high/medium/low), fonte e status
+- **Scan manual e agendado** — varre AWS, Azure e GCP em paralelo detectando misconfigurações
+- **Playbooks** — regras de resposta automática ou manual: qual ação executar para qual tipo de evento
+- **Ações de contenção** — revogar sessões Entra ID, bloquear usuários, isolar VMs, aplicar tags de quarentena
+- **Resposta a Incidentes (IR)** — workflow formal com template, aprovação de Owner/Admin e audit trail
+  - Template **Contenção**: revoga sessões + bloqueia usuários + isola VMs + tags quarentena
+  - Template **Contenção + Suspensão CSP**: idem + suspende assinatura Azure via Partner Center
+- **Partner Center (CSP)** — credenciais por workspace (criptografadas), listagem e suspensão/reativação de assinaturas de clientes. Exclusivo para MSPs com contrato CSP Microsoft
+- **Histórico** — audit trail de todas as ações executadas com resultado e executor
+- Enterprise only
+
 ### Logs de Auditoria (`/logs`)
 - Registro automático de todas as ações: login, credenciais, recursos, alertas, FinOps
-- Filtros por ação, provedor, status e período
+- Filtros por ação (agrupada por módulo), provedor, **status (sucesso/erro)**, data e e-mail do usuário
+- Campo de e-mail com debounce — sem requisição a cada tecla
+- **Linha expansível** — clique em qualquer entrada com detalhe para ver o payload completo (JSON formatado ou texto)
 - Paginação por offset
+- Export CSV respeitando todos os filtros ativos
+- Acesso restrito a **Owner e Admin**
 - Logs preservados após exclusão de usuário
 
 ### Background Tasks
@@ -560,6 +614,34 @@ cloud-atlas-manager/
 
 ---
 
+## Fluxo de Branches (GitFlow Simplificado)
+
+```
+main          → produção (hub.cloudatlas.app.br) — nunca commitar direto
+dev           → integração — features prontas se juntam aqui antes de ir para main
+feature/xxx   → uma branch por feature (criada a partir de dev, merge de volta no dev)
+hotfix/xxx    → correções urgentes em prod (criada a partir de main, merge no main E no dev)
+```
+
+**Nova feature:**
+```bash
+git checkout dev && git pull origin dev
+git checkout -b feature/nome-da-feature
+# desenvolve e commita normalmente
+# quando pronto: PR dev ← feature/nome → testa → PR main ← dev → deploy
+```
+
+**Hotfix urgente em produção:**
+```bash
+git checkout main && git pull origin main
+git checkout -b hotfix/nome-do-fix
+# corrige e commita
+git checkout main && git merge hotfix/nome-do-fix   # deploy
+git checkout dev  && git merge hotfix/nome-do-fix   # não perder o fix no dev
+```
+
+---
+
 ## Como Executar
 
 ### Desenvolvimento Local
@@ -710,6 +792,9 @@ apscheduler_jobs           ← Jobstore do APScheduler
 
 ## Roadmap
 
+### Em produção (beta desde 2026-05-14)
+- Plataforma em uso por cliente enterprise em período de avaliação de 30 dias
+
 ### Concluído recentemente
 - [x] Dashboard customizável com drag-and-drop e persistência por usuário
 - [x] Agendamentos automáticos de start/stop (APScheduler + SQLAlchemyJobStore)
@@ -745,6 +830,10 @@ apscheduler_jobs           ← Jobstore do APScheduler
 - [x] AWS/Azure/GCP Advisor — recomendações via Trusted Advisor, Azure Advisor e GCP Recommender
 - [x] Conversão de moedas — currency service integrado
 - [x] Branding por organização — personalização visual
+- [x] LGPD — banner de consentimento de cookies (apenas para usuários autenticados)
+- [x] Logs — filtro de status, debounce no campo de e-mail, linha expansível com payload
+- [x] RBAC — logs restritos a Owner/Admin; exclusão de workspace exclusiva do Owner
+- [x] Segurança — frontend e backend de permissões sincronizados (PermissionGate)
 
 ### Próximos — Alta Prioridade
 - [ ] AWS — ECS/EKS, DynamoDB, CloudFront, Route 53, API Gateway, SNS/SQS
