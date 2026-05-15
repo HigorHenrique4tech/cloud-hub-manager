@@ -77,6 +77,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
 
     "admin": _ALL_PERMISSIONS - {
         Permission.ORG_DELETE,
+        Permission.WS_DELETE,
     },
 
     "operator": {

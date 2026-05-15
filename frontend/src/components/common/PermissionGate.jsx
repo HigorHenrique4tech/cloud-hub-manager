@@ -15,7 +15,7 @@ const ROLE_PERMISSIONS = {
   admin: new Set([
     'org.settings.view', 'org.settings.edit',
     'org.members.view', 'org.members.manage',
-    'workspace.create', 'workspace.edit', 'workspace.delete',
+    'workspace.create', 'workspace.edit',
     'accounts.view', 'accounts.create', 'accounts.delete',
     'resources.view', 'resources.create', 'resources.start_stop',
     'resources.delete', 'resources.manage',
