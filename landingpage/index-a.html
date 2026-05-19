@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Atlas Tecnologia — Consultoria em Cloud, Microsoft 365 e Serviços Gerenciados</title>
 <meta name="description" content="Consultoria brasileira em multi-cloud (AWS, Azure, GCP) e Microsoft 365. Da arquitetura ao plantão técnico — com proximidade de boutique e escala de produto.">
-<link rel="icon" href="../assets/cloudatlas-logo.png">
+<link rel="icon" href="assets/atlas-logo-color.png">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -58,22 +58,17 @@ img{display:block;max-width:100%;}
 }
 .nav{
   display:flex;align-items:center;justify-content:space-between;
-  height:68px;gap:8px;
+  height:78px;gap:8px;
 }
 .logo{
-  display:flex;align-items:center;gap:10px;
-  font-family:'Space Grotesk',sans-serif;
-  font-weight:700;font-size:17px;letter-spacing:-0.01em;
-  color:#fff;
+  display:flex;align-items:center;
+  transition:opacity 0.2s;
 }
-.logo-mark{
-  width:34px;height:34px;background:var(--blue);border-radius:8px;
-  display:flex;align-items:center;justify-content:center;
-  font-size:13px;font-weight:800;color:#fff;letter-spacing:-0.02em;
-  flex-shrink:0;
-  box-shadow:0 0 0 4px rgba(20,71,212,0.25);
+.logo:hover{opacity:0.85;}
+.logo img{
+  height:54px;width:auto;display:block;
 }
-.logo span{color:rgba(255,255,255,0.55);font-weight:400;}
+@media(max-width:680px){.logo img{height:40px;}}
 .nav-links{display:flex;align-items:center;gap:2px;}
 .nav-links a{
   padding:8px 14px;border-radius:8px;
@@ -127,8 +122,13 @@ img{display:block;max-width:100%;}
   padding-bottom:80px;
 }
 @media(max-width:960px){
-  .hero-inner{grid-template-columns:1fr;gap:40px;}
-  .hero-right{display:none;}
+  .hero-inner{grid-template-columns:1fr;gap:40px;padding-bottom:60px;}
+  .hero{padding-top:120px;}
+  .hero-right{max-width:460px;}
+}
+@media(max-width:520px){
+  .hero-metrics{grid-template-columns:1fr 1fr;}
+  .hero-card{padding:22px;}
 }
 .hero-eyebrow{
   display:inline-flex;align-items:center;gap:8px;
@@ -211,7 +211,8 @@ img{display:block;max-width:100%;}
   font-size:26px;font-weight:700;color:#fff;letter-spacing:-0.03em;line-height:1;
   margin-bottom:4px;
 }
-.hm .val .unit{font-size:14px;color:rgba(255,255,255,0.4);margin-left:2px;}
+.hm .val .unit{font-size:14px;color:rgba(255,255,255,0.4);margin-left:5px;letter-spacing:0;}
+.hm .val .unit.nogap{margin-left:0;}
 .hm .lbl{font-size:12px;color:rgba(255,255,255,0.35);}
 .hm.green .val{color:var(--green);}
 .hm.blue .val{color:var(--blue-3);}
@@ -238,15 +239,29 @@ img{display:block;max-width:100%;}
   margin-right:32px;white-space:nowrap;
   flex-shrink:0;
 }
-.hl-logos{display:flex;align-items:center;gap:32px;flex-wrap:wrap;}
+.hl-logos{display:flex;align-items:center;gap:14px;flex-wrap:wrap;}
 .hl-logos .hl-item{
-  display:flex;align-items:center;gap:8px;
-  opacity:0.45;transition:opacity 0.2s;
+  display:flex;align-items:center;justify-content:center;
+  height:46px;padding:0 20px;
+  background:#fff;
+  border:1px solid rgba(255,255,255,0.1);
+  border-radius:10px;
+  transition:transform 0.2s,box-shadow 0.2s;
 }
-.hl-logos .hl-item:hover{opacity:0.8;}
-.hl-logos .hl-item span{
-  font-size:13px;font-weight:600;color:#fff;letter-spacing:-0.01em;
-  white-space:nowrap;
+.hl-logos .hl-item:hover{
+  transform:translateY(-2px);
+  box-shadow:0 10px 24px -10px rgba(0,0,0,0.55);
+}
+.hl-logos .hl-item img{
+  height:24px;width:auto;max-width:120px;
+  object-fit:contain;display:block;
+}
+@media(max-width:680px){
+  .hero-logos .container{flex-direction:column;align-items:flex-start;gap:16px;}
+  .hl-label{margin-right:0;}
+  .hl-logos{gap:10px;}
+  .hl-logos .hl-item{height:40px;padding:0 14px;}
+  .hl-logos .hl-item img{height:20px;}
 }
 
 /* ═══════════════════════════════ STATS ═══════════════════════════════ */
@@ -266,7 +281,8 @@ img{display:block;max-width:100%;}
   font-size:42px;font-weight:800;letter-spacing:-0.04em;
   color:#fff;line-height:1;margin-bottom:6px;
 }
-.stat-item .su{font-size:20px;color:rgba(255,255,255,0.6);}
+.stat-item .su{font-size:20px;color:rgba(255,255,255,0.6);margin-left:5px;letter-spacing:0;}
+.stat-item .su.nogap{margin-left:0;}
 .stat-item .sl{font-size:14px;color:rgba(255,255,255,0.65);line-height:1.4;}
 @media(max-width:700px){.stat-item{padding:24px 20px;}}
 
@@ -343,6 +359,47 @@ img{display:block;max-width:100%;}
 }
 .srv:hover .srv-link{opacity:1;transform:translateX(0);}
 
+/* ═══════════════════════════════ COMO TRABALHAMOS ═══════════════════════════════ */
+.process-grid{
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:20px;margin-top:56px;
+}
+@media(max-width:900px){.process-grid{grid-template-columns:repeat(2,1fr);}}
+@media(max-width:520px){.process-grid{grid-template-columns:1fr;}}
+.proc-step{
+  position:relative;
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:16px;
+  padding:32px 26px;
+  display:flex;flex-direction:column;gap:12px;
+  transition:border-color 0.2s,box-shadow 0.2s,transform 0.2s;
+}
+.proc-step:hover{
+  border-color:var(--blue);
+  box-shadow:0 12px 32px -14px rgba(20,71,212,0.2);
+  transform:translateY(-3px);
+}
+.proc-num{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:13px;font-weight:800;letter-spacing:0.04em;
+  color:var(--blue);
+  width:36px;height:36px;border-radius:10px;
+  background:var(--blue-soft);
+  display:flex;align-items:center;justify-content:center;
+}
+.proc-step h3{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:17px;font-weight:700;letter-spacing:-0.02em;color:var(--ink);
+}
+.proc-step p{font-size:14px;line-height:1.6;color:var(--muted);}
+.proc-step::after{
+  content:'';position:absolute;top:48px;right:-12px;
+  width:24px;height:1px;background:var(--line-2);
+}
+.proc-step:last-child::after{display:none;}
+@media(max-width:900px){.proc-step::after{display:none;}}
+
 /* ═══════════════════════════════ CLOUDATLAS PRODUTO ═══════════════════════════════ */
 .product-wrap{
   background:var(--night);border-radius:24px;
@@ -402,7 +459,7 @@ img{display:block;max-width:100%;}
   font-size:28px;font-weight:800;letter-spacing:-0.03em;
   color:#fff;line-height:1;margin-bottom:4px;
 }
-.psc .psc-num .su{font-size:14px;color:rgba(255,255,255,0.4);}
+.psc .psc-num .su{font-size:14px;color:rgba(255,255,255,0.4);margin-left:4px;letter-spacing:0;}
 .psc .psc-lbl{font-size:12px;color:rgba(255,255,255,0.35);}
 .psc.accent{border-color:rgba(20,71,212,0.4);background:rgba(20,71,212,0.15);}
 .psc.accent .psc-num{color:var(--blue-3);}
@@ -485,10 +542,10 @@ img{display:block;max-width:100%;}
 
 /* ═══════════════════════════════ TECNOLOGIAS ═══════════════════════════════ */
 .tech-grid{
-  display:grid;grid-template-columns:repeat(5,1fr);
-  gap:16px;margin-top:48px;
+  display:grid;grid-template-columns:repeat(4,1fr);
+  gap:16px;margin-top:48px;max-width:880px;margin-left:auto;margin-right:auto;
 }
-@media(max-width:800px){.tech-grid{grid-template-columns:repeat(3,1fr);}}
+@media(max-width:800px){.tech-grid{grid-template-columns:repeat(2,1fr);}}
 @media(max-width:480px){.tech-grid{grid-template-columns:repeat(2,1fr);}}
 .tech-card{
   background:var(--paper);border:1px solid var(--line);border-radius:16px;
@@ -589,6 +646,46 @@ img{display:block;max-width:100%;}
 }
 .btn-submit:hover{background:var(--blue-2);transform:translateY(-1px);}
 
+/* WhatsApp contact card */
+.wa-card{
+  background:var(--paper);
+  border:1px solid var(--line);
+  border-radius:20px;
+  padding:40px 36px;
+  text-align:center;
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  box-shadow:0 8px 32px -16px rgba(20,71,212,0.12);
+}
+.wa-icon{
+  width:60px;height:60px;border-radius:16px;
+  background:rgba(37,211,102,0.12);
+  display:flex;align-items:center;justify-content:center;
+  color:#25D366;margin-bottom:4px;
+}
+.wa-icon svg{width:30px;height:30px;}
+.wa-card h3{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:24px;font-weight:700;letter-spacing:-0.02em;color:var(--ink);
+}
+.wa-card p{font-size:15px;line-height:1.6;color:var(--muted);max-width:36ch;}
+.wa-btn{
+  display:inline-flex;align-items:center;gap:10px;
+  margin-top:8px;padding:15px 32px;border-radius:12px;
+  background:#25D366;color:#fff;
+  font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:16px;
+  text-decoration:none;
+  box-shadow:0 6px 20px rgba(37,211,102,0.35);
+  transition:transform 0.2s,box-shadow 0.2s;
+}
+.wa-btn:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(37,211,102,0.45);}
+.wa-btn svg{width:22px;height:22px;flex-shrink:0;}
+.wa-alt{
+  margin-top:8px;font-size:14px;color:var(--muted);
+}
+.wa-alt a{color:var(--blue);font-weight:600;}
+.wa-note{font-size:13px;color:var(--muted-2);display:flex;align-items:center;gap:7px;margin-top:4px;}
+.wa-note .dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;}
+
 /* ═══════════════════════════════ FOOTER ═══════════════════════════════ */
 footer{
   background:var(--night);
@@ -655,14 +752,14 @@ footer{
 <header class="navwrap">
   <div class="container">
     <nav class="nav">
-      <a href="#" class="logo">
-        <div class="logo-mark">AT</div>
-        Atlas <span>Tecnologia</span>
+      <a href="#" class="logo" aria-label="Atlas Tecnologia">
+        <img src="assets/atlas-logo-dark.png" alt="Atlas Tecnologia">
       </a>
       <div class="nav-links">
         <a href="#servicos">Serviços</a>
-        <a href="#sobre">Sobre</a>
+        <a href="#processo">Como trabalhamos</a>
         <a href="#produto">CloudAtlas</a>
+        <a href="#sobre">Sobre</a>
         <a href="#contato">Contato</a>
         <a href="#contato" class="btn-nav">Falar com a gente →</a>
       </div>
@@ -678,10 +775,6 @@ footer{
   <div class="container">
     <div class="hero-inner">
       <div class="hero-left">
-        <div class="hero-eyebrow">
-          <span class="pill">Novo</span>
-          CloudAtlas v1 em produção — Maio 2026
-        </div>
         <h1>Gestão de nuvem<br>que <em>realmente</em><br>funciona.</h1>
         <p class="hero-sub">
           Consultoria multi-cloud brasileira. Arquitetamos, migramos e gerenciamos
@@ -699,32 +792,32 @@ footer{
       <div class="hero-right">
         <div class="hero-card">
           <div class="hero-card-header">
-            CloudAtlas Dashboard
-            <span class="live">Ao vivo</span>
+            O que entregamos
+            <span class="live">Atlas</span>
           </div>
           <div class="hero-metrics">
-            <div class="hm green">
-              <div class="val">R$4.2<span class="unit">k</span></div>
-              <div class="lbl">Economia / mês</div>
-            </div>
             <div class="hm blue">
-              <div class="val">99.9<span class="unit">%</span></div>
-              <div class="lbl">Uptime SLA</div>
+              <div class="val">3<span class="unit">clouds</span></div>
+              <div class="lbl">AWS · Azure · GCP</div>
             </div>
             <div class="hm">
-              <div class="val">3<span class="unit">×</span></div>
-              <div class="lbl">Clouds gerenciadas</div>
+              <div class="val">M365</div>
+              <div class="lbl">Workplace gerenciado</div>
+            </div>
+            <div class="hm green">
+              <div class="val">PT<span class="unit nogap">-BR</span></div>
+              <div class="lbl">Suporte em português</div>
             </div>
             <div class="hm">
               <div class="val">24<span class="unit">h</span></div>
-              <div class="lbl">Suporte SLA</div>
+              <div class="lbl">Resposta garantida</div>
             </div>
           </div>
           <div class="hero-tag-row">
-            <span class="hero-tag">AWS</span>
-            <span class="hero-tag">Azure</span>
-            <span class="hero-tag">GCP</span>
-            <span class="hero-tag">M365</span>
+            <span class="hero-tag">Migração</span>
+            <span class="hero-tag">FinOps</span>
+            <span class="hero-tag">DevOps</span>
+            <span class="hero-tag">Segurança</span>
             <span class="hero-tag">LGPD</span>
           </div>
         </div>
@@ -735,34 +828,10 @@ footer{
     <div class="container">
       <span class="hl-label">Plataformas que gerenciamos</span>
       <div class="hl-logos">
-        <div class="hl-item">
-          <!-- AWS -->
-          <svg height="20" viewBox="0 0 80 30" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Amazon Web Services">
-            <path d="M22.6 18.8c-1.8.8-3.7 1.3-5.6 1.3-5.5 0-9.2-4.1-9.2-9.6C7.8 4.8 11.8.8 17.2.8c2.2 0 4.1.6 5.5 1.5l.3-1.3h1.7l-.3 7.8h-1.7c-.5-3.8-2.4-6.6-5.7-6.6-3.5 0-5.5 3-5.5 7.3s2.1 7.5 5.7 7.5c1.7 0 3.3-.5 4.8-1.4l.6 3.2z" fill="white" opacity=".7"/>
-            <text x="26" y="16" fill="white" opacity=".7" font-size="14" font-weight="700" font-family="Arial">AWS</text>
-          </svg>
-        </div>
-        <div class="hl-item">
-          <!-- Microsoft Azure text -->
-          <svg height="20" viewBox="0 0 100 22" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="16" fill="white" opacity=".7" font-size="14" font-weight="700" font-family="Arial">Microsoft Azure</text>
-          </svg>
-        </div>
-        <div class="hl-item">
-          <svg height="20" viewBox="0 0 120 22" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="16" fill="white" opacity=".7" font-size="14" font-weight="700" font-family="Arial">Google Cloud</text>
-          </svg>
-        </div>
-        <div class="hl-item">
-          <svg height="20" viewBox="0 0 120 22" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="16" fill="white" opacity=".7" font-size="14" font-weight="700" font-family="Arial">Microsoft 365</text>
-          </svg>
-        </div>
-        <div class="hl-item">
-          <svg height="20" viewBox="0 0 80 22" xmlns="http://www.w3.org/2000/svg">
-            <text x="0" y="16" fill="white" opacity=".7" font-size="14" font-weight="700" font-family="Arial">Terraform</text>
-          </svg>
-        </div>
+        <div class="hl-item"><img src="assets/aws.png" alt="Amazon Web Services"></div>
+        <div class="hl-item"><img src="assets/azure.png" alt="Microsoft Azure"></div>
+        <div class="hl-item"><img src="assets/google-cloud.png" alt="Google Cloud"></div>
+        <div class="hl-item"><img src="assets/microsoft-365.png" alt="Microsoft 365"></div>
       </div>
     </div>
   </div>
@@ -774,19 +843,19 @@ footer{
     <div class="stats-grid">
       <div class="stat-item reveal">
         <div class="sn">4<span class="su">+</span></div>
-        <div class="sl">Plataformas cloud gerenciadas</div>
+        <div class="sl">Plataformas gerenciadas: AWS, Azure, GCP e M365</div>
       </div>
       <div class="stat-item reveal reveal-delay-1">
         <div class="sn">100<span class="su">%</span></div>
-        <div class="sl">Operação brasileira, LGPD nativa</div>
+        <div class="sl">Operação brasileira, conformidade LGPD nativa</div>
       </div>
       <div class="stat-item reveal reveal-delay-2">
         <div class="sn">24<span class="su">h</span></div>
-        <div class="sl">SLA de suporte garantido</div>
+        <div class="sl">Compromisso de resposta para abertura de chamados</div>
       </div>
       <div class="stat-item reveal reveal-delay-3">
-        <div class="sn">R$0</div>
-        <div class="sl">Custo de implementação inicial</div>
+        <div class="sn">PT<span class="su nogap">-BR</span></div>
+        <div class="sl">Suporte e documentação 100% em português</div>
       </div>
     </div>
   </div>
@@ -856,6 +925,42 @@ footer{
   </div>
 </section>
 
+<!-- ══════════ COMO TRABALHAMOS ══════════ -->
+<section class="sec sec-alt" id="processo">
+  <div class="container">
+    <div class="reveal">
+      <div class="sec-label">
+        <svg viewBox="0 0 12 12" fill="currentColor"><circle cx="6" cy="6" r="6"/></svg>
+        Como trabalhamos
+      </div>
+      <h2 class="sec-title">Do primeiro contato<br>à operação contínua.</h2>
+      <p class="sec-sub">Um processo claro, sem caixa-preta. Você sabe exatamente o que esperar em cada etapa.</p>
+    </div>
+    <div class="process-grid">
+      <div class="proc-step reveal reveal-delay-1">
+        <div class="proc-num">01</div>
+        <h3>Diagnóstico</h3>
+        <p>Conversamos sobre seu cenário atual, mapeamos o ambiente e identificamos riscos, desperdícios e oportunidades — sem compromisso.</p>
+      </div>
+      <div class="proc-step reveal reveal-delay-2">
+        <div class="proc-num">02</div>
+        <h3>Proposta</h3>
+        <p>Apresentamos um plano objetivo: o que será feito, prazos, investimento e os resultados esperados. Em linguagem clara, sem letra miúda.</p>
+      </div>
+      <div class="proc-step reveal reveal-delay-3">
+        <div class="proc-num">03</div>
+        <h3>Execução</h3>
+        <p>Colocamos a mão na massa: arquitetura, migração ou implantação, com documentação, runbooks e a sua equipe acompanhando de perto.</p>
+      </div>
+      <div class="proc-step reveal reveal-delay-4">
+        <div class="proc-num">04</div>
+        <h3>Acompanhamento</h3>
+        <p>Monitoramento contínuo, otimização de custos e suporte próximo. Você fala com quem conhece seu ambiente — não com um help desk genérico.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ══════════ CLOUDATLAS PRODUTO ══════════ -->
 <section class="sec sec-alt" id="produto">
   <div class="container">
@@ -902,16 +1007,16 @@ footer{
         </div>
         <div class="product-screens">
           <div class="psc accent">
-            <div class="psc-num">-32<span class="su">%</span></div>
-            <div class="psc-lbl">Redução de custos</div>
+            <div class="psc-num">FinOps</div>
+            <div class="psc-lbl">Recomendações de economia</div>
           </div>
           <div class="psc">
             <div class="psc-num">3<span class="su">×</span></div>
             <div class="psc-lbl">Clouds centralizadas</div>
           </div>
           <div class="psc">
-            <div class="psc-num">24<span class="su">h</span></div>
-            <div class="psc-lbl">SLA de suporte</div>
+            <div class="psc-num">24/7</div>
+            <div class="psc-lbl">Monitoramento proativo</div>
           </div>
           <div class="psc accent">
             <div class="psc-num">100<span class="su">%</span></div>
@@ -924,24 +1029,17 @@ footer{
 </section>
 
 
-<!-- ══════════ DEPOIMENTO ══════════ -->
-<section class="sec sec-night">
+<!-- ══════════ CARTA DO FUNDADOR ══════════ -->
+<section class="sec sec-night" id="fundador">
   <div class="container">
     <div class="testimonial-wrap reveal">
-      <div class="quote-mark">"</div>
+      <div class="sec-label" style="justify-content:center;color:var(--blue-3);">Por que criamos a Atlas</div>
       <p class="testimonial-text">
-        "A Atlas não entregou só uma migração. Entregou <em>controle real</em> sobre o que estávamos gastando — e finalmente conseguimos explicar as contas de cloud para o board."
+        "Vi muitas empresas pagando caro por nuvem sem saber para onde o dinheiro ia, presas a suporte que não respondia e a contratos que ninguém entendia. A Atlas nasceu para ser o oposto disso: <em>proximidade real</em>, transparência total e tecnologia própria — em português, do nosso jeito."
       </p>
-      <div class="test-author">
-        <div class="test-avatar">C</div>
-        <div class="test-info">
-          <div class="test-name">CTO, empresa do setor financeiro</div>
-          <div class="test-role">São Paulo, SP</div>
-        </div>
-      </div>
       <div class="test-meta">
         <span class="dot"></span>
-        Em produção desde maio/2026 · Setor financeiro · Enterprise
+        Atlas Tecnologia · São Paulo, SP · Resposta em até 24h
       </div>
     </div>
   </div>
@@ -1020,12 +1118,6 @@ footer{
         </div>
         <div class="tech-name">Microsoft 365</div>
       </div>
-      <div class="tech-card reveal reveal-delay-5">
-        <div class="tech-logo">
-          <img src="assets/cloudatlas.png" alt="CloudAtlas">
-        </div>
-        <div class="tech-name">CloudAtlas</div>
-      </div>
     </div>
   </div>
 </section>
@@ -1102,44 +1194,18 @@ footer{
           <div style="font-size:12px;color:var(--muted);margin-top:8px;">Atendemos clientes em todo o território nacional e internacionalmente.</div>
         </div>
       </div>
-      <div class="contact-form reveal reveal-delay-2">
-        <div class="cf-title">Envie uma mensagem</div>
-        <div class="form-row">
-          <div class="form-field">
-            <label>Nome *</label>
-            <input type="text" placeholder="João Silva">
-          </div>
-          <div class="form-field">
-            <label>Empresa</label>
-            <input type="text" placeholder="Empresa Ltda.">
-          </div>
+      <div class="wa-card reveal reveal-delay-2">
+        <div class="wa-icon">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
         </div>
-        <div class="form-field">
-          <label>E-mail *</label>
-          <input type="email" placeholder="joao@empresa.com.br">
-        </div>
-        <div class="form-field">
-          <label>O que você precisa?</label>
-          <select>
-            <option value="">Selecione um serviço...</option>
-            <option>Arquitetura &amp; Migração Cloud</option>
-            <option>Serviços Gerenciados (MSP)</option>
-            <option>Microsoft 365</option>
-            <option>FinOps &amp; Redução de Custos</option>
-            <option>DevOps &amp; Automação</option>
-            <option>Segurança &amp; LGPD</option>
-            <option>CloudAtlas — plataforma</option>
-            <option>Outro</option>
-          </select>
-        </div>
-        <div class="form-field">
-          <label>Mensagem</label>
-          <textarea placeholder="Conte um pouco sobre seu ambiente atual e o que está buscando resolver..."></textarea>
-        </div>
-        <button class="btn-submit" onclick="window.location.href='https://wa.me/5511969160623'">
-          Enviar mensagem →
-        </button>
-        <p style="font-size:12px;color:var(--muted-2);margin-top:12px;text-align:center;">Resposta garantida em até 24h. Seus dados estão seguros conosco.</p>
+        <h3>Fale com a gente agora</h3>
+        <p>Sem formulário, sem espera. Mande uma mensagem no WhatsApp e converse direto com quem entende do seu ambiente.</p>
+        <a href="https://wa.me/5511969160623?text=Ol%C3%A1%2C%20vim%20do%20site%20da%20Atlas%20Tecnologia%20e%20gostaria%20de%20conversar." target="_blank" rel="noopener noreferrer" class="wa-btn">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          Falar no WhatsApp
+        </a>
+        <div class="wa-alt">ou por e-mail: <a href="mailto:higor.costa@cloudatlas.app.br">higor.costa@cloudatlas.app.br</a></div>
+        <div class="wa-note"><span class="dot"></span> Resposta em até 24h · Conversa sem compromisso</div>
       </div>
     </div>
   </div>
@@ -1150,9 +1216,8 @@ footer{
   <div class="container">
     <div class="footer-inner">
       <div class="footer-brand">
-        <a href="#" class="logo">
-          <div class="logo-mark">AT</div>
-          Atlas <span>Tecnologia</span>
+        <a href="#" class="logo" aria-label="Atlas Tecnologia">
+          <img src="assets/atlas-logo-dark.png" alt="Atlas Tecnologia">
         </a>
         <p>Consultoria multi-cloud brasileira. Da arquitetura ao plantão técnico.</p>
       </div>
@@ -1180,13 +1245,13 @@ footer{
     </div>
     <div class="footer-bottom">
       <div class="footer-copy">
-        © 2026 <strong>Atlas Tecnologia Ltda.</strong> — CNPJ: em processo de registro<br>
-        Av. Paulista, São Paulo — SP, Brasil · Todos os direitos reservados.
+        © <script>document.write(new Date().getFullYear())</script> <strong>Atlas Tecnologia Ltda.</strong> — CNPJ: 66.318.978/0001-04<br>
+        São Paulo — SP, Brasil · Todos os direitos reservados.
       </div>
       <div class="footer-links">
-        <a href="#">Privacidade</a>
-        <a href="#">Termos de Uso</a>
-        <a href="#">LGPD</a>
+        <a href="privacidade.html">Privacidade</a>
+        <a href="termos.html">Termos de Uso</a>
+        <a href="lgpd.html">LGPD</a>
       </div>
     </div>
   </div>

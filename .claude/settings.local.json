@@ -37,7 +37,17 @@
       "Bash(Select-Object -ExpandProperty FullName)",
       "Bash(dir /b \"c:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\")",
       "Skill(frontend-design)",
-      "Skill(frontend-design:*)"
+      "Skill(frontend-design:*)",
+      "Bash(cmd.exe /c start \"\" \"c:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\\\\landingpage\\\\index-a.html\")",
+      "Read(//c/tmp/**)",
+      "Bash(rm -rf atlas_logo)",
+      "Bash(mkdir atlas_logo)",
+      "Bash(unzip -q \"c:/Users/higor/Downloads/files/atlas_tecnologia_pacote.zip\" -d atlas_logo)",
+      "Read(//tmp/atlas_logo/**)",
+      "Bash(cp svg/atlas_tecnologia_v2_darkmode.svg __TRACKED_VAR__/atlas-logo-dark.svg)",
+      "Bash(cp svg/atlas_tecnologia_v1_colorida.svg __TRACKED_VAR__/atlas-logo-color.svg)",
+      "Bash(cp png/atlas_tecnologia_v2_darkmode.png __TRACKED_VAR__/atlas-logo-dark.png)",
+      "Bash(cp png/atlas_tecnologia_v1_colorida.png __TRACKED_VAR__/atlas-logo-color.png)"
     ]
   }
 }

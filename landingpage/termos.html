@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Termos de Uso — CloudAtlas</title>
+  <link rel="icon" href="assets/cloudatlas.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #ffffff;
+      --bg2: #f4f7fb;
+      --blue: #1a6fdb;
+      --blue-light: #2a7de8;
+      --text: #0f172a;
+      --muted: #5a6a8a;
+      --border: #dde4ef;
+      --shadow-sm: 0 1px 3px rgba(15,23,42,0.08), 0 1px 2px rgba(15,23,42,0.04);
+      --shadow-md: 0 4px 16px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.04);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Outfit', sans-serif;
+      line-height: 1.7;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; color: var(--text); }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 18px 60px;
+      background: rgba(255,255,255,0.97);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      border-top: 3px solid var(--blue);
+    }
+    .nav-logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+    .nav-logo img { height: 42px; }
+    .nav-logo span { font-family: 'Space Grotesk', sans-serif; font-size: 1.2rem; font-weight: 700; color: var(--text); }
+    .logo-accent { color: var(--blue); }
+    .nav-back {
+      display: inline-flex; align-items: center; gap: 7px;
+      color: var(--muted); text-decoration: none; font-size: 0.9rem; font-weight: 500;
+      padding: 8px 16px; border: 1px solid var(--border);
+      border-radius: 8px; transition: all 0.2s;
+      background: var(--bg);
+    }
+    .nav-back:hover { color: var(--blue); border-color: var(--blue); background: #eff6ff; }
+    .nav-back svg { width: 15px; height: 15px; }
+
+    /* ── PAGE HEADER ── */
+    .page-top {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 52px 24px 48px;
+      text-align: center;
+    }
+    .breadcrumb {
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      font-size: 0.8rem; color: var(--muted); margin-bottom: 20px;
+    }
+    .breadcrumb a { color: var(--blue); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb span { opacity: 0.5; }
+    .page-icon-wrap {
+      width: 56px; height: 56px; border-radius: 16px;
+      background: #eff6ff; border: 1px solid #bfdbfe;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 20px;
+    }
+    .page-icon-wrap svg { width: 26px; height: 26px; stroke: var(--blue); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .page-top h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .page-top h1 .accent { color: var(--blue); }
+    .page-meta { font-size: 0.875rem; color: var(--muted); }
+
+    /* ── MAIN ── */
+    main { flex: 1; max-width: 820px; margin: 0 auto; padding: 52px 24px 80px; width: 100%; }
+
+    .card {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow-md);
+      overflow: hidden;
+    }
+
+    .toc {
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 32px;
+    }
+    .toc p { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+    .toc-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+    .toc-link { font-size: 0.82rem; color: var(--blue); text-decoration: none; }
+    .toc-link:hover { text-decoration: underline; }
+
+    .card-body { padding: 40px 40px; }
+
+    .section { margin-bottom: 36px; scroll-margin-top: 80px; }
+    .section:last-child { margin-bottom: 0; }
+
+    h2 {
+      font-size: 0.95rem; font-weight: 700;
+      color: var(--text);
+      margin-bottom: 12px;
+      display: flex; align-items: center; gap: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .section-num {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 26px; height: 26px; border-radius: 8px;
+      background: #eff6ff; color: var(--blue);
+      font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+    }
+
+    .section-body { font-size: 0.88rem; color: #475569; line-height: 1.85; }
+    .section-body p + p { margin-top: 10px; }
+    .section-body ul { list-style: none; padding: 0; margin-top: 10px; }
+    .section-body li {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.85rem;
+    }
+    .section-body li:last-child { border-bottom: none; }
+    .section-body li::before {
+      content: '';
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--blue); flex-shrink: 0; margin-top: 7px;
+    }
+    strong { color: #1e293b; font-weight: 600; }
+
+    .contact-box {
+      display: inline-flex; align-items: center; gap: 10px;
+      margin-top: 12px; padding: 11px 18px;
+      background: #eff6ff; border: 1px solid #bfdbfe;
+      border-radius: 10px;
+    }
+    .contact-box svg { width: 16px; height: 16px; stroke: var(--blue); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .contact-box a { color: var(--blue); text-decoration: none; font-size: 0.875rem; font-weight: 600; }
+    .contact-box a:hover { text-decoration: underline; }
+
+    .card-footer-strip {
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      padding: 16px 40px;
+      font-size: 0.8rem; color: var(--muted);
+    }
+    .card-footer-strip a { color: var(--blue); text-decoration: none; }
+    .card-footer-strip a:hover { text-decoration: underline; }
+
+    /* ── FOOTER ── */
+    footer {
+      background: #0f172a;
+      border-top: 1px solid #1e293b;
+      padding: 32px 60px;
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px;
+    }
+    .footer-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .footer-logo img { height: 26px; opacity: 0.75; }
+    .footer-logo span { font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem; color: #94a3b8; }
+    .footer-links { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+    .footer-link { color: #64748b; text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+    .footer-link:hover { color: #e2e8f0; }
+    footer p { font-size: 0.8rem; color: #64748b; }
+
+    @media (max-width: 640px) {
+      nav { padding: 14px 20px; }
+      .page-top { padding: 36px 20px 32px; }
+      .page-top h1 { font-size: 1.6rem; }
+      .card-body { padding: 24px 20px; }
+      .toc { padding: 16px 20px; }
+      .card-footer-strip { padding: 14px 20px; }
+      footer { padding: 24px 20px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="cloudatlas-landing.html" class="nav-logo">
+    <img src="assets/cloudatlas.png" alt="CloudAtlas">
+    <span>Cloud<span class="logo-accent">Atlas</span></span>
+  </a>
+  <a href="cloudatlas-landing.html" class="nav-back">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    Voltar ao site
+  </a>
+</nav>
+
+<div class="page-top">
+  <div class="breadcrumb">
+    <a href="cloudatlas-landing.html">CloudAtlas</a>
+    <span>›</span>
+    <span>Termos de Uso</span>
+  </div>
+  <div class="page-icon-wrap">
+    <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+  </div>
+  <h1>Termos de <span class="accent">Uso</span></h1>
+  <p class="page-meta">Versão 1.0 &mdash; Última atualização: maio de 2026</p>
+</div>
+
+<main>
+  <div class="card">
+    <div class="toc">
+      <p>Nesta página</p>
+      <div class="toc-links">
+        <a href="#s1" class="toc-link">1. Aceitação</a>
+        <a href="#s2" class="toc-link">2. Serviço</a>
+        <a href="#s3" class="toc-link">3. Cadastro</a>
+        <a href="#s4" class="toc-link">4. Pagamentos</a>
+        <a href="#s5" class="toc-link">5. Uso Aceitável</a>
+        <a href="#s6" class="toc-link">6. Credenciais</a>
+        <a href="#s7" class="toc-link">7. Propriedade Intelectual</a>
+        <a href="#s8" class="toc-link">8. SLA</a>
+        <a href="#s9" class="toc-link">9. Responsabilidade</a>
+        <a href="#s10" class="toc-link">10. Rescisão</a>
+        <a href="#s11" class="toc-link">11. Foro</a>
+        <a href="#s12" class="toc-link">12. Contato</a>
+      </div>
+    </div>
+
+    <div class="card-body">
+
+      <div class="section" id="s1">
+        <h2><span class="section-num">1</span> Aceitação dos Termos</h2>
+        <div class="section-body">
+          <p>Ao criar uma conta ou utilizar a plataforma <strong>CloudAtlas</strong> (disponível em <em>hub.cloudatlas.app.br</em>), você concorda com estes Termos de Uso. Se agir em nome de uma empresa, declara ter poderes para vinculá-la a estes termos. Caso não concorde, não utilize a Plataforma.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s2">
+        <h2><span class="section-num">2</span> Descrição do Serviço</h2>
+        <div class="section-body">
+          <p>O CloudAtlas é uma plataforma SaaS de gestão multi-cloud que permite monitorar, gerenciar e otimizar recursos em Amazon Web Services (AWS), Microsoft Azure, Google Cloud Platform (GCP) e Microsoft 365, incluindo funcionalidades de FinOps, automação de segurança, migração de dados e relatórios executivos.</p>
+          <p>Os serviços estão disponíveis nos planos <strong>Free</strong>, <strong>Pro</strong> e <strong>Enterprise</strong>, com funcionalidades e limites distintos descritos na página de Preços.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s3">
+        <h2><span class="section-num">3</span> Elegibilidade e Cadastro</h2>
+        <div class="section-body">
+          <p>Para utilizar a Plataforma você deve:</p>
+          <ul>
+            <li>Ter ao menos 18 anos ou a maioridade legal em sua jurisdição.</li>
+            <li>Fornecer informações verdadeiras, precisas e completas no cadastro.</li>
+            <li>Manter suas credenciais de acesso em sigilo — você é responsável por toda atividade realizada com sua conta.</li>
+            <li>Notificar imediatamente a CloudAtlas em caso de uso não autorizado da sua conta.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section" id="s4">
+        <h2><span class="section-num">4</span> Planos, Pagamentos e Cancelamento</h2>
+        <div class="section-body">
+          <p><strong>4.1 Trial gratuito:</strong> novos cadastros recebem 30 dias de acesso ao plano Pro sem custo. Ao término do trial, a conta retorna ao plano Free automaticamente.</p>
+          <p><strong>4.2 Planos pagos:</strong> assinaturas são cobradas mensalmente via PIX ou cartão de crédito, processados pelo AbacatePay. O valor é debitado no início de cada ciclo mensal.</p>
+          <p><strong>4.3 Cancelamento:</strong> você pode cancelar a qualquer momento nas configurações da conta. O acesso às funcionalidades pagas permanece ativo até o fim do período já pago. Não há reembolso proporcional por cancelamento antecipado.</p>
+          <p><strong>4.4 Inadimplência:</strong> em caso de falha no pagamento, a conta é migrada para o plano Free após 7 dias de carência. O histórico de dados é preservado por 90 dias.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s5">
+        <h2><span class="section-num">5</span> Uso Aceitável</h2>
+        <div class="section-body">
+          <p>Você concorda em não utilizar a Plataforma para:</p>
+          <ul>
+            <li>Violar leis ou regulamentações aplicáveis, incluindo leis de privacidade de dados.</li>
+            <li>Acessar ou tentar acessar contas de outros usuários sem autorização.</li>
+            <li>Realizar engenharia reversa, descompilar ou criar obras derivadas da Plataforma.</li>
+            <li>Introduzir vírus, malware ou código malicioso de qualquer natureza.</li>
+            <li>Sobrecarregar a infraestrutura da Plataforma com requisições automatizadas abusivas.</li>
+            <li>Revender ou sublicenciar o acesso à Plataforma sem autorização prévia por escrito.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section" id="s6">
+        <h2><span class="section-num">6</span> Credenciais de Provedores Cloud</h2>
+        <div class="section-body">
+          <p>Ao cadastrar credenciais de AWS, Azure, GCP ou Microsoft 365 na Plataforma, você declara ter as permissões necessárias para fazê-lo. As credenciais são armazenadas com criptografia AES-128 (Fernet) com chave derivada por organização.</p>
+          <p>A CloudAtlas utiliza suas credenciais exclusivamente para executar as operações solicitadas por você. Recomendamos criar credenciais com escopo de permissões mínimas necessárias (princípio do menor privilégio).</p>
+        </div>
+      </div>
+
+      <div class="section" id="s7">
+        <h2><span class="section-num">7</span> Propriedade Intelectual</h2>
+        <div class="section-body">
+          <p>A Plataforma, incluindo seu código-fonte, design, marcas e conteúdo, é de propriedade exclusiva da CloudAtlas. Estes Termos não transferem nenhum direito de propriedade intelectual a você.</p>
+          <p>Os dados que você insere na Plataforma continuam sendo de sua propriedade. Concedemos a você uma licença limitada, não exclusiva e intransferível para usar a Plataforma conforme estes Termos.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s8">
+        <h2><span class="section-num">8</span> Disponibilidade e SLA</h2>
+        <div class="section-body">
+          <p>Nos comprometemos a manter a Plataforma disponível com SLA de <strong>99,5% ao mês</strong> para planos Pro e Enterprise. Manutenções programadas serão comunicadas com antecedência mínima de 24 horas.</p>
+          <p>O plano Free não possui garantia de SLA. A CloudAtlas não se responsabiliza por indisponibilidades causadas por falhas em provedores de nuvem terceiros (AWS, Azure, GCP, Microsoft).</p>
+        </div>
+      </div>
+
+      <div class="section" id="s9">
+        <h2><span class="section-num">9</span> Limitação de Responsabilidade</h2>
+        <div class="section-body">
+          <p>Na extensão máxima permitida pela lei, a CloudAtlas não será responsável por danos indiretos, incidentais, especiais ou consequentes, incluindo perda de lucros, dados ou receita, decorrentes do uso ou incapacidade de uso da Plataforma.</p>
+          <p>Nossa responsabilidade total não excederá o valor pago por você nos 3 meses anteriores ao evento que deu origem à reivindicação.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s10">
+        <h2><span class="section-num">10</span> Rescisão</h2>
+        <div class="section-body">
+          <p>A CloudAtlas pode suspender ou encerrar seu acesso em caso de violação material destes Termos ou por determinação judicial ou regulatória. Após o encerramento, seus dados serão retidos por 90 dias para exportação e então excluídos permanentemente, salvo obrigação legal de retenção mais longa.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s11">
+        <h2><span class="section-num">11</span> Legislação Aplicável e Foro</h2>
+        <div class="section-body">
+          <p>Estes Termos são regidos pelas leis da República Federativa do Brasil. Quaisquer disputas serão submetidas ao foro da Comarca de São Paulo — SP, com exclusão de qualquer outro, por mais privilegiado que seja.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s12">
+        <h2><span class="section-num">12</span> Contato</h2>
+        <div class="section-body">
+          <p>Para dúvidas sobre estes Termos:</p>
+          <div class="contact-box">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <a href="mailto:suporte@cloudatlas.app.br">suporte@cloudatlas.app.br</a>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card-footer-strip">
+      Consulte também nossa <a href="privacidade.html">Política de Privacidade</a> e <a href="lgpd.html">Política LGPD</a>.
+    </div>
+  </div>
+</main>
+
+<footer>
+  <a href="cloudatlas-landing.html" class="footer-logo">
+    <img src="assets/cloudatlas.png" alt="CloudAtlas">
+    <span>CloudAtlas</span>
+  </a>
+  <div class="footer-links">
+    <a href="termos.html" class="footer-link">Termos</a>
+    <a href="privacidade.html" class="footer-link">Privacidade</a>
+    <a href="lgpd.html" class="footer-link">LGPD</a>
+    <a href="cloudatlas-landing.html#contato" class="footer-link">Contato</a>
+  </div>
+  <p>&copy; <script>document.write(new Date().getFullYear())</script> CloudAtlas</p>
+</footer>
+
+</body>
+</html>

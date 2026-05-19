@@ -53,6 +53,13 @@ const Costs = () => {
       ? fmt(new Date(today.getFullYear(), today.getMonth(), 1))
       : fmt(new Date(today.getTime() - period.days * 86400000));
 
+  // Number of days in the selected range (inclusive). Used by the report modal
+  // for the avg/day heuristic and the "X dias" label.
+  const days = Math.max(
+    1,
+    Math.round((new Date(endDate) - new Date(startDate)) / 86400000) + 1,
+  );
+
   // ── Hook ───────────────────────────────────────────────────────────────────
   const {
     data, prevData, metrics, anomalies, isLoading,

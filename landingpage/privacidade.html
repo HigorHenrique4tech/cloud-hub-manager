@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Política de Privacidade — CloudAtlas</title>
+  <link rel="icon" href="assets/cloudatlas.png">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #ffffff; --bg2: #f4f7fb; --blue: #1a6fdb; --blue-light: #2a7de8;
+      --text: #0f172a; --muted: #5a6a8a; --border: #dde4ef;
+      --shadow-md: 0 4px 16px rgba(15,23,42,0.08), 0 2px 6px rgba(15,23,42,0.04);
+    }
+    html { scroll-behavior: smooth; }
+    body { background: var(--bg); color: var(--text); font-family: 'Outfit', sans-serif; line-height: 1.7; min-height: 100vh; display: flex; flex-direction: column; }
+    h1, h2, h3 { font-family: 'Space Grotesk', sans-serif; color: var(--text); }
+    nav { position: sticky; top: 0; z-index: 100; display: flex; align-items: center; justify-content: space-between; padding: 18px 60px; background: rgba(255,255,255,0.97); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); border-top: 3px solid var(--blue); }
+    .nav-logo { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+    .nav-logo img { height: 42px; }
+    .nav-logo span { font-family: 'Space Grotesk', sans-serif; font-size: 1.2rem; font-weight: 700; color: var(--text); }
+    .logo-accent { color: var(--blue); }
+    .nav-back { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); text-decoration: none; font-size: 0.9rem; font-weight: 500; padding: 8px 16px; border: 1px solid var(--border); border-radius: 8px; transition: all 0.2s; background: var(--bg); }
+    .nav-back:hover { color: var(--blue); border-color: var(--blue); background: #eff6ff; }
+    .nav-back svg { width: 15px; height: 15px; }
+    .page-top { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 52px 24px 48px; text-align: center; }
+    .breadcrumb { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 0.8rem; color: var(--muted); margin-bottom: 20px; }
+    .breadcrumb a { color: var(--blue); text-decoration: none; }
+    .breadcrumb a:hover { text-decoration: underline; }
+    .breadcrumb span { opacity: 0.5; }
+    .page-icon-wrap { width: 56px; height: 56px; border-radius: 16px; background: #eff6ff; border: 1px solid #bfdbfe; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+    .page-icon-wrap svg { width: 26px; height: 26px; stroke: var(--blue); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .page-top h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 8px; }
+    .page-top h1 .accent { color: var(--blue); }
+    .page-meta { font-size: 0.875rem; color: var(--muted); }
+    main { flex: 1; max-width: 820px; margin: 0 auto; padding: 52px 24px 80px; width: 100%; }
+    .card { background: #fff; border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow-md); overflow: hidden; }
+    .toc { background: var(--bg2); border-bottom: 1px solid var(--border); padding: 20px 32px; }
+    .toc p { font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+    .toc-links { display: flex; flex-wrap: wrap; gap: 6px 16px; }
+    .toc-link { font-size: 0.82rem; color: var(--blue); text-decoration: none; }
+    .toc-link:hover { text-decoration: underline; }
+    .card-body { padding: 40px; }
+    .section { margin-bottom: 36px; scroll-margin-top: 80px; }
+    .section:last-child { margin-bottom: 0; }
+    h2 { font-size: 0.95rem; font-weight: 700; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+    .section-num { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 8px; background: #eff6ff; color: var(--blue); font-size: 0.75rem; font-weight: 700; flex-shrink: 0; }
+    .section-body { font-size: 0.88rem; color: #475569; line-height: 1.85; }
+    .section-body p + p { margin-top: 10px; }
+    .section-body ul { list-style: none; padding: 0; margin-top: 10px; }
+    .section-body li { display: flex; align-items: flex-start; gap: 10px; padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
+    .section-body li:last-child { border-bottom: none; }
+    .section-body li::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--blue); flex-shrink: 0; margin-top: 7px; }
+    strong { color: #1e293b; font-weight: 600; }
+    .contact-box { display: inline-flex; align-items: center; gap: 10px; margin-top: 12px; padding: 11px 18px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 10px; }
+    .contact-box svg { width: 16px; height: 16px; stroke: var(--blue); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .contact-box a { color: var(--blue); text-decoration: none; font-size: 0.875rem; font-weight: 600; }
+    .contact-box a:hover { text-decoration: underline; }
+    .card-footer-strip { background: var(--bg2); border-top: 1px solid var(--border); padding: 16px 40px; font-size: 0.8rem; color: var(--muted); }
+    .card-footer-strip a { color: var(--blue); text-decoration: none; }
+    .card-footer-strip a:hover { text-decoration: underline; }
+    footer { background: #0f172a; border-top: 1px solid #1e293b; padding: 32px 60px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; }
+    .footer-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .footer-logo img { height: 26px; opacity: 0.75; }
+    .footer-logo span { font-family: 'Space Grotesk', sans-serif; font-size: 0.95rem; color: #94a3b8; }
+    .footer-links { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+    .footer-link { color: #64748b; text-decoration: none; font-size: 0.85rem; transition: color 0.2s; }
+    .footer-link:hover { color: #e2e8f0; }
+    footer p { font-size: 0.8rem; color: #64748b; }
+    @media (max-width: 640px) {
+      nav { padding: 14px 20px; }
+      .page-top { padding: 36px 20px 32px; }
+      .page-top h1 { font-size: 1.6rem; }
+      .card-body { padding: 24px 20px; }
+      .toc { padding: 16px 20px; }
+      .card-footer-strip { padding: 14px 20px; }
+      footer { padding: 24px 20px; flex-direction: column; align-items: flex-start; }
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="cloudatlas-landing.html" class="nav-logo">
+    <img src="assets/cloudatlas.png" alt="CloudAtlas">
+    <span>Cloud<span class="logo-accent">Atlas</span></span>
+  </a>
+  <a href="cloudatlas-landing.html" class="nav-back">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+    Voltar ao site
+  </a>
+</nav>
+
+<div class="page-top">
+  <div class="breadcrumb">
+    <a href="cloudatlas-landing.html">CloudAtlas</a>
+    <span>›</span>
+    <span>Política de Privacidade</span>
+  </div>
+  <div class="page-icon-wrap">
+    <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+  </div>
+  <h1>Política de <span class="accent">Privacidade</span></h1>
+  <p class="page-meta">Versão 1.0 &mdash; Última atualização: maio de 2026</p>
+</div>
+
+<main>
+  <div class="card">
+    <div class="toc">
+      <p>Nesta página</p>
+      <div class="toc-links">
+        <a href="#s1" class="toc-link">1. Introdução</a>
+        <a href="#s2" class="toc-link">2. Dados Coletados</a>
+        <a href="#s3" class="toc-link">3. Finalidades</a>
+        <a href="#s4" class="toc-link">4. Subprocessadores</a>
+        <a href="#s5" class="toc-link">5. Retenção</a>
+        <a href="#s6" class="toc-link">6. Segurança</a>
+        <a href="#s7" class="toc-link">7. Seus Direitos</a>
+        <a href="#s8" class="toc-link">8. DPO</a>
+        <a href="#s9" class="toc-link">9. Cookies</a>
+        <a href="#s10" class="toc-link">10. Alterações</a>
+      </div>
+    </div>
+
+    <div class="card-body">
+
+      <div class="section" id="s1">
+        <h2><span class="section-num">1</span> Introdução e Controlador de Dados</h2>
+        <div class="section-body">
+          <p>A <strong>CloudAtlas</strong> ("Plataforma", "nós") é operada pela empresa responsável pelo serviço disponível em <em>cloudatlas.app.br</em>. Somos o <strong>controlador dos seus dados pessoais</strong> conforme a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018 — LGPD).</p>
+          <p>Esta Política descreve quais dados coletamos, por que coletamos, como utilizamos, com quem compartilhamos e quais são seus direitos como titular dos dados.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s2">
+        <h2><span class="section-num">2</span> Dados que Coletamos</h2>
+        <div class="section-body">
+          <p><strong>2.1 Dados de cadastro:</strong> nome completo, endereço de e-mail, senha (armazenada com hash bcrypt), CNPJ/razão social (opcional), telefone (opcional).</p>
+          <p><strong>2.2 Credenciais de provedores cloud:</strong> chaves de acesso AWS, Azure e GCP fornecidas por você, armazenadas exclusivamente de forma criptografada (Fernet AES-128) com chave derivada por organização.</p>
+          <p><strong>2.3 Dados de uso e logs:</strong> ações realizadas na plataforma (criação/exclusão de recursos, logins, alterações de configuração), endereço IP, user-agent do navegador e timestamps.</p>
+          <p><strong>2.4 Dados de faturamento:</strong> registros de cobrança, histórico de pagamentos e informações de plano contratado. Não armazenamos dados completos de cartão de crédito — esses dados são processados pelo provedor AbacatePay.</p>
+          <p><strong>2.5 Dados de sessão:</strong> tokens de autenticação (JWT e refresh tokens), endereço IP e dispositivo utilizados para controle de sessões ativas.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s3">
+        <h2><span class="section-num">3</span> Finalidades e Base Legal</h2>
+        <div class="section-body">
+          <p>Tratamos seus dados com base nas seguintes hipóteses legais da LGPD:</p>
+          <ul>
+            <li><strong>Execução de contrato (Art. 7º V):</strong> autenticação, gerenciamento de recursos cloud, relatórios e faturamento.</li>
+            <li><strong>Legítimo interesse (Art. 7º IX):</strong> logs de auditoria, detecção de fraudes e segurança da plataforma.</li>
+            <li><strong>Cumprimento de obrigação legal (Art. 7º II):</strong> retenção de registros fiscais e de faturamento pelo prazo exigido por lei (5 anos).</li>
+            <li><strong>Consentimento (Art. 7º I):</strong> envio de comunicações de marketing e newsletters (quando solicitado).</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section" id="s4">
+        <h2><span class="section-num">4</span> Compartilhamento com Subprocessadores</h2>
+        <div class="section-body">
+          <p>Compartilhamos dados apenas com fornecedores necessários para a operação da Plataforma:</p>
+          <ul>
+            <li><strong>Amazon Web Services (AWS):</strong> hospedagem de infraestrutura e APIs de gestão de recursos.</li>
+            <li><strong>Microsoft Azure / Microsoft Graph:</strong> gestão de recursos Azure e Microsoft 365.</li>
+            <li><strong>Google Cloud Platform:</strong> gestão de recursos GCP.</li>
+            <li><strong>AbacatePay:</strong> processamento de pagamentos (dados de cartão nunca passam pelos nossos servidores).</li>
+            <li><strong>Provedor de SMTP:</strong> envio de e-mails transacionais (verificação, alertas, relatórios).</li>
+          </ul>
+          <p>Não vendemos nem cedemos seus dados a terceiros para fins comerciais.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s5">
+        <h2><span class="section-num">5</span> Retenção de Dados</h2>
+        <div class="section-body">
+          <ul>
+            <li><strong>Dados de conta:</strong> pelo período de vigência do contrato + 90 dias após encerramento.</li>
+            <li><strong>Logs de auditoria:</strong> 1 ano, com anonimização de IPs após 90 dias.</li>
+            <li><strong>Registros de faturamento:</strong> 5 anos (obrigação fiscal).</li>
+            <li><strong>Aceite de termos:</strong> pelo prazo de validade legal (comprovação de consentimento).</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section" id="s6">
+        <h2><span class="section-num">6</span> Segurança dos Dados</h2>
+        <div class="section-body">
+          <ul>
+            <li>Criptografia em trânsito (TLS 1.2+) e em repouso (AES-128 para credenciais).</li>
+            <li>Autenticação multifator (MFA) disponível para todas as contas.</li>
+            <li>Rate limiting e bloqueio automático após tentativas excessivas de login.</li>
+            <li>Revogação imediata de tokens após logout ou troca de senha.</li>
+            <li>Auditoria de todas as ações administrativas.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="section" id="s7">
+        <h2><span class="section-num">7</span> Seus Direitos (LGPD Art. 18)</h2>
+        <div class="section-body">
+          <ul>
+            <li><strong>Confirmação e acesso:</strong> saber se tratamos seus dados e obter uma cópia.</li>
+            <li><strong>Correção:</strong> atualizar dados incompletos ou incorretos em Configurações → Perfil.</li>
+            <li><strong>Portabilidade:</strong> exportar seus dados em formato JSON via Configurações → Exportar Dados.</li>
+            <li><strong>Eliminação:</strong> solicitar exclusão via Configurações → Encerrar Conta, ou por e-mail ao DPO.</li>
+            <li><strong>Revogação de consentimento:</strong> para marketing, clique em "cancelar inscrição" no e-mail ou contate o DPO.</li>
+            <li><strong>Oposição:</strong> se discordar de algum tratamento baseado em legítimo interesse.</li>
+          </ul>
+          <p>Respondemos a solicitações em até <strong>15 dias úteis</strong>.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s8">
+        <h2><span class="section-num">8</span> Encarregado de Dados (DPO)</h2>
+        <div class="section-body">
+          <p>Para exercer seus direitos ou esclarecer dúvidas sobre privacidade, entre em contato com nosso Encarregado de Proteção de Dados:</p>
+          <div class="contact-box">
+            <svg viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            <a href="mailto:privacidade@cloudatlas.app.br">privacidade@cloudatlas.app.br</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="section" id="s9">
+        <h2><span class="section-num">9</span> Cookies</h2>
+        <div class="section-body">
+          <p>Utilizamos cookies estritamente necessários para autenticação (tokens de sessão) e preferências do usuário (tema, workspace selecionado). Não utilizamos cookies de rastreamento ou publicidade de terceiros.</p>
+        </div>
+      </div>
+
+      <div class="section" id="s10">
+        <h2><span class="section-num">10</span> Alterações nesta Política</h2>
+        <div class="section-body">
+          <p>Podemos atualizar esta Política periodicamente. Notificaremos você por e-mail sobre mudanças materiais com antecedência mínima de 15 dias. O uso continuado da Plataforma após a data de vigência das alterações constitui aceitação da nova Política.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="card-footer-strip">
+      Em conformidade com a Lei nº 13.709/2018 (LGPD). Consulte também os <a href="termos.html">Termos de Uso</a>, <a href="lgpd.html">Política LGPD</a> e a <a href="https://www.gov.br/anpd" target="_blank" rel="noopener noreferrer">ANPD</a>.
+    </div>
+  </div>
+</main>
+
+<footer>
+  <a href="cloudatlas-landing.html" class="footer-logo">
+    <img src="assets/cloudatlas.png" alt="CloudAtlas">
+    <span>CloudAtlas</span>
+  </a>
+  <div class="footer-links">
+    <a href="termos.html" class="footer-link">Termos</a>
+    <a href="privacidade.html" class="footer-link">Privacidade</a>
+    <a href="lgpd.html" class="footer-link">LGPD</a>
+    <a href="cloudatlas-landing.html#contato" class="footer-link">Contato</a>
+  </div>
+  <p>&copy; <script>document.write(new Date().getFullYear())</script> CloudAtlas</p>
+</footer>
+
+</body>
+</html>
