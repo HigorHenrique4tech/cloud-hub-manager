@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, Loader2, Send, ShieldCheck, User, AlertTriangle,
@@ -200,8 +200,11 @@ const TicketDetails = () => {
   const { ticketId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const qc = useQueryClient();
   const { user } = useAuth();
+  // orgSlug passed via router state when navigating from the ticket list
+  const orgSlug = location.state?.orgSlug || localStorage.getItem('selectedOrg');
   const [reply, setReply] = useState('');
   const [error, setError] = useState('');
   const [showCSAT, setShowCSAT] = useState(() => searchParams.get('rate') === '1');
@@ -216,14 +219,14 @@ const TicketDetails = () => {
   }, [searchParams, setSearchParams]);
 
   const { data: ticket, isLoading } = useQuery({
-    queryKey: ['ticket', ticketId],
-    queryFn: () => supportService.get(ticketId),
+    queryKey: ['ticket', ticketId, orgSlug],
+    queryFn: () => supportService.get(ticketId, orgSlug),
     staleTime: 30000,
   });
 
   const { data: messagesData } = useQuery({
-    queryKey: ['ticket-messages', ticketId],
-    queryFn: () => supportService.getMessages(ticketId),
+    queryKey: ['ticket-messages', ticketId, orgSlug],
+    queryFn: () => supportService.getMessages(ticketId, null, orgSlug),
     refetchInterval: 5000,
     enabled: !!ticket,
   });
@@ -238,7 +241,7 @@ const TicketDetails = () => {
   }, [messages.length]);
 
   const sendMut = useMutation({
-    mutationFn: (content) => supportService.addMessage(ticketId, { content }),
+    mutationFn: (content) => supportService.addMessage(ticketId, { content }, orgSlug),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['ticket-messages', ticketId] });
       qc.invalidateQueries({ queryKey: ['ticket', ticketId] });

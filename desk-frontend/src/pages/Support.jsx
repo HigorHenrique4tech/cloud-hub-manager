@@ -71,7 +71,7 @@ function NewTicketModal({ onClose, onCreated }) {
       { ...form, workspace_id: form.workspace_id || undefined },
       orgSlug,
     ),
-    onSuccess: (data) => onCreated(data.id),
+    onSuccess: (data) => onCreated(data.id, orgSlug),
     onError: (e) => setError(e.response?.data?.detail || 'Erro ao criar chamado'),
   });
 
@@ -209,10 +209,10 @@ const Support = () => {
     resolved: allTickets.filter((t) => t.status === 'resolved').length,
   };
 
-  const handleCreated = (ticketId) => {
+  const handleCreated = (ticketId, orgSlug) => {
     qc.invalidateQueries({ queryKey: ['support-tickets'] });
     setShowModal(false);
-    navigate(`/ticket/${ticketId}`);
+    navigate(`/ticket/${ticketId}`, { state: { orgSlug } });
   };
 
   return (
@@ -305,7 +305,7 @@ const Support = () => {
                 {tickets.map((t) => {
                   const pCfg = PRIORITY_CONFIG[t.priority] || PRIORITY_CONFIG.normal;
                   return (
-                    <tr key={t.id} onClick={() => navigate(`/ticket/${t.id}`)}
+                    <tr key={t.id} onClick={() => navigate(`/ticket/${t.id}`, { state: { orgSlug: t._orgSlug } })}
                       className="bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors cursor-pointer">
                       <td className="py-3 px-4 font-mono text-xs font-semibold text-primary">{fmtTicketId(t)}</td>
                       <td className="py-3 px-4 font-medium text-gray-900 dark:text-gray-100 max-w-xs truncate">{t.title}</td>

@@ -20,16 +20,24 @@ const supportService = {
     return api.post(`/orgs/${slug}/tickets`, data).then((r) => r.data);
   },
 
-  get: (ticketId) =>
-    api.get(orgUrl(`/tickets/${ticketId}`)).then((r) => r.data),
-
-  getMessages: (ticketId, since = null) => {
-    const params = since ? { since } : {};
-    return api.get(orgUrl(`/tickets/${ticketId}/messages`), { params }).then((r) => r.data);
+  get: (ticketId, orgSlug) => {
+    const slug = orgSlug || localStorage.getItem('selectedOrg');
+    if (!slug) throw new Error('Organização não selecionada');
+    return api.get(`/orgs/${slug}/tickets/${ticketId}`).then((r) => r.data);
   },
 
-  addMessage: (ticketId, data) =>
-    api.post(orgUrl(`/tickets/${ticketId}/messages`), data).then((r) => r.data),
+  getMessages: (ticketId, since = null, orgSlug) => {
+    const slug = orgSlug || localStorage.getItem('selectedOrg');
+    if (!slug) throw new Error('Organização não selecionada');
+    const params = since ? { since } : {};
+    return api.get(`/orgs/${slug}/tickets/${ticketId}/messages`, { params }).then((r) => r.data);
+  },
+
+  addMessage: (ticketId, data, orgSlug) => {
+    const slug = orgSlug || localStorage.getItem('selectedOrg');
+    if (!slug) throw new Error('Organização não selecionada');
+    return api.post(`/orgs/${slug}/tickets/${ticketId}/messages`, data).then((r) => r.data);
+  },
 
   // ── Admin / Helpdesk ──────────────────────────────────────────────────────────
   adminList: (params = {}) =>
