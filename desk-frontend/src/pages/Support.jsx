@@ -56,7 +56,8 @@ function NewTicketModal({ onClose, onCreated }) {
     queryKey: ['my-orgs'],
     queryFn: () => orgService.listMyOrgs(),
   });
-  const orgs = orgsQ.data?.orgs || orgsQ.data || [];
+  const rawOrgs = orgsQ.data?.orgs || orgsQ.data?.organizations || orgsQ.data;
+  const orgs = Array.isArray(rawOrgs) ? rawOrgs : [];
 
   const workspacesQ = useQuery({
     queryKey: ['workspaces', orgSlug],
