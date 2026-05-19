@@ -8,8 +8,11 @@ function orgUrl(path) {
 
 const supportService = {
   // ── Client ───────────────────────────────────────────────────────────────────
-  list: (params = {}) =>
-    api.get(orgUrl('/tickets'), { params }).then((r) => r.data),
+  list: (params = {}, orgSlug) => {
+    const slug = orgSlug || localStorage.getItem('selectedOrg');
+    if (!slug) throw new Error('Organização não selecionada');
+    return api.get(`/orgs/${slug}/tickets`, { params }).then((r) => r.data);
+  },
 
   create: (data, orgSlug) => {
     const slug = orgSlug || localStorage.getItem('selectedOrg');
