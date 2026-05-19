@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   LifeBuoy, Plus, Clock, CheckCircle, AlertCircle, Loader2,
-  AlertTriangle, ArrowRight, X, Layers,
+  AlertTriangle, ArrowRight, X, Layers, Building2,
 } from 'lucide-react';
 import DeskLayout from '../components/layout/DeskLayout';
 import supportService from '../services/supportService';
@@ -52,15 +52,11 @@ function NewTicketModal({ onClose, onCreated }) {
   });
   const [error, setError] = useState('');
 
-  // If selectedOrg wasn't set at mount, poll localStorage briefly until it is
-  useEffect(() => {
-    if (orgSlug) return;
-    const timer = setInterval(() => {
-      const slug = localStorage.getItem('selectedOrg');
-      if (slug) { setOrgSlug(slug); clearInterval(timer); }
-    }, 300);
-    return () => clearInterval(timer);
-  }, [orgSlug]);
+  const orgsQ = useQuery({
+    queryKey: ['my-orgs'],
+    queryFn: () => orgService.listMyOrgs(),
+  });
+  const orgs = orgsQ.data?.orgs || orgsQ.data || [];
 
   const workspacesQ = useQuery({
     queryKey: ['workspaces', orgSlug],
@@ -70,12 +66,20 @@ function NewTicketModal({ onClose, onCreated }) {
   const workspaces = workspacesQ.data?.workspaces || workspacesQ.data || [];
 
   const mut = useMutation({
-    mutationFn: () => supportService.create({ ...form, workspace_id: form.workspace_id || undefined }),
+    mutationFn: () => supportService.create(
+      { ...form, workspace_id: form.workspace_id || undefined },
+      orgSlug,
+    ),
     onSuccess: (data) => onCreated(data.id),
     onError: (e) => setError(e.response?.data?.detail || 'Erro ao criar chamado'),
   });
 
   const set = (k) => (e) => setForm((p) => ({ ...p, [k]: e.target.value }));
+
+  const handleOrgChange = (e) => {
+    setOrgSlug(e.target.value);
+    setForm((p) => ({ ...p, workspace_id: '' }));
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -89,7 +93,18 @@ function NewTicketModal({ onClose, onCreated }) {
         <div className="px-6 py-5 space-y-4">
           <label className="block">
             <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
-              <Layers className="w-3.5 h-3.5" /> Workspace <span className="text-gray-400">(opcional)</span>
+              <Building2 className="w-3.5 h-3.5" /> Organização
+            </span>
+            <select value={orgSlug || ''} onChange={handleOrgChange}
+              className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary">
+              {orgs.map((o) => (
+                <option key={o.slug} value={o.slug}>{o.name}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1">
+              <Layers className="w-3.5 h-3.5" /> Workspace relacionado <span className="text-gray-400">(opcional)</span>
             </span>
             <select value={form.workspace_id} onChange={set('workspace_id')}
               className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:outline-none focus:border-primary">

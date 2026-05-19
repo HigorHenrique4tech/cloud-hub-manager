@@ -11,8 +11,11 @@ const supportService = {
   list: (params = {}) =>
     api.get(orgUrl('/tickets'), { params }).then((r) => r.data),
 
-  create: (data) =>
-    api.post(orgUrl('/tickets'), data).then((r) => r.data),
+  create: (data, orgSlug) => {
+    const slug = orgSlug || localStorage.getItem('selectedOrg');
+    if (!slug) throw new Error('Organização não selecionada');
+    return api.post(`/orgs/${slug}/tickets`, data).then((r) => r.data);
+  },
 
   get: (ticketId) =>
     api.get(orgUrl(`/tickets/${ticketId}`)).then((r) => r.data),
