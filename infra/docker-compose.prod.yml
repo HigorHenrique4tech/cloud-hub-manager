@@ -161,6 +161,14 @@ services:
       - ENCRYPTION_KEY=${ENCRYPTION_KEY:-}
       - REDIS_URL=redis://redis:6379/0
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      # Email (necessário para notificações de conclusão de migração)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SMTP_FROM=${SMTP_FROM:-noreply@cloudatlas.io}
+      - SMTP_USE_TLS=${SMTP_USE_TLS:-True}
+      - FRONTEND_URL=${FRONTEND_URL:-https://hub.cloudatlas.app.br}
     healthcheck:
       test: ["CMD", "celery", "-A", "app.workers.celery_app", "inspect", "ping", "--timeout=5"]
       interval: 30s
