@@ -21,6 +21,7 @@ from app.services.email_service import send_billing_invoice_email, send_billing_
 from app.services.payment_service import create_billing as create_abacatepay_billing
 from app.services.notification_service import push_notification
 from app.services.notification_channel_service import fire_event
+from app.services.plan_service import get_trial_info
 from app.core.config import settings
 
 BILLING_UPLOADS_DIR = Path(os.getenv("BILLING_UPLOADS_DIR", "/app/uploads/billing"))
@@ -235,8 +236,7 @@ def list_all_orgs(
             "notes": org.notes,
             "members_count": member_counts.get(org.id, 0),
             "created_at": org.created_at.isoformat() if org.created_at else None,
-            "trial_ends_at": org.trial_ends_at.isoformat() if org.trial_ends_at else None,
-            "trial_active": org.trial_ends_at > datetime.utcnow() if org.trial_ends_at else False,
+            "trial": get_trial_info(org),
         }
         for org in orgs
     ]
