@@ -2,7 +2,7 @@
 atlasservices.cloud {
     root * /srv/landing
 
-    try_files {path} /empresa.html
+    try_files {path} /index-a.html
 
     @html path *.html /
     header @html Cache-Control "no-cache, no-store, must-revalidate"
@@ -22,7 +22,7 @@ cloudatlas.app.br {
     root * /srv/landing
 
     # Serve cloudatlas-landing.html as the index
-    try_files {path} /index.html
+    try_files {path} /cloudatlas-landing.html
 
     # No cache on HTML — always get the latest version
     @html path *.html /
