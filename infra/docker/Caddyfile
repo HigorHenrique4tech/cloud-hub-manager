@@ -2,6 +2,9 @@
 atlasservices.cloud {
     root * /srv/landing
 
+    # Qualquer acesso a cloudatlas-landing.html redireciona para o domínio correto
+    redir /cloudatlas-landing.html* https://cloudatlas.app.br permanent
+
     try_files {path} /index-a.html
 
     @html path *.html /
