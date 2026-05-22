@@ -463,6 +463,19 @@ img{display:block;max-width:100%;}
 .psc .psc-lbl{font-size:12px;color:rgba(255,255,255,0.35);}
 .psc.accent{border-color:rgba(20,71,212,0.4);background:rgba(20,71,212,0.15);}
 .psc.accent .psc-num{color:var(--blue-3);}
+.product-logo-wrap{
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;
+}
+.product-logo-wrap img{
+  width:100%;max-width:340px;height:auto;
+  filter:drop-shadow(0 20px 48px rgba(20,71,212,0.45));
+  animation:float 5s ease-in-out infinite;
+}
+@keyframes float{
+  0%,100%{transform:translateY(0);}
+  50%{transform:translateY(-14px);}
+}
 
 /* ═══════════════════════════════ VALORES ═══════════════════════════════ */
 .values-grid{
@@ -732,6 +745,106 @@ footer{
 .reveal-delay-5{transition-delay:0.5s;}
 .reveal-delay-6{transition-delay:0.6s;}
 
+/* ═══════════════════════════════ MODAIS DE SERVIÇO ══════════════════════════ */
+.modal-overlay{
+  position:fixed;inset:0;z-index:200;
+  background:rgba(7,12,24,0.75);
+  backdrop-filter:blur(8px);
+  display:flex;align-items:center;justify-content:center;
+  padding:20px;
+  opacity:0;pointer-events:none;
+  transition:opacity 0.25s;
+}
+.modal-overlay.open{opacity:1;pointer-events:all;}
+.modal-box{
+  background:var(--paper);
+  border-radius:20px;
+  width:100%;max-width:560px;
+  max-height:90vh;overflow-y:auto;
+  position:relative;
+  transform:translateY(20px) scale(0.97);
+  transition:transform 0.25s;
+  box-shadow:0 32px 80px -20px rgba(0,0,0,0.5);
+}
+.modal-overlay.open .modal-box{transform:translateY(0) scale(1);}
+.modal-header{
+  padding:32px 32px 0;
+  display:flex;align-items:flex-start;justify-content:space-between;gap:16px;
+}
+.modal-icon{
+  width:52px;height:52px;border-radius:14px;
+  background:var(--blue-soft);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--blue);flex-shrink:0;
+}
+.modal-icon svg{width:24px;height:24px;}
+.modal-close{
+  width:36px;height:36px;border-radius:50%;
+  border:none;background:var(--bg);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
+  color:var(--muted);flex-shrink:0;
+  transition:background 0.2s,color 0.2s;
+}
+.modal-close:hover{background:var(--line);color:var(--ink);}
+.modal-close svg{width:16px;height:16px;}
+.modal-body{padding:20px 32px 32px;}
+.modal-body h2{
+  font-family:'Space Grotesk',sans-serif;
+  font-size:24px;font-weight:800;letter-spacing:-0.03em;
+  color:var(--ink);margin-bottom:10px;
+}
+.modal-body .modal-desc{
+  font-size:15px;line-height:1.65;color:var(--muted);
+  margin-bottom:24px;
+}
+.modal-section-label{
+  font-size:11px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;
+  color:var(--blue);margin-bottom:12px;display:block;
+}
+.modal-items{
+  display:flex;flex-direction:column;gap:10px;
+  margin-bottom:24px;
+}
+.modal-item{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:12px 14px;
+  background:var(--bg);border-radius:10px;
+}
+.modal-item-dot{
+  width:18px;height:18px;border-radius:50%;
+  background:var(--blue-soft);border:1.5px solid rgba(20,71,212,0.2);
+  display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;margin-top:1px;
+}
+.modal-item-dot svg{width:9px;height:9px;color:var(--blue);}
+.modal-item p{font-size:14px;color:var(--ink-2);line-height:1.5;}
+.modal-ideal{
+  background:var(--night);border-radius:12px;
+  padding:16px 18px;margin-bottom:24px;
+  display:flex;align-items:flex-start;gap:12px;
+}
+.modal-ideal-icon{font-size:18px;flex-shrink:0;line-height:1.4;}
+.modal-ideal p{font-size:13px;line-height:1.55;color:rgba(255,255,255,0.55);}
+.modal-ideal p strong{color:#fff;font-weight:600;}
+.modal-cta{
+  display:flex;gap:10px;flex-wrap:wrap;
+}
+.modal-cta .btn-blue{flex:1;justify-content:center;}
+.modal-cta .btn-wa{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:13px 20px;border-radius:10px;
+  background:#25D366;color:#fff;
+  font-size:14px;font-weight:600;font-family:inherit;
+  cursor:pointer;border:none;
+  transition:background 0.2s;
+}
+.modal-cta .btn-wa:hover{background:#1da855;}
+.modal-cta .btn-wa svg{width:16px;height:16px;}
+@media(max-width:540px){
+  .modal-header,.modal-body{padding-left:22px;padding-right:22px;}
+  .modal-body{padding-top:16px;padding-bottom:24px;}
+}
+
 /* ═══════════════════════════════ BACK FLOATER ═══════════════════════════════ */
 .back-floater{
   position:fixed;bottom:20px;left:20px;z-index:90;
@@ -879,7 +992,7 @@ footer{
         </div>
         <h3>Arquitetura & Migração</h3>
         <p>Planejamos e executamos migrações para AWS, Azure e GCP com zero surpresas. Documentação, runbooks e treinamento incluídos.</p>
-        <span class="srv-link">Saiba mais →</span>
+        <a href="#" class="srv-link" data-modal="modal-arquitetura">Saiba mais →</a>
       </div>
       <div class="srv reveal reveal-delay-2">
         <div class="srv-icon">
@@ -887,7 +1000,7 @@ footer{
         </div>
         <h3>Serviços Gerenciados</h3>
         <p>Seu ambiente cloud 24/7: monitoramento proativo, resposta a incidentes, patching e otimização contínua de custos.</p>
-        <span class="srv-link">Saiba mais →</span>
+        <a href="#" class="srv-link" data-modal="modal-gerenciados">Saiba mais →</a>
       </div>
       <div class="srv reveal reveal-delay-3">
         <div class="srv-icon">
@@ -895,7 +1008,7 @@ footer{
         </div>
         <h3>Segurança & Compliance</h3>
         <p>Auditoria de segurança, LGPD, políticas de IAM, criptografia de dados e relatórios para sua equipe jurídica.</p>
-        <span class="srv-link">Saiba mais →</span>
+        <a href="#" class="srv-link" data-modal="modal-seguranca">Saiba mais →</a>
       </div>
       <div class="srv reveal reveal-delay-1">
         <div class="srv-icon">
@@ -903,7 +1016,7 @@ footer{
         </div>
         <h3>FinOps & Redução de Custos</h3>
         <p>Identificamos desperdícios, otimizamos reservas e damos visibilidade real dos seus gastos multi-cloud em tempo real.</p>
-        <span class="srv-link">Saiba mais →</span>
+        <a href="#" class="srv-link" data-modal="modal-finops">Saiba mais →</a>
       </div>
       <div class="srv reveal reveal-delay-2">
         <div class="srv-icon">
@@ -911,7 +1024,7 @@ footer{
         </div>
         <h3>Microsoft 365 & Workplace</h3>
         <p>Implantação, migração e gerenciamento do M365. Teams, Exchange, SharePoint e licenciamento otimizado.</p>
-        <span class="srv-link">Saiba mais →</span>
+        <a href="#" class="srv-link" data-modal="modal-m365">Saiba mais →</a>
       </div>
       <div class="srv reveal reveal-delay-3">
         <div class="srv-icon">
@@ -919,7 +1032,7 @@ footer{
         </div>
         <h3>DevOps & Automação</h3>
         <p>Pipelines CI/CD, Terraform, Kubernetes e GitOps. Entregamos infraestrutura como código, da forma certa.</p>
-        <span class="srv-link">Saiba mais →</span>
+        <a href="#" class="srv-link" data-modal="modal-devops">Saiba mais →</a>
       </div>
     </div>
   </div>
@@ -1005,23 +1118,8 @@ footer{
             Conhecer a plataforma →
           </a>
         </div>
-        <div class="product-screens">
-          <div class="psc accent">
-            <div class="psc-num">FinOps</div>
-            <div class="psc-lbl">Recomendações de economia</div>
-          </div>
-          <div class="psc">
-            <div class="psc-num">3<span class="su">×</span></div>
-            <div class="psc-lbl">Clouds centralizadas</div>
-          </div>
-          <div class="psc">
-            <div class="psc-num">24/7</div>
-            <div class="psc-lbl">Monitoramento proativo</div>
-          </div>
-          <div class="psc accent">
-            <div class="psc-num">100<span class="su">%</span></div>
-            <div class="psc-lbl">Dados no Brasil</div>
-          </div>
+        <div class="product-logo-wrap">
+          <img src="assets/cloudatlas.png" alt="CloudAtlas">
         </div>
       </div>
     </div>
@@ -1260,8 +1358,261 @@ footer{
 <!-- ══════════ BACK FLOATER ══════════ -->
 <a href="#" class="back-floater">↑ Topo</a>
 
+<!-- ══════════ MODAIS DE SERVIÇO ══════════ -->
+
+<!-- Modal: Arquitetura & Migração -->
+<div class="modal-overlay" id="modal-arquitetura" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+      </div>
+      <button class="modal-close" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <h2>Arquitetura & Migração</h2>
+      <p class="modal-desc">Planejamos e executamos cada etapa da sua migração — do assessment inicial ao go-live — com zero surpresas de prazo ou custo. Trabalhamos com AWS, Azure e GCP, em migração lift & shift ou cloud-native.</p>
+      <span class="modal-section-label">O que entregamos</span>
+      <div class="modal-items">
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Assessment completo</strong> — mapeamento do ambiente atual, dependências e riscos antes de mover qualquer coisa.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Plano de migração detalhado</strong> — cronograma, ordem de migração por workload, plano de rollback.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Execução com acompanhamento</strong> — mão na massa, com validação em cada fase e comunicação em tempo real.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Runbooks e documentação</strong> — seu time fica com o conhecimento. Nada de caixa-preta.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Treinamento da equipe</strong> — capacitamos seu time para operar o ambiente migrado com confiança.</p></div>
+      </div>
+      <div class="modal-ideal">
+        <span class="modal-ideal-icon">🎯</span>
+        <p><strong>Ideal para:</strong> empresas migrando para cloud pela primeira vez, consolidando datacenters próprios ou unificando múltiplos provedores em um único ambiente gerenciado.</p>
+      </div>
+      <div class="modal-cta">
+        <a href="#contato" class="btn btn-blue modal-close-and-go">Quero um diagnóstico gratuito →</a>
+        <a href="https://wa.me/5511969160623?text=Ol%C3%A1%2C%20tenho%20interesse%20no%20servi%C3%A7o%20de%20Arquitetura%20e%20Migra%C3%A7%C3%A3o" target="_blank" class="btn-wa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.126 1.533 5.858L0 24l6.335-1.524A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.359-.213-3.728.897.94-3.629-.234-.372A9.782 9.782 0 012.182 12 9.818 9.818 0 0112 2.182 9.818 9.818 0 0121.818 12 9.818 9.818 0 0112 21.818z"/></svg>WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Serviços Gerenciados -->
+<div class="modal-overlay" id="modal-gerenciados" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+      </div>
+      <button class="modal-close" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <h2>Serviços Gerenciados</h2>
+      <p class="modal-desc">Cuidamos do seu ambiente cloud como se fosse nosso — monitoramento proativo, resposta a incidentes e otimização contínua, com SLA contratual e uma equipe que já conhece sua infraestrutura.</p>
+      <span class="modal-section-label">O que entregamos</span>
+      <div class="modal-items">
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Monitoramento 24/7</strong> — alertas proativos antes que o problema impacte seus usuários.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Resposta a incidentes com SLA</strong> — tempo de resposta contratual, você sabe exatamente o que esperar.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Patching e atualizações</strong> — segurança em dia sem impactar a operação.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Otimização contínua de custos</strong> — reduzimos desperdício mês a mês, com evidências.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Relatórios mensais</strong> — saúde do ambiente, incidentes, economia gerada e próximos passos.</p></div>
+      </div>
+      <div class="modal-ideal">
+        <span class="modal-ideal-icon">🎯</span>
+        <p><strong>Ideal para:</strong> times de TI enxutos (1–3 pessoas) que gerenciam AWS + Azure sem tempo para otimização, ou empresas que querem suporte especializado sem aumentar headcount.</p>
+      </div>
+      <div class="modal-cta">
+        <a href="#contato" class="btn btn-blue modal-close-and-go">Quero um diagnóstico gratuito →</a>
+        <a href="https://wa.me/5511969160623?text=Ol%C3%A1%2C%20tenho%20interesse%20nos%20Servi%C3%A7os%20Gerenciados%20da%20Atlas" target="_blank" class="btn-wa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.126 1.533 5.858L0 24l6.335-1.524A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.359-.213-3.728.897.94-3.629-.234-.372A9.782 9.782 0 012.182 12 9.818 9.818 0 0112 2.182 9.818 9.818 0 0121.818 12 9.818 9.818 0 0112 21.818z"/></svg>WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Segurança & Compliance -->
+<div class="modal-overlay" id="modal-seguranca" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+      <button class="modal-close" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <h2>Segurança & Compliance</h2>
+      <p class="modal-desc">Identificamos vulnerabilidades, corrigimos brechas e entregamos a documentação que sua equipe jurídica e de auditoria precisa — com foco em LGPD e as melhores práticas de segurança em cloud.</p>
+      <span class="modal-section-label">O que entregamos</span>
+      <div class="modal-items">
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Auditoria de segurança</strong> — análise completa de IAM, redes, exposição de dados e configurações críticas.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Políticas de acesso (least privilege)</strong> — ninguém acessa mais do que precisa. Controle total por perfil e serviço.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Criptografia e gestão de secrets</strong> — dados em repouso e em trânsito protegidos, sem credenciais hardcoded.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Relatórios LGPD</strong> — documentação de tratamento de dados, mapeamento de DPO e evidências para auditoria.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Remediação ativa</strong> — não entregamos só o relatório; corrigimos as vulnerabilidades encontradas.</p></div>
+      </div>
+      <div class="modal-ideal">
+        <span class="modal-ideal-icon">🎯</span>
+        <p><strong>Ideal para:</strong> empresas que lidam com dados sensíveis de clientes, que passaram por auditoria ou precisam comprovar conformidade para clientes enterprise ou contratos governamentais.</p>
+      </div>
+      <div class="modal-cta">
+        <a href="#contato" class="btn btn-blue modal-close-and-go">Quero um diagnóstico gratuito →</a>
+        <a href="https://wa.me/5511969160623?text=Ol%C3%A1%2C%20tenho%20interesse%20no%20servi%C3%A7o%20de%20Seguran%C3%A7a%20e%20Compliance" target="_blank" class="btn-wa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.126 1.533 5.858L0 24l6.335-1.524A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.359-.213-3.728.897.94-3.629-.234-.372A9.782 9.782 0 012.182 12 9.818 9.818 0 0112 2.182 9.818 9.818 0 0121.818 12 9.818 9.818 0 0112 21.818z"/></svg>WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: FinOps & Redução de Custos -->
+<div class="modal-overlay" id="modal-finops" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      </div>
+      <button class="modal-close" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <h2>FinOps & Redução de Custos</h2>
+      <p class="modal-desc">Empresas que gastam R$ 30k/mês em cloud sem FinOps estruturado desperdiçam em média 32% — isso é R$ 9.600 por mês jogados fora. Identificamos e eliminamos esses desperdícios com metodologia e dados reais.</p>
+      <span class="modal-section-label">O que entregamos</span>
+      <div class="modal-items">
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Scan de recursos ociosos</strong> — instâncias paradas, snapshots órfãos, IPs elásticos sem uso, discos não anexados.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Rightsizing de instâncias</strong> — reduzimos instâncias superprovisionadas com dados reais de consumo.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Reserved Instances e Savings Plans</strong> — otimizamos reservas para garantir os descontos sem over-commit.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Orçamentos e alertas por time/projeto</strong> — cada área sabe quanto gasta e recebe alerta antes de estourar.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Relatório executivo mensal</strong> — economia gerada, tendências e próximas oportunidades de otimização.</p></div>
+      </div>
+      <div class="modal-ideal">
+        <span class="modal-ideal-icon">🎯</span>
+        <p><strong>Ideal para:</strong> empresas que gastam mais de R$ 10k/mês em cloud sem visibilidade clara por projeto, sem orçamentos definidos ou sem prática de FinOps estruturada. O serviço se paga no primeiro mês.</p>
+      </div>
+      <div class="modal-cta">
+        <a href="#contato" class="btn btn-blue modal-close-and-go">Quero um diagnóstico gratuito →</a>
+        <a href="https://wa.me/5511969160623?text=Ol%C3%A1%2C%20tenho%20interesse%20no%20servi%C3%A7o%20de%20FinOps%20da%20Atlas" target="_blank" class="btn-wa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.126 1.533 5.858L0 24l6.335-1.524A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.359-.213-3.728.897.94-3.629-.234-.372A9.782 9.782 0 012.182 12 9.818 9.818 0 0112 2.182 9.818 9.818 0 0121.818 12 9.818 9.818 0 0112 21.818z"/></svg>WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Microsoft 365 & Workplace -->
+<div class="modal-overlay" id="modal-m365" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>
+      </div>
+      <button class="modal-close" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <h2>Microsoft 365 & Workplace</h2>
+      <p class="modal-desc">Implantamos, migramos e gerenciamos o M365 completo — Exchange, Teams, SharePoint e OneDrive. Do tenant novo à migração entre tenants em fusões e aquisições, com licenciamento otimizado e segurança desde o dia um.</p>
+      <span class="modal-section-label">O que entregamos</span>
+      <div class="modal-items">
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Implantação do M365</strong> — configuração de Exchange, Teams, SharePoint, políticas de segurança e MFA.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Migração entre tenants</strong> — e-mail, OneDrive, SharePoint e grupos M365 em processos de M&A ou rebranding.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Otimização de licenciamento</strong> — revisamos seu contrato e eliminamos licenças que você não precisa.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Segurança e Conditional Access</strong> — políticas de acesso, DLP, retenção e proteção de dados em conformidade.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Suporte contínuo ao usuário</strong> — helpdesk integrado com contexto do seu ambiente M365.</p></div>
+      </div>
+      <div class="modal-ideal">
+        <span class="modal-ideal-icon">🎯</span>
+        <p><strong>Ideal para:</strong> empresas implementando M365 pela primeira vez, em processo de fusão/aquisição com dois tenants para unificar, ou com licenciamento descontrolado que precisa de revisão.</p>
+      </div>
+      <div class="modal-cta">
+        <a href="#contato" class="btn btn-blue modal-close-and-go">Quero um diagnóstico gratuito →</a>
+        <a href="https://wa.me/5511969160623?text=Ol%C3%A1%2C%20tenho%20interesse%20no%20servi%C3%A7o%20de%20Microsoft%20365" target="_blank" class="btn-wa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.126 1.533 5.858L0 24l6.335-1.524A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.359-.213-3.728.897.94-3.629-.234-.372A9.782 9.782 0 012.182 12 9.818 9.818 0 0112 2.182 9.818 9.818 0 0121.818 12 9.818 9.818 0 0112 21.818z"/></svg>WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: DevOps & Automação -->
+<div class="modal-overlay" id="modal-devops" role="dialog" aria-modal="true">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+      </div>
+      <button class="modal-close" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <h2>DevOps & Automação</h2>
+      <p class="modal-desc">Transformamos deploys manuais e frágeis em pipelines automatizados e confiáveis. Sua equipe passa a entregar mais rápido com menos risco — infraestrutura como código, da forma certa.</p>
+      <span class="modal-section-label">O que entregamos</span>
+      <div class="modal-items">
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Pipelines CI/CD</strong> — GitHub Actions, Azure DevOps ou GitLab CI configurados para seu workflow de desenvolvimento.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Infrastructure as Code (Terraform)</strong> — toda sua infraestrutura versionada, reproducível e auditável.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Kubernetes e containers</strong> — orquestração de containers com deploys blue/green e rollback automático.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>GitOps e gestão de configuração</strong> — o repositório como source of truth para toda a infraestrutura.</p></div>
+        <div class="modal-item"><div class="modal-item-dot"><svg viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="2"><polyline points="2 5 4 7 8 3"/></svg></div><p><strong>Capacitação do time</strong> — treinamento prático para que sua equipe mantenha e evolua o que entregamos.</p></div>
+      </div>
+      <div class="modal-ideal">
+        <span class="modal-ideal-icon">🎯</span>
+        <p><strong>Ideal para:</strong> times de desenvolvimento que ainda fazem deploy manual (FTP, acesso SSH direto), que querem reduzir o tempo de entrega de novas funcionalidades ou que precisam de ambientes de staging consistentes.</p>
+      </div>
+      <div class="modal-cta">
+        <a href="#contato" class="btn btn-blue modal-close-and-go">Quero um diagnóstico gratuito →</a>
+        <a href="https://wa.me/5511969160623?text=Ol%C3%A1%2C%20tenho%20interesse%20no%20servi%C3%A7o%20de%20DevOps%20da%20Atlas" target="_blank" class="btn-wa"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.126 1.533 5.858L0 24l6.335-1.524A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.359-.213-3.728.897.94-3.629-.234-.372A9.782 9.782 0 012.182 12 9.818 9.818 0 0112 2.182 9.818 9.818 0 0121.818 12 9.818 9.818 0 0112 21.818z"/></svg>WhatsApp</a>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ══════════ REVEAL OBSERVER ══════════ -->
 <script>
+(function(){
+  // ── Modal logic ──────────────────────────────────────────────────────────────
+  function openModal(id) {
+    var m = document.getElementById(id);
+    if (!m) return;
+    m.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+  function closeModal(m) {
+    m.classList.remove('open');
+    document.body.style.overflow = '';
+  }
+  document.addEventListener('click', function(e) {
+    // Open via data-modal link
+    var trigger = e.target.closest('[data-modal]');
+    if (trigger) {
+      e.preventDefault();
+      openModal(trigger.getAttribute('data-modal'));
+      return;
+    }
+    // Close via .modal-close button
+    var closeBtn = e.target.closest('.modal-close');
+    if (closeBtn) {
+      closeModal(closeBtn.closest('.modal-overlay'));
+      return;
+    }
+    // Close via .modal-close-and-go (CTA → scroll to #contato)
+    var ctaBtn = e.target.closest('.modal-close-and-go');
+    if (ctaBtn) {
+      var overlay = ctaBtn.closest('.modal-overlay');
+      if (overlay) closeModal(overlay);
+      return; // href="#contato" handles the scroll naturally
+    }
+    // Close on overlay backdrop click
+    if (e.target.classList.contains('modal-overlay')) {
+      closeModal(e.target);
+      return;
+    }
+  });
+  // Close on Escape
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      document.querySelectorAll('.modal-overlay.open').forEach(function(m) { closeModal(m); });
+    }
+  });
+})();
+
 (function(){
   const els = document.querySelectorAll('.reveal');
   if(!els.length) return;
