@@ -47,7 +47,9 @@
       "Bash(cp svg/atlas_tecnologia_v2_darkmode.svg __TRACKED_VAR__/atlas-logo-dark.svg)",
       "Bash(cp svg/atlas_tecnologia_v1_colorida.svg __TRACKED_VAR__/atlas-logo-color.svg)",
       "Bash(cp png/atlas_tecnologia_v2_darkmode.png __TRACKED_VAR__/atlas-logo-dark.png)",
-      "Bash(cp png/atlas_tecnologia_v1_colorida.png __TRACKED_VAR__/atlas-logo-color.png)"
+      "Bash(cp png/atlas_tecnologia_v1_colorida.png __TRACKED_VAR__/atlas-logo-color.png)",
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\" -Directory)",
+      "Bash(Select-Object Name)"
     ]
   }
 }

@@ -116,19 +116,12 @@ img{display:block;max-width:100%;}
 }
 .hero-inner{
   position:relative;z-index:2;
-  display:grid;
-  grid-template-columns:1.1fr 0.9fr;
-  gap:60px;align-items:center;
-  padding-bottom:80px;
+  display:flex;flex-direction:column;align-items:center;text-align:center;
+  padding-bottom:96px;max-width:880px;margin:0 auto;
 }
 @media(max-width:960px){
-  .hero-inner{grid-template-columns:1fr;gap:40px;padding-bottom:60px;}
+  .hero-inner{padding-bottom:72px;}
   .hero{padding-top:120px;}
-  .hero-right{max-width:460px;}
-}
-@media(max-width:520px){
-  .hero-metrics{grid-template-columns:1fr 1fr;}
-  .hero-card{padding:22px;}
 }
 .hero-eyebrow{
   display:inline-flex;align-items:center;gap:8px;
@@ -156,11 +149,11 @@ img{display:block;max-width:100%;}
   background-clip:text;
 }
 .hero-sub{
-  font-size:18px;line-height:1.65;
-  color:rgba(255,255,255,0.55);
-  max-width:50ch;margin-bottom:40px;
+  font-size:19px;line-height:1.65;
+  color:rgba(255,255,255,0.6);
+  max-width:58ch;margin:0 auto 44px;
 }
-.hero-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;}
+.hero-actions{display:flex;gap:12px;flex-wrap:wrap;align-items:center;justify-content:center;}
 .btn{
   display:inline-flex;align-items:center;gap:8px;
   padding:13px 24px;border-radius:10px;
@@ -887,53 +880,18 @@ footer{
   <div class="hero-glow-2"></div>
   <div class="container">
     <div class="hero-inner">
-      <div class="hero-left">
-        <h1>Gestão de nuvem<br>que <em>realmente</em><br>funciona.</h1>
-        <p class="hero-sub">
-          Consultoria multi-cloud brasileira. Arquitetamos, migramos e gerenciamos
-          sua infraestrutura em AWS, Azure e GCP com suporte real, em português
-          e tecnologia própria de monitoramento.
-        </p>
-        <div class="hero-actions">
-          <a href="https://wa.me/5511969160623" class="btn btn-white">
-            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.126 1.533 5.858L0 24l6.335-1.524A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.359-.213-3.728.897.94-3.629-.234-.372A9.782 9.782 0 012.182 12 9.818 9.818 0 0112 2.182 9.818 9.818 0 0121.818 12 9.818 9.818 0 0112 21.818z"/></svg>
-            Falar no WhatsApp
-          </a>
-          <a href="#servicos" class="btn btn-ghost">Ver serviços</a>
-        </div>
-      </div>
-      <div class="hero-right">
-        <div class="hero-card">
-          <div class="hero-card-header">
-            O que entregamos
-            <span class="live">Atlas</span>
-          </div>
-          <div class="hero-metrics">
-            <div class="hm blue">
-              <div class="val">3<span class="unit">clouds</span></div>
-              <div class="lbl">AWS · Azure · GCP</div>
-            </div>
-            <div class="hm">
-              <div class="val">M365</div>
-              <div class="lbl">Workplace gerenciado</div>
-            </div>
-            <div class="hm green">
-              <div class="val">PT<span class="unit nogap">-BR</span></div>
-              <div class="lbl">Suporte em português</div>
-            </div>
-            <div class="hm">
-              <div class="val">SLA</div>
-              <div class="lbl">Tempo de resposta contratual</div>
-            </div>
-          </div>
-          <div class="hero-tag-row">
-            <span class="hero-tag">Migração</span>
-            <span class="hero-tag">FinOps</span>
-            <span class="hero-tag">DevOps</span>
-            <span class="hero-tag">Segurança</span>
-            <span class="hero-tag">LGPD</span>
-          </div>
-        </div>
+      <h1>Gestão de nuvem<br>que <em>realmente</em> funciona.</h1>
+      <p class="hero-sub">
+        Consultoria multi-cloud brasileira. Arquitetamos, migramos e gerenciamos
+        sua infraestrutura em AWS, Azure e GCP com suporte real, em português
+        e tecnologia própria de monitoramento.
+      </p>
+      <div class="hero-actions">
+        <a href="https://wa.me/5511969160623" class="btn btn-white">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.125.558 4.126 1.533 5.858L0 24l6.335-1.524A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.369l-.359-.213-3.728.897.94-3.629-.234-.372A9.782 9.782 0 012.182 12 9.818 9.818 0 0112 2.182 9.818 9.818 0 0121.818 12 9.818 9.818 0 0112 21.818z"/></svg>
+          Falar no WhatsApp
+        </a>
+        <a href="#servicos" class="btn btn-ghost">Ver serviços</a>
       </div>
     </div>
   </div>
@@ -1119,7 +1077,7 @@ footer{
           </a>
         </div>
         <div class="product-logo-wrap">
-          <img src="assets/cloudatlas.png" alt="CloudAtlas">
+          <img src="assets/atlas-logo-dark.png" alt="Atlas Tecnologia">
         </div>
       </div>
     </div>
@@ -1135,10 +1093,6 @@ footer{
       <p class="testimonial-text">
         "Vi muitas empresas pagando caro por nuvem sem saber para onde o dinheiro ia, presas a suporte que não respondia e a contratos que ninguém entendia. A Atlas nasceu para ser o oposto disso: <em>proximidade real</em>, transparência total e tecnologia própria. Em português, do nosso jeito."
       </p>
-      <div class="test-meta">
-        <span class="dot"></span>
-        Atlas Tecnologia · São Paulo, SP · Resposta em até 24h
-      </div>
     </div>
   </div>
 </section>
