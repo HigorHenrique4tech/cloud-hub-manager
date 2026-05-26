@@ -308,7 +308,7 @@ const Header = ({ onMenuToggle }) => {
                   const isTrial = currentOrg.trial?.trial_active && currentOrg.plan_tier === 'free';
                   if (ep === 'enterprise_migration') return 'Enterprise + Migration';
                   if (ep?.startsWith('enterprise')) return ep.replace(/_/g, ' ').toUpperCase();
-                  if (['basic', 'standard'].includes(ep)) return isTrial ? 'Trial Pro' : (ep.charAt(0).toUpperCase() + ep.slice(1));
+                  if (['basic', 'standard'].includes(ep)) return isTrial ? 'Trial Standard' : (ep.charAt(0).toUpperCase() + ep.slice(1));
                   return 'Free';
                 })()}
               </button>
