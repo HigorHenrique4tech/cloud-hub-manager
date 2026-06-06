@@ -191,8 +191,8 @@ def _generate_suggestions(data: dict, days: int) -> list:
     if compute_total / total > 0.35:
         suggestions.append({
             "type": "warning",
-            "title": "Alto gasto em computacao",
-            "description": f"{compute_total / total * 100:.0f}% do custo (${compute_total:,.2f}) esta em instancias de computacao. Considere Reserved Instances ou Savings Plans para economizar ate 60%.",
+            "title": "Alto gasto em computação",
+            "description": f"{compute_total / total * 100:.0f}% do custo (${compute_total:,.2f}) está em instâncias de computação. Considere Reserved Instances ou Savings Plans para economizar até 60%.",
             "saving": compute_total * 0.4,
         })
 
@@ -201,7 +201,7 @@ def _generate_suggestions(data: dict, days: int) -> list:
         suggestions.append({
             "type": "info",
             "title": "Custo de armazenamento elevado",
-            "description": f"${storage_total:,.2f} em armazenamento ({storage_total / total * 100:.0f}% do total). Politicas de ciclo de vida e camadas inteligentes podem reduzir ate 40%.",
+            "description": f"${storage_total:,.2f} em armazenamento ({storage_total / total * 100:.0f}% do total). Políticas de ciclo de vida e camadas inteligentes podem reduzir até 40%.",
             "saving": storage_total * 0.3,
         })
 
@@ -210,7 +210,7 @@ def _generate_suggestions(data: dict, days: int) -> list:
         suggestions.append({
             "type": "warning",
             "title": "Alto custo em bancos de dados",
-            "description": f"${db_total:,.2f} em banco de dados. Avalie Reserved Instances para RDS ou migracao para servicos serverless.",
+            "description": f"${db_total:,.2f} em banco de dados. Avalie Reserved Instances para RDS ou migração para serviços serverless.",
             "saving": db_total * 0.35,
         })
 
@@ -218,8 +218,8 @@ def _generate_suggestions(data: dict, days: int) -> list:
     if top1 and top1["amount"] / total > 0.60:
         suggestions.append({
             "type": "warning",
-            "title": "Concentracao excessiva em um servico",
-            "description": f'"{top1["name"]}" representa {top1["amount"] / total * 100:.0f}% do custo total. Revise dimensionamento e utilizacao.',
+            "title": "Concentração excessiva em um serviço",
+            "description": f'"{top1["name"]}" representa {top1["amount"] / total * 100:.0f}% do custo total. Revise dimensionamento e utilização.',
             "saving": top1["amount"] * 0.15,
         })
 
@@ -227,8 +227,8 @@ def _generate_suggestions(data: dict, days: int) -> list:
     if avg_daily > 200:
         suggestions.append({
             "type": "info",
-            "title": "Implantar tagging e alocacao de custos",
-            "description": f"Com gasto medio de ${avg_daily:,.2f}/dia, tags de ambiente permitem identificar e eliminar recursos desnecessarios.",
+            "title": "Implantar tagging e alocação de custos",
+            "description": f"Com gasto médio de ${avg_daily:,.2f}/dia, tags de ambiente permitem identificar e eliminar recursos desnecessários.",
             "saving": avg_daily * 0.10 * 30,
         })
 
@@ -323,7 +323,7 @@ def _generate_cost_pdf(
         text_x = LOGO_BOX + 14
         canvas.setFillColor(colors.white)
         canvas.setFont("Helvetica-Bold", 16)
-        canvas.drawString(text_x, PAGE_H - 34, "Relatorio de Custos Cloud")
+        canvas.drawString(text_x, PAGE_H - 34, "Relatório de Custos Cloud")
         canvas.setFont("Helvetica", 9.5)
         canvas.setFillColor(colors.HexColor("#BFDBFE"))
         canvas.drawString(text_x, PAGE_H - 52, f"{workspace_name}   |   {start_date} a {end_date}")
@@ -345,7 +345,7 @@ def _generate_cost_pdf(
         canvas.setFont("Helvetica", 7)
         canvas.drawCentredString(
             PAGE_W / 2, 7,
-            "Relatorio gerado automaticamente | Dados de billing das APIs dos provedores cloud.",
+            "Relatório gerado automaticamente | Dados de billing das APIs dos provedores cloud.",
         )
         canvas.drawRightString(PAGE_W - 16, 7, f"Pag. {doc.page}   |   {generated_at}")
 
@@ -398,7 +398,7 @@ def _generate_cost_pdf(
 
     # Generated timestamp
     story.append(Paragraph(
-        f"Gerado em {generated_at}   |   Workspace: <b>{workspace_name}</b>   |   Periodo: <b>{start_date}</b> a <b>{end_date}</b>",
+        f"Gerado em {generated_at}   |   Workspace: <b>{workspace_name}</b>   |   Período: <b>{start_date}</b> a <b>{end_date}</b>",
         meta_style,
     ))
     story.append(Spacer(1, 0.35 * cm))
@@ -422,13 +422,13 @@ def _generate_cost_pdf(
         [[
             _kpi("CUSTO TOTAL",
                  f'<font color="#1D4ED8" size="17"><b>${total:,.2f}</b></font>',
-                 f'<font color="#9CA3AF" size="7.5">no periodo</font>'),
-            _kpi("MEDIA DIARIA",
+                 f'<font color="#9CA3AF" size="7.5">no período</font>'),
+            _kpi("MÉDIA DIÁRIA",
                  f'<font color="#059669" size="17"><b>${avg_daily:,.2f}</b></font>',
                  f'<font color="#065F46" size="7.5">{days} dias</font>'),
-            _kpi("PROJECAO MENSAL",
+            _kpi("PROJEÇÃO MENSAL",
                  f'<font color="#7C3AED" size="17"><b>${projection:,.2f}</b></font>',
-                 f'<font color="#5B21B6" size="7.5">baseado na media</font>'),
+                 f'<font color="#5B21B6" size="7.5">baseado na média</font>'),
             _kpi("MAIOR SERVICO",
                  f'<font color="#EA580C" size="17"><b>${top_svc_val:,.2f}</b></font>',
                  f'<font color="#9CA3AF" size="7.5">{top_svc_name[:24]}</font>'),
@@ -456,51 +456,77 @@ def _generate_cost_pdf(
     story.append(kpi_table)
     story.append(Spacer(1, 0.4 * cm))
 
-    # -- Provider Breakdown --
+    # -- Provider Breakdown with Donut Chart --
+    PROV_COLOR_HEX = {
+        "AWS": "#F97316",
+        "Azure": "#0EA5E9",
+        "GCP": "#10B981",
+        "GCP (est.)": "#10B981",
+    }
     providers = []
     if aws_total > 0:
-        providers.append(("AWS", aws_total, ORANGE, "#FFF7ED"))
+        providers.append(("AWS", aws_total, ORANGE))
     if azure_total > 0:
-        providers.append(("Azure", azure_total, SKY, "#F0F9FF"))
+        providers.append(("Azure", azure_total, SKY))
     if gcp_total > 0:
-        label = "GCP (est.)" if data.get("gcp_estimated") else "GCP"
-        providers.append((label, gcp_total, EMERALD, "#D1FAE5"))
+        _gcp_label = "GCP (est.)" if data.get("gcp_estimated") else "GCP"
+        providers.append((_gcp_label, gcp_total, EMERALD))
 
     if providers:
-        story.append(_section_header("Distribuicao por Provedor"))
-        story.append(Spacer(1, 0.2 * cm))
+        story.append(_section_header("Distribuição por Provedor"))
+        story.append(Spacer(1, 0.25 * cm))
 
-        prov_cols = CONTENT_W / max(len(providers), 1)
-        prov_cells = []
-        for name, val, col_color, bg_hex in providers:
+        from reportlab.graphics.charts.piecharts import Pie as _PieChart
+
+        CHART_SIZE = 130
+        donut_drawing = Drawing(CHART_SIZE, CHART_SIZE)
+        pie = _PieChart()
+        pie.x = 10
+        pie.y = 10
+        pie.width = CHART_SIZE - 20
+        pie.height = CHART_SIZE - 20
+        pie.data = [p[1] for p in providers]
+        pie.labels = [""] * len(providers)
+        pie.slices.strokeWidth = 2.5
+        pie.slices.strokeColor = colors.white
+        pie.innerRadiusFraction = 0.55
+        for i, (_, _, col) in enumerate(providers):
+            pie.slices[i].fillColor = col
+        donut_drawing.add(pie)
+
+        # Legend text block (right side)
+        stats_lines = []
+        for name, val, _ in providers:
             pct = (val / total * 100) if total > 0 else 0
-            prov_cells.append(Paragraph(
-                f'<para align="center">'
-                f'<font color="#6B7280" size="8"><b>{name}</b></font><br/>'
-                f'<font color="#111827" size="14"><b>${val:,.2f}</b></font><br/>'
+            chex = PROV_COLOR_HEX.get(name, "#6B7280")
+            stats_lines.append(
+                f'<font color="{chex}" size="12">&#9632;</font>  '
+                f'<b>{name}</b><br/>'
+                f'<font color="#111827" size="14"><b>${val:,.2f}</b></font>   '
                 f'<font color="#6B7280" size="8">{pct:.1f}% do total</font>'
-                f'</para>',
-                body_style,
-            ))
+            )
+        stats_para = Paragraph(
+            "<br/><br/>".join(stats_lines),
+            ParagraphStyle("ProvStats", parent=body_style, leading=17, leftIndent=8),
+        )
 
-        prov_table = Table([prov_cells], colWidths=[prov_cols] * len(providers), rowHeights=[56])
-        prov_style_cmds = [
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        prov_layout = Table(
+            [[donut_drawing, stats_para]],
+            colWidths=[CHART_SIZE + 16, CONTENT_W - CHART_SIZE - 16],
+        )
+        prov_layout.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 8),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-            ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E5E7EB")),
-            ("BOX", (0, 0), (-1, -1), 0.3, colors.HexColor("#E5E7EB")),
-        ]
-        for i, (_, _, _, bg_hex) in enumerate(providers):
-            prov_style_cmds.append(("BACKGROUND", (i, 0), (i, 0), colors.HexColor(bg_hex)))
-        prov_table.setStyle(TableStyle(prov_style_cmds))
-        story.append(prov_table)
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(prov_layout)
         story.append(Spacer(1, 0.4 * cm))
 
     # -- Daily Trend Chart --
     if len(combined) >= 2:
-        story.append(_section_header("Evolucao Diaria de Custos"))
+        story.append(_section_header("Evolução Diária de Custos"))
         story.append(Spacer(1, 0.2 * cm))
 
         DW, DH = CONTENT_W, 140
@@ -542,7 +568,7 @@ def _generate_cost_pdf(
                                    fontName="Helvetica", fontSize=5.5,
                                    fillColor=GRAY, textAnchor="middle"))
 
-        story.append(Paragraph("Custos diarios por provedor (barras empilhadas)", chart_label))
+        story.append(Paragraph("Custos diários por provedor (barras empilhadas)", chart_label))
         story.append(drawing)
         story.append(Spacer(1, 0.15 * cm))
 
@@ -560,24 +586,27 @@ def _generate_cost_pdf(
             story.append(Spacer(1, 0.3 * cm))
 
     # -- Top Services Table --
+    _SVC_BAR_COLORS = {"AWS": "#F97316", "Azure": "#0EA5E9", "GCP": "#10B981"}
+
     if by_service:
-        story.append(_section_header(f"Top {len(by_service)} Servicos por Custo"))
+        story.append(_section_header(f"Top {len(by_service)} Serviços por Custo"))
         story.append(Spacer(1, 0.2 * cm))
 
         cw = [CONTENT_W * f for f in (0.06, 0.42, 0.18, 0.12, 0.22)]
-        table_data = [["#", "Servico", "Custo (USD)", "%", "Barra"]]
+        table_data = [["#", "Serviço", "Custo (USD)", "%", "Barra"]]
         for i, s in enumerate(by_service):
             pct = (s["amount"] / total * 100) if total > 0 else 0
-            bar_w_pct = min(100, pct)
-            # Use colored block char as a simple bar
-            bar_chars = int(bar_w_pct / 5)
+            bar_chars = int(min(100, pct) / 5)
             bar_str = "█" * bar_chars
+            # Color bar by provider prefix
+            provider_prefix = s["name"].split(" / ")[0] if " / " in s["name"] else ""
+            bar_color = _SVC_BAR_COLORS.get(provider_prefix, "#6366F1")
             table_data.append([
                 str(i + 1),
                 s["name"][:35],
                 f"${s['amount']:,.2f}",
                 f"{pct:.1f}%",
-                Paragraph(f'<font color="#6366F1" size="7">{bar_str}</font>', body_style),
+                Paragraph(f'<font color="{bar_color}" size="7">{bar_str}</font>', body_style),
             ])
 
         # Total row
@@ -599,7 +628,7 @@ def _generate_cost_pdf(
 
     # -- Daily Data Table --
     if combined:
-        story.append(_section_header("Dados Diarios Completos"))
+        story.append(_section_header("Dados Diários Completos"))
         story.append(Spacer(1, 0.2 * cm))
 
         has_aws = aws_total > 0
@@ -659,7 +688,7 @@ def _generate_cost_pdf(
 
     # -- Suggestions --
     if suggestions:
-        story.append(_section_header("Sugestoes de Otimizacao"))
+        story.append(_section_header("Sugestões de Otimização"))
         story.append(Spacer(1, 0.2 * cm))
 
         if total_saving > 0:
@@ -723,7 +752,7 @@ def _generate_cost_csv(
     gen_date = datetime.utcnow().strftime("%d/%m/%Y %H:%M UTC")
 
     # Header
-    writer.writerow([f"Relatorio de Custos {platform_name}", "", "", "", ""])
+    writer.writerow([f"Relatório de Custos {platform_name}", "", "", "", ""])
     writer.writerow([f"Periodo: {start_date} a {end_date}", "", "", "", ""])
     writer.writerow([f"Workspace: {workspace_name}", "", "", "", ""])
     writer.writerow([f"Gerado em: {gen_date}", "", "", "", ""])
@@ -732,8 +761,8 @@ def _generate_cost_csv(
     # Summary
     writer.writerow(["=== RESUMO ===", "", "", "", ""])
     writer.writerow(["Custo Total (USD)", f"{total:.2f}"])
-    writer.writerow(["Media Diaria (USD)", f"{avg_daily:.2f}"])
-    writer.writerow(["Projecao 30 dias (USD)", f"{avg_daily * 30:.2f}"])
+    writer.writerow(["Média Diária (USD)", f"{avg_daily:.2f}"])
+    writer.writerow(["Projeção 30 dias (USD)", f"{avg_daily * 30:.2f}"])
     writer.writerow(["Total de dias", str(days)])
     writer.writerow(["AWS (USD)", f"{aws_total:.2f}"])
     writer.writerow(["Azure (USD)", f"{azure_total:.2f}"])
