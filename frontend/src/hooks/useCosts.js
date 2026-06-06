@@ -4,6 +4,7 @@ import costService from '../services/costService';
 import alertService from '../services/alertService';
 import logsService from '../services/logsService';
 import { useCurrency } from './useCurrency';
+import { useToast } from '../contexts/ToastContext';
 
 const fmt = (d) => d.toISOString().slice(0, 10);
 const today = new Date();
@@ -54,6 +55,7 @@ function detectAnomalies(combined, providerFilter = 'all') {
 export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
   const qc = useQueryClient();
   const { currency: displayCurrency, rate: exchangeRate } = useCurrency();
+  const { toast } = useToast();
 
   // Previous period (same duration, shifted back)
   const periodMs = new Date(endDate) - new Date(startDate);
@@ -96,6 +98,10 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
     retry: false,
   });
 
+  // ── Raw data (needed by evaluateAlerts closure) ──────────────────────────
+  const data = costsQ.data;
+  const prevData = prevCostsQ.data;
+
   // ── Mutations ────────────────────────────────────────────────────────────
   const createAlert = useMutation({
     mutationFn: (d) => alertService.createAlert(d),
@@ -116,16 +122,30 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
   });
 
   const evaluateAlerts = useMutation({
-    mutationFn: () => alertService.evaluateAlerts(),
-    onSuccess: () => {
+    mutationFn: async () => {
+      const period = 'monthly';
+      const calls = [];
+      if (data?.aws?.total != null)   calls.push(alertService.evaluateAlerts({ provider: 'aws',   current_value: data.aws.total,   period }));
+      if (data?.azure?.total != null) calls.push(alertService.evaluateAlerts({ provider: 'azure', current_value: data.azure.total, period }));
+      if (data?.gcp?.total != null)   calls.push(alertService.evaluateAlerts({ provider: 'gcp',   current_value: data.gcp.total,   period }));
+      if (calls.length === 0) return { triggered: 0 };
+      const results = await Promise.allSettled(calls);
+      const triggered = results
+        .filter(r => r.status === 'fulfilled')
+        .reduce((s, r) => s + (r.value?.triggered || 0), 0);
+      return { triggered };
+    },
+    onSuccess: (result) => {
       qc.invalidateQueries({ queryKey: ['alert-events'] });
       qc.invalidateQueries({ queryKey: ['alerts'] });
+      if (result?.triggered > 0) {
+        toast.warning(`${result.triggered} alerta(s) disparado(s) com os custos atuais.`);
+      } else {
+        toast.success('Alertas avaliados — nenhum limite atingido.');
+      }
     },
+    onError: () => toast.error('Erro ao avaliar alertas. Tente novamente.'),
   });
-
-  // ── Computed metrics ─────────────────────────────────────────────────────
-  const data = costsQ.data;
-  const prevData = prevCostsQ.data;
 
   const metrics = useMemo(() => {
     if (!data) return null;

@@ -1,10 +1,12 @@
 import { useState } from 'react';
+import { useCurrency } from '../../hooks/useCurrency';
 
 const PROVIDERS = ['aws', 'azure', 'gcp', 'all'];
 const PERIODS_ALERT = ['daily', 'monthly'];
 const THRESHOLD_TYPES = ['fixed', 'percentage'];
 
 const AlertModal = ({ onClose, onSave }) => {
+  const { currency, rate, currencyLabel } = useCurrency();
   const [form, setForm] = useState({
     name: '', provider: 'all', service: '',
     threshold_type: 'fixed', threshold_value: '', period: 'monthly',
@@ -14,8 +16,17 @@ const AlertModal = ({ onClose, onSave }) => {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave({ ...form, threshold_value: parseFloat(form.threshold_value), service: form.service || null });
+    let threshold = parseFloat(form.threshold_value);
+    // Convert BRL → USD before persisting (backend always stores/compares in USD)
+    if (form.threshold_type === 'fixed' && currency === 'BRL' && rate) {
+      threshold = threshold / rate;
+    }
+    onSave({ ...form, threshold_value: threshold, service: form.service || null });
   };
+
+  const thresholdLabel = form.threshold_type === 'fixed'
+    ? `(${currencyLabel})`
+    : '(%)';
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -57,20 +68,30 @@ const AlertModal = ({ onClose, onSave }) => {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Tipo</label>
               <select value={form.threshold_type} onChange={(e) => set('threshold_type', e.target.value)} className="input w-full">
-                {THRESHOLD_TYPES.map((t) => <option key={t} value={t}>{t === 'fixed' ? 'Valor fixo ($)' : 'Percentual (%)'}</option>)}
+                {THRESHOLD_TYPES.map((t) => (
+                  <option key={t} value={t}>{t === 'fixed' ? `Valor fixo ${thresholdLabel}` : 'Percentual (%)'}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Limite {form.threshold_type === 'fixed' ? '(USD)' : '(%)'}
+                Limite {thresholdLabel}
               </label>
               <input
                 required type="number" min="0" step="0.01"
                 value={form.threshold_value} onChange={(e) => set('threshold_value', e.target.value)}
-                className="input w-full" placeholder="0.00"
+                className="input w-full" placeholder="0,00"
               />
             </div>
           </div>
+
+          {/* BRL hint: informa que o valor será convertido para USD ao salvar */}
+          {form.threshold_type === 'fixed' && currency === 'BRL' && rate && form.threshold_value && (
+            <p className="text-xs text-gray-400 dark:text-gray-500 -mt-2">
+              ≈ {`$${(parseFloat(form.threshold_value) / rate).toFixed(2)} USD`} armazenado internamente
+            </p>
+          )}
+
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={onClose} className="btn-secondary flex-1">Cancelar</button>
             <button type="submit" className="btn-primary flex-1">Criar Alerta</button>

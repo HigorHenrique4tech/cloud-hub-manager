@@ -326,33 +326,63 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
           </div>
         )}
 
-        {[hasAws, hasAzure, hasGcp].filter(Boolean).length >= 2 && providerFilter === 'all' && (
-          <div className="card flex flex-col items-center justify-center animate-fade-in" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
-            <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-4 self-start">Distribuição por Cloud</h2>
-            <ResponsiveContainer width="100%" height={220}>
-              <PieChart>
-                <Pie
-                  data={[
-                    hasAws   && { name: 'AWS',   value: data.aws?.total   || 0 },
-                    hasAzure && { name: 'Azure', value: data.azure?.total || 0 },
-                    hasGcp   && { name: 'GCP*',  value: data.gcp?.total   || 0 },
-                  ].filter(Boolean)}
-                  cx="50%" cy="50%" innerRadius={55} outerRadius={80}
-                  dataKey="value" label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                  labelLine={false}
-                >
-                  {[hasAws && PROVIDER_COLORS.aws, hasAzure && PROVIDER_COLORS.azure, hasGcp && PROVIDER_COLORS.gcp].filter(Boolean).map((c, i) => (
-                    <Cell key={i} fill={c} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => fmtCost(v, currency)} />
-              </PieChart>
-            </ResponsiveContainer>
-            {hasGcp && data?.gcp?.estimated && (
-              <p className="text-xs text-green-500 dark:text-green-400 mt-1">* GCP: valor estimado</p>
-            )}
-          </div>
-        )}
+        {[hasAws, hasAzure, hasGcp].filter(Boolean).length >= 2 && providerFilter === 'all' && (() => {
+          // Only include providers with value > 0 to avoid overlapping zero-slice labels
+          const pieEntries = [
+            hasAws   && (data.aws?.total   || 0) > 0 && { name: 'AWS',   value: data.aws.total,   color: PROVIDER_COLORS.aws },
+            hasAzure && (data.azure?.total || 0) > 0 && { name: 'Azure', value: data.azure.total, color: PROVIDER_COLORS.azure },
+            hasGcp   && (data.gcp?.total   || 0) > 0 && { name: 'GCP*',  value: data.gcp.total,   color: PROVIDER_COLORS.gcp },
+          ].filter(Boolean);
+
+          if (pieEntries.length === 0) return null;
+
+          const pieTotal = pieEntries.reduce((s, e) => s + e.value, 0);
+
+          return (
+            <div className="card flex flex-col animate-fade-in" style={{ animationDelay: '200ms', animationFillMode: 'both' }}>
+              <h2 className="text-base font-semibold text-gray-800 dark:text-gray-200 mb-2">Distribuição por Cloud</h2>
+              <ResponsiveContainer width="100%" height={180}>
+                <PieChart>
+                  <Pie
+                    data={pieEntries}
+                    cx="50%" cy="50%"
+                    innerRadius={52} outerRadius={76}
+                    dataKey="value"
+                    label={false}
+                    labelLine={false}
+                  >
+                    {pieEntries.map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(v) => fmtCost(v, currency)} />
+                </PieChart>
+              </ResponsiveContainer>
+
+              {/* Custom legend — avoids label overlap */}
+              <div className="flex flex-col gap-1.5 mt-1 px-1">
+                {pieEntries.map((entry) => (
+                  <div key={entry.name} className="flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.color }} />
+                      <span className="text-gray-600 dark:text-gray-400">{entry.name}</span>
+                    </div>
+                    <div className="flex items-center gap-2 font-medium text-gray-900 dark:text-gray-100">
+                      <span className="text-gray-400 dark:text-gray-500 font-normal">
+                        {((entry.value / pieTotal) * 100).toFixed(1)}%
+                      </span>
+                      {fmtCost(entry.value, currency)}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {hasGcp && data?.gcp?.estimated && (
+                <p className="text-xs text-green-500 dark:text-green-400 mt-2">* GCP: valor estimado</p>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Provider breakdown cards */}
