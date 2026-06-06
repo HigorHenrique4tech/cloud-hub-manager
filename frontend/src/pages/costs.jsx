@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, X } from 'lucide-react';
+import { DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, X, Info } from 'lucide-react';
 import Layout from '../components/layout/layout';
 import { SkeletonCard, SkeletonChart } from '../components/common/SkeletonLoader';
 import CostReportModal from '../components/finops/CostReportModal';
@@ -11,6 +11,7 @@ import CostTable from '../components/costs/CostTable';
 import CostExport from '../components/costs/CostExport';
 import CostHeatmap from '../components/costs/CostHeatmap';
 import ServiceDrilldownDrawer from '../components/costs/ServiceDrilldownDrawer';
+import CostAllocationTab from '../components/costs/CostAllocationTab';
 import { useCosts } from '../hooks/useCosts';
 import { useCurrency } from '../hooks/useCurrency';
 
@@ -24,6 +25,8 @@ const PERIODS = [
   { label: '6m',        days: 180 },
   { label: '1 ano',     days: 365 },
 ];
+
+const COST_TABS = ['Análise Visual', 'Alocação por Tag'];
 
 const PROVIDER_FILTERS = [
   { key: 'all',   label: 'Todos' },
@@ -43,6 +46,7 @@ const Costs = () => {
   const [showReport, setShowReport]         = useState(false);
   const [showComparison, setShowComparison] = useState(false);
   const [drilldownService, setDrilldownService] = useState(null);
+  const [activeTab, setActiveTab] = useState(0);
 
   // ── Date range ─────────────────────────────────────────────────────────────
   const period = PERIODS[periodIdx];
@@ -66,6 +70,7 @@ const Costs = () => {
     hasAws, hasAzure, hasGcp, hasAny,
     alerts, events,
     createAlert, deleteAlert, markEventRead, evaluateAlerts,
+    costEvents,
   } = useCosts({ startDate, endDate, providerFilter });
 
   const activePeriodLabel = isCustom
@@ -99,6 +104,7 @@ const Costs = () => {
             {!isLoading && !hasAws   && <span className="ml-2 text-yellow-600 dark:text-yellow-400">(sem dados AWS)</span>}
             {!isLoading && !hasAzure && <span className="ml-2 text-yellow-600 dark:text-yellow-400">(sem dados Azure)</span>}
             {!isLoading && hasGcp && data?.gcp?.estimated && <span className="ml-2 text-green-600 dark:text-green-400">(GCP estimado)</span>}
+            {!isLoading && data?.azure?.source === 'partner_center' && <span className="ml-2 text-blue-600 dark:text-blue-400">(Azure via Partner Center)</span>}
           </p>
         </div>
 
@@ -215,6 +221,17 @@ const Costs = () => {
         </div>
       )}
 
+      {/* Partner Center fallback notice */}
+      {!isLoading && data?.azure?.source === 'partner_center' && (
+        <div className="mb-6 flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-blue-800 dark:text-blue-300">
+          <Info className="w-5 h-5 flex-shrink-0" />
+          <span className="text-sm">
+            {data.azure.warning || 'Dados Azure via Partner Center (delay de 24-48h em relação ao consumo real).'}{' '}
+            Configure o Cost Management na assinatura CSP para dados em tempo real.
+          </span>
+        </div>
+      )}
+
       {/* Metric Cards — skeleton while loading */}
       {isLoading ? (
         <div className="mb-6">
@@ -258,62 +275,91 @@ const Costs = () => {
         </div>
       )}
 
-      {/* Charts — skeleton while loading */}
-      {isLoading ? (
-        <div className="mb-6 space-y-6">
-          <SkeletonChart type="line" height={280} />
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2"><SkeletonChart type="bar" height={260} /></div>
-            <SkeletonChart type="bar" height={220} />
-          </div>
-        </div>
-      ) : hasAny && data?.combined?.length > 0 ? (
-        <CostCharts
-          data={data}
-          prevData={showComparison ? prevData : null}
-          hasAws={hasAws} hasAzure={hasAzure} hasGcp={hasGcp}
-          providerFilter={providerFilter}
-          anomalies={anomalies}
-          onServiceClick={setDrilldownService}
-        />
-      ) : !isLoading && hasAny && (
-        <div className="card mb-6 flex flex-col items-center justify-center py-16 text-center animate-fade-in">
-          <DollarSign className="w-10 h-10 text-gray-300 dark:text-gray-600 mb-3" />
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Sem dados de custo para o período selecionado</p>
-          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Tente ampliar o intervalo de datas</p>
+      {/* Tab bar — shown only when data is loaded */}
+      {!isLoading && hasAny && (
+        <div className="flex border-b border-gray-200 dark:border-gray-700 mb-6 no-print">
+          {COST_TABS.map((tab, i) => (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(i)}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === i
+                  ? 'border-primary text-primary'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+              }`}
+            >
+              {tab}
+            </button>
+          ))}
         </div>
       )}
 
-      {/* Heatmap */}
-      {!isLoading && hasAny && data?.combined?.length > 0 && (
-        <CostHeatmap combined={data.combined} providerFilter={providerFilter} anomalies={anomalies} />
+      {/* Tab 0: Análise Visual — charts + heatmap + alertas */}
+      {(activeTab === 0 || isLoading) && (
+        <>
+          {/* Charts — skeleton while loading */}
+          {isLoading ? (
+            <div className="mb-6 space-y-6">
+              <SkeletonChart type="line" height={280} />
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <div className="lg:col-span-2"><SkeletonChart type="bar" height={260} /></div>
+                <SkeletonChart type="bar" height={220} />
+              </div>
+            </div>
+          ) : hasAny && data?.combined?.length > 0 ? (
+            <CostCharts
+              data={data}
+              prevData={showComparison ? prevData : null}
+              hasAws={hasAws} hasAzure={hasAzure} hasGcp={hasGcp}
+              providerFilter={providerFilter}
+              anomalies={anomalies}
+              onServiceClick={setDrilldownService}
+              events={costEvents}
+            />
+          ) : !isLoading && hasAny && (
+            <div className="card mb-6 flex flex-col items-center justify-center py-16 text-center animate-fade-in">
+              <DollarSign className="w-10 h-10 text-gray-300 dark:text-gray-600 mb-3" />
+              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Sem dados de custo para o período selecionado</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Tente ampliar o intervalo de datas</p>
+            </div>
+          )}
+
+          {/* Heatmap */}
+          {!isLoading && hasAny && data?.combined?.length > 0 && (
+            <CostHeatmap combined={data.combined} providerFilter={providerFilter} anomalies={anomalies} />
+          )}
+
+          {/* Alerts Table + Events */}
+          {!isLoading && (
+            <CostTable
+              alerts={alerts}
+              events={events}
+              costData={data}
+              onAddAlert={() => setShowModal(true)}
+              onDeleteAlert={(id) => deleteAlert.mutate(id)}
+              onMarkEventRead={(id) => markEventRead.mutate(id)}
+            />
+          )}
+
+          {events.length > 0 && (
+            <div className="mt-4">
+              <AlertEventsPanel
+                events={events}
+                onMarkRead={(id) => markEventRead.mutate(id)}
+                onEvaluate={() => evaluateAlerts.mutate()}
+                isEvaluating={evaluateAlerts.isPending}
+              />
+            </div>
+          )}
+        </>
       )}
 
-
-      {/* Alerts Table + Events */}
-      {!isLoading && (
-        <CostTable
-          alerts={alerts}
-          events={events}
-          costData={data}
-          onAddAlert={() => setShowModal(true)}
-          onDeleteAlert={(id) => deleteAlert.mutate(id)}
-          onMarkEventRead={(id) => markEventRead.mutate(id)}
-        />
+      {/* Tab 1: Alocação por Tag */}
+      {activeTab === 1 && !isLoading && (
+        <CostAllocationTab startDate={startDate} endDate={endDate} />
       )}
 
-      {events.length > 0 && (
-        <div className="mt-4">
-          <AlertEventsPanel
-            events={events}
-            onMarkRead={(id) => markEventRead.mutate(id)}
-            onEvaluate={() => evaluateAlerts.mutate()}
-            isEvaluating={evaluateAlerts.isPending}
-          />
-        </div>
-      )}
-
-      {/* Service Drill-down Drawer */}
+      {/* Service Drill-down Drawer — fora das tabs */}
       {drilldownService && (
         <ServiceDrilldownDrawer
           service={drilldownService}

@@ -2,29 +2,59 @@ import { useState, useMemo } from 'react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  ReferenceDot, Area, ComposedChart,
+  ReferenceDot, ReferenceLine, Area, ComposedChart,
 } from 'recharts';
 import { BarChart2, TrendingUp, AlertTriangle } from 'lucide-react';
 import { useCurrency } from '../../hooks/useCurrency';
 
+// Renders a small purple circle at the top of each event reference line
+const EventMarkerLabel = ({ viewBox, count }) => {
+  if (!viewBox) return null;
+  const { x, y } = viewBox;
+  const r = 8;
+  return (
+    <g>
+      <circle cx={x} cy={y + r + 2} r={r} fill="#8b5cf6" stroke="white" strokeWidth={1.5} />
+      <text
+        x={x} y={y + r + 6}
+        textAnchor="middle" fill="white"
+        fontSize={count > 9 ? 7 : 9} fontWeight="bold"
+      >
+        {count > 9 ? '9+' : count}
+      </text>
+    </g>
+  );
+};
+
 const PROVIDER_COLORS = { aws: '#f97316', azure: '#0ea5e9', gcp: '#10b981', total: '#8b5cf6' };
 const PROVIDER_NAMES = { aws: 'AWS', azure: 'Azure', gcp: 'GCP' };
 
-/** Enhanced tooltip with provider breakdown + anomaly badge */
-const EnhancedTooltip = ({ active, payload, label, anomalies, showComparison, fmt }) => {
+const ACTION_LABELS = {
+  create: 'Criou', delete: 'Deletou', start: 'Iniciou', stop: 'Parou',
+  update: 'Atualizou', restart: 'Reiniciou', deploy: 'Deploy',
+};
+
+/** Enhanced tooltip with provider breakdown + anomaly badge + event markers */
+const EnhancedTooltip = ({ active, payload, label, anomalies, showComparison, fmt, events }) => {
   if (!active || !payload?.length) return null;
 
   const isAnomaly = anomalies?.has(label);
+  const dayEvents = events?.[label] || [];
   const currentEntries = payload.filter((p) => !p.dataKey.startsWith('prev_'));
   const prevEntries = payload.filter((p) => p.dataKey.startsWith('prev_'));
 
   return (
-    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-xl text-sm min-w-[180px]">
-      <div className="flex items-center gap-2 mb-1.5">
+    <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-xl text-sm min-w-[180px] max-w-[260px]">
+      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
         <p className="font-semibold text-gray-700 dark:text-gray-300">{label}</p>
         {isAnomaly && (
           <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-900/40 px-1.5 py-0.5 rounded-full">
             <AlertTriangle className="w-3 h-3" /> Anomalia
+          </span>
+        )}
+        {dayEvents.length > 0 && (
+          <span className="inline-flex items-center gap-0.5 text-[10px] font-bold text-purple-600 dark:text-purple-400 bg-purple-100 dark:bg-purple-900/40 px-1.5 py-0.5 rounded-full">
+            {dayEvents.length} evento{dayEvents.length > 1 ? 's' : ''}
           </span>
         )}
       </div>
@@ -42,23 +72,43 @@ const EnhancedTooltip = ({ active, payload, label, anomalies, showComparison, fm
 
       {/* Previous period comparison */}
       {showComparison && prevEntries.length > 0 && (
-        <>
-          <div className="border-t border-gray-100 dark:border-gray-700 mt-1.5 pt-1.5">
-            <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1 uppercase tracking-wide">Período anterior</p>
-            {prevEntries.map((p) => (
-              <div key={p.dataKey} className="flex items-center justify-between gap-4 py-0.5">
-                <span className="text-gray-500 dark:text-gray-400 text-xs">{p.name}</span>
-                <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{fmt(p.value)}</span>
-              </div>
-            ))}
-          </div>
-        </>
+        <div className="border-t border-gray-100 dark:border-gray-700 mt-1.5 pt-1.5">
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mb-1 uppercase tracking-wide">Período anterior</p>
+          {prevEntries.map((p) => (
+            <div key={p.dataKey} className="flex items-center justify-between gap-4 py-0.5">
+              <span className="text-gray-500 dark:text-gray-400 text-xs">{p.name}</span>
+              <span className="font-mono text-xs text-gray-500 dark:text-gray-400">{fmt(p.value)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Activity events */}
+      {dayEvents.length > 0 && (
+        <div className="border-t border-gray-100 dark:border-gray-700 mt-1.5 pt-1.5">
+          <p className="text-[10px] text-purple-500 dark:text-purple-400 uppercase tracking-wide mb-1.5">Atividade</p>
+          {dayEvents.slice(0, 4).map((ev, i) => (
+            <div key={i} className="flex items-start gap-1.5 py-0.5 text-[11px] text-gray-600 dark:text-gray-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 flex-shrink-0 mt-1" />
+              <span className="leading-tight">
+                <span className="font-medium">{ACTION_LABELS[ev.action] || ev.action}</span>
+                {' '}{ev.resource_name || ev.resource_type}
+                {ev.provider && ev.provider !== 'system' && (
+                  <span className="ml-1 opacity-60">({ev.provider})</span>
+                )}
+              </span>
+            </div>
+          ))}
+          {dayEvents.length > 4 && (
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-0.5 pl-3">+{dayEvents.length - 4} mais</p>
+          )}
+        </div>
       )}
     </div>
   );
 };
 
-const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter = 'all', anomalies = new Set(), onServiceClick }) => {
+const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter = 'all', anomalies = new Set(), onServiceClick, events = {} }) => {
   const { fmtCost, currency } = useCurrency();
   const axisTickFmt = (v) => currency === 'BRL' ? `R$${v}` : `$${v}`;
   const [chartType, setChartType] = useState('line'); // 'line' | 'stacked'
@@ -90,6 +140,12 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
   const showAzure = hasAzure && (providerFilter === 'all' || providerFilter === 'azure');
   const showGcp   = hasGcp   && (providerFilter === 'all' || providerFilter === 'gcp');
   const multiProvider = [showAws, showAzure, showGcp].filter(Boolean).length >= 2;
+
+  // Event marker dates — only for dates that exist in chartData (line chart only)
+  const eventDatesInRange = useMemo(() => {
+    const chartDates = new Set(chartData.map((d) => d.date));
+    return Object.keys(events).filter((d) => chartDates.has(d));
+  }, [chartData, events]);
 
   // Anomaly dots for line chart
   const anomalyDots = useMemo(() => {
@@ -148,12 +204,25 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
 
         <ResponsiveContainer width="100%" height={300}>
           {chartType === 'line' ? (
-            <ComposedChart data={chartData} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
+            <ComposedChart data={chartData} margin={{ top: 20, right: 16, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={axisTickFmt} width={60} />
-              <Tooltip content={<EnhancedTooltip anomalies={anomalies} showComparison={showComparison} fmt={(v) => fmtCost(v, currency)} />} />
+              <Tooltip content={<EnhancedTooltip anomalies={anomalies} showComparison={showComparison} fmt={(v) => fmtCost(v, currency)} events={events} />} />
               <Legend />
+
+              {/* Event marker lines (activity log) */}
+              {eventDatesInRange.map((date) => (
+                <ReferenceLine
+                  key={`ev-${date}`}
+                  x={date}
+                  stroke="#8b5cf6"
+                  strokeWidth={1.5}
+                  strokeDasharray="4 2"
+                  opacity={0.55}
+                  label={<EventMarkerLabel count={events[date].length} />}
+                />
+              ))}
 
               {/* Previous period ghost line */}
               {showComparison && (
@@ -190,7 +259,7 @@ const CostCharts = ({ data, prevData, hasAws, hasAzure, hasGcp, providerFilter =
               <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.2} />
               <XAxis dataKey="date" tick={{ fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={axisTickFmt} width={60} />
-              <Tooltip content={<EnhancedTooltip anomalies={anomalies} showComparison={showComparison} fmt={(v) => fmtCost(v, currency)} />} />
+              <Tooltip content={<EnhancedTooltip anomalies={anomalies} showComparison={showComparison} fmt={(v) => fmtCost(v, currency)} events={events} />} />
               <Legend />
 
               {/* Previous period as ghost bars */}

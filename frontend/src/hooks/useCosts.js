@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import costService from '../services/costService';
 import alertService from '../services/alertService';
+import logsService from '../services/logsService';
 import { useCurrency } from './useCurrency';
 
 const fmt = (d) => d.toISOString().slice(0, 10);
@@ -84,6 +85,14 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
   const alertEventsQ = useQuery({
     queryKey: ['alert-events'],
     queryFn: () => alertService.getEvents({ unread_only: false, limit: 10 }),
+    retry: false,
+  });
+
+  const timelineEventsQ = useQuery({
+    queryKey: ['cost-timeline-events', startDate, endDate],
+    queryFn: () => logsService.getLogs({ startDate, endDate, limit: 200 }),
+    enabled: !!startDate && !!endDate,
+    staleTime: 300_000,
     retry: false,
   });
 
@@ -175,6 +184,19 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
     return { total, avgDaily, projection, topService, deltaTotal, deltaAvgDay, sparkline, combined, awsTotal, azureTotal, gcpTotal };
   }, [data, prevData, displayCurrency, exchangeRate]);
 
+  // ── Timeline events (activity logs grouped by date) ──────────────────────
+  const costEvents = useMemo(() => {
+    const logs = timelineEventsQ.data?.logs || [];
+    const map = {};
+    for (const log of logs) {
+      const date = log.created_at?.slice(0, 10);
+      if (!date) continue;
+      if (!map[date]) map[date] = [];
+      map[date].push(log);
+    }
+    return map;
+  }, [timelineEventsQ.data]);
+
   // ── Anomaly detection ────────────────────────────────────────────────────
   const anomalies = useMemo(
     () => detectAnomalies(data?.combined, providerFilter),
@@ -209,5 +231,8 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
     deleteAlert,
     markEventRead,
     evaluateAlerts,
+
+    // Timeline event markers
+    costEvents,
   };
 }
