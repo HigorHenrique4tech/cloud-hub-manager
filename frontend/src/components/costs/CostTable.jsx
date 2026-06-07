@@ -1,50 +1,77 @@
 import { Bell, Plus, Trash2, AlertCircle, CheckCircle } from 'lucide-react';
 import { useCurrency } from '../../hooks/useCurrency';
 
-// Calculate current spend (in USD) for a given alert using raw cost data
-function getCurrentSpend(alert, costData) {
+// Convert amount from sourceCurrency to targetCurrency using rate
+function _normalize(amount, src, tgt, rate) {
+  if (!amount || src === tgt) return amount;
+  if (src === 'USD' && tgt === 'BRL' && rate) return amount * rate;
+  if (src === 'BRL' && tgt === 'USD' && rate) return amount / rate;
+  return amount;
+}
+
+/**
+ * Calculate current spend normalized to displayCurrency.
+ * data.combined values are in each provider's native currency (Azure may bill in BRL).
+ * We use data.currencies to know the source currency per provider.
+ */
+function getCurrentSpendNormalized(alert, costData, displayCurrency, rate) {
   if (!costData || !alert) return null;
   const combined = costData.combined || [];
   if (!combined.length) return null;
+  const currencies = costData.currencies || {};
 
   const now = new Date();
   const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
 
-  const getVal = (d) => {
-    if (alert.provider === 'all') return d.total || 0;
-    return d[alert.provider] || 0;
+  const normVal = (d) => {
+    if (alert.provider === 'all') {
+      return (
+        _normalize(d.aws   || 0, currencies.aws   || 'USD', displayCurrency, rate) +
+        _normalize(d.azure || 0, currencies.azure || 'USD', displayCurrency, rate) +
+        _normalize(d.gcp   || 0, currencies.gcp   || 'USD', displayCurrency, rate)
+      );
+    }
+    const raw = d[alert.provider] || 0;
+    const src = currencies[alert.provider] || 'USD';
+    return _normalize(raw, src, displayCurrency, rate);
   };
 
   if (alert.period === 'monthly') {
     return combined
       .filter((d) => d.date >= monthStart)
-      .reduce((s, d) => s + getVal(d), 0);
-  } else {
-    // daily: use the last day with data
-    const last = [...combined].reverse().find((d) => getVal(d) > 0);
-    return last ? getVal(last) : 0;
+      .reduce((s, d) => s + normVal(d), 0);
   }
+  // daily: last entry with data
+  const last = [...combined].reverse().find((d) => {
+    const v = alert.provider === 'all' ? (d.total || 0) : (d[alert.provider] || 0);
+    return v > 0;
+  });
+  return last ? normVal(last) : 0;
 }
 
-function AlertProgressBar({ alert, costData, fmtCost }) {
+function AlertProgressBar({ alert, costData, fmtCost, currency, rate }) {
   if (alert.threshold_type !== 'fixed') return null;
-  const current = getCurrentSpend(alert, costData);
+
+  const current = getCurrentSpendNormalized(alert, costData, currency, rate);
   if (current == null) return null;
 
-  const pct = Math.min(100, (current / alert.threshold_value) * 100);
+  // Threshold stored in USD — normalize to display currency for comparison
+  const thresholdDisplay = _normalize(alert.threshold_value, 'USD', currency, rate);
+  const pct = Math.min(100, thresholdDisplay > 0 ? (current / thresholdDisplay) * 100 : 0);
+
   const barColor =
     pct >= 100 ? 'bg-red-500' :
     pct >= 80  ? 'bg-orange-400' :
     pct >= 60  ? 'bg-yellow-400' :
                  'bg-green-500';
 
-  // Both current and threshold_value are in USD from the source — fmtCost converts for display
-  const fmtVal = (v) => fmtCost(v, 'USD');
+  // Both values already in display currency — pass as source = currency to avoid double conversion
+  const fmt = (v) => fmtCost(v, currency);
 
   return (
     <div className="mt-1.5">
       <div className="flex justify-between text-[10px] text-gray-500 dark:text-gray-400 mb-0.5">
-        <span>{fmtVal(current)} de {fmtVal(alert.threshold_value)}</span>
+        <span>{fmt(current)} de {fmt(thresholdDisplay)}</span>
         <span className={pct >= 100 ? 'text-red-500 font-semibold' : pct >= 80 ? 'text-orange-500 font-semibold' : ''}>
           {pct.toFixed(0)}%
         </span>
@@ -60,7 +87,7 @@ function AlertProgressBar({ alert, costData, fmtCost }) {
 }
 
 const CostTable = ({ alerts, events, onAddAlert, onDeleteAlert, onMarkEventRead, costData }) => {
-  const { fmtCost } = useCurrency();
+  const { fmtCost, currency, rate } = useCurrency();
 
   return (
     <>
@@ -97,7 +124,13 @@ const CostTable = ({ alerts, events, onAddAlert, onDeleteAlert, onMarkEventRead,
                   <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                     <td className="px-4 py-2.5 min-w-[200px]">
                       <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{a.name}</p>
-                      <AlertProgressBar alert={a} costData={costData} fmtCost={fmtCost} />
+                      <AlertProgressBar
+                        alert={a}
+                        costData={costData}
+                        fmtCost={fmtCost}
+                        currency={currency}
+                        rate={rate}
+                      />
                     </td>
                     <td className="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400 uppercase">{a.provider}</td>
                     <td className="px-4 py-2.5 text-sm text-gray-500 dark:text-gray-400">{a.period === 'daily' ? 'Diário' : 'Mensal'}</td>

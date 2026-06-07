@@ -128,24 +128,33 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
       const todayStr = now.toISOString().slice(0, 10);
 
       // data.combined may span a wider selected period (30d, 90d…).
-      // Monthly alerts → filter to current month-to-date (same as progress bar).
+      // Monthly alerts → filter to current month-to-date.
       // Daily alerts   → use the last day with data.
       const combined = data?.combined || [];
+      const currencies = data?.currencies || {};
       const mtdEntries = combined.filter(d => d.date >= monthStart && d.date <= todayStr);
       const lastEntry  = [...combined].reverse().find(d => d.total > 0);
 
-      const sum = (entries, key) => entries.reduce((s, d) => s + (d[key] || 0), 0);
-      const last = (key) => lastEntry ? (lastEntry[key] || 0) : 0;
+      // Normalize raw provider value to USD (thresholds are stored in USD)
+      const toUSD = (amount, provider) => {
+        const src = currencies[provider] || 'USD';
+        if (src === 'USD' || !exchangeRate) return amount;
+        if (src === 'BRL') return amount / exchangeRate;
+        return amount;
+      };
+
+      const sumUSD = (entries, key) => entries.reduce((s, d) => s + toUSD(d[key] || 0, key), 0);
+      const lastUSD = (key) => lastEntry ? toUSD(lastEntry[key] || 0, key) : 0;
 
       const calls = [];
-      // Monthly: one call per active provider using MTD total
-      if (sum(mtdEntries, 'aws')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'aws',   current_value: sum(mtdEntries, 'aws'),   period: 'monthly' }));
-      if (sum(mtdEntries, 'azure') > 0) calls.push(alertService.evaluateAlerts({ provider: 'azure', current_value: sum(mtdEntries, 'azure'), period: 'monthly' }));
-      if (sum(mtdEntries, 'gcp')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'gcp',   current_value: sum(mtdEntries, 'gcp'),   period: 'monthly' }));
-      // Daily: last day's values
-      if (last('aws')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'aws',   current_value: last('aws'),   period: 'daily' }));
-      if (last('azure') > 0) calls.push(alertService.evaluateAlerts({ provider: 'azure', current_value: last('azure'), period: 'daily' }));
-      if (last('gcp')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'gcp',   current_value: last('gcp'),   period: 'daily' }));
+      // Monthly: one call per active provider using MTD total (in USD)
+      if (sumUSD(mtdEntries, 'aws')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'aws',   current_value: sumUSD(mtdEntries, 'aws'),   period: 'monthly' }));
+      if (sumUSD(mtdEntries, 'azure') > 0) calls.push(alertService.evaluateAlerts({ provider: 'azure', current_value: sumUSD(mtdEntries, 'azure'), period: 'monthly' }));
+      if (sumUSD(mtdEntries, 'gcp')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'gcp',   current_value: sumUSD(mtdEntries, 'gcp'),   period: 'monthly' }));
+      // Daily: last day's values (in USD)
+      if (lastUSD('aws')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'aws',   current_value: lastUSD('aws'),   period: 'daily' }));
+      if (lastUSD('azure') > 0) calls.push(alertService.evaluateAlerts({ provider: 'azure', current_value: lastUSD('azure'), period: 'daily' }));
+      if (lastUSD('gcp')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'gcp',   current_value: lastUSD('gcp'),   period: 'daily' }));
 
       if (calls.length === 0) return { triggered: 0 };
       const results = await Promise.allSettled(calls);
