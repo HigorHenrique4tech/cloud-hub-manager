@@ -62,7 +62,7 @@ async def checkout(
     if payload.payment_method not in valid_methods:
         raise HTTPException(status_code=400, detail="Método de pagamento inválido. Use PIX ou CREDIT_CARD.")
 
-    installments = max(1, min(12, payload.installments or 1))
+    installments = max(1, min(6, payload.installments or 1))
 
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     if org.plan_tier == payload.plan_tier:

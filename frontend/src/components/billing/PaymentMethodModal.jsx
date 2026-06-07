@@ -3,7 +3,7 @@ import { X, QrCode, CreditCard, ArrowRight, ShieldCheck } from 'lucide-react';
 
 const CARD_BRANDS = ['Visa', 'Mastercard', 'Elo', 'Amex'];
 
-const INSTALLMENT_OPTIONS = [1, 2, 3, 6, 12];
+const INSTALLMENT_OPTIONS = [1, 2, 3, 6];
 
 function formatCPF(value) {
   const digits = value.replace(/\D/g, '').slice(0, 14);
@@ -117,7 +117,7 @@ const PaymentMethodModal = ({ plan, onClose, onConfirm, loading }) => {
           {method === 'CREDIT_CARD' && (
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1.5">Parcelamento</label>
-              <div className="grid grid-cols-5 gap-1.5">
+              <div className="grid grid-cols-4 gap-2">
                 {INSTALLMENT_OPTIONS.map((n) => (
                   <button
                     key={n}

@@ -59,6 +59,7 @@ async def create_billing(
             "customer": {
                 "name": customer_name or "Cliente",
                 "email": customer_email,
+                "cellphone": "(11) 99999-9999",
                 "taxId": customer_tax_id,
             },
         }
