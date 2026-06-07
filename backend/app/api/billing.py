@@ -59,9 +59,9 @@ async def checkout(
     if payload.plan_tier not in valid_paid_tiers:
         raise HTTPException(status_code=400, detail=f"Plano inválido para checkout. Opções: {', '.join(sorted(valid_paid_tiers))}")
 
-    valid_methods = {"PIX", "CREDIT_CARD"}
+    valid_methods = {"PIX", "CARD", "BOLETO"}
     if payload.payment_method not in valid_methods:
-        raise HTTPException(status_code=400, detail="Método de pagamento inválido. Use PIX ou CREDIT_CARD.")
+        raise HTTPException(status_code=400, detail="Método de pagamento inválido. Use PIX, CARD ou BOLETO.")
 
     installments = max(1, min(6, payload.installments or 1))
 
@@ -109,7 +109,7 @@ async def checkout(
     log_activity(
         db, member.user, "billing.checkout", "Payment",
         resource_id=str(payment.id),
-        detail=f"plan={payload.plan_tier}, method={payload.payment_method}, amount={amount}",
+        detail=f"plan={payload.plan_tier}, method={payload.payment_method}, installments={installments}, amount={amount}",
         provider="system",
     )
 

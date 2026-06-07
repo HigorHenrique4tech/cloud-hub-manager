@@ -65,9 +65,9 @@ async def create_billing(
             },
         }
 
-        # Parcelamento (somente cartão de crédito)
-        if payment_method == "CREDIT_CARD" and installments > 1:
-            body["maxInstallments"] = installments
+        # Parcelamento (somente cartão) — formato documentado pela AbacatePay v1
+        if payment_method == "CARD" and installments > 1:
+            body["card"] = {"maxInstallments": installments}
 
         logger.info("AbacatePay billing request body: %s", body)
 

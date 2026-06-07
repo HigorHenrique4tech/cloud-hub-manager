@@ -115,26 +115,27 @@ const PaymentMethodModal = ({ plan, onClose, onConfirm, loading }) => {
             </button>
 
             <button
-              onClick={() => setMethod('CREDIT_CARD')}
+              onClick={() => setMethod('CARD')}
               className={`flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-left ${
-                method === 'CREDIT_CARD'
+                method === 'CARD'
                   ? 'border-primary bg-primary/10'
                   : 'border-gray-700 bg-gray-800 hover:border-gray-500'
               }`}
             >
-              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${method === 'CREDIT_CARD' ? 'bg-primary/20' : 'bg-gray-700'}`}>
-                <CreditCard className={`w-5 h-5 ${method === 'CREDIT_CARD' ? 'text-primary' : 'text-gray-400'}`} />
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${method === 'CARD' ? 'bg-primary/20' : 'bg-gray-700'}`}>
+                <CreditCard className={`w-5 h-5 ${method === 'CARD' ? 'text-primary' : 'text-gray-400'}`} />
               </div>
               <div>
-                <p className={`text-sm font-semibold ${method === 'CREDIT_CARD' ? 'text-white' : 'text-gray-300'}`}>Cartão</p>
+                <p className={`text-sm font-semibold ${method === 'CARD' ? 'text-white' : 'text-gray-300'}`}>Cartão</p>
                 <p className="text-[11px] text-gray-400 mt-0.5">Parcele em até 6x</p>
                 <p className="text-[10px] text-gray-500 mt-0.5">{CARD_BRANDS.join(' · ')}</p>
               </div>
             </button>
           </div>
 
-          {/* Installments (credit card only) */}
-          {method === 'CREDIT_CARD' && (
+
+          {/* Installments (cartão apenas) */}
+          {method === 'CARD' && (
             <div>
               <label className="block text-xs font-medium text-gray-400 mb-1.5">Parcelamento</label>
               <div className="grid grid-cols-4 gap-2">
