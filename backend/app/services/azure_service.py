@@ -1115,6 +1115,79 @@ class AzureService:
             logger.error(f"delete_nsg_rule error: {e}")
             return {'success': False, 'error': str(e)}
 
+    def list_nsgs(self) -> Dict:
+        """Lista todos os NSGs da subscription com suas regras."""
+        try:
+            nsgs = []
+            for nsg in self.network_client.network_security_groups.list_all():
+                parts = (nsg.id or '').split('/')
+                rg = parts[4] if len(parts) > 4 else ''
+                rules = self._parse_nsg_rules(nsg.security_rules or [])
+                default_rules = self._parse_nsg_rules(nsg.default_security_rules or [])
+                subnets = []
+                for sub in (nsg.subnets or []):
+                    sub_parts = (sub.id or '').split('/')
+                    subnets.append(sub_parts[-1] if sub_parts else sub.id)
+                nsgs.append({
+                    'name': nsg.name,
+                    'id': nsg.id,
+                    'resource_group': rg,
+                    'location': nsg.location,
+                    'provisioning_state': nsg.provisioning_state,
+                    'subnets': subnets,
+                    'rules_count': len(rules),
+                    'rules': rules,
+                    'default_rules': default_rules,
+                })
+            return {'success': True, 'nsgs': nsgs, 'total': len(nsgs)}
+        except Exception as e:
+            logger.error(f"list_nsgs error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_nsg_rules(self, resource_group: str, nsg_name: str) -> Dict:
+        """Retorna regras de um NSG específico."""
+        try:
+            nsg = self.network_client.network_security_groups.get(resource_group, nsg_name)
+            rules = self._parse_nsg_rules(nsg.security_rules or [])
+            default_rules = self._parse_nsg_rules(nsg.default_security_rules or [])
+            subnets = []
+            for sub in (nsg.subnets or []):
+                sub_parts = (sub.id or '').split('/')
+                subnets.append(sub_parts[-1] if sub_parts else sub.id)
+            return {
+                'success': True,
+                'name': nsg.name,
+                'resource_group': resource_group,
+                'location': nsg.location,
+                'provisioning_state': nsg.provisioning_state,
+                'subnets': subnets,
+                'rules': rules,
+                'default_rules': default_rules,
+            }
+        except Exception as e:
+            logger.error(f"get_nsg_rules error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def _parse_nsg_rules(rules) -> list:
+        result = []
+        for r in rules:
+            result.append({
+                'name': r.name,
+                'priority': r.priority,
+                'direction': r.direction,
+                'access': r.access,
+                'protocol': r.protocol,
+                'source_address_prefix': r.source_address_prefix or '*',
+                'source_port_range': r.source_port_range or '*',
+                'destination_address_prefix': r.destination_address_prefix or '*',
+                'destination_port_range': r.destination_port_range or '*',
+                'description': r.description or '',
+                'provisioning_state': r.provisioning_state,
+            })
+        result.sort(key=lambda x: x['priority'])
+        return result
+
     def get_sql_server_detail(self, resource_group: str, server_name: str) -> Dict:
         try:
             server = self.sql_client.servers.get(resource_group, server_name)
@@ -1407,6 +1480,79 @@ class AzureService:
             return {'success': True}
         except Exception as e:
             logger.error(f"delete_app_service error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── Storage Containers & Keys ─────────────────────────────────────────────
+
+    def _get_storage_connection_string(self, resource_group: str, account_name: str) -> str:
+        keys = self.storage_client.storage_accounts.list_keys(resource_group, account_name)
+        key_value = keys.keys[0].value if keys.keys else ''
+        return (
+            f"DefaultEndpointsProtocol=https;"
+            f"AccountName={account_name};"
+            f"AccountKey={key_value};"
+            f"EndpointSuffix=core.windows.net"
+        )
+
+    def list_containers(self, resource_group: str, account_name: str) -> Dict:
+        """Lista containers de um Storage Account via SDK de gerenciamento."""
+        try:
+            containers = []
+            for c in self.storage_client.blob_containers.list(resource_group, account_name):
+                containers.append({
+                    'name': c.name,
+                    'public_access': c.public_access or 'None',
+                    'last_modified': c.last_modified_time.isoformat() if c.last_modified_time else None,
+                    'lease_state': c.lease_state,
+                    'deleted': c.deleted or False,
+                })
+            return {'success': True, 'containers': containers, 'total': len(containers)}
+        except Exception as e:
+            logger.error(f"list_containers error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def create_container(self, resource_group: str, account_name: str, container_name: str, public_access: str = 'None') -> Dict:
+        """Cria um container Blob."""
+        try:
+            from azure.mgmt.storage.models import BlobContainer, PublicAccess
+            access_map = {'Blob': PublicAccess.BLOB, 'Container': PublicAccess.CONTAINER}
+            blob_container = BlobContainer(
+                public_access=access_map.get(public_access)
+            )
+            result = self.storage_client.blob_containers.create(
+                resource_group, account_name, container_name, blob_container
+            )
+            return {'success': True, 'name': result.name, 'public_access': result.public_access or 'None'}
+        except Exception as e:
+            logger.error(f"create_container error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_container(self, resource_group: str, account_name: str, container_name: str) -> Dict:
+        """Remove um container Blob."""
+        try:
+            self.storage_client.blob_containers.delete(resource_group, account_name, container_name)
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_container error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_storage_keys(self, resource_group: str, account_name: str) -> Dict:
+        """Retorna as chaves de acesso e connection string de um Storage Account."""
+        try:
+            keys_result = self.storage_client.storage_accounts.list_keys(resource_group, account_name)
+            key_list = []
+            for k in (keys_result.keys or []):
+                key_list.append({'key_name': k.key_name, 'value': k.value, 'permissions': k.permissions})
+            primary_key = keys_result.keys[0].value if keys_result.keys else ''
+            connection_string = (
+                f"DefaultEndpointsProtocol=https;"
+                f"AccountName={account_name};"
+                f"AccountKey={primary_key};"
+                f"EndpointSuffix=core.windows.net"
+            )
+            return {'success': True, 'keys': key_list, 'connection_string': connection_string}
+        except Exception as e:
+            logger.error(f"get_storage_keys error: {e}")
             return {'success': False, 'error': str(e)}
 
     # ── Metrics (Azure Monitor) ───────────────────────────────────────────────

@@ -676,6 +676,34 @@ async def ws_delete_nsg_rule(
     return result
 
 
+@ws_router.get("/nsgs")
+async def ws_list_nsgs(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista todos os NSGs da subscription com suas regras."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.list_nsgs)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao listar NSGs'))
+    return result
+
+
+@ws_router.get("/nsgs/{resource_group}/{nsg_name}/rules")
+async def ws_get_nsg_rules(
+    resource_group: str,
+    nsg_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Retorna regras de um NSG específico."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.get_nsg_rules, resource_group, nsg_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter regras do NSG'))
+    return result
+
+
 @ws_router.get("/databases/{resource_group}/{server_name}")
 async def ws_get_sql_server_detail(
     resource_group: str,
@@ -715,6 +743,79 @@ async def ws_get_storage_account_detail(
     result = await _run(svc.get_storage_account_detail, resource_group, account_name)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da Storage Account'))
+    return result
+
+
+@ws_router.get("/storage-accounts/{resource_group}/{account_name}/containers")
+async def ws_list_containers(
+    resource_group: str,
+    account_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista containers de um Storage Account."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.list_containers, resource_group, account_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao listar containers'))
+    return result
+
+
+class ContainerCreate(BaseModel):
+    container_name: str
+    public_access: str = "None"  # None | Blob | Container
+
+
+@ws_router.post("/storage-accounts/{resource_group}/{account_name}/containers", status_code=201)
+async def ws_create_container(
+    resource_group: str,
+    account_name: str,
+    body: ContainerCreate,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Cria um container Blob."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.create_container, resource_group, account_name, body.container_name, body.public_access)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar container'))
+    log_activity(db, member.user, "storage.container.create", "BlobContainer",
+                 resource_name=f"{account_name}/{body.container_name}")
+    return result
+
+
+@ws_router.delete("/storage-accounts/{resource_group}/{account_name}/containers/{container_name}", status_code=200)
+async def ws_delete_container(
+    resource_group: str,
+    account_name: str,
+    container_name: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    """Remove um container Blob."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.delete_container, resource_group, account_name, container_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao excluir container'))
+    log_activity(db, member.user, "storage.container.delete", "BlobContainer",
+                 resource_name=f"{account_name}/{container_name}")
+    return result
+
+
+@ws_router.get("/storage-accounts/{resource_group}/{account_name}/keys")
+async def ws_get_storage_keys(
+    resource_group: str,
+    account_name: str,
+    member: MemberContext = Depends(require_permission("resources.manage")),
+    db: Session = Depends(get_db),
+):
+    """Retorna chaves de acesso e connection string."""
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.get_storage_keys, resource_group, account_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter chaves'))
+    log_activity(db, member.user, "storage.keys.view", "StorageAccount",
+                 resource_name=account_name)
     return result
 
 

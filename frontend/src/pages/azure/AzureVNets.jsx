@@ -159,7 +159,13 @@ const PeeringModal = ({ isOpen, onClose, onSubmit, vnets, currentVnet, isLoading
   );
 };
 
-// ── Drawer extra content: Subnets + Peerings ────────────────────────────────
+const DEFAULT_NSG_RULE = {
+  rule_name: '', priority: 1000, direction: 'Inbound', access: 'Allow',
+  protocol: 'Tcp', source_address: '*', source_port: '*',
+  dest_address: '*', dest_port: '80', description: '',
+};
+
+// ── Drawer extra content: Subnets + Peerings + NSG Rules ───────────────────
 const VNetDrawerExtra = ({ detailTarget, vnets, onRefresh }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -171,6 +177,14 @@ const VNetDrawerExtra = ({ detailTarget, vnets, onRefresh }) => {
   const [deletingSubnet, setDeletingSubnet] = useState(null);
   const [deletingPeering, setDeletingPeering] = useState(null);
   const [expandedSubnet, setExpandedSubnet] = useState(null);
+  // NSG Rules state
+  const [nsgRulesCache, setNsgRulesCache] = useState({});
+  const [expandedNSG, setExpandedNSG] = useState(null);
+  const [nsgActiveTab, setNsgActiveTab] = useState({});
+  const [addingRuleFor, setAddingRuleFor] = useState(null);
+  const [ruleForm, setRuleForm] = useState(DEFAULT_NSG_RULE);
+  const [savingRule, setSavingRule] = useState(false);
+  const [deletingRule, setDeletingRule] = useState(null);
 
   const rg = detailTarget?.resource_group;
   const vnetName = detailTarget?.name;
@@ -273,6 +287,60 @@ const VNetDrawerExtra = ({ detailTarget, vnets, onRefresh }) => {
       toast.error(err.response?.data?.detail || 'Erro ao excluir peering');
     } finally {
       setDeletingPeering(null);
+    }
+  };
+
+  const loadNSGRules = async (nsgName) => {
+    setNsgRulesCache(prev => ({ ...prev, [nsgName]: { ...(prev[nsgName] || {}), loading: true } }));
+    try {
+      const result = await azureService.getNSGRules(rg, nsgName);
+      setNsgRulesCache(prev => ({ ...prev, [nsgName]: { rules: result.rules || [], loading: false } }));
+    } catch {
+      setNsgRulesCache(prev => ({ ...prev, [nsgName]: { rules: [], loading: false, error: true } }));
+      toast.error('Erro ao carregar regras do NSG');
+    }
+  };
+
+  const handleToggleNSG = async (nsgName) => {
+    if (expandedNSG === nsgName) { setExpandedNSG(null); return; }
+    setExpandedNSG(nsgName);
+    if (!nsgRulesCache[nsgName]?.rules) await loadNSGRules(nsgName);
+  };
+
+  const handleAddRule = async (nsgName) => {
+    if (!ruleForm.rule_name.trim()) return;
+    setSavingRule(true);
+    try {
+      const result = await azureService.addNSGRule(rg, nsgName, { ...ruleForm, priority: Number(ruleForm.priority) });
+      if (result.success) {
+        toast.success(`Regra "${ruleForm.rule_name}" criada`);
+        setAddingRuleFor(null);
+        setRuleForm(DEFAULT_NSG_RULE);
+        await loadNSGRules(nsgName);
+      } else {
+        toast.error(result.error || 'Erro ao criar regra');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Erro ao criar regra');
+    } finally {
+      setSavingRule(false);
+    }
+  };
+
+  const handleDeleteRule = async (nsgName, ruleName) => {
+    setDeletingRule(ruleName);
+    try {
+      const result = await azureService.deleteNSGRule(rg, nsgName, ruleName);
+      if (result.success) {
+        toast.success(`Regra "${ruleName}" excluída`);
+        await loadNSGRules(nsgName);
+      } else {
+        toast.error(result.error || 'Erro ao excluir regra');
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Erro ao excluir regra');
+    } finally {
+      setDeletingRule(null);
     }
   };
 
@@ -456,6 +524,177 @@ const VNetDrawerExtra = ({ detailTarget, vnets, onRefresh }) => {
           </div>
         )}
       </div>
+
+      {/* ── NSG Rules Section ─────────────────────────────────────────── */}
+      {(() => {
+        const uniqueNSGs = [...new Set(subnets.filter(s => s.nsg_name).map(s => s.nsg_name))];
+        if (uniqueNSGs.length === 0) return null;
+        return (
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                NSG Rules ({uniqueNSGs.length})
+              </h3>
+            </div>
+            <div className="space-y-2">
+              {uniqueNSGs.map(nsgName => {
+                const cache = nsgRulesCache[nsgName] || {};
+                const isExpanded = expandedNSG === nsgName;
+                const activeTab = nsgActiveTab[nsgName] || 'Inbound';
+                const visibleRules = (cache.rules || []).filter(r => r.direction === activeTab);
+                return (
+                  <div key={nsgName} className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                    <button
+                      className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-gray-50 dark:hover:bg-gray-800/50 text-left"
+                      onClick={() => handleToggleNSG(nsgName)}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Shield className="w-3.5 h-3.5 text-orange-500" />
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{nsgName}</span>
+                        {cache.rules && <span className="text-xs text-gray-500 dark:text-gray-400">{cache.rules.length} regra(s)</span>}
+                      </div>
+                      {isExpanded ? <ChevronUp className="w-4 h-4 text-gray-400" /> : <ChevronDown className="w-4 h-4 text-gray-400" />}
+                    </button>
+
+                    {isExpanded && (
+                      <div className="border-t border-gray-200 dark:border-gray-700">
+                        {/* Tab bar + add button */}
+                        <div className="flex items-center justify-between px-3 py-2 bg-gray-50 dark:bg-gray-800/50">
+                          <div className="flex gap-1">
+                            {['Inbound', 'Outbound'].map(tab => (
+                              <button key={tab}
+                                onClick={() => setNsgActiveTab(prev => ({ ...prev, [nsgName]: tab }))}
+                                className={`px-2.5 py-1 text-xs rounded font-medium transition-colors ${activeTab === tab ? 'bg-sky-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}`}
+                              >
+                                {tab === 'Inbound' ? 'Entrada' : 'Saída'}
+                              </button>
+                            ))}
+                          </div>
+                          <PermissionGate permission="resources.manage">
+                            <button
+                              onClick={() => { setAddingRuleFor(addingRuleFor === nsgName ? null : nsgName); setRuleForm(DEFAULT_NSG_RULE); }}
+                              className="text-xs text-sky-600 hover:text-sky-700 dark:text-sky-400 flex items-center gap-1"
+                            >
+                              <Plus className="w-3 h-3" /> Adicionar
+                            </button>
+                          </PermissionGate>
+                        </div>
+
+                        {cache.loading && (
+                          <div className="px-3 py-4 text-center text-xs text-gray-500 dark:text-gray-400">Carregando regras...</div>
+                        )}
+
+                        {/* Add rule inline form */}
+                        {!cache.loading && addingRuleFor === nsgName && (
+                          <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border-b border-gray-200 dark:border-gray-700">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Nova Regra NSG</p>
+                            <div className="grid grid-cols-2 gap-2 mb-2">
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">Nome</label>
+                                <input value={ruleForm.rule_name} onChange={e => setRuleForm(p => ({...p, rule_name: e.target.value}))}
+                                  placeholder="Allow-HTTP"
+                                  className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-sky-500" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">Prioridade (100–4096)</label>
+                                <input type="number" value={ruleForm.priority} onChange={e => setRuleForm(p => ({...p, priority: e.target.value}))}
+                                  min="100" max="4096"
+                                  className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:ring-1 focus:ring-sky-500" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">Direção</label>
+                                <select value={ruleForm.direction} onChange={e => setRuleForm(p => ({...p, direction: e.target.value}))}
+                                  className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                                  <option value="Inbound">Entrada</option>
+                                  <option value="Outbound">Saída</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">Acesso</label>
+                                <select value={ruleForm.access} onChange={e => setRuleForm(p => ({...p, access: e.target.value}))}
+                                  className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                                  <option value="Allow">Permitir</option>
+                                  <option value="Deny">Negar</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">Protocolo</label>
+                                <select value={ruleForm.protocol} onChange={e => setRuleForm(p => ({...p, protocol: e.target.value}))}
+                                  className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
+                                  <option value="Tcp">TCP</option>
+                                  <option value="Udp">UDP</option>
+                                  <option value="Icmp">ICMP</option>
+                                  <option value="*">Qualquer</option>
+                                </select>
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">Porta Destino</label>
+                                <input value={ruleForm.dest_port} onChange={e => setRuleForm(p => ({...p, dest_port: e.target.value}))}
+                                  placeholder="80, 443 ou *"
+                                  className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">IP Origem</label>
+                                <input value={ruleForm.source_address} onChange={e => setRuleForm(p => ({...p, source_address: e.target.value}))}
+                                  placeholder="* ou 10.0.0.0/8"
+                                  className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
+                              </div>
+                              <div>
+                                <label className="text-xs text-gray-500 dark:text-gray-400 mb-0.5 block">IP Destino</label>
+                                <input value={ruleForm.dest_address} onChange={e => setRuleForm(p => ({...p, dest_address: e.target.value}))}
+                                  placeholder="* ou 10.0.1.0/24"
+                                  className="w-full text-xs px-2 py-1.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100" />
+                              </div>
+                            </div>
+                            <div className="flex gap-2 justify-end">
+                              <button onClick={() => setAddingRuleFor(null)}
+                                className="text-xs px-3 py-1.5 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200">Cancelar</button>
+                              <button onClick={() => handleAddRule(nsgName)} disabled={savingRule || !ruleForm.rule_name.trim()}
+                                className="text-xs px-3 py-1.5 bg-sky-600 text-white rounded hover:bg-sky-700 disabled:opacity-50">
+                                {savingRule ? 'Salvando...' : 'Criar Regra'}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Empty state */}
+                        {!cache.loading && visibleRules.length === 0 && !cache.error && (
+                          <p className="px-3 py-3 text-xs text-gray-500 dark:text-gray-400 italic">
+                            Nenhuma regra de {activeTab === 'Inbound' ? 'entrada' : 'saída'}
+                          </p>
+                        )}
+
+                        {/* Rules list */}
+                        {!cache.loading && visibleRules.length > 0 && (
+                          <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+                            {visibleRules.map(rule => (
+                              <div key={rule.name} className="group flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                                <span className="text-xs text-gray-400 dark:text-gray-500 w-9 shrink-0 font-mono">{rule.priority}</span>
+                                <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate flex-1">{rule.name}</span>
+                                <span className="text-xs text-gray-500 dark:text-gray-400 font-mono shrink-0">{rule.destination_port_range}</span>
+                                <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0">{rule.protocol === '*' ? 'Any' : rule.protocol}</span>
+                                <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium shrink-0 ${rule.access === 'Allow' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                  {rule.access === 'Allow' ? 'Allow' : 'Deny'}
+                                </span>
+                                <PermissionGate permission="resources.manage">
+                                  <button onClick={() => handleDeleteRule(nsgName, rule.name)} disabled={deletingRule === rule.name}
+                                    className="opacity-0 group-hover:opacity-100 p-0.5 text-gray-400 hover:text-red-500 disabled:opacity-50 transition-opacity shrink-0">
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </PermissionGate>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       <PeeringModal
         isOpen={peeringModalOpen}

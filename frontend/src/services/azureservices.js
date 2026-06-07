@@ -91,8 +91,16 @@ export const azureService = {
 
   // NIC + NSG
   getNICDetail: (rg, nicName) => api.get(wsUrl(`/azure/nics/${encodeURIComponent(rg)}/${encodeURIComponent(nicName)}`)).then(r => r.data),
+  listNSGs: () => api.get(wsUrl('/azure/nsgs')).then(r => r.data),
+  getNSGRules: (rg, nsgName) => api.get(wsUrl(`/azure/nsgs/${encodeURIComponent(rg)}/${encodeURIComponent(nsgName)}/rules`)).then(r => r.data),
   addNSGRule: (rg, nsgName, data) => api.post(wsUrl(`/azure/nsg/${encodeURIComponent(rg)}/${encodeURIComponent(nsgName)}/rules`), data).then(r => r.data),
   deleteNSGRule: (rg, nsgName, ruleName) => api.delete(wsUrl(`/azure/nsg/${encodeURIComponent(rg)}/${encodeURIComponent(nsgName)}/rules/${encodeURIComponent(ruleName)}`)).then(r => r.data),
+
+  // Storage Containers & Keys
+  listContainers: (rg, accountName) => api.get(wsUrl(`/azure/storage-accounts/${encodeURIComponent(rg)}/${encodeURIComponent(accountName)}/containers`)).then(r => r.data),
+  createContainer: (rg, accountName, data) => api.post(wsUrl(`/azure/storage-accounts/${encodeURIComponent(rg)}/${encodeURIComponent(accountName)}/containers`), data).then(r => r.data),
+  deleteContainer: (rg, accountName, containerName) => api.delete(wsUrl(`/azure/storage-accounts/${encodeURIComponent(rg)}/${encodeURIComponent(accountName)}/containers/${encodeURIComponent(containerName)}`)).then(r => r.data),
+  getStorageKeys: (rg, accountName) => api.get(wsUrl(`/azure/storage-accounts/${encodeURIComponent(rg)}/${encodeURIComponent(accountName)}/keys`)).then(r => r.data),
 
   // Backup Validation — coverage analysis
   getBackupCoverage: () => api.get(wsUrl('/azure/backup-validation/coverage')).then(r => r.data),
