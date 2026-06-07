@@ -76,6 +76,12 @@ export const orgService = {
     (await api.put(`/orgs/${partnerSlug}`, data)).data,
   updatePartnerNotes: async (partnerSlug, notes) =>
     (await api.patch(`/admin/orgs/${partnerSlug}/notes`, { notes })).data,
+  invitePartnerOwner: async (masterSlug, partnerSlug, email) =>
+    (await api.post(`/orgs/${masterSlug}/managed-orgs/${partnerSlug}/invite-owner`, { email })).data,
+  getConsolidatedCosts: async (slug, months = 6) =>
+    (await api.get(`/orgs/${slug}/managed-orgs/consolidated-costs`, { params: { months } })).data,
+  updatePartnerMarkup: async (masterSlug, partnerSlug, cost_markup_pct) =>
+    (await api.patch(`/orgs/${masterSlug}/managed-orgs/${partnerSlug}/markup`, { cost_markup_pct })).data,
 
   // ── Currency ────────────────────────────────────────────────────────────
   updateCurrency: async (slug, data) =>

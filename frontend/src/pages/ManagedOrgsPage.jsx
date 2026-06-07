@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, CheckSquare, Square, Power, PowerOff,
   Store, Link2, ShieldCheck, AlertCircle, Check, RefreshCcw, Shield,
   Globe, CalendarClock, Package, Activity, CreditCard, Zap,
-  Receipt, Download, FileText, DollarSign, Clock,
+  Receipt, Download, FileText, DollarSign, Clock, Mail, TrendingUp,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
@@ -271,7 +271,7 @@ const BrandingPartnerModal = ({ org, onClose, onSave, saving }) => {
 
 /* ── Partner Org Card (Enhanced) ─────────────────────────────────────────── */
 
-const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, batchMode, isSelected, onToggleSelect }) => {
+const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, onInvite, batchMode, isSelected, onToggleSelect }) => {
   const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('pt-BR') : '—';
   const fmtBRL = (v) => v?.toLocaleString('pt-BR', { minimumFractionDigits: 2 }) ?? '—';
   const initials = (name) => name ? name.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() : '?';
@@ -312,6 +312,14 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, bat
           {health.pulse && <span className={`absolute inset-0 rounded-full ${health.dot} animate-ping opacity-40`} />}
           <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${health.dot}`} />
         </span>
+
+        {/* Health score badge */}
+        {org.health_score !== undefined && (
+          <span className={`inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-bold ${health.bg} ${health.text}`}
+            title={`Score: ${org.health_score}/100`}>
+            {org.health_score}
+          </span>
+        )}
 
         {/* Provider icons */}
         {providers.map(p => {
@@ -363,6 +371,10 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, bat
             <button onClick={() => onBranding(org)} title="Personalizar marca"
               className="p-1.5 rounded-lg text-gray-500 dark:text-gray-500 hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-500/10 transition-colors">
               <Palette size={15} />
+            </button>
+            <button onClick={() => onInvite(org)} title="Convidar proprietário"
+              className="p-1.5 rounded text-gray-500 dark:text-gray-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 transition-colors">
+              <Mail size={14} />
             </button>
             <button onClick={() => onRemove(org)} className="p-1.5 text-gray-500 dark:text-gray-600 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors rounded" title="Remover parceira">
               <Trash2 size={14} />
@@ -440,6 +452,219 @@ const PartnerCard = ({ org, onAccess, onRemove, onEdit, onNotes, onBranding, bat
           </button>
         )}
       </div>
+    </div>
+  );
+};
+
+/* ── Invite Owner Modal ──────────────────────────────────────────────────── */
+
+const InviteOwnerModal = ({ org, masterSlug, onClose }) => {
+  useEscapeKey(true, onClose);
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const inviteMut = useMutation({
+    mutationFn: () => orgService.invitePartnerOwner(masterSlug, org.slug, email),
+    onSuccess: () => setSuccess(true),
+    onError: (err) => setError(err?.response?.data?.detail || 'Erro ao enviar convite'),
+  });
+
+  const submit = (e) => {
+    e.preventDefault();
+    setError('');
+    if (!email.includes('@')) { setError('E-mail inválido'); return; }
+    inviteMut.mutate();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-sm rounded-2xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-200 dark:border-gray-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Convidar Proprietário</h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-white"><X size={18} /></button>
+        </div>
+        <div className="px-5 py-4">
+          {success ? (
+            <div className="flex flex-col items-center gap-3 py-6 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+                <Check size={22} className="text-green-600 dark:text-green-400" />
+              </div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Convite enviado!</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">O link expirará em 7 dias.</p>
+              <button onClick={onClose} className="mt-2 px-4 py-1.5 text-xs font-medium bg-primary text-white rounded-lg hover:bg-primary-dark">Fechar</button>
+            </div>
+          ) : (
+            <form onSubmit={submit} className="space-y-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Convide um usuário externo para se tornar proprietário de{' '}
+                <span className="font-semibold text-gray-800 dark:text-gray-200">{org.name}</span>.
+                Ele receberá um e-mail com link de acesso.
+              </p>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">E-mail do convidado</label>
+                <input
+                  type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="email@empresa.com"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary"
+                  autoFocus
+                />
+              </div>
+              {error && (
+                <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                  {error}
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg">Cancelar</button>
+                <button type="submit" disabled={inviteMut.isPending || !email}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-primary hover:bg-primary-dark disabled:opacity-50 text-white rounded-lg">
+                  <Mail size={12} /> {inviteMut.isPending ? 'Enviando...' : 'Enviar convite'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ── Costs Tab ───────────────────────────────────────────────────────────── */
+
+const CostsTab = ({ orgSlug }) => {
+  const [months, setMonths] = useState(6);
+  const [editingMarkup, setEditingMarkup] = useState(null);
+  const qc = useQueryClient();
+
+  const costsQ = useQuery({
+    queryKey: ['consolidated-costs', orgSlug, months],
+    queryFn: () => orgService.getConsolidatedCosts(orgSlug, months),
+    enabled: Boolean(orgSlug),
+    staleTime: 5 * 60_000,
+  });
+
+  const markupMut = useMutation({
+    mutationFn: ({ partnerSlug, value }) => orgService.updatePartnerMarkup(orgSlug, partnerSlug, value),
+    onSuccess: () => {
+      setEditingMarkup(null);
+      qc.invalidateQueries({ queryKey: ['consolidated-costs'] });
+      qc.invalidateQueries({ queryKey: ['managed-orgs'] });
+    },
+  });
+
+  const fmtCost = (v) => `$${(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  if (costsQ.isLoading) return <div className="flex justify-center py-16"><LoadingSpinner /></div>;
+  if (costsQ.isError) return (
+    <div className="rounded-lg border border-red-300/50 bg-red-50 dark:bg-red-900/20 dark:border-red-800 p-4 text-sm text-red-600 dark:text-red-400">
+      Erro ao carregar custos consolidados.
+    </div>
+  );
+
+  const { partners = [], month_list = [], total_cost = 0 } = costsQ.data || {};
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div>
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Custos Consolidados por Parceira</h3>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Valores com markup aplicado · Total: <span className="font-semibold text-gray-800 dark:text-gray-200">{fmtCost(total_cost)}</span>
+          </p>
+        </div>
+        <select value={months} onChange={(e) => setMonths(Number(e.target.value))}
+          className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary">
+          <option value={3}>Últimos 3 meses</option>
+          <option value={6}>Últimos 6 meses</option>
+          <option value={12}>Últimos 12 meses</option>
+        </select>
+      </div>
+
+      {partners.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-16 text-gray-400 dark:text-gray-500">
+          <TrendingUp size={40} className="mb-3 opacity-20" />
+          <p className="text-sm">Nenhum dado de custo disponível para este período.</p>
+          <p className="text-xs mt-1 text-gray-400 dark:text-gray-600">Os custos são coletados automaticamente pelo FinOps.</p>
+        </div>
+      ) : (
+        <div className="card rounded-2xl overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+            <thead className="bg-gray-50 dark:bg-gray-800/60">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Parceira</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Markup</th>
+                {month_list.map(ym => (
+                  <th key={ym} className="px-3 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{ym}</th>
+                ))}
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Total</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+              {partners.map((p) => (
+                <tr key={p.slug} className="hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`h-2 w-2 rounded-full flex-shrink-0 ${p.is_active ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{p.name}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {editingMarkup?.slug === p.slug ? (
+                      <div className="flex items-center justify-center gap-1">
+                        <input
+                          type="number" min={0} max={200} step={0.1}
+                          value={editingMarkup.value}
+                          onChange={(e) => setEditingMarkup(prev => ({ ...prev, value: parseFloat(e.target.value) || 0 }))}
+                          className="w-16 px-2 py-0.5 text-xs rounded border border-primary bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none"
+                          autoFocus
+                        />
+                        <span className="text-xs text-gray-400">%</span>
+                        <button onClick={() => markupMut.mutate({ partnerSlug: p.slug, value: editingMarkup.value })}
+                          disabled={markupMut.isPending}
+                          className="p-0.5 rounded text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20">
+                          <Check size={12} />
+                        </button>
+                        <button onClick={() => setEditingMarkup(null)}
+                          className="p-0.5 rounded text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <button onClick={() => setEditingMarkup({ slug: p.slug, value: p.cost_markup_pct })}
+                        className="inline-flex items-center gap-0.5 text-xs font-medium text-gray-600 dark:text-gray-400 hover:text-primary dark:hover:text-primary-light transition-colors rounded px-1.5 py-0.5 hover:bg-primary/5">
+                        {p.cost_markup_pct}% <Pencil size={9} className="opacity-50" />
+                      </button>
+                    )}
+                  </td>
+                  {month_list.map(ym => (
+                    <td key={ym} className="px-3 py-3 text-right text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                      {(p.costs_by_month[ym] || 0) > 0 ? fmtCost(p.costs_by_month[ym]) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                    </td>
+                  ))}
+                  <td className="px-4 py-3 text-right text-sm font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                    {fmtCost(p.total)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/60">
+              <tr>
+                <td colSpan={2} className="px-4 py-3 text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wider">Total</td>
+                {month_list.map(ym => {
+                  const t = partners.reduce((s, p) => s + (p.costs_by_month[ym] || 0), 0);
+                  return (
+                    <td key={ym} className="px-3 py-3 text-right text-sm font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                      {t > 0 ? fmtCost(t) : <span className="text-gray-300 dark:text-gray-600">—</span>}
+                    </td>
+                  );
+                })}
+                <td className="px-4 py-3 text-right text-sm font-bold text-primary dark:text-primary-light whitespace-nowrap">{fmtCost(total_cost)}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 };
@@ -1709,6 +1934,7 @@ const ManagedOrgsPage = () => {
   const [editTarget, setEditTarget]     = useState(null);
   const [notesTarget, setNotesTarget]   = useState(null);
   const [brandingOrg, setBrandingOrg]   = useState(null);
+  const [inviteTarget, setInviteTarget] = useState(null);
 
   // Pagination & search
   const [page, setPage]       = useState(1);
@@ -1879,6 +2105,7 @@ const ManagedOrgsPage = () => {
         <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
           {[
             { id: 'orgs', label: 'Organizações Parceiras', icon: Building2 },
+            { id: 'costs', label: 'Custos Consolidados', icon: TrendingUp },
             { id: 'm365', label: 'Tenants M365', icon: Grid3x3 },
             { id: 'partner_center', label: 'Partner Center', icon: Store },
           ].map(({ id, label, icon: Icon }) => (
@@ -1977,6 +2204,7 @@ const ManagedOrgsPage = () => {
                       onEdit={setEditTarget}
                       onNotes={setNotesTarget}
                       onBranding={(o) => setBrandingOrg(o)}
+                      onInvite={setInviteTarget}
                       batchMode={batchMode}
                       isSelected={selectedOrgs.has(org.slug)}
                       onToggleSelect={toggleSelect}
@@ -1997,6 +2225,11 @@ const ManagedOrgsPage = () => {
               <Pagination pagination={pagination} onPageChange={setPage} />
             </>
           )
+        )}
+
+        {/* Consolidated Costs tab */}
+        {activeView === 'costs' && (
+          <CostsTab orgSlug={currentOrg?.slug} />
         )}
 
         {/* M365 tenants tab */}
@@ -2034,6 +2267,9 @@ const ManagedOrgsPage = () => {
       )}
       {brandingOrg && (
         <BrandingPartnerModal org={brandingOrg} onClose={() => setBrandingOrg(null)} onSave={(data) => brandingMut.mutate({ slug: brandingOrg.slug, data })} saving={brandingMut.isPending} />
+      )}
+      {inviteTarget && (
+        <InviteOwnerModal org={inviteTarget} masterSlug={currentOrg?.slug} onClose={() => setInviteTarget(null)} />
       )}
     </Layout>
   );

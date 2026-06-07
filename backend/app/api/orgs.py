@@ -69,6 +69,14 @@ class BatchPartnerAction(BaseModel):
     partner_slugs: List[str]
 
 
+class PartnerInviteOwner(BaseModel):
+    email: str
+
+
+class PartnerMarkupUpdate(BaseModel):
+    cost_markup_pct: float  # 0.0 – 200.0
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
@@ -799,13 +807,35 @@ def _managed_org_to_dict(org: Organization, db: Session, stats: dict = None) -> 
         last_act_row = db.query(ActivityLog.created_at).filter(ActivityLog.organization_id == org.id).order_by(desc(ActivityLog.created_at)).first()
         last_act = last_act_row[0] if last_act_row else None
 
-    # Health status
+    # Health score (0-100, weighted)
     if not org.is_active:
-        health = "critical"
-    elif acc_count == 0:
+        health_score = 0
         health = "critical"
     else:
-        health = "healthy"
+        score = 0
+        if ws_count >= 1:
+            score += 20
+        if acc_count >= 1:
+            score += 20
+        if acc_count >= 3:
+            score += 10
+        if mem_count >= 2:
+            score += 20
+        if last_act:
+            days_since = (datetime.utcnow() - last_act).days
+            if days_since <= 7:
+                score += 30
+            elif days_since <= 30:
+                score += 20
+            elif days_since <= 90:
+                score += 10
+        health_score = min(score, 100)
+        if health_score >= 70:
+            health = "healthy"
+        elif health_score >= 40:
+            health = "warning"
+        else:
+            health = "critical"
 
     return {
         "id": str(org.id),
@@ -828,6 +858,8 @@ def _managed_org_to_dict(org: Organization, db: Session, stats: dict = None) -> 
             org.wl_color_accent, org.wl_favicon,
         ]),
         "health_status": health,
+        "health_score": health_score,
+        "cost_markup_pct": org.cost_markup_pct or 0,
         "cloud_providers": providers,
         "last_activity_at": last_act.isoformat() if last_act else None,
         "partner_center_id": org.partner_center_id,
@@ -1006,6 +1038,84 @@ async def managed_orgs_widget_summary(
         "total_partners": len(child_orgs),
         **counts,
         "partners_summary": partners_summary[:10],
+    }
+
+
+@router.get("/{org_slug}/managed-orgs/consolidated-costs")
+async def managed_orgs_consolidated_costs(
+    months: int = Query(6, ge=1, le=24),
+    member: MemberContext = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Return per-partner cost history with markup applied (last N months)."""
+    from app.models.db_models import FinOpsCostHistory, Workspace
+    from collections import defaultdict
+    from datetime import date
+
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.plan_tier not in ("enterprise", "enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"):
+        raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
+
+    child_orgs = db.query(Organization).filter(
+        Organization.parent_org_id == master_org.id,
+    ).all()
+
+    if not child_orgs:
+        return {"partners": [], "month_list": [], "months": months, "total_cost": 0}
+
+    # Build ordered month list (oldest → newest)
+    month_list = []
+    cur = date.today()
+    for _ in range(months):
+        month_list.insert(0, f"{cur.year:04d}-{cur.month:02d}")
+        cur = cur.replace(month=cur.month - 1) if cur.month > 1 else cur.replace(year=cur.year - 1, month=12)
+
+    child_ids = {o.id: o for o in child_orgs}
+
+    # Map workspace_id → org_id
+    ws_rows = db.query(Workspace.id, Workspace.organization_id).filter(
+        Workspace.organization_id.in_(child_ids.keys()),
+    ).all()
+    ws_to_org = {str(ws_id): org_id for ws_id, org_id in ws_rows}
+
+    # Fetch cost history for all partner workspaces in those months
+    cost_rows = db.query(FinOpsCostHistory).filter(
+        FinOpsCostHistory.workspace_id.in_(list(ws_to_org.keys())),
+        FinOpsCostHistory.year_month.in_(month_list),
+    ).all() if ws_to_org else []
+
+    # Group: org_id → year_month → spend (sum across providers)
+    org_months: dict = defaultdict(lambda: defaultdict(float))
+    for row in cost_rows:
+        org_id = ws_to_org.get(str(row.workspace_id))
+        if org_id:
+            org_months[org_id][row.year_month] += float(row.spend)
+
+    # Build per-partner result with markup applied
+    partners = []
+    total_cost = 0.0
+    for org in child_orgs:
+        markup = org.cost_markup_pct or 0
+        raw = org_months.get(org.id, {})
+        costs_by_month = {ym: round(raw.get(ym, 0) * (1 + markup / 100), 2) for ym in month_list}
+        org_total = sum(costs_by_month.values())
+        total_cost += org_total
+        partners.append({
+            "name": org.name,
+            "slug": org.slug,
+            "is_active": org.is_active,
+            "cost_markup_pct": markup,
+            "costs_by_month": costs_by_month,
+            "total": round(org_total, 2),
+        })
+
+    partners.sort(key=lambda p: p["total"], reverse=True)
+
+    return {
+        "partners": partners,
+        "month_list": month_list,
+        "months": months,
+        "total_cost": round(total_cost, 2),
     }
 
 
@@ -1201,6 +1311,112 @@ async def remove_managed_org(
                  detail=f"master={master_org.slug}")
 
     return None
+
+
+@router.post("/{org_slug}/managed-orgs/{partner_slug}/invite-owner", status_code=201)
+async def invite_partner_owner(
+    partner_slug: str,
+    payload: PartnerInviteOwner,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Send an ownership invite email so an external user can set up a partner org account."""
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.org_type != "master":
+        raise HTTPException(status_code=403, detail="Esta organização não possui parceiras.")
+
+    partner_org = db.query(Organization).filter(
+        Organization.slug == partner_slug,
+        Organization.parent_org_id == master_org.id,
+    ).first()
+    if not partner_org:
+        raise HTTPException(status_code=404, detail="Organização parceira não encontrada.")
+
+    # Check if already a member
+    existing_user = db.query(User).filter(User.email == payload.email).first()
+    if existing_user:
+        already = db.query(OrganizationMember).filter(
+            OrganizationMember.organization_id == partner_org.id,
+            OrganizationMember.user_id == existing_user.id,
+            OrganizationMember.is_active == True,
+        ).first()
+        if already:
+            raise HTTPException(status_code=409, detail="Este usuário já é membro da organização parceira.")
+
+    token = secrets.token_urlsafe(32)
+    expires_at = datetime.utcnow() + timedelta(days=7)
+
+    existing_invite = db.query(PendingInvitation).filter(
+        PendingInvitation.organization_id == partner_org.id,
+        PendingInvitation.email == payload.email,
+        PendingInvitation.accepted_at == None,
+    ).first()
+    if existing_invite:
+        existing_invite.token = token
+        existing_invite.expires_at = expires_at
+    else:
+        db.add(PendingInvitation(
+            organization_id=partner_org.id,
+            email=payload.email,
+            role="owner",
+            token=token,
+            invited_by=member.user.id,
+            expires_at=expires_at,
+        ))
+    db.commit()
+
+    _brand = get_branding(master_org, db)
+    send_invite_email(
+        to_email=payload.email,
+        org_name=partner_org.name,
+        inviter_name=member.user.name or member.user.email,
+        role="owner",
+        token=token,
+        branding=_brand,
+    )
+
+    log_activity(db, member.user, "org.managed.invite_owner", "Organization",
+                 resource_id=str(partner_org.id), resource_name=partner_org.name,
+                 detail=f"invited={payload.email}")
+
+    return {
+        "email": payload.email,
+        "partner_org": partner_slug,
+        "invite_link": f"/invite/{token}",
+        "expires_at": expires_at.isoformat(),
+    }
+
+
+@router.patch("/{org_slug}/managed-orgs/{partner_slug}/markup")
+async def update_partner_markup(
+    partner_slug: str,
+    payload: PartnerMarkupUpdate,
+    member: MemberContext = Depends(require_org_permission("org.settings.edit")),
+    db: Session = Depends(get_db),
+):
+    """Update the cost markup percentage applied to a partner org's costs."""
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.org_type != "master":
+        raise HTTPException(status_code=403, detail="Esta organização não possui parceiras.")
+
+    partner_org = db.query(Organization).filter(
+        Organization.slug == partner_slug,
+        Organization.parent_org_id == master_org.id,
+    ).first()
+    if not partner_org:
+        raise HTTPException(status_code=404, detail="Organização parceira não encontrada.")
+
+    if payload.cost_markup_pct < 0 or payload.cost_markup_pct > 200:
+        raise HTTPException(status_code=400, detail="Markup deve estar entre 0% e 200%.")
+
+    partner_org.cost_markup_pct = payload.cost_markup_pct
+    db.commit()
+
+    log_activity(db, member.user, "org.managed.markup_update", "Organization",
+                 resource_id=str(partner_org.id), resource_name=partner_org.name,
+                 detail=f"markup={payload.cost_markup_pct}")
+
+    return {"partner_slug": partner_slug, "cost_markup_pct": partner_org.cost_markup_pct}
 
 
 # ── White-label branding ─────────────────────────────────────────────────────
