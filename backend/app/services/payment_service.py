@@ -22,6 +22,7 @@ async def create_billing(
     completion_url: str,
     payment_method: str = "PIX",
     tax_id: str | None = None,
+    phone: str | None = None,
     installments: int = 1,
 ) -> dict:
     """Create a billing on AbacatePay. Returns the billing data dict."""
@@ -59,7 +60,7 @@ async def create_billing(
             "customer": {
                 "name": customer_name or "Cliente",
                 "email": customer_email,
-                "cellphone": "(11) 99999-9999",
+                "cellphone": phone or "11999999999",
                 "taxId": customer_tax_id,
             },
         }

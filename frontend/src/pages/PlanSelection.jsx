@@ -301,12 +301,12 @@ const PlanSelection = () => {
   };
 
   // Step 2: user confirms method in the modal → call checkout
-  const handlePaymentConfirm = async ({ method, taxId, installments }) => {
+  const handlePaymentConfirm = async ({ method, taxId, phone, installments }) => {
     if (!paymentPlan) return;
     setLoading(paymentPlan.id);
     setError('');
     try {
-      const result = await billingService.checkout(currentOrg.slug, paymentPlan.id, method, taxId, installments);
+      const result = await billingService.checkout(currentOrg.slug, paymentPlan.id, method, taxId, phone, installments);
       if (result.payment_url) {
         localStorage.setItem('pending_payment_id', result.payment_id);
         localStorage.setItem('pending_payment_org', currentOrg.slug);

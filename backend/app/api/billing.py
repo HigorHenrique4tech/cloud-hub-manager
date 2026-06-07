@@ -35,7 +35,8 @@ class CheckoutRequest(BaseModel):
     plan_tier: str
     payment_method: str = "PIX"   # PIX | CREDIT_CARD
     tax_id: str | None = None     # CPF (11 dígitos) ou CNPJ (14 dígitos) do cliente
-    installments: int = 1         # Parcelamento (1–12, somente cartão)
+    phone: str | None = None      # Telefone com DDD (somente dígitos)
+    installments: int = 1         # Parcelamento (1–6, somente cartão)
 
 
 class DowngradeRequest(BaseModel):
@@ -84,6 +85,7 @@ async def checkout(
         completion_url=completion_url,
         payment_method=payload.payment_method,
         tax_id=payload.tax_id,
+        phone=payload.phone,
         installments=installments,
     )
 
