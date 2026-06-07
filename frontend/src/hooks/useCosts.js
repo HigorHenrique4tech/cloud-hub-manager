@@ -123,11 +123,30 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
 
   const evaluateAlerts = useMutation({
     mutationFn: async () => {
-      const period = 'monthly';
+      const now = new Date();
+      const monthStart = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+      const todayStr = now.toISOString().slice(0, 10);
+
+      // data.combined may span a wider selected period (30d, 90d…).
+      // Monthly alerts → filter to current month-to-date (same as progress bar).
+      // Daily alerts   → use the last day with data.
+      const combined = data?.combined || [];
+      const mtdEntries = combined.filter(d => d.date >= monthStart && d.date <= todayStr);
+      const lastEntry  = [...combined].reverse().find(d => d.total > 0);
+
+      const sum = (entries, key) => entries.reduce((s, d) => s + (d[key] || 0), 0);
+      const last = (key) => lastEntry ? (lastEntry[key] || 0) : 0;
+
       const calls = [];
-      if (data?.aws?.total != null)   calls.push(alertService.evaluateAlerts({ provider: 'aws',   current_value: data.aws.total,   period }));
-      if (data?.azure?.total != null) calls.push(alertService.evaluateAlerts({ provider: 'azure', current_value: data.azure.total, period }));
-      if (data?.gcp?.total != null)   calls.push(alertService.evaluateAlerts({ provider: 'gcp',   current_value: data.gcp.total,   period }));
+      // Monthly: one call per active provider using MTD total
+      if (sum(mtdEntries, 'aws')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'aws',   current_value: sum(mtdEntries, 'aws'),   period: 'monthly' }));
+      if (sum(mtdEntries, 'azure') > 0) calls.push(alertService.evaluateAlerts({ provider: 'azure', current_value: sum(mtdEntries, 'azure'), period: 'monthly' }));
+      if (sum(mtdEntries, 'gcp')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'gcp',   current_value: sum(mtdEntries, 'gcp'),   period: 'monthly' }));
+      // Daily: last day's values
+      if (last('aws')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'aws',   current_value: last('aws'),   period: 'daily' }));
+      if (last('azure') > 0) calls.push(alertService.evaluateAlerts({ provider: 'azure', current_value: last('azure'), period: 'daily' }));
+      if (last('gcp')   > 0) calls.push(alertService.evaluateAlerts({ provider: 'gcp',   current_value: last('gcp'),   period: 'daily' }));
+
       if (calls.length === 0) return { triggered: 0 };
       const results = await Promise.allSettled(calls);
       const triggered = results
