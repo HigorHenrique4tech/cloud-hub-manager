@@ -8,6 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import orgService from '../services/orgService';
 import billingService from '../services/billingService';
 import adminService from '../services/adminService';
+import PaymentMethodModal from '../components/billing/PaymentMethodModal';
 
 const plans = [
   {
@@ -107,6 +108,16 @@ const plans = [
     salesContact: true,
   },
 ];
+
+const PLAN_AMOUNTS_CENTS = {
+  basic:         39700,
+  standard:      79700,
+  enterprise_e1: 299700,
+  enterprise_e2: 499700,
+  enterprise_e3: 799700,
+};
+
+const getPlanAmountCents = (planId) => PLAN_AMOUNTS_CENTS[planId] || 0;
 
 /* ── Sales Contact Modal ──────────────────────────────────────────────────── */
 
@@ -270,28 +281,36 @@ const PlanSelection = () => {
   const [error, setError] = useState('');
   const [showSalesModal, setShowSalesModal] = useState(false);
   const [enterpriseSent, setEnterpriseSent] = useState(false);
+  const [paymentPlan, setPaymentPlan] = useState(null); // plan selected, awaiting method choice
 
   const inviteToken = searchParams.get('invite');
 
-  const handleSelect = async (planId) => {
+  // Step 1: user clicks "Assinar X" → open payment method modal
+  const handleSelect = (planId) => {
     if (planId === 'enterprise' || planId === 'enterprise_migration') {
       setShowSalesModal(true);
       return;
     }
-
     if (!currentOrg?.slug) {
       handleSkip();
       return;
     }
+    const plan = plans.find((p) => p.id === planId);
+    setPaymentPlan(plan);
+    setError('');
+  };
 
-    setLoading(planId);
+  // Step 2: user confirms method in the modal → call checkout
+  const handlePaymentConfirm = async ({ method, taxId, installments }) => {
+    if (!paymentPlan) return;
+    setLoading(paymentPlan.id);
     setError('');
     try {
-      // Paid plan: create checkout via AbacatePay
-      const result = await billingService.checkout(currentOrg.slug, planId);
+      const result = await billingService.checkout(currentOrg.slug, paymentPlan.id, method, taxId, installments);
       if (result.payment_url) {
         localStorage.setItem('pending_payment_id', result.payment_id);
         localStorage.setItem('pending_payment_org', currentOrg.slug);
+        localStorage.setItem('pending_payment_method', method);
         window.location.href = result.payment_url;
       }
     } catch (err) {
@@ -449,6 +468,15 @@ const PlanSelection = () => {
           <ChevronRight className="w-3.5 h-3.5" />
         </button>
       </div>
+
+      {paymentPlan && (
+        <PaymentMethodModal
+          plan={{ name: paymentPlan.name, amountCents: getPlanAmountCents(paymentPlan.id) }}
+          loading={loading === paymentPlan.id}
+          onClose={() => setPaymentPlan(null)}
+          onConfirm={handlePaymentConfirm}
+        />
+      )}
 
       {showSalesModal && (
         <SalesModal

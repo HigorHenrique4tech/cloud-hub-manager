@@ -1,8 +1,13 @@
 import api from './api';
 
 const billingService = {
-  checkout: async (slug, plan_tier) => {
-    const { data } = await api.post(`/orgs/${slug}/billing/checkout`, { plan_tier });
+  checkout: async (slug, plan_tier, payment_method = 'PIX', tax_id = null, installments = 1) => {
+    const { data } = await api.post(`/orgs/${slug}/billing/checkout`, {
+      plan_tier,
+      payment_method,
+      ...(tax_id && { tax_id }),
+      ...(installments > 1 && { installments }),
+    });
     return data;
   },
 

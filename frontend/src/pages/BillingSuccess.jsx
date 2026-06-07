@@ -15,7 +15,11 @@ const BillingSuccess = () => {
   const timerRef = useRef(null);
 
   const paymentId = searchParams.get('payment_id') || localStorage.getItem('pending_payment_id');
-  const orgSlug = currentOrg?.slug || localStorage.getItem('pending_payment_org');
+  const orgSlug   = currentOrg?.slug || localStorage.getItem('pending_payment_org');
+  const payMethod = localStorage.getItem('pending_payment_method') || 'PIX';
+  // Cartão pode entrar em análise (até ~80s); PIX é quase imediato.
+  const MAX_ATTEMPTS   = payMethod === 'CREDIT_CARD' ? 20 : 10;
+  const POLL_INTERVAL  = payMethod === 'CREDIT_CARD' ? 4000 : 3000;
 
   useEffect(() => {
     if (!paymentId || !orgSlug) return;
@@ -27,6 +31,7 @@ const BillingSuccess = () => {
         if (data.status === 'PAID') {
           localStorage.removeItem('pending_payment_id');
           localStorage.removeItem('pending_payment_org');
+          localStorage.removeItem('pending_payment_method');
           setStatus('success');
           setMessage(`Plano ${data.plan_tier?.charAt(0).toUpperCase() + data.plan_tier?.slice(1)} ativado com sucesso!`);
           await refreshOrgs();
@@ -37,20 +42,25 @@ const BillingSuccess = () => {
         if (data.status === 'EXPIRED' || data.status === 'CANCELLED' || data.status === 'REFUNDED') {
           localStorage.removeItem('pending_payment_id');
           localStorage.removeItem('pending_payment_org');
+          localStorage.removeItem('pending_payment_method');
           setStatus('error');
           setMessage('Pagamento não foi concluído. Tente novamente.');
           return;
         }
 
-        // Still pending — retry
+        // Still pending — retry up to MAX_ATTEMPTS
         attemptsRef.current += 1;
-        if (attemptsRef.current >= 10) {
+        if (attemptsRef.current >= MAX_ATTEMPTS) {
           setStatus('error');
-          setMessage('Tempo limite atingido. Verifique seu pagamento e tente novamente.');
+          setMessage(
+            payMethod === 'CREDIT_CARD'
+              ? 'Pagamento em análise. Você receberá um e-mail de confirmação.'
+              : 'Tempo limite atingido. Verifique seu pagamento e tente novamente.'
+          );
           return;
         }
 
-        timerRef.current = setTimeout(verify, 3000);
+        timerRef.current = setTimeout(verify, POLL_INTERVAL);
       } catch {
         setStatus('error');
         setMessage('Erro ao verificar pagamento.');
@@ -78,7 +88,11 @@ const BillingSuccess = () => {
           <>
             <Loader2 className="w-16 h-16 text-primary animate-spin mx-auto mb-6" />
             <h2 className="text-xl font-semibold text-white mb-2">Confirmando pagamento...</h2>
-            <p className="text-gray-400 text-sm">Aguarde enquanto verificamos seu pagamento</p>
+            <p className="text-gray-400 text-sm">
+              {payMethod === 'CREDIT_CARD'
+                ? 'Aguardando aprovação do cartão. Isso pode levar até 1 minuto.'
+                : 'Aguarde enquanto verificamos seu pagamento via PIX.'}
+            </p>
           </>
         )}
 

@@ -33,6 +33,9 @@ webhook_router = APIRouter(tags=["Billing"])
 
 class CheckoutRequest(BaseModel):
     plan_tier: str
+    payment_method: str = "PIX"   # PIX | CREDIT_CARD
+    tax_id: str | None = None     # CPF (11 dígitos) ou CNPJ (14 dígitos) do cliente
+    installments: int = 1         # Parcelamento (1–12, somente cartão)
 
 
 class DowngradeRequest(BaseModel):
@@ -55,6 +58,12 @@ async def checkout(
     if payload.plan_tier not in valid_paid_tiers:
         raise HTTPException(status_code=400, detail=f"Plano inválido para checkout. Opções: {', '.join(sorted(valid_paid_tiers))}")
 
+    valid_methods = {"PIX", "CREDIT_CARD"}
+    if payload.payment_method not in valid_methods:
+        raise HTTPException(status_code=400, detail="Método de pagamento inválido. Use PIX ou CREDIT_CARD.")
+
+    installments = max(1, min(12, payload.installments or 1))
+
     org = db.query(Organization).filter(Organization.id == member.organization_id).first()
     if org.plan_tier == payload.plan_tier:
         raise HTTPException(status_code=400, detail="Você já está neste plano")
@@ -73,9 +82,11 @@ async def checkout(
         amount_cents=amount,
         return_url=return_url,
         completion_url=completion_url,
+        payment_method=payload.payment_method,
+        tax_id=payload.tax_id,
+        installments=installments,
     )
 
-    # If billing_data has no URL (dev/mock mode), we'll set it after creating the payment record
     payment = Payment(
         organization_id=org.id,
         user_id=member.user.id,
@@ -84,18 +95,19 @@ async def checkout(
         amount=amount,
         status="PENDING",
         payment_url=billing_data.get("url"),
+        payment_method=payload.payment_method,
     )
     db.add(payment)
     db.commit()
     db.refresh(payment)
 
-    # In dev/mock mode (no AbacatePay URL), redirect straight to success page with real payment UUID
+    # Em modo dev (sem API key real), redireciona direto para success com o UUID real
     payment_url = billing_data.get("url") or f"{settings.FRONTEND_URL}/billing/success?payment_id={str(payment.id)}"
 
     log_activity(
         db, member.user, "billing.checkout", "Payment",
         resource_id=str(payment.id),
-        detail=f"plan={payload.plan_tier}, amount={amount}",
+        detail=f"plan={payload.plan_tier}, method={payload.payment_method}, amount={amount}",
         provider="system",
     )
 
@@ -104,6 +116,7 @@ async def checkout(
         "payment_url": payment_url,
         "amount": amount,
         "plan_tier": payload.plan_tier,
+        "payment_method": payload.payment_method,
     }
 
 

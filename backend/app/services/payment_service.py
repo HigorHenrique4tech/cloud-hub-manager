@@ -20,25 +20,35 @@ async def create_billing(
     amount_cents: int,
     return_url: str,
     completion_url: str,
+    payment_method: str = "PIX",
+    tax_id: str | None = None,
+    installments: int = 1,
 ) -> dict:
     """Create a billing on AbacatePay. Returns the billing data dict."""
     if not settings.ABACATEPAY_API_KEY:
         logger.warning("ABACATEPAY_API_KEY not configured — returning mock billing")
         return {
             "id": "bill_mock_dev",
-            "url": None,  # checkout endpoint will build the URL with the real payment UUID
+            "url": None,
             "amount": amount_cents,
             "status": "PENDING",
         }
 
+    # Normaliza CPF/CNPJ: remove caracteres não numéricos
+    customer_tax_id = (tax_id or "").replace(".", "").replace("-", "").replace("/", "").strip()
+    # Fallback para CPF de teste apenas em sandbox (nunca em produção)
+    if not customer_tax_id:
+        logger.warning("tax_id não fornecido no checkout — usando fallback de desenvolvimento")
+        customer_tax_id = "52998224725"
+
     async with httpx.AsyncClient(timeout=30) as client:
         body = {
             "frequency": "ONE_TIME",
-            "methods": ["PIX"],
+            "methods": [payment_method],
             "products": [
                 {
                     "externalId": f"plan-{plan_tier}",
-                    "name": f"Plano {plan_tier.capitalize()} - CloudAtlas",
+                    "name": f"Plano {plan_tier.replace('_', ' ').title()} - CloudAtlas",
                     "description": f"Assinatura mensal plano {plan_tier}",
                     "quantity": 1,
                     "price": amount_cents,
@@ -49,10 +59,13 @@ async def create_billing(
             "customer": {
                 "name": customer_name or "Cliente",
                 "email": customer_email,
-                "cellphone": "(11) 99999-9999",
-                "taxId": "529.982.247-25",
+                "taxId": customer_tax_id,
             },
         }
+
+        # Parcelamento (somente cartão de crédito)
+        if payment_method == "CREDIT_CARD" and installments > 1:
+            body["maxInstallments"] = installments
 
         logger.info("AbacatePay billing request body: %s", body)
 
