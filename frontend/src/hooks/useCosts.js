@@ -63,11 +63,16 @@ export function useCosts({ startDate, endDate, providerFilter = 'all' }) {
   const prevStartDate = fmt(new Date(new Date(startDate).getTime() - periodMs - 86400000));
 
   // ── Queries ──────────────────────────────────────────────────────────────
+  // Historical ranges (endDate before today) are immutable — cache for 30 min.
+  const todayStr = fmt(today);
+  const isHistoricalRange = !!endDate && endDate < todayStr;
+
   const costsQ = useQuery({
     queryKey: ['combined-costs', startDate, endDate],
     queryFn: () => costService.getCombinedCosts(startDate, endDate, 'DAILY'),
     enabled: !!startDate && !!endDate,
     retry: false,
+    staleTime: isHistoricalRange ? 30 * 60 * 1000 : 0,
   });
 
   const prevCostsQ = useQuery({

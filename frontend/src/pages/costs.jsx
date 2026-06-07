@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DollarSign, TrendingUp, TrendingDown, AlertCircle, Calendar, X, Info } from 'lucide-react';
 import Layout from '../components/layout/layout';
+import { useDebounce } from '../hooks/useDebounce';
 import { SkeletonCard, SkeletonChart } from '../components/common/SkeletonLoader';
 import CostReportModal from '../components/finops/CostReportModal';
 import MetricCard from '../components/costs/MetricCard';
@@ -49,10 +50,15 @@ const Costs = () => {
   const [activeTab, setActiveTab] = useState(0);
 
   // ── Date range ─────────────────────────────────────────────────────────────
+  // Debounce custom inputs so the query only fires after the user stops changing
+  // dates (avoids intermediate queries when switching start → then end).
+  const debouncedCustomStart = useDebounce(customStart, 700);
+  const debouncedCustomEnd   = useDebounce(customEnd,   700);
+
   const period = PERIODS[periodIdx];
-  const endDate = isCustom && customEnd ? customEnd : fmt(today);
-  const startDate = isCustom && customStart
-    ? customStart
+  const endDate = isCustom && debouncedCustomEnd ? debouncedCustomEnd : fmt(today);
+  const startDate = isCustom && debouncedCustomStart
+    ? debouncedCustomStart
     : period.mtd
       ? fmt(new Date(today.getFullYear(), today.getMonth(), 1))
       : fmt(new Date(today.getTime() - period.days * 86400000));
@@ -74,7 +80,7 @@ const Costs = () => {
   } = useCosts({ startDate, endDate, providerFilter });
 
   const activePeriodLabel = isCustom
-    ? `${customStart} → ${customEnd}`
+    ? `${startDate} → ${endDate}`
     : PERIODS[periodIdx].label;
 
   return (
