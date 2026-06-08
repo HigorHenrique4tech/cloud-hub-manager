@@ -268,6 +268,16 @@ async def ws_list_rg_resources(
     return await _run(svc.list_resource_group_resources, rg_name)
 
 
+@ws_router.get("/resource-groups-overview")
+async def ws_resource_groups_overview(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Return all RGs with per-type resource counts (single subscription sweep)."""
+    svc = _get_single_azure_service(member, db)
+    return await _run(svc.get_resource_groups_overview)
+
+
 # ── Storage Accounts ─────────────────────────────────────────────────────
 
 @ws_router.get("/storage-accounts")

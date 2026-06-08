@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight, CheckSquare, Square, Power, PowerOff,
   Store, Link2, ShieldCheck, AlertCircle, Check, RefreshCcw, Shield,
   Globe, CalendarClock, Package, Activity, CreditCard, Zap,
-  Receipt, Download, FileText, DollarSign, Clock, Mail, TrendingUp,
+  Receipt, Download, FileText, DollarSign, Clock, Mail, TrendingUp, FileDown,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '../components/layout/layout';
@@ -1935,6 +1935,8 @@ const ManagedOrgsPage = () => {
   const [notesTarget, setNotesTarget]   = useState(null);
   const [brandingOrg, setBrandingOrg]   = useState(null);
   const [inviteTarget, setInviteTarget] = useState(null);
+  const [reportMonths, setReportMonths] = useState(6);
+  const [generatingReport, setGeneratingReport] = useState(false);
 
   // Pagination & search
   const [page, setPage]       = useState(1);
@@ -2041,6 +2043,23 @@ const ManagedOrgsPage = () => {
     setSelectedOrgs(new Set());
   };
 
+  const handleDownloadReport = async (months) => {
+    setGeneratingReport(true);
+    try {
+      const blob = await orgService.getExecutiveReport(currentOrg.slug, months);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `relatorio-parceiros-${new Date().toISOString().slice(0, 10)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Erro ao gerar relatório:', err);
+    } finally {
+      setGeneratingReport(false);
+    }
+  };
+
   if (orgsQ.isError) {
     return (
       <Layout>
@@ -2090,6 +2109,30 @@ const ManagedOrgsPage = () => {
               <button onClick={() => orgsQ.refetch()} title="Atualizar agora"
                 className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
                 <RefreshCw size={13} />
+              </button>
+            </div>
+            {/* Report download */}
+            <div className="flex items-center gap-1.5">
+              <select
+                value={reportMonths}
+                onChange={(e) => setReportMonths(Number(e.target.value))}
+                className="text-xs rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value={3}>3 meses</option>
+                <option value={6}>6 meses</option>
+                <option value={12}>12 meses</option>
+              </select>
+              <button
+                onClick={() => handleDownloadReport(reportMonths)}
+                disabled={generatingReport}
+                title="Gerar Relatório Executivo PDF"
+                className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 transition-colors"
+              >
+                {generatingReport
+                  ? <RefreshCw size={13} className="animate-spin" />
+                  : <FileDown size={13} />
+                }
+                {generatingReport ? 'Gerando...' : 'PDF'}
               </button>
             </div>
             {activeView === 'orgs' && (

@@ -365,6 +365,62 @@ class AzureService:
             logger.error(f"Error listing resources in RG {rg_name}: {e}")
             return {'success': False, 'error': str(e), 'resources': []}
 
+    def get_resource_groups_overview(self) -> Dict:
+        """List all RGs enriched with per-type resource counts (single subscription sweep)."""
+        try:
+            rg_map = {}
+            for rg in self.resource_client.resource_groups.list():
+                rg_map[rg.name] = {
+                    'name': rg.name,
+                    'location': rg.location,
+                    'tags': rg.tags or {},
+                    'provisioning_state': rg.properties.provisioning_state if rg.properties else None,
+                    'resource_counts': {},
+                    'resources': [],
+                    'total_resources': 0,
+                }
+
+            # Single sweep of all resources in the subscription
+            for r in self.resource_client.resources.list():
+                parts = (r.id or '').split('/')
+                try:
+                    rg_idx = [p.lower() for p in parts].index('resourcegroups')
+                    rg_name = parts[rg_idx + 1]
+                except (ValueError, IndexError):
+                    continue
+
+                if rg_name not in rg_map:
+                    rg_map[rg_name] = {
+                        'name': rg_name,
+                        'location': r.location or '',
+                        'tags': {},
+                        'provisioning_state': None,
+                        'resource_counts': {},
+                        'resources': [],
+                        'total_resources': 0,
+                    }
+
+                type_key = r.type.split('/')[-1] if r.type else 'unknown'
+                rg_data = rg_map[rg_name]
+                rg_data['resource_counts'][type_key] = rg_data['resource_counts'].get(type_key, 0) + 1
+                rg_data['total_resources'] += 1
+                rg_data['resources'].append({
+                    'name': r.name,
+                    'type': r.type,
+                    'location': r.location,
+                })
+
+            rgs = sorted(rg_map.values(), key=lambda x: (-x['total_resources'], x['name']))
+            return {
+                'success': True,
+                'resource_groups': rgs,
+                'total_rgs': len(rgs),
+                'total_resources': sum(r['total_resources'] for r in rgs),
+            }
+        except Exception as e:
+            logger.error(f"Error getting resource groups overview: {e}")
+            return {'success': False, 'error': str(e), 'resource_groups': []}
+
     # ── Storage ───────────────────────────────────────────────────────────────
 
     def list_storage_accounts(self) -> Dict:

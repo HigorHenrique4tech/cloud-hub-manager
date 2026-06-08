@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, MonitorPlay, HardDrive, Network, Database, Globe, ShieldAlert, HardDriveDownload, Lightbulb, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, MonitorPlay, HardDrive, Network, Database, Globe, ShieldAlert, HardDriveDownload, Lightbulb, ChevronLeft, ChevronRight, Layers } from 'lucide-react';
 
 const azureNavItems = [
   { to: '/azure', label: 'Visão Geral', icon: LayoutGrid, end: true },
+  { to: '/azure/resource-groups', label: 'Resource Groups', icon: Layers },
   { to: '/azure/vms', label: 'Virtual Machines', icon: MonitorPlay },
   { to: '/azure/storage', label: 'Storage Accounts', icon: HardDrive },
   { to: '/azure/vnets', label: 'Virtual Networks', icon: Network },

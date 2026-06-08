@@ -56,6 +56,7 @@ const AzureAppServices = lazy(() => import('./pages/azure/AzureAppServices'));
 const AzureSecurity = lazy(() => import('./pages/azure/AzureSecurity'));
 const AzureBackup = lazy(() => import('./pages/azure/AzureBackup'));
 const AzureAdvisor = lazy(() => import('./pages/azure/AzureAdvisor'));
+const AzureResourceGroups = lazy(() => import('./pages/azure/AzureResourceGroups'));
 
 // GCP
 const GcpOverview = lazy(() => import('./pages/gcp/GcpOverview'));
@@ -177,6 +178,7 @@ function App() {
                 <Route path="/gcp/advisor" element={<PR><GcpAdvisor /></PR>} />
                 {/* Azure */}
                 <Route path="/azure" element={<PR><AzureOverview /></PR>} />
+                <Route path="/azure/resource-groups" element={<PR><AzureResourceGroups /></PR>} />
                 <Route path="/azure/vms" element={<PR><AzureVMs /></PR>} />
                 <Route path="/azure/storage" element={<PR><AzureStorage /></PR>} />
                 <Route path="/azure/vnets" element={<PR><AzureVNets /></PR>} />

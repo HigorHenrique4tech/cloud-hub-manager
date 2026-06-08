@@ -686,6 +686,255 @@ def _generate_pdf(data: dict, report_settings, logo_bytes: Optional[bytes] = Non
     return buf.getvalue()
 
 
+# ── MSP / Multi-Partner Executive Report ────────────────────────────────────────
+
+
+def generate_msp_report_pdf(
+    master_org_name: str,
+    partners: list,
+    month_list: list,
+    total_cost: float,
+    logo_bytes: Optional[bytes] = None,
+    branding: dict = None,
+    generated_at: Optional[datetime] = None,
+) -> bytes:
+    """
+    Generate a multi-partner executive PDF.
+    `partners` is the same list returned by /managed-orgs/consolidated-costs enriched
+    with health_score, health_status, workspaces_count, cloud_accounts_count, members_count.
+    """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.lib.utils import ImageReader
+        from reportlab.platypus import (
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+            HRFlowable, KeepTogether,
+        )
+        from reportlab.graphics.shapes import Drawing, Rect, String, Line
+    except ImportError:
+        raise RuntimeError("reportlab não instalado.")
+
+    PAGE_W, PAGE_H = A4
+    HEADER_H = 72
+    FOOTER_H = 22
+    L_MARGIN = R_MARGIN = 2 * cm
+    CONTENT_W = PAGE_W - L_MARGIN - R_MARGIN
+
+    BLUE       = colors.HexColor((branding or {}).get("color_primary", "#2563EB"))
+    BLUE_LIGHT = colors.HexColor("#EFF6FF")
+    BLUE_BAR   = colors.HexColor("#93C5FD")
+    GRAY       = colors.HexColor("#6B7280")
+    GRAY_LIGHT = colors.HexColor("#F9FAFB")
+    SLATE      = colors.HexColor("#374151")
+    GREEN      = colors.HexColor("#10B981")
+    AMBER      = colors.HexColor("#F59E0B")
+    RED        = colors.HexColor("#EF4444")
+
+    _platform = (branding or {}).get("platform_name", "CloudAtlas")
+    gen_date = (generated_at or datetime.utcnow()).strftime("%d/%m/%Y %H:%M") + " UTC"
+
+    def _draw_page(canvas, doc):
+        canvas.saveState()
+        canvas.setFillColor(BLUE)
+        canvas.rect(0, PAGE_H - HEADER_H, PAGE_W, HEADER_H, fill=1, stroke=0)
+        LOGO_BOX = 72
+        canvas.setFillColor(colors.white)
+        canvas.rect(0, PAGE_H - HEADER_H, LOGO_BOX, HEADER_H, fill=1, stroke=0)
+        if logo_bytes:
+            try:
+                img_reader = ImageReader(io.BytesIO(logo_bytes))
+                canvas.drawImage(img_reader, 6, PAGE_H - HEADER_H + 6,
+                                 width=LOGO_BOX - 12, height=HEADER_H - 12,
+                                 preserveAspectRatio=True, mask="auto")
+            except Exception:
+                pass
+        text_x = LOGO_BOX + 14
+        canvas.setFillColor(colors.white)
+        canvas.setFont("Helvetica-Bold", 16)
+        canvas.drawString(text_x, PAGE_H - 34, "Relatório Executivo Multi-Parceiro")
+        canvas.setFont("Helvetica", 9.5)
+        canvas.setFillColor(colors.HexColor("#BFDBFE"))
+        canvas.drawString(text_x, PAGE_H - 52, f"{master_org_name}   ·   Gerado em {gen_date}")
+        canvas.setFillColor(colors.HexColor("#DBEAFE"))
+        canvas.setFont("Helvetica-Bold", 9)
+        canvas.drawRightString(PAGE_W - 16, PAGE_H - 42, _platform)
+        # Footer
+        canvas.setFillColor(colors.HexColor("#F3F4F6"))
+        canvas.rect(0, 0, PAGE_W, FOOTER_H, fill=1, stroke=0)
+        if (branding or {}).get("powered_by", True):
+            canvas.setFillColor(BLUE)
+            canvas.setFont("Helvetica-Bold", 7)
+            canvas.drawString(16, 7, _platform)
+        canvas.setFillColor(GRAY)
+        canvas.setFont("Helvetica", 7)
+        canvas.drawCentredString(PAGE_W / 2, 7,
+            "Relatório gerado automaticamente · Dados consolidados de organizações parceiras gerenciadas.")
+        canvas.drawRightString(PAGE_W - 16, 7, f"Pág. {doc.page}")
+        canvas.restoreState()
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4,
+                            leftMargin=L_MARGIN, rightMargin=R_MARGIN,
+                            topMargin=HEADER_H + 16, bottomMargin=FOOTER_H + 14)
+    styles = getSampleStyleSheet()
+
+    body_style = ParagraphStyle("Body", parent=styles["Normal"],
+                                fontSize=9.5, textColor=SLATE, leading=14)
+    meta_style = ParagraphStyle("Meta", parent=body_style,
+                                fontSize=8.5, textColor=GRAY)
+
+    def _section_header(text: str):
+        style = ParagraphStyle("SH", parent=styles["Normal"],
+                               fontSize=11, textColor=BLUE, fontName="Helvetica-Bold")
+        t = Table([[Paragraph(text, style)]], colWidths=[CONTENT_W])
+        t.setStyle(TableStyle([
+            ("LINEBEFORE",    (0, 0), (0, -1), 3, BLUE),
+            ("BACKGROUND",    (0, 0), (-1, -1), BLUE_LIGHT),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 10),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        return t
+
+    def _tbl_style(header_col=BLUE):
+        return TableStyle([
+            ("BACKGROUND",    (0, 0), (-1, 0),  header_col),
+            ("TEXTCOLOR",     (0, 0), (-1, 0),  colors.white),
+            ("FONTNAME",      (0, 0), (-1, 0),  "Helvetica-Bold"),
+            ("FONTSIZE",      (0, 0), (-1, -1), 8.5),
+            ("ROWBACKGROUNDS",(0, 1), (-1, -1), [colors.white, GRAY_LIGHT]),
+            ("GRID",          (0, 0), (-1, -1), 0.3, colors.HexColor("#E5E7EB")),
+            ("LEFTPADDING",   (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING",  (0, 0), (-1, -1), 8),
+            ("TOPPADDING",    (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ])
+
+    def _fmt_cost(v: float) -> str:
+        return f"${v:,.2f}"
+
+    story = []
+
+    # ── Executive Summary KPIs ─────────────────────────────────────────────────
+    story.append(_section_header("Resumo Executivo"))
+    story.append(Spacer(1, 0.3 * cm))
+
+    n_healthy  = sum(1 for p in partners if p.get("health_status") == "healthy")
+    n_warning  = sum(1 for p in partners if p.get("health_status") == "warning")
+    n_critical = sum(1 for p in partners if p.get("health_status") == "critical")
+    total_ws   = sum(p.get("workspaces_count", 0) for p in partners)
+    total_accs = sum(p.get("cloud_accounts_count", 0) for p in partners)
+    total_mem  = sum(p.get("members_count", 0) for p in partners)
+
+    kpi_data = [
+        ["Parceiras", "Saudáveis", "Em Alerta", "Críticas", "Workspaces", "Contas Cloud", "Custo Total"],
+        [str(len(partners)), str(n_healthy), str(n_warning), str(n_critical),
+         str(total_ws), str(total_accs), _fmt_cost(total_cost)],
+    ]
+    kpi_col_w = CONTENT_W / 7
+    kpi_t = Table(kpi_data, colWidths=[kpi_col_w] * 7)
+    kpi_ts = _tbl_style()
+    kpi_ts.add("FONTNAME", (0, 1), (-1, -1), "Helvetica-Bold")
+    kpi_ts.add("FONTSIZE", (0, 1), (-1, -1), 12)
+    kpi_ts.add("ALIGN",    (0, 0), (-1, -1), "CENTER")
+    kpi_ts.add("TEXTCOLOR", (1, 1), (1, 1), GREEN)
+    kpi_ts.add("TEXTCOLOR", (2, 1), (2, 1), AMBER)
+    kpi_ts.add("TEXTCOLOR", (3, 1), (3, 1), RED)
+    kpi_t.setStyle(kpi_ts)
+    story.append(kpi_t)
+    story.append(Spacer(1, 0.5 * cm))
+
+    # ── Cost bar chart by month ────────────────────────────────────────────────
+    if month_list and total_cost > 0:
+        story.append(_section_header("Evolução de Custos (Consolidado)"))
+        story.append(Spacer(1, 0.25 * cm))
+
+        monthly_totals = {}
+        for p in partners:
+            for ym, v in (p.get("costs_by_month") or {}).items():
+                monthly_totals[ym] = monthly_totals.get(ym, 0) + v
+
+        history = [{"period": ym, "spend": monthly_totals.get(ym, 0)} for ym in month_list]
+
+        if any(h["spend"] > 0 for h in history):
+            DW, DH = CONTENT_W, 130
+            drawing = Drawing(DW, DH)
+            max_spend = max(h["spend"] for h in history) or 1
+            n = len(history)
+            bar_w = min(54, int(DW * 0.65 / n))
+            gap = (DW - n * bar_w) / (n + 1)
+            base_y = 28
+
+            for frac in (0.25, 0.5, 0.75, 1.0):
+                gy = base_y + frac * (DH - base_y - 18)
+                drawing.add(Line(0, gy, DW, gy, strokeColor=colors.HexColor("#E5E7EB"), strokeWidth=0.5))
+
+            for i, h in enumerate(history):
+                bar_h = max(3, int((h["spend"] / max_spend) * (DH - base_y - 20)))
+                x = gap + i * (bar_w + gap)
+                fill = BLUE if i == n - 1 else BLUE_BAR
+                drawing.add(Rect(x, base_y, bar_w, bar_h, fillColor=fill, strokeColor=None))
+                label = h["period"][5:] + "/" + h["period"][:4]
+                drawing.add(String(x + bar_w / 2, 12, label,
+                                   fontName="Helvetica", fontSize=7,
+                                   fillColor=GRAY, textAnchor="middle"))
+                if h["spend"] > 0:
+                    drawing.add(String(x + bar_w / 2, base_y + bar_h + 4,
+                                       _fmt_cost(h["spend"]),
+                                       fontName="Helvetica-Bold", fontSize=7,
+                                       fillColor=colors.HexColor("#1D4ED8"),
+                                       textAnchor="middle"))
+
+            story.append(drawing)
+            story.append(Spacer(1, 0.4 * cm))
+
+    # ── Per-partner table ──────────────────────────────────────────────────────
+    story.append(_section_header("Detalhes por Organização Parceira"))
+    story.append(Spacer(1, 0.25 * cm))
+
+    HEALTH_COLOR = {"healthy": GREEN, "warning": AMBER, "critical": RED}
+
+    header_row = ["Organização", "Score", "Status", "Workspaces", "Contas", "Membros", "Custo Total"]
+    col_widths = [CONTENT_W * 0.28, CONTENT_W * 0.08, CONTENT_W * 0.12,
+                  CONTENT_W * 0.12, CONTENT_W * 0.10, CONTENT_W * 0.10, CONTENT_W * 0.20]
+
+    rows = [header_row]
+    row_health_colors = []
+    for p in partners:
+        status_map = {"healthy": "Saudável", "warning": "Em Alerta", "critical": "Crítico"}
+        status_label = status_map.get(p.get("health_status", ""), p.get("health_status", "—"))
+        rows.append([
+            p.get("name", "—"),
+            str(p.get("health_score", "—")),
+            status_label,
+            str(p.get("workspaces_count", 0)),
+            str(p.get("cloud_accounts_count", 0)),
+            str(p.get("members_count", 0)),
+            _fmt_cost(p.get("total", 0)),
+        ])
+        row_health_colors.append(HEALTH_COLOR.get(p.get("health_status"), GRAY))
+
+    tbl = Table(rows, colWidths=col_widths, repeatRows=1)
+    ts = _tbl_style()
+    ts.add("ALIGN", (1, 0), (-1, -1), "CENTER")
+    ts.add("ALIGN", (0, 0), (0, -1), "LEFT")
+    ts.add("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold")
+    # Color score column per health
+    for i, hc in enumerate(row_health_colors, start=1):
+        ts.add("TEXTCOLOR", (1, i), (2, i), hc)
+        ts.add("FONTNAME",  (1, i), (2, i), "Helvetica-Bold")
+    tbl.setStyle(ts)
+    story.append(KeepTogether(tbl))
+
+    doc.build(story, onFirstPage=_draw_page, onLaterPages=_draw_page)
+    return buf.getvalue()
+
+
 # ── Email HTML ─────────────────────────────────────────────────────────────────
 
 

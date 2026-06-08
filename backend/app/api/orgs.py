@@ -3,6 +3,7 @@ import secrets
 from math import ceil
 from datetime import datetime, timedelta
 from fastapi import APIRouter, HTTPException, Depends, Path, Query, Request
+from fastapi.responses import Response
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func as sa_func, desc
 from pydantic import BaseModel
@@ -1039,6 +1040,124 @@ async def managed_orgs_widget_summary(
         **counts,
         "partners_summary": partners_summary[:10],
     }
+
+
+@router.get("/{org_slug}/managed-orgs/executive-report")
+async def managed_orgs_executive_report(
+    months: int = Query(6, ge=1, le=12),
+    member: MemberContext = Depends(get_current_member),
+    db: Session = Depends(get_db),
+):
+    """Generate and return a PDF executive report for all partner orgs."""
+    from app.models.db_models import FinOpsCostHistory, Workspace
+    from app.services.report_service import generate_msp_report_pdf, _load_logo, _load_org_logo
+    from app.services.branding_service import get_branding
+    from collections import defaultdict
+    from datetime import date
+
+    master_org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if master_org.plan_tier not in ("enterprise", "enterprise_e1", "enterprise_e2", "enterprise_e3", "enterprise_migration"):
+        raise HTTPException(status_code=403, detail="Recurso exclusivo do plano Enterprise.")
+
+    child_orgs = db.query(Organization).filter(
+        Organization.parent_org_id == master_org.id,
+    ).all()
+
+    # Build month list
+    month_list = []
+    cur = date.today()
+    for _ in range(months):
+        month_list.insert(0, f"{cur.year:04d}-{cur.month:02d}")
+        cur = cur.replace(month=cur.month - 1) if cur.month > 1 else cur.replace(year=cur.year - 1, month=12)
+
+    # Bulk stats
+    child_ids = {o.id: o for o in child_orgs}
+    stats = _build_managed_org_stats(db, list(child_ids.keys())) if child_ids else {}
+
+    # Cost aggregation
+    ws_rows = db.query(Workspace.id, Workspace.organization_id).filter(
+        Workspace.organization_id.in_(child_ids.keys()),
+    ).all() if child_ids else []
+    ws_to_org = {str(ws_id): org_id for ws_id, org_id in ws_rows}
+
+    cost_rows = db.query(FinOpsCostHistory).filter(
+        FinOpsCostHistory.workspace_id.in_(list(ws_to_org.keys())),
+        FinOpsCostHistory.year_month.in_(month_list),
+    ).all() if ws_to_org else []
+
+    org_months: dict = defaultdict(lambda: defaultdict(float))
+    for row in cost_rows:
+        org_id = ws_to_org.get(str(row.workspace_id))
+        if org_id:
+            org_months[org_id][row.year_month] += float(row.spend)
+
+    # Build partner list with all needed fields
+    partners = []
+    total_cost = 0.0
+    for org in child_orgs:
+        s = stats.get(org.id, {})
+        markup = org.cost_markup_pct or 0
+        raw = org_months.get(org.id, {})
+        costs_by_month = {ym: round(raw.get(ym, 0) * (1 + markup / 100), 2) for ym in month_list}
+        org_total = sum(costs_by_month.values())
+        total_cost += org_total
+
+        # Compute health score inline (mirrors _managed_org_to_dict logic)
+        if not org.is_active:
+            health_score, health_status = 0, "critical"
+        else:
+            ws_count = s.get("ws_count", 0)
+            acc_count = s.get("acc_count", 0)
+            mem_count = s.get("mem_count", 0)
+            last_act = s.get("last_activity_at")
+            score = 0
+            if ws_count >= 1: score += 20
+            if acc_count >= 1: score += 20
+            if acc_count >= 3: score += 10
+            if mem_count >= 2: score += 20
+            if last_act:
+                days_since = (datetime.utcnow() - last_act).days
+                if days_since <= 7: score += 30
+                elif days_since <= 30: score += 20
+                elif days_since <= 90: score += 10
+            health_score = min(score, 100)
+            health_status = "healthy" if health_score >= 70 else ("warning" if health_score >= 40 else "critical")
+
+        partners.append({
+            "name": org.name,
+            "slug": org.slug,
+            "is_active": org.is_active,
+            "health_score": health_score,
+            "health_status": health_status,
+            "workspaces_count": s.get("ws_count", 0),
+            "cloud_accounts_count": s.get("acc_count", 0),
+            "members_count": s.get("mem_count", 0),
+            "cost_markup_pct": markup,
+            "costs_by_month": costs_by_month,
+            "total": round(org_total, 2),
+        })
+
+    partners.sort(key=lambda p: p["total"], reverse=True)
+
+    branding = get_branding(master_org, db)
+    logo_bytes = _load_org_logo(branding=branding, db=db, org=master_org) or _load_logo()
+
+    pdf_bytes = generate_msp_report_pdf(
+        master_org_name=master_org.name,
+        partners=partners,
+        month_list=month_list,
+        total_cost=round(total_cost, 2),
+        logo_bytes=logo_bytes,
+        branding=branding,
+        generated_at=datetime.utcnow(),
+    )
+
+    filename = f"relatorio-parceiros-{date.today().isoformat()}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/{org_slug}/managed-orgs/consolidated-costs")

@@ -82,6 +82,8 @@ export const orgService = {
     (await api.get(`/orgs/${slug}/managed-orgs/consolidated-costs`, { params: { months } })).data,
   updatePartnerMarkup: async (masterSlug, partnerSlug, cost_markup_pct) =>
     (await api.patch(`/orgs/${masterSlug}/managed-orgs/${partnerSlug}/markup`, { cost_markup_pct })).data,
+  getExecutiveReport: async (slug, months = 6) =>
+    api.get(`/orgs/${slug}/managed-orgs/executive-report`, { params: { months }, responseType: 'blob' }).then(r => r.data),
 
   // ── Currency ────────────────────────────────────────────────────────────
   updateCurrency: async (slug, data) =>

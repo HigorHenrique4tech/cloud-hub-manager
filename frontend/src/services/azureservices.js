@@ -19,6 +19,7 @@ export const azureService = {
   // Resource Groups
   listResourceGroups: async () => (await api.get(wsUrl('/azure/resource-groups'))).data,
   listResourceGroupResources: async (rgName) => (await api.get(wsUrl(`/azure/resource-groups/${encodeURIComponent(rgName)}/resources`))).data,
+  getResourceGroupsOverview: () => api.get(wsUrl('/azure/resource-groups-overview')).then(r => r.data),
 
   // Storage Accounts
   listStorageAccounts: async () => (await api.get(wsUrl('/azure/storage-accounts'))).data,
