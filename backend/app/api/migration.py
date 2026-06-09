@@ -468,6 +468,106 @@ async def get_mailbox_ledger(
     return svc.get_mailbox_ledger(db, str(member.workspace_id), project_id, mailbox_id, limit=limit)
 
 
+@ws_router.post("/projects/{project_id}/pre-assess")
+async def pre_assess_project(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Avalia caixas de e-mail pendentes: conta mensagens e estima tamanho via Graph API.
+    Atualiza items_total em cada caixa. Não inicia a migração.
+    """
+    from app.models.db_models import MigrationProject as MPrj, MigrationMailbox as MMb
+    from app.workers.engines import get_engine
+    from app.services.migration_service import decrypt_project_configs
+
+    prj = db.query(MPrj).filter(
+        MPrj.id == project_id,
+        MPrj.workspace_id == member.workspace_id,
+    ).first()
+    if not prj:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    if prj.status == "running":
+        raise HTTPException(status_code=400, detail="Não é possível avaliar enquanto a migração está em andamento.")
+
+    mailboxes = db.query(MMb).filter(
+        MMb.project_id == project_id,
+        MMb.object_type == "email",
+        MMb.status.in_(["pending", "failed", "paused"]),
+    ).all()
+
+    if not mailboxes:
+        return {
+            "project_id": project_id,
+            "mailboxes_assessed": 0,
+            "total_messages": 0,
+            "total_estimated_size_bytes": 0,
+            "warnings": [],
+            "mailboxes": [],
+        }
+
+    src_cfg, dst_cfg = decrypt_project_configs(db, prj)
+    results = []
+    total_messages = 0
+    total_size_bytes = 0
+    warnings = []
+
+    for mb in mailboxes:
+        try:
+            engine = get_engine(
+                migration_type=prj.migration_type,
+                source_cfg=src_cfg,
+                dest_cfg=dst_cfg,
+                db=db,
+                mailbox=mb,
+            )
+            result = engine.assess()
+            mb.items_total = result["total_messages"]
+            db.add(mb)
+
+            size = result["estimated_size_bytes"]
+            total_messages += result["total_messages"]
+            total_size_bytes += size
+
+            entry = {
+                "mailbox_id": str(mb.id),
+                "source_email": mb.source_email,
+                "total_messages": result["total_messages"],
+                "estimated_size_bytes": size,
+                "folders": result.get("folders", []),
+                "status": "ok",
+            }
+            if size > 50 * 1024 ** 3:
+                warnings.append(
+                    f"{mb.source_email}: caixa muito grande ({size // (1024 ** 3)} GB estimados)"
+                )
+            results.append(entry)
+        except Exception as exc:
+            results.append({
+                "mailbox_id": str(mb.id),
+                "source_email": mb.source_email,
+                "status": "error",
+                "error": str(exc)[:300],
+            })
+
+    db.commit()
+
+    if total_size_bytes > 200 * 1024 ** 3:
+        warnings.append(
+            f"Volume total estimado: {total_size_bytes // (1024 ** 3)} GB — a migração pode demorar muitas horas."
+        )
+
+    return {
+        "project_id": project_id,
+        "mailboxes_assessed": len(results),
+        "total_messages": total_messages,
+        "total_estimated_size_bytes": total_size_bytes,
+        "warnings": warnings,
+        "mailboxes": results,
+    }
+
+
 # ── Operações de execução ─────────────────────────────────────────────────────
 
 @ws_router.post("/projects/{project_id}/verify")

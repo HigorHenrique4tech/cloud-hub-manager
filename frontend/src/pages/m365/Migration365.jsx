@@ -40,6 +40,7 @@ const migrationApi = {
   resolveSpSite:    (project_id, url, side = 'source') =>
                       api.post(wsUrl('/migration/resolve-sharepoint-site'), { project_id, url, side }).then(r => r.data),
   getMailboxLedger: (pid, mid)      => api.get(wsUrl(`/migration/projects/${pid}/mailboxes/${mid}/ledger`)).then(r => r.data),
+  preAssess:        (id)             => api.post(wsUrl(`/migration/projects/${id}/pre-assess`)).then(r => r.data),
   listSourceObjects: (pid, type, search) => api.get(wsUrl(`/migration/projects/${pid}/source-objects`), { params: { object_type: type, search: search || '' } }).then(r => r.data),
   listDestObjects:   (pid, type, search) => api.get(wsUrl(`/migration/projects/${pid}/dest-objects`),   { params: { object_type: type, search: search || '' } }).then(r => r.data),
   getLicenseSummary: ()             => api.get(wsUrl('/migration/license-summary')).then(r => r.data),
@@ -992,30 +993,58 @@ const AddMailboxesModal = ({ projectId, objectType = 'email', onClose }) => {
 
 // ── Mailbox Ledger Drawer ─────────────────────────────────────────────────────
 
-const MailboxLedgerDrawer = ({ projectId, mb, onClose }) => {
+function _categorizeError(err) {
+  if (!err) return null;
+  const s = err.toLowerCase();
+  if (s.includes('429') || s.includes('throttl') || s.includes('too many requests'))
+    return { label: 'Throttle', cls: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' };
+  if (s.includes('401') || s.includes('403') || s.includes('unauthorized') || s.includes('forbidden') || s.includes('access denied') || s.includes('permiss'))
+    return { label: 'Permissão', cls: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400' };
+  if (s.includes('quota') || s.includes('size') || s.includes('too large') || s.includes('payload'))
+    return { label: 'Tamanho', cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400' };
+  if (s.includes('timeout') || s.includes('timed out') || s.includes('connect'))
+    return { label: 'Timeout', cls: 'bg-sky-100 text-sky-700 dark:bg-sky-900/20 dark:text-sky-400' };
+  return { label: 'Erro', cls: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400' };
+}
+
+const MailboxLedgerDrawer = ({ projectId, mb, onClose, onRetry }) => {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
+  const [filterFailed, setFilterFailed] = useState(false);
   const PER_PAGE = 50;
 
-  const { data, isLoading } = useQuery({
+  const qc = useQueryClient();
+  const { data, isLoading, refetch } = useQuery({
     queryKey: ['mb-ledger', projectId, mb.id],
     queryFn: () => migrationApi.getMailboxLedger(projectId, mb.id),
     staleTime: 60_000,
   });
 
-  const entries = data?.entries || [];
-  const filtered = search
-    ? entries.filter(e =>
-        (e.uid || e.message_id || '').toLowerCase().includes(search.toLowerCase()) ||
-        (e.folder || '').toLowerCase().includes(search.toLowerCase())
-      )
-    : entries;
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  const retryMbMut = useMutation({
+    mutationFn: () => migrationApi.retryMailbox(projectId, mb.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
+      qc.invalidateQueries({ queryKey: ['migration-project', projectId] });
+      if (onRetry) onRetry();
+      onClose();
+    },
+  });
 
+  const entries = data?.entries || [];
+  const failed   = entries.filter(e => e.status === 'failed').length;
   const copied   = entries.filter(e => e.status === 'copied' || e.status === 'verified').length;
   const verified = entries.filter(e => e.status === 'verified').length;
-  const failed   = entries.filter(e => e.status === 'failed').length;
+
+  const base = filterFailed ? entries.filter(e => e.status === 'failed') : entries;
+  const filtered = search
+    ? base.filter(e =>
+        (e.uid || e.message_id || '').toLowerCase().includes(search.toLowerCase()) ||
+        (e.folder || '').toLowerCase().includes(search.toLowerCase()) ||
+        (e.error || '').toLowerCase().includes(search.toLowerCase())
+      )
+    : base;
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+  const paged = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
   return (
     <div className="fixed inset-0 z-50 flex" onClick={onClose}>
@@ -1024,41 +1053,79 @@ const MailboxLedgerDrawer = ({ projectId, mb, onClose }) => {
         className="w-full max-w-2xl bg-white dark:bg-gray-900 shadow-2xl flex flex-col h-full"
         onClick={e => e.stopPropagation()}
       >
+        {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
           <div>
             <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Ledger — {mb.source_email}</p>
             <p className="text-xs text-gray-400 mt-0.5">{entries.length} mensagens auditadas</p>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
+          <div className="flex items-center gap-2">
+            {failed > 0 && mb.status !== 'running' && (
+              <button
+                onClick={() => retryMbMut.mutate()}
+                disabled={retryMbMut.isPending}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-lg bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-50"
+                title={`Retentar caixa (${failed} falha${failed > 1 ? 's' : ''})`}
+              >
+                {retryMbMut.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                Retentar caixa
+              </button>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
         </div>
 
+        {/* Stats */}
         <div className="grid grid-cols-4 gap-3 px-5 py-3 border-b border-gray-200 dark:border-gray-700">
           {[
-            { label: 'Total',      value: entries.length, color: 'text-gray-700 dark:text-gray-300' },
-            { label: 'Copiadas',   value: copied,         color: 'text-green-600 dark:text-green-400' },
-            { label: 'Verificadas',value: verified,       color: 'text-cyan-600 dark:text-cyan-400' },
-            { label: 'Falhas',     value: failed,         color: 'text-red-500' },
+            { label: 'Total',       value: entries.length, color: 'text-gray-700 dark:text-gray-300' },
+            { label: 'Copiadas',    value: copied,         color: 'text-green-600 dark:text-green-400' },
+            { label: 'Verificadas', value: verified,       color: 'text-cyan-600 dark:text-cyan-400' },
+            { label: 'Falhas',      value: failed,         color: 'text-red-500' },
           ].map(({ label, value, color }) => (
-            <div key={label} className="text-center">
+            <button
+              key={label}
+              onClick={() => label === 'Falhas' ? setFilterFailed(v => !v) : setFilterFailed(false)}
+              className={`text-center rounded-lg py-1 transition-colors ${label === 'Falhas' && filterFailed ? 'bg-red-50 dark:bg-red-900/20 ring-1 ring-red-300 dark:ring-red-700' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'}`}
+            >
               <p className={`text-lg font-bold ${color}`}>{value}</p>
               <p className="text-xs text-gray-400">{label}</p>
-            </div>
+            </button>
           ))}
         </div>
 
-        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+        {/* Filter tabs + Search */}
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-700 space-y-2">
+          <div className="flex gap-1">
+            {[
+              { key: false, label: 'Todos' },
+              { key: true,  label: `Falhas${failed > 0 ? ` (${failed})` : ''}` },
+            ].map(t => (
+              <button
+                key={String(t.key)}
+                onClick={() => { setFilterFailed(t.key); setPage(1); }}
+                className={`px-3 py-1 text-xs font-medium rounded-full transition-colors ${filterFailed === t.key
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
               value={search} onChange={e => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Buscar por pasta ou UID..."
+              placeholder="Buscar por pasta, UID ou erro..."
               className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
         </div>
 
+        {/* Table */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
             <div className="flex items-center gap-3 p-6">
@@ -1068,7 +1135,9 @@ const MailboxLedgerDrawer = ({ projectId, mb, onClose }) => {
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center gap-2 py-12 text-center">
               <FileText className="w-8 h-8 text-gray-300 dark:text-gray-600" />
-              <p className="text-sm text-gray-500">Nenhuma entrada encontrada.</p>
+              <p className="text-sm text-gray-500">
+                {filterFailed ? 'Nenhuma falha registrada.' : 'Nenhuma entrada encontrada.'}
+              </p>
             </div>
           ) : (
             <table className="w-full text-xs">
@@ -1084,26 +1153,41 @@ const MailboxLedgerDrawer = ({ projectId, mb, onClose }) => {
               <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
                 {paged.map((entry, i) => {
                   const uid = entry.uid || entry.message_id || '—';
+                  const errCat = entry.status === 'failed' ? _categorizeError(entry.error || '') : null;
                   return (
-                    <tr key={i} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <tr key={i} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${entry.status === 'failed' ? 'bg-red-50/30 dark:bg-red-900/10' : ''}`}>
                       <td className="px-4 py-2 text-gray-600 dark:text-gray-400 font-mono truncate max-w-[120px]" title={entry.folder}>{entry.folder || '—'}</td>
-                      <td className="px-4 py-2 text-gray-500 font-mono truncate max-w-[160px]" title={uid}>
-                        {uid.length > 22 ? `${uid.slice(0, 22)}…` : uid}
+                      <td className="px-4 py-2 text-gray-500 font-mono truncate max-w-[140px]" title={uid}>
+                        {uid.length > 20 ? `${uid.slice(0, 20)}…` : uid}
                       </td>
                       <td className="px-4 py-2">
-                        <span className={`font-medium ${
-                          entry.status === 'verified' ? 'text-cyan-600 dark:text-cyan-400' :
-                          entry.status === 'copied'   ? 'text-green-600 dark:text-green-400' :
-                          entry.status === 'failed'   ? 'text-red-500' :
-                          'text-gray-500'
-                        }`}>
-                          {entry.status === 'copied' ? 'Copiada' : entry.status === 'verified' ? 'Verificada' : entry.status === 'failed' ? 'Falha' : entry.status || '—'}
-                        </span>
+                        <div className="flex flex-col gap-0.5">
+                          <span className={`font-medium ${
+                            entry.status === 'verified' ? 'text-cyan-600 dark:text-cyan-400' :
+                            entry.status === 'copied'   ? 'text-green-600 dark:text-green-400' :
+                            entry.status === 'failed'   ? 'text-red-500' :
+                            'text-gray-500'
+                          }`}>
+                            {entry.status === 'copied' ? 'Copiada' : entry.status === 'verified' ? 'Verificada' : entry.status === 'failed' ? 'Falha' : entry.status || '—'}
+                          </span>
+                          {errCat && (
+                            <span className={`inline-flex w-fit px-1.5 py-0.5 rounded text-[10px] font-medium ${errCat.cls}`}
+                              title={entry.error}
+                            >
+                              {errCat.label}
+                            </span>
+                          )}
+                          {entry.error && (
+                            <span className="text-[10px] text-red-400 dark:text-red-500 max-w-[160px] truncate" title={entry.error}>
+                              {entry.error.slice(0, 60)}{entry.error.length > 60 ? '…' : ''}
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-4 py-2 text-gray-400">
                         {entry.size_bytes ? `${(entry.size_bytes / 1024).toFixed(0)} KB` : '—'}
                       </td>
-                      <td className="px-4 py-2 text-gray-400">
+                      <td className="px-4 py-2 text-gray-400 whitespace-nowrap">
                         {entry.copied_at ? new Date(entry.copied_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}
                       </td>
                     </tr>
@@ -1131,6 +1215,131 @@ const MailboxLedgerDrawer = ({ projectId, mb, onClose }) => {
   );
 };
 
+// ── Pre-Assess Panel ──────────────────────────────────────────────────────────
+
+function fmtBytes(bytes) {
+  if (!bytes) return '—';
+  if (bytes >= 1024 ** 3) return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+  if (bytes >= 1024 ** 2) return `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  return `${(bytes / 1024).toFixed(0)} KB`;
+}
+
+const PreAssessPanel = ({ data, onClose }) => {
+  const { mailboxes_assessed, total_messages, total_estimated_size_bytes, warnings, mailboxes } = data;
+  const errorCount = (mailboxes || []).filter(m => m.status === 'error').length;
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1" />
+      <div
+        className="w-full max-w-2xl bg-white dark:bg-gray-900 shadow-2xl flex flex-col h-full"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm flex items-center gap-2">
+              <BarChart3 className="w-4 h-4 text-indigo-500" />
+              Resultado da Pré-avaliação
+            </p>
+            <p className="text-xs text-gray-400 mt-0.5">{mailboxes_assessed} caixa{mailboxes_assessed !== 1 ? 's' : ''} avaliada{mailboxes_assessed !== 1 ? 's' : ''}</p>
+          </div>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+
+        {/* Summary stats */}
+        <div className="grid grid-cols-3 gap-3 px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          {[
+            { label: 'Caixas avaliadas', value: mailboxes_assessed, color: 'text-indigo-600 dark:text-indigo-400' },
+            { label: 'Total de mensagens', value: total_messages.toLocaleString('pt-BR'), color: 'text-gray-800 dark:text-gray-200' },
+            { label: 'Tamanho estimado', value: fmtBytes(total_estimated_size_bytes), color: 'text-gray-800 dark:text-gray-200' },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-gray-50 dark:bg-gray-800 rounded-lg px-3 py-2.5 text-center">
+              <p className={`text-xl font-bold ${color}`}>{value}</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{label}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* Warnings */}
+        {warnings?.length > 0 && (
+          <div className="mx-5 mt-3 mb-1 space-y-1.5">
+            {warnings.map((w, i) => (
+              <div key={i} className="flex items-start gap-2 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/40">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-700 dark:text-amber-400">{w}</p>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {errorCount > 0 && (
+          <div className="mx-5 mt-2 flex items-start gap-2 px-3 py-2 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700/40">
+            <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-700 dark:text-red-400">
+              {errorCount} caixa{errorCount > 1 ? 's' : ''} com erro de avaliação — verifique as credenciais de origem.
+            </p>
+          </div>
+        )}
+
+        {/* Per-mailbox table */}
+        <div className="flex-1 overflow-y-auto mt-3">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-gray-50 dark:bg-gray-800/80 backdrop-blur border-b border-gray-100 dark:border-gray-800">
+              <tr className="text-left text-gray-500 dark:text-gray-400">
+                <th className="px-4 py-2.5 font-medium">Caixa</th>
+                <th className="px-4 py-2.5 font-medium text-right">Mensagens</th>
+                <th className="px-4 py-2.5 font-medium text-right">Tamanho est.</th>
+                <th className="px-4 py-2.5 font-medium">Pastas</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+              {(mailboxes || []).map((mb, i) => (
+                <tr key={i} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${mb.status === 'error' ? 'bg-red-50/40 dark:bg-red-900/10' : ''}`}>
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      {mb.status === 'error'
+                        ? <XCircle className="w-3 h-3 text-red-400 flex-shrink-0" />
+                        : <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                      }
+                      <span className="font-medium text-gray-800 dark:text-gray-200 truncate max-w-[200px]" title={mb.source_email}>
+                        {mb.source_email}
+                      </span>
+                    </div>
+                    {mb.status === 'error' && (
+                      <p className="text-[10px] text-red-400 dark:text-red-500 mt-0.5 ml-4.5 truncate max-w-[220px]" title={mb.error}>
+                        {mb.error}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-gray-700 dark:text-gray-300 font-medium">
+                    {mb.status === 'error' ? '—' : (mb.total_messages || 0).toLocaleString('pt-BR')}
+                  </td>
+                  <td className="px-4 py-2.5 text-right text-gray-500 dark:text-gray-400">
+                    {mb.status === 'error' ? '—' : fmtBytes(mb.estimated_size_bytes)}
+                  </td>
+                  <td className="px-4 py-2.5 text-gray-400">
+                    {mb.status === 'error' ? '—' : (mb.folders?.length || 0)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Project Detail ─────────────────────────────────────────────────────────────
 
 const ProjectDetail = ({ projectId, onBack }) => {
@@ -1153,6 +1362,17 @@ const ProjectDetail = ({ projectId, onBack }) => {
   const [logMailboxFilter, setLogMailboxFilter] = useState('all');
   const [batchRetryPending, setBatchRetryPending] = useState(false);
   const [batchDeletePending, setBatchDeletePending] = useState(false);
+  const [preAssessData, setPreAssessData] = useState(null);
+  const [showPreAssess, setShowPreAssess] = useState(false);
+
+  const preAssessMut = useMutation({
+    mutationFn: () => migrationApi.preAssess(projectId),
+    onSuccess: (data) => {
+      setPreAssessData(data);
+      setShowPreAssess(true);
+      qc.invalidateQueries({ queryKey: ['migration-mailboxes', projectId] });
+    },
+  });
 
   // Polling enquanto a migração está ativa. react-query v5: o callback de
   // refetchInterval recebe um objeto Query — o data fica em query.state.data.
@@ -1374,6 +1594,16 @@ const ProjectDetail = ({ projectId, onBack }) => {
           </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0 flex-wrap justify-end">
+          {canStart && (
+            <button
+              onClick={() => preAssessMut.mutate()}
+              disabled={preAssessMut.isPending}
+              title="Conta mensagens e estima tamanho antes de iniciar a migração"
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-indigo-300 dark:border-indigo-600 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50">
+              {preAssessMut.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <BarChart3 className="w-3.5 h-3.5" />}
+              Pré-avaliar
+            </button>
+          )}
           {canStart && (
             <button onClick={() => setShowConfirmStart(true)} disabled={statusMut.isPending}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-green-600 hover:bg-green-700 text-white disabled:opacity-50">
@@ -1854,9 +2084,19 @@ const ProjectDetail = ({ projectId, onBack }) => {
         );
       })()}
 
+      {/* Pre-Assess Panel */}
+      {showPreAssess && preAssessData && (
+        <PreAssessPanel data={preAssessData} onClose={() => setShowPreAssess(false)} />
+      )}
+
       {/* Mailbox Ledger Drawer */}
       {ledgerMb && (
-        <MailboxLedgerDrawer projectId={projectId} mb={ledgerMb} onClose={() => setLedgerMb(null)} />
+        <MailboxLedgerDrawer
+          projectId={projectId}
+          mb={ledgerMb}
+          onClose={() => setLedgerMb(null)}
+          onRetry={() => setLedgerMb(null)}
+        />
       )}
 
       {/* Confirm start modal */}
