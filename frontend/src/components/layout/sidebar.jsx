@@ -4,7 +4,7 @@ import {
   LayoutDashboard, DollarSign, Settings, FileText,
   Building2, Layers, CreditCard, Zap, Clock, Network,
   ShieldCheck, Bell, PackageSearch, GitPullRequestArrow, ChevronDown,
-  BookOpen,
+  BookOpen, Boxes,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { AwsIcon, AzureIcon, GcpIcon, M365Icon } from '../common/CloudProviderIcons';
@@ -105,6 +105,7 @@ const CLOUD_ACTIVE = {
   azure: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
   gcp:  'bg-green-500/10 text-green-600 dark:text-green-400',
   m365: 'bg-blue-600/10 text-blue-600 dark:text-blue-400',
+  k8s:  'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
 };
 
 // ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -161,6 +162,11 @@ const Sidebar = ({ mobileOpen, onClose }) => {
           </PermissionGate>
           {isEnterprise && (
             <NavItem to="/m365" label="Microsoft 365" icon={M365Icon} activeColor={CLOUD_ACTIVE.m365} />
+          )}
+          {isEnterprise && (
+            <PermissionGate permission="resources.view">
+              <NavItem to="/k8s" label="Kubernetes" icon={Boxes} activeColor={CLOUD_ACTIVE.k8s} />
+            </PermissionGate>
           )}
         </NavSection>
 

@@ -50,7 +50,14 @@
       "Bash(cp png/atlas_tecnologia_v1_colorida.png __TRACKED_VAR__/atlas-logo-color.png)",
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\higor\\\\Downloads\\\\cloud-hub-manager\\\\cloud-hub-manager\" -Directory)",
       "Bash(Select-Object Name)",
-      "WebFetch(domain:docs.abacatepay.com)"
+      "WebFetch(domain:docs.abacatepay.com)",
+      "Bash(python -)",
+      "Bash(python -m py_compile app/api/k8s.py app/services/k8s_service.py app/services/k8s_discovery.py app/models/db_models.py app/api/__init__.py alembic/versions/u5v6w7x8y9z0_k8s_clusters.py)",
+      "Bash(docker compose *)",
+      "Bash(docker --version)",
+      "Bash(python -c \"import sqlalchemy, alembic; print\\('sqlalchemy+alembic OK'\\)\")",
+      "Bash(python -c \"import psycopg2; print\\('psycopg2 OK'\\)\")",
+      "Bash(pip install *)"
     ]
   }
 }

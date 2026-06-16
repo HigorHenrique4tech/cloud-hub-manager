@@ -78,6 +78,12 @@ const M365Audit = lazy(() => import('./pages/m365/Audit'));
 const Migration365 = lazy(() => import('./pages/m365/Migration365'));
 const SecurityAutomation = lazy(() => import('./pages/security/SecurityAutomation'));
 
+// Kubernetes
+const K8sClusters = lazy(() => import('./pages/k8s/K8sClusters'));
+const K8sWorkloads = lazy(() => import('./pages/k8s/K8sWorkloads'));
+const K8sNetworking = lazy(() => import('./pages/k8s/K8sNetworking'));
+const K8sObservability = lazy(() => import('./pages/k8s/K8sObservability'));
+
 // Knowledge Base
 const KnowledgeBase = lazy(() => import('./pages/KnowledgeBase'));
 const KnowledgeArticle = lazy(() => import('./pages/KnowledgeArticle'));
@@ -200,6 +206,10 @@ function App() {
                 <Route path="/m365/audit" element={<PR><M365Audit /></PR>} />
                 <Route path="/m365/migration" element={<PR><Migration365 /></PR>} />
                 <Route path="/m365/migration/:projectId" element={<PR><Migration365 /></PR>} />
+                <Route path="/k8s" element={<PR><K8sClusters /></PR>} />
+                <Route path="/k8s/workloads" element={<PR><K8sWorkloads /></PR>} />
+                <Route path="/k8s/networking" element={<PR><K8sNetworking /></PR>} />
+                <Route path="/k8s/observability" element={<PR><K8sObservability /></PR>} />
                 <Route path="/security/automation" element={<PR><SecurityAutomation /></PR>} />
                 <Route path="/security/incident-responses/:irId?" element={<PR><SecurityAutomation /></PR>} />
                 <Route path="/inventory" element={<PR><Inventory /></PR>} />

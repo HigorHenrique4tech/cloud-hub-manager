@@ -187,6 +187,34 @@ class CloudAccount(Base):
     )
 
 
+class K8sCluster(Base):
+    __tablename__ = "k8s_clusters"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id        = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    name                = Column(String(255), nullable=False)
+    source              = Column(String(20), nullable=False, default="manual")  # aks | eks | gke | manual
+    cloud_account_id    = Column(UUID(as_uuid=True), ForeignKey("cloud_accounts.id", ondelete="SET NULL"), nullable=True)
+    provider_cluster_id = Column(String(512), nullable=True)  # ARM resource id / EKS arn / GKE self-link
+    region              = Column(String(64), nullable=True)
+    distribution        = Column(String(40), nullable=True)   # AKS | EKS | GKE | k3s | vanilla
+    k8s_version         = Column(String(32), nullable=True)
+    endpoint            = Column(Text, nullable=True)
+    encrypted_kubeconfig = Column(Text, nullable=False)       # Fernet-encrypted JSON (kubeconfig or {server,token,ca})
+    status              = Column(String(20), nullable=False, default="unknown")  # connected | unreachable | unknown
+    node_count          = Column(Integer, nullable=True)
+    last_synced_at      = Column(DateTime, nullable=True)
+    is_active           = Column(Boolean, default=True, nullable=False)
+    created_by          = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_k8s_cluster_ws_name"),
+        Index("ix_k8s_clusters_ws", "workspace_id"),
+    )
+
+
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 

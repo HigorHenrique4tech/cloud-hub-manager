@@ -8,6 +8,7 @@ import AzureSecondarySidebar from './AzureSecondarySidebar';
 import AwsSecondarySidebar from './AwsSecondarySidebar';
 import GcpSecondarySidebar from './GcpSecondarySidebar';
 import M365SecondarySidebar from './M365SecondarySidebar';
+import K8sSecondarySidebar from './K8sSecondarySidebar';
 import TrialBanner from '../common/TrialBanner';
 import TermsGate from '../common/TermsGate';
 import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
@@ -236,6 +237,7 @@ const Layout = ({ children }) => {
   const isAwsPath = pathname.startsWith('/aws');
   const isGcpPath = pathname.startsWith('/gcp');
   const isM365Path = pathname.startsWith('/m365');
+  const isK8sPath = pathname.startsWith('/k8s');
 
   // Close sidebar on route change (mobile)
   useEffect(() => { setSidebarOpen(false); }, [pathname]);
@@ -282,6 +284,7 @@ const Layout = ({ children }) => {
           {isAwsPath && <AwsSecondarySidebar />}
           {isGcpPath && <GcpSecondarySidebar />}
           {isM365Path && <M365SecondarySidebar />}
+          {isK8sPath && <K8sSecondarySidebar />}
           <main id="main-content" key={currentWorkspace?.id || 'none'} className="flex-1 px-4 py-6 sm:px-6 sm:py-8 overflow-auto">
             {children}
           </main>
