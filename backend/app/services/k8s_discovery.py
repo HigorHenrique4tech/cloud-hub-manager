@@ -76,8 +76,45 @@ def _aks_node_count(mc) -> int:
 
 
 def discover_eks(aws_service) -> list:
-    """Stub — implementado na V1 (boto3 eks.list_clusters + describe_cluster)."""
-    return []
+    """Lista clusters EKS da região do AWSService.
+
+    Não armazena kubeconfig estático — o token EKS expira (~15min). Grava um
+    `eks_ref` (cluster_name, region, endpoint, ca) e o token é regenerado a cada
+    conexão via `aws_service.get_eks_token()`. Requer no IAM:
+    eks:ListClusters, eks:DescribeCluster e sts:GetCallerIdentity.
+    """
+    results = []
+    try:
+        eks = aws_service.eks_client
+        names = eks.list_clusters().get("clusters", [])
+        for name in names:
+            try:
+                c = eks.describe_cluster(name=name)["cluster"]
+            except Exception as e:
+                logger.warning(f"Falha ao descrever EKS {name}: {e}")
+                continue
+            ca = (c.get("certificateAuthority") or {}).get("data")
+            results.append({
+                "name": name,
+                "source": "eks",
+                "provider_cluster_id": c.get("arn"),
+                "region": getattr(aws_service, "region", None),
+                "distribution": "EKS",
+                "k8s_version": c.get("version"),
+                "endpoint": c.get("endpoint"),
+                "node_count": None,
+                # marcador para reconexão on-demand (sem kubeconfig estático)
+                "eks_ref": {
+                    "cluster_name": name,
+                    "region": getattr(aws_service, "region", None),
+                    "endpoint": c.get("endpoint"),
+                    "ca": ca,
+                },
+            })
+    except Exception as e:
+        logger.error(f"Erro descobrindo clusters EKS: {e}")
+        return results
+    return results
 
 
 def discover_gke(gcp_service) -> list:

@@ -26,6 +26,7 @@ const ROLE_PERMISSIONS = {
     'templates.view', 'templates.manage',
     'webhooks.view', 'webhooks.manage',
     'm365.view', 'm365.manage',
+    'k8s.view', 'k8s.manage',
     'helpdesk.manage',
   ]),
 
@@ -40,6 +41,7 @@ const ROLE_PERMISSIONS = {
     'templates.view', 'templates.manage',
     'webhooks.view', 'webhooks.manage',
     'm365.view', 'm365.manage',
+    'k8s.view', 'k8s.manage',
   ]),
 
   // viewer: read-only across all modules
@@ -53,6 +55,7 @@ const ROLE_PERMISSIONS = {
     'templates.view',
     'webhooks.view',
     'm365.view',
+    'k8s.view',
   ]),
 
   // billing: cost/finance focus + alert management + budget management

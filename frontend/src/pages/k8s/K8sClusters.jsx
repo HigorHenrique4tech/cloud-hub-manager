@@ -1,13 +1,54 @@
 import { useState, useEffect } from 'react';
-import { Boxes, Search, RefreshCw, Upload, Server, Activity, AlertCircle } from 'lucide-react';
+import { Boxes, Search, RefreshCw, Upload, Server, Activity, AlertCircle, ShieldAlert } from 'lucide-react';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import ClusterCard from '../../components/k8s/ClusterCard';
 import ImportKubeconfigModal from '../../components/k8s/ImportKubeconfigModal';
 import {
   useClusters, useDiscoverClusters, useTestCluster, useDeleteCluster,
-  useActiveCluster, useClusterOverview,
+  useActiveCluster, useClusterOverview, useFindings,
 } from '../../hooks/useK8s';
+
+const SEV = {
+  critical: 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400',
+  high:     'bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-400',
+  medium:   'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  low:      'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400',
+};
+
+const FindingsPanel = ({ clusterId }) => {
+  const findingsQ = useFindings(clusterId);
+  const data = findingsQ.data;
+  if (!data?.success || data.total === 0) return null;
+  return (
+    <div className="card rounded-xl p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <ShieldAlert size={16} className="text-amber-500" />
+        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Findings ({data.total})</p>
+        <div className="flex items-center gap-1.5 ml-2">
+          {['critical', 'high', 'medium'].map((s) => data.counts?.[s] > 0 && (
+            <span key={s} className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${SEV[s]}`}>
+              {data.counts[s]} {s}
+            </span>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1.5 max-h-64 overflow-y-auto">
+        {data.findings.map((f, i) => (
+          <div key={i} className="flex items-start gap-2.5 px-2.5 py-1.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50">
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium flex-shrink-0 mt-0.5 ${SEV[f.severity] || SEV.low}`}>
+              {f.severity}
+            </span>
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-gray-800 dark:text-gray-200 truncate">{f.title}</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{f.resource} · {f.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
 
 const K8sClusters = () => {
   const clustersQ = useClusters();
@@ -107,6 +148,9 @@ const K8sClusters = () => {
             ))}
           </div>
         )}
+
+        {/* Findings do cluster ativo */}
+        {activeCluster && overview?.success && <FindingsPanel clusterId={activeCluster} />}
 
         {/* Lista de clusters */}
         {clustersQ.isLoading ? (

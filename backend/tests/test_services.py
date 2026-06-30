@@ -55,9 +55,7 @@ def test_encrypt_decrypt_credential_roundtrip():
 
 # ── finops helpers (pure Python, no I/O) ─────────────────────────────────────
 
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-from app.api.finops import _linear_forecast
+from app.api.finops._helpers import _linear_forecast
 
 
 def test_linear_forecast_returns_correct_length():

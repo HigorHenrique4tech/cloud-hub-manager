@@ -24,15 +24,16 @@ from app.services.auth_service import hash_password
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _make_org(plan_tier="free", trial_days=None) -> Organization:
-    """Build an in-memory Organization without persisting to DB."""
-    org = Organization.__new__(Organization)
-    org.plan_tier = plan_tier
-    org.trial_ends_at = (
-        datetime.utcnow() + timedelta(days=trial_days)
-        if trial_days is not None
-        else None
+    """Build an in-memory Organization (transient — não persistido)."""
+    # Usar o construtor (não __new__) para inicializar o estado do SQLAlchemy.
+    return Organization(
+        plan_tier=plan_tier,
+        trial_ends_at=(
+            datetime.utcnow() + timedelta(days=trial_days)
+            if trial_days is not None
+            else None
+        ),
     )
-    return org
 
 
 def _register(client, email=None, name="Test User", password="Test1234!"):
@@ -46,7 +47,8 @@ def _register(client, email=None, name="Test User", password="Test1234!"):
 
 
 def _headers(token):
-    return {"Authorization": f"Bearer {token}"}
+    # X-Requested-With satisfaz o middleware CSRF em PUT/DELETE (endpoints admin).
+    return {"Authorization": f"Bearer {token}", "X-Requested-With": "XMLHttpRequest"}
 
 
 def _get_org(client, token):
@@ -124,7 +126,8 @@ class TestGetTrialInfo:
         info = get_trial_info(org)
         assert info["has_trial"] is True
         assert info["trial_active"] is True
-        assert info["days_remaining"] == 15
+        # 15 dias menos frações de segundo → 14 ou 15 dependendo do arredondamento.
+        assert info["days_remaining"] in (14, 15)
         assert "trial_ends_at" in info
 
     def test_expired_trial(self):
@@ -246,7 +249,6 @@ class TestTrialReminders:
             organization_id=org.id,
             name="Default",
             slug=f"ws-{uuid.uuid4().hex[:6]}",
-            provider="aws",
         )
         db.add(ws)
         db.commit()

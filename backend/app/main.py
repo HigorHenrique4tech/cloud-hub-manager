@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime
 import logging
+import os
 
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -327,6 +328,13 @@ async def startup_event():
     logger.info(f"Starting {settings.APP_NAME} v{settings.APP_VERSION}")
     logger.info(f"Debug mode: {settings.DEBUG}")
     logger.info(f"AWS Region: {settings.AWS_DEFAULT_REGION}")
+
+    # Em testes (pytest), o schema é criado via Base.metadata.create_all no
+    # conftest. Pular migrations (SQL Postgres-específico) e o APScheduler
+    # evita OperationalError no SQLite e acelera muito a suíte.
+    if os.getenv("TESTING") == "1":
+        logger.info("TESTING mode — pulando migrations e scheduler no startup")
+        return
 
     if not settings.DEBUG:
         logger.warning(

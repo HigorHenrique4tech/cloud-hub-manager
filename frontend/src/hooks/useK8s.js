@@ -132,3 +132,33 @@ export function useNodes(clusterId) {
     retry: false,
   });
 }
+
+export function useFindings(clusterId) {
+  return useQuery({
+    queryKey: ['k8s-findings', clusterId],
+    queryFn: () => k8sService.getFindings(clusterId),
+    enabled: !!clusterId,
+    staleTime: 30_000,
+    retry: false,
+  });
+}
+
+// ── Ações de escrita (V1) ──────────────────────────────────────────────────────
+
+export function useScaleDeployment(clusterId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ namespace, name, replicas }) =>
+      k8sService.scaleDeployment(clusterId, namespace, name, replicas),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['k8s-workloads', clusterId] }),
+  });
+}
+
+export function useRestartDeployment(clusterId) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ namespace, name }) =>
+      k8sService.restartDeployment(clusterId, namespace, name),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['k8s-workloads', clusterId] }),
+  });
+}

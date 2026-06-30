@@ -1858,3 +1858,78 @@ async def ws_backup_scan(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Azure Container Registry (ACR) ─────────────────────────────────────────────
+
+@ws_router.get("/acr/registries")
+async def ws_list_acr_registries(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"azure:{member.workspace_id}:acr"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.list_acr_registries)
+    cache_set(cache_key, result, ttl=300)
+    return result
+
+
+@ws_router.get("/acr/registries/{login_server}/repositories")
+async def ws_list_acr_repositories(
+    login_server: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    return await _run(svc.list_acr_repositories, login_server)
+
+
+# ── Azure Function Apps ────────────────────────────────────────────────────────
+
+class FunctionAppActionRequest(BaseModel):
+    action: str  # start | stop | restart
+
+
+@ws_router.get("/function-apps")
+async def ws_list_function_apps(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"azure:{member.workspace_id}:functionapps"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.list_function_apps)
+    cache_set(cache_key, result, ttl=180)
+    return result
+
+
+@ws_router.get("/function-apps/{resource_group}/{app_name}/functions")
+async def ws_list_functions(
+    resource_group: str, app_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_azure_service(member, db)
+    return await _run(svc.list_functions, resource_group, app_name)
+
+
+@ws_router.post("/function-apps/{resource_group}/{app_name}/action")
+async def ws_function_app_action(
+    resource_group: str, app_name: str, body: FunctionAppActionRequest,
+    member: MemberContext = Depends(require_permission("resources.start_stop")),
+    db: Session = Depends(get_db),
+):
+    if body.action not in ("start", "stop", "restart"):
+        raise HTTPException(status_code=400, detail="Ação inválida (start|stop|restart).")
+    svc = _get_single_azure_service(member, db)
+    result = await _run(svc.function_app_action, resource_group, app_name, body.action)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("error", "Falha na ação do Function App"))
+    cache_delete(f"azure:{member.workspace_id}:functionapps")
+    log_activity(db, member.user, f'functionapp.{body.action}', 'FunctionApp',
+                 resource_name=app_name, provider='azure', detail=f"rg={resource_group}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result

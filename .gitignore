@@ -4,6 +4,13 @@ __pycache__/
 *$py.class
 *.so
 .Python
+
+# Test artifacts
+backend/test.db
+backend/_results.txt
+backend/_fails.txt
+.pytest_cache/
+.venv/
 env/
 venv/
 ENV/

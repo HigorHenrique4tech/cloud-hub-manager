@@ -5,6 +5,7 @@ import { Boxes, Layers, Share2, Network, Activity, ChevronLeft, ChevronRight } f
 const k8sNavItems = [
   { to: '/k8s', label: 'Clusters', icon: Boxes, end: true },
   { to: '/k8s/workloads', label: 'Workloads', icon: Layers },
+  { to: '/k8s/topology', label: 'Topologia', icon: Share2 },
   { to: '/k8s/networking', label: 'Networking & Ingress', icon: Network },
   { to: '/k8s/observability', label: 'Observabilidade', icon: Activity },
 ];

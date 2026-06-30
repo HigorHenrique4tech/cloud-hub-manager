@@ -1,6 +1,7 @@
 import asyncio
 
 from fastapi import APIRouter, HTTPException, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -988,3 +989,134 @@ async def ws_aws_advisor_recommendations(
         raise
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── ECS / Fargate ─────────────────────────────────────────────────────────────
+
+class EcsScaleRequest(BaseModel):
+    desired_count: int
+
+
+@ws_router.get("/ecs/clusters")
+async def ws_list_ecs_clusters(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"aws:{member.workspace_id}:ecs"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.list_ecs_clusters)
+    cache_set(cache_key, result, ttl=180)
+    return result
+
+
+@ws_router.get("/ecs/clusters/{cluster}/services")
+async def ws_list_ecs_services(
+    cluster: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    return await _run(svc.list_ecs_services, cluster)
+
+
+@ws_router.get("/ecs/clusters/{cluster}/tasks")
+async def ws_list_ecs_tasks(
+    cluster: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    return await _run(svc.list_ecs_tasks, cluster)
+
+
+@ws_router.post("/ecs/clusters/{cluster}/services/{service}/scale")
+async def ws_scale_ecs_service(
+    cluster: str, service: str, body: EcsScaleRequest,
+    member: MemberContext = Depends(require_permission("resources.manage")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.update_ecs_service_count, cluster, service, body.desired_count)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Falha ao escalar serviço ECS'))
+    cache_delete(f"aws:{member.workspace_id}:ecs")
+    log_activity(db, member.user, 'ecs.scale', 'ECSService', resource_name=service,
+                 provider='aws', detail=f"cluster={cluster} desired={body.desired_count}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.post("/ecs/clusters/{cluster}/tasks/{task_id}/stop")
+async def ws_stop_ecs_task(
+    cluster: str, task_id: str,
+    member: MemberContext = Depends(require_permission("resources.start_stop")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.stop_ecs_task, cluster, task_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Falha ao parar task ECS'))
+    log_activity(db, member.user, 'ecs.task.stop', 'ECSTask', resource_name=task_id,
+                 provider='aws', detail=f"cluster={cluster}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+# ── DynamoDB ──────────────────────────────────────────────────────────────────
+
+@ws_router.get("/dynamodb/tables")
+async def ws_list_dynamodb_tables(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"aws:{member.workspace_id}:dynamodb"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.list_dynamodb_tables)
+    cache_set(cache_key, result, ttl=180)
+    return result
+
+
+# ── CloudFront ────────────────────────────────────────────────────────────────
+
+@ws_router.get("/cloudfront/distributions")
+async def ws_list_cloudfront_distributions(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"aws:{member.workspace_id}:cloudfront"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.list_cloudfront_distributions)
+    cache_set(cache_key, result, ttl=300)
+    return result
+
+
+# ── Route 53 ──────────────────────────────────────────────────────────────────
+
+@ws_router.get("/route53/zones")
+async def ws_list_route53_zones(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"aws:{member.workspace_id}:route53"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.list_route53_zones)
+    cache_set(cache_key, result, ttl=300)
+    return result
+
+
+@ws_router.get("/route53/zones/{zone_id}/records")
+async def ws_list_route53_records(
+    zone_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    return await _run(svc.list_route53_records, zone_id)

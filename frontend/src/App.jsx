@@ -38,10 +38,14 @@ const NotificationsHistory = lazy(() => import('./pages/NotificationsHistory'));
 // AWS
 const AwsOverview = lazy(() => import('./pages/aws/AwsOverview'));
 const AwsEC2 = lazy(() => import('./pages/aws/AwsEC2'));
+const AwsECS = lazy(() => import('./pages/aws/AwsECS'));
 const AwsS3 = lazy(() => import('./pages/aws/AwsS3'));
 const AwsRDS = lazy(() => import('./pages/aws/AwsRDS'));
+const AwsDynamoDB = lazy(() => import('./pages/aws/AwsDynamoDB'));
 const AwsLambda = lazy(() => import('./pages/aws/AwsLambda'));
 const AwsVPC = lazy(() => import('./pages/aws/AwsVPC'));
+const AwsCloudFront = lazy(() => import('./pages/aws/AwsCloudFront'));
+const AwsRoute53 = lazy(() => import('./pages/aws/AwsRoute53'));
 const AwsSecurity = lazy(() => import('./pages/aws/AwsSecurity'));
 const AwsBackup = lazy(() => import('./pages/aws/AwsBackup'));
 const AwsAdvisor = lazy(() => import('./pages/aws/AwsAdvisor'));
@@ -57,6 +61,8 @@ const AzureSecurity = lazy(() => import('./pages/azure/AzureSecurity'));
 const AzureBackup = lazy(() => import('./pages/azure/AzureBackup'));
 const AzureAdvisor = lazy(() => import('./pages/azure/AzureAdvisor'));
 const AzureResourceGroups = lazy(() => import('./pages/azure/AzureResourceGroups'));
+const AzureACR = lazy(() => import('./pages/azure/AzureACR'));
+const AzureFunctions = lazy(() => import('./pages/azure/AzureFunctions'));
 
 // GCP
 const GcpOverview = lazy(() => import('./pages/gcp/GcpOverview'));
@@ -81,6 +87,7 @@ const SecurityAutomation = lazy(() => import('./pages/security/SecurityAutomatio
 // Kubernetes
 const K8sClusters = lazy(() => import('./pages/k8s/K8sClusters'));
 const K8sWorkloads = lazy(() => import('./pages/k8s/K8sWorkloads'));
+const K8sTopology = lazy(() => import('./pages/k8s/K8sTopology'));
 const K8sNetworking = lazy(() => import('./pages/k8s/K8sNetworking'));
 const K8sObservability = lazy(() => import('./pages/k8s/K8sObservability'));
 
@@ -165,10 +172,14 @@ function App() {
                 {/* AWS */}
                 <Route path="/aws" element={<PR><AwsOverview /></PR>} />
                 <Route path="/aws/ec2" element={<PR><AwsEC2 /></PR>} />
+                <Route path="/aws/ecs" element={<PR><AwsECS /></PR>} />
                 <Route path="/aws/s3" element={<PR><AwsS3 /></PR>} />
                 <Route path="/aws/rds" element={<PR><AwsRDS /></PR>} />
+                <Route path="/aws/dynamodb" element={<PR><AwsDynamoDB /></PR>} />
                 <Route path="/aws/lambda" element={<PR><AwsLambda /></PR>} />
                 <Route path="/aws/vpc" element={<PR><AwsVPC /></PR>} />
+                <Route path="/aws/cloudfront" element={<PR><AwsCloudFront /></PR>} />
+                <Route path="/aws/route53" element={<PR><AwsRoute53 /></PR>} />
                 <Route path="/aws/security" element={<PR><AwsSecurity /></PR>} />
                 <Route path="/aws/backup" element={<PR><AwsBackup /></PR>} />
                 <Route path="/aws/advisor" element={<PR><AwsAdvisor /></PR>} />
@@ -190,6 +201,8 @@ function App() {
                 <Route path="/azure/vnets" element={<PR><AzureVNets /></PR>} />
                 <Route path="/azure/databases" element={<PR><AzureDatabases /></PR>} />
                 <Route path="/azure/app-services" element={<PR><AzureAppServices /></PR>} />
+                <Route path="/azure/functions" element={<PR><AzureFunctions /></PR>} />
+                <Route path="/azure/acr" element={<PR><AzureACR /></PR>} />
                 <Route path="/azure/security" element={<PR><AzureSecurity /></PR>} />
                 <Route path="/azure/backup" element={<PR><AzureBackup /></PR>} />
                 <Route path="/azure/advisor" element={<PR><AzureAdvisor /></PR>} />
@@ -208,6 +221,7 @@ function App() {
                 <Route path="/m365/migration/:projectId" element={<PR><Migration365 /></PR>} />
                 <Route path="/k8s" element={<PR><K8sClusters /></PR>} />
                 <Route path="/k8s/workloads" element={<PR><K8sWorkloads /></PR>} />
+                <Route path="/k8s/topology" element={<PR><K8sTopology /></PR>} />
                 <Route path="/k8s/networking" element={<PR><K8sNetworking /></PR>} />
                 <Route path="/k8s/observability" element={<PR><K8sObservability /></PR>} />
                 <Route path="/security/automation" element={<PR><SecurityAutomation /></PR>} />

@@ -16,8 +16,15 @@ export const k8sService = {
   getTopology:    (id, namespace)   => api.get(wsUrl(`/k8s/clusters/${id}/topology`), { params: { namespace } }).then(r => r.data),
   getEvents:      (id, namespace)   => api.get(wsUrl(`/k8s/clusters/${id}/events`), { params: { namespace: namespace || undefined } }).then(r => r.data),
   getNodes:       (id)              => api.get(wsUrl(`/k8s/clusters/${id}/nodes`)).then(r => r.data),
+  getFindings:    (id)              => api.get(wsUrl(`/k8s/clusters/${id}/findings`)).then(r => r.data),
   getPodLogs:     (id, ns, pod, container, tail = 500) =>
     api.get(wsUrl(`/k8s/clusters/${id}/pods/${ns}/${pod}/logs`), { params: { container: container || undefined, tail } }).then(r => r.data),
+
+  // ── Ações de escrita (V1) ─────────────────────────────────────────────────
+  scaleDeployment:   (id, ns, name, replicas) =>
+    api.post(wsUrl(`/k8s/clusters/${id}/deployments/${ns}/${name}/scale`), { replicas }).then(r => r.data),
+  restartDeployment: (id, ns, name) =>
+    api.post(wsUrl(`/k8s/clusters/${id}/deployments/${ns}/${name}/restart`)).then(r => r.data),
 };
 
 export default k8sService;

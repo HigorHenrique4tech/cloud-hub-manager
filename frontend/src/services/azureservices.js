@@ -3,6 +3,18 @@ import api, { wsUrl } from './api';
 export const azureService = {
   testConnection: async () => (await api.get(wsUrl('/azure/test-connection'))).data,
 
+  // ── Container Registry (ACR) ──────────────────────────────────────────────
+  listAcrRegistries: async () => (await api.get(wsUrl('/azure/acr/registries'))).data,
+  listAcrRepositories: async (loginServer) =>
+    (await api.get(wsUrl(`/azure/acr/registries/${loginServer}/repositories`))).data,
+
+  // ── Function Apps ─────────────────────────────────────────────────────────
+  listFunctionApps: async () => (await api.get(wsUrl('/azure/function-apps'))).data,
+  listFunctions: async (rg, app) =>
+    (await api.get(wsUrl(`/azure/function-apps/${rg}/${app}/functions`))).data,
+  functionAppAction: async (rg, app, action) =>
+    (await api.post(wsUrl(`/azure/function-apps/${rg}/${app}/action`), { action })).data,
+
   // Form helpers
   listLocations: async () => (await api.get(wsUrl('/azure/locations'))).data,
   listVMSizes: async (location) => (await api.get(wsUrl('/azure/vm-sizes'), { params: { location } })).data,

@@ -1,10 +1,15 @@
 import { useState } from 'react';
-import { Layers, RefreshCw, Boxes } from 'lucide-react';
+import { Layers, RefreshCw, Boxes, Maximize2, RotateCw, X } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
+import PermissionGate from '../../components/common/PermissionGate';
 import WorkloadStatusBadge from '../../components/k8s/WorkloadStatusBadge';
-import { useActiveCluster, useNamespaces, useWorkloads } from '../../hooks/useK8s';
+import { useToast } from '../../contexts/ToastContext';
+import {
+  useActiveCluster, useNamespaces, useWorkloads,
+  useScaleDeployment, useRestartDeployment,
+} from '../../hooks/useK8s';
 
 const TABS = [
   { key: 'pods', label: 'Pods' },
@@ -46,17 +51,31 @@ const K8sWorkloads = () => {
   const [activeCluster] = useActiveCluster();
   const [namespace, setNamespace] = useState('');
   const [tab, setTab] = useState('pods');
+  const [scaleTarget, setScaleTarget] = useState(null);
+  const { toast } = useToast();
   const workloadsQ = useWorkloads(activeCluster, namespace);
+  const scaleMut = useScaleDeployment(activeCluster);
+  const restartMut = useRestartDeployment(activeCluster);
 
   if (!activeCluster) return <Layout><NoCluster /></Layout>;
 
   const data = workloadsQ.data || {};
   const rows = data[tab] || [];
 
+  const handleRestart = async (r) => {
+    if (!window.confirm(`Reiniciar (rollout restart) o deployment ${r.name}?`)) return;
+    try {
+      await restartMut.mutateAsync({ namespace: r.namespace, name: r.name });
+      toast.success(`Restart disparado para ${r.name}.`);
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Falha ao reiniciar.');
+    }
+  };
+
   const renderHead = () => {
     switch (tab) {
       case 'pods': return ['Nome', 'Namespace', 'Status', 'Ready', 'Restarts', 'Node', 'Idade'];
-      case 'deployments': return ['Nome', 'Namespace', 'Réplicas', 'Disponíveis', 'Imagem', 'Idade'];
+      case 'deployments': return ['Nome', 'Namespace', 'Réplicas', 'Disponíveis', 'Imagem', 'Idade', 'Ações'];
       case 'services': return ['Nome', 'Namespace', 'Tipo', 'Cluster IP', 'External IP', 'Portas', 'Idade'];
       case 'jobs': return ['Nome', 'Namespace', 'Completados', 'Sucesso', 'Falhas', 'Idade'];
       case 'cronjobs': return ['Nome', 'Namespace', 'Schedule', 'Suspenso', 'Ativos', 'Idade'];
@@ -85,6 +104,26 @@ const K8sWorkloads = () => {
           <Cell>{r.available}</Cell>
           <Cell className="text-gray-500 max-w-[260px] truncate font-mono text-xs">{(r.images || []).join(', ')}</Cell>
           <Cell className="text-gray-400">{r.age}</Cell>
+          <Cell>
+            <PermissionGate permission="k8s.manage" fallback={<span className="text-gray-300 dark:text-gray-600 text-xs">—</span>}>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setScaleTarget(r)}
+                  title="Escalar réplicas"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-cyan-500 hover:bg-cyan-50 dark:hover:bg-cyan-900/20"
+                >
+                  <Maximize2 size={13} />
+                </button>
+                <button
+                  onClick={() => handleRestart(r)}
+                  title="Rollout restart"
+                  className="p-1.5 rounded-lg text-gray-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-900/20"
+                >
+                  <RotateCw size={13} />
+                </button>
+              </div>
+            </PermissionGate>
+          </Cell>
         </tr>
       );
       case 'services': return (
@@ -178,7 +217,60 @@ const K8sWorkloads = () => {
           </div>
         )}
       </div>
+
+      {scaleTarget && (
+        <ScaleModal
+          deployment={scaleTarget}
+          onClose={() => setScaleTarget(null)}
+          onScale={async (replicas) => {
+            try {
+              await scaleMut.mutateAsync({ namespace: scaleTarget.namespace, name: scaleTarget.name, replicas });
+              toast.success(`${scaleTarget.name} escalado para ${replicas} réplica(s).`);
+              setScaleTarget(null);
+            } catch (err) {
+              toast.error(err.response?.data?.detail || 'Falha ao escalar.');
+            }
+          }}
+          pending={scaleMut.isPending}
+        />
+      )}
     </Layout>
+  );
+};
+
+const ScaleModal = ({ deployment, onClose, onScale, pending }) => {
+  const [replicas, setReplicas] = useState(deployment.replicas ?? 1);
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <p className="font-semibold text-gray-900 dark:text-gray-100">Escalar deployment</p>
+          <button onClick={onClose} className="p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
+          <span className="font-medium text-gray-700 dark:text-gray-300">{deployment.name}</span> · {deployment.namespace}
+        </p>
+        <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Número de réplicas</label>
+        <input
+          type="number" min={0} max={1000} value={replicas}
+          onChange={(e) => setReplicas(Math.max(0, parseInt(e.target.value || '0', 10)))}
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+        />
+        <div className="flex justify-end gap-2 mt-5">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm font-medium rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700">
+            Cancelar
+          </button>
+          <button onClick={() => onScale(replicas)} disabled={pending}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-medium rounded-lg bg-cyan-600 hover:bg-cyan-700 text-white disabled:opacity-50">
+            {pending && <RefreshCw className="w-4 h-4 animate-spin" />}
+            Escalar
+          </button>
+        </div>
+      </div>
+    </div>
   );
 };
 

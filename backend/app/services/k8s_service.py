@@ -459,3 +459,92 @@ class K8sService:
         except Exception as e:
             logger.error(f"Erro construindo topologia: {e}")
             return {"success": False, "error": str(e), "nodes": [], "edges": []}
+
+    # ── Findings (V1) ─────────────────────────────────────────────────────────
+
+    def get_findings(self) -> dict:
+        """Detecta problemas comuns no cluster (read-only)."""
+        try:
+            findings = []
+            pods = self.list_pods().get("pods", [])
+            for p in pods:
+                if p["phase"] not in ("Running", "Succeeded"):
+                    findings.append({
+                        "severity": "high", "type": "pod_not_running",
+                        "resource": f"{p['namespace']}/{p['name']}",
+                        "title": f"Pod {p['name']} em {p['phase']}",
+                        "detail": f"namespace {p['namespace']}",
+                    })
+                elif (p["restarts"] or 0) >= 5:
+                    findings.append({
+                        "severity": "medium", "type": "high_restarts",
+                        "resource": f"{p['namespace']}/{p['name']}",
+                        "title": f"Pod {p['name']} reiniciou {p['restarts']}x",
+                        "detail": f"namespace {p['namespace']}",
+                    })
+            nodes = self.list_nodes().get("nodes", [])
+            for n in nodes:
+                if not n["ready"]:
+                    findings.append({
+                        "severity": "critical", "type": "node_not_ready",
+                        "resource": n["name"],
+                        "title": f"Node {n['name']} NotReady",
+                        "detail": "; ".join(n.get("roles") or []),
+                    })
+            ingresses = self.list_ingresses().get("ingresses", [])
+            for ing in ingresses:
+                if not (ing.get("tls") or []):
+                    findings.append({
+                        "severity": "medium", "type": "ingress_no_tls",
+                        "resource": f"{ing['namespace']}/{ing['name']}",
+                        "title": f"Ingress {ing['name']} sem TLS",
+                        "detail": f"namespace {ing['namespace']}",
+                    })
+            jobs = self.list_jobs().get("jobs", [])
+            for j in jobs:
+                if (j.get("failed") or 0) > 0:
+                    findings.append({
+                        "severity": "high", "type": "job_failed",
+                        "resource": f"{j['namespace']}/{j['name']}",
+                        "title": f"Job {j['name']} com {j['failed']} falha(s)",
+                        "detail": f"namespace {j['namespace']}",
+                    })
+            order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+            findings.sort(key=lambda f: order.get(f["severity"], 9))
+            counts = {sev: sum(1 for f in findings if f["severity"] == sev)
+                      for sev in ("critical", "high", "medium", "low")}
+            return {"success": True, "total": len(findings), "counts": counts, "findings": findings}
+        except Exception as e:
+            logger.error(f"Erro detectando findings: {e}")
+            return {"success": False, "error": str(e), "findings": []}
+
+    # ── Ações de escrita (V1) ─────────────────────────────────────────────────
+
+    def scale_deployment(self, namespace: str, name: str, replicas: int) -> dict:
+        """Ajusta o número de réplicas de um deployment."""
+        try:
+            self.apps_v1.patch_namespaced_deployment_scale(
+                name=name, namespace=namespace,
+                body={"spec": {"replicas": int(replicas)}},
+            )
+            return {"success": True, "name": name, "namespace": namespace, "replicas": int(replicas)}
+        except Exception as e:
+            logger.error(f"Erro escalando {namespace}/{name}: {e}")
+            return {"success": False, "error": str(e)}
+
+    def restart_deployment(self, namespace: str, name: str) -> dict:
+        """Rollout restart idiomático — patch da annotation restartedAt no template."""
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            body = {
+                "spec": {"template": {"metadata": {"annotations": {
+                    "kubectl.kubernetes.io/restartedAt": now
+                }}}}
+            }
+            self.apps_v1.patch_namespaced_deployment(
+                name=name, namespace=namespace, body=body,
+            )
+            return {"success": True, "name": name, "namespace": namespace, "restarted_at": now}
+        except Exception as e:
+            logger.error(f"Erro reiniciando {namespace}/{name}: {e}")
+            return {"success": False, "error": str(e)}

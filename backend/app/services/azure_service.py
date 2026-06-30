@@ -1697,3 +1697,121 @@ class AzureService:
                 resources = list(ex.map(_fetch_cpu, running_vms))
 
         return {"resources": resources, "scanned_at": end.isoformat()}
+
+    # ── Azure Container Registry (ACR) ────────────────────────────────────────
+
+    @property
+    def acr_client(self):
+        if getattr(self, "_acr_client", None) is None:
+            from azure.mgmt.containerregistry import ContainerRegistryManagementClient
+            self._acr_client = ContainerRegistryManagementClient(self.credential, self.subscription_id)
+        return self._acr_client
+
+    @staticmethod
+    def _rg_from_id(resource_id: str):
+        try:
+            parts = resource_id.split("/")
+            return parts[parts.index("resourceGroups") + 1]
+        except Exception:
+            return None
+
+    def list_acr_registries(self) -> Dict:
+        try:
+            registries = []
+            for r in self.acr_client.registries.list():
+                registries.append({
+                    "name": r.name,
+                    "login_server": r.login_server,
+                    "location": r.location,
+                    "sku": r.sku.name if r.sku else None,
+                    "admin_enabled": getattr(r, "admin_user_enabled", None),
+                    "resource_group": self._rg_from_id(r.id),
+                    "provisioning_state": getattr(r, "provisioning_state", None),
+                })
+            return {"success": True, "total": len(registries), "registries": registries}
+        except Exception as e:
+            logger.error(f"list_acr_registries error: {e}")
+            return {"success": False, "error": str(e), "registries": []}
+
+    def list_acr_repositories(self, login_server: str) -> Dict:
+        try:
+            from azure.containerregistry import ContainerRegistryClient
+            endpoint = login_server if login_server.startswith("http") else f"https://{login_server}"
+            client = ContainerRegistryClient(
+                endpoint, self.credential,
+                audience="https://management.azure.com",
+            )
+            repos = []
+            for name in client.list_repository_names():
+                tags = []
+                try:
+                    props = client.get_repository_properties(name)
+                    for t in client.list_tag_properties(name):
+                        tags.append(t.name)
+                    repos.append({
+                        "name": name,
+                        "tag_count": len(tags),
+                        "tags": tags[:20],
+                        "last_updated": props.last_updated_on.isoformat() if getattr(props, "last_updated_on", None) else None,
+                    })
+                except Exception:
+                    repos.append({"name": name, "tag_count": len(tags), "tags": tags[:20]})
+            return {"success": True, "login_server": login_server, "total": len(repos), "repositories": repos}
+        except Exception as e:
+            logger.error(f"list_acr_repositories error: {e}")
+            return {"success": False, "error": str(e), "repositories": []}
+
+    # ── Azure Function Apps ───────────────────────────────────────────────────
+
+    def list_function_apps(self) -> Dict:
+        try:
+            apps = []
+            for site in self.web_client.web_apps.list():
+                kind = (site.kind or "")
+                if "functionapp" not in kind:
+                    continue
+                apps.append({
+                    "name": site.name,
+                    "resource_group": self._rg_from_id(site.id),
+                    "location": site.location,
+                    "state": site.state,
+                    "default_hostname": site.default_host_name,
+                    "https_only": getattr(site, "https_only", None),
+                    "runtime": kind,
+                    "enabled": getattr(site, "enabled", None),
+                })
+            return {"success": True, "total": len(apps), "function_apps": apps}
+        except Exception as e:
+            logger.error(f"list_function_apps error: {e}")
+            return {"success": False, "error": str(e), "function_apps": []}
+
+    def list_functions(self, resource_group: str, app_name: str) -> Dict:
+        try:
+            funcs = []
+            for f in self.web_client.web_apps.list_functions(resource_group, app_name):
+                cfg = getattr(f, "config", None) or {}
+                funcs.append({
+                    "name": (f.name or "").split("/")[-1],
+                    "disabled": getattr(f, "is_disabled", None),
+                    "trigger": (cfg.get("bindings", [{}])[0].get("type") if isinstance(cfg, dict) and cfg.get("bindings") else None),
+                })
+            return {"success": True, "app": app_name, "total": len(funcs), "functions": funcs}
+        except Exception as e:
+            logger.error(f"list_functions error: {e}")
+            return {"success": False, "error": str(e), "functions": []}
+
+    def function_app_action(self, resource_group: str, app_name: str, action: str) -> Dict:
+        try:
+            ops = self.web_client.web_apps
+            if action == "start":
+                ops.start(resource_group, app_name)
+            elif action == "stop":
+                ops.stop(resource_group, app_name)
+            elif action == "restart":
+                ops.restart(resource_group, app_name)
+            else:
+                return {"success": False, "error": f"Ação inválida: {action}"}
+            return {"success": True, "app": app_name, "action": action}
+        except Exception as e:
+            logger.error(f"function_app_action {action} error: {e}")
+            return {"success": False, "error": str(e)}

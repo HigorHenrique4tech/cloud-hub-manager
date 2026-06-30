@@ -1,10 +1,56 @@
-# CloudAtlas
+# ☁️ CloudAtlas
 
-Plataforma multi-cloud + Microsoft 365 centralizada para gerenciar, monitorar e otimizar recursos de nuvem em um único lugar — com hierarquia de organizações, controle de acesso por papel (RBAC), FinOps, segurança multi-cloud, observabilidade e monitoramento integrado.
+> **Um único painel para toda a sua nuvem.** Gerencie AWS, Azure, GCP, Microsoft 365 e Kubernetes — com controle de custos (FinOps), segurança, automação e operação multi-cliente (MSP) — sem alternar entre dezenas de consoles.
 
-## Visão Geral
+![Backend](https://img.shields.io/badge/Backend-FastAPI%20%7C%20Python%203.11-009688)
+![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%7C%20Vite-61DAFB)
+![Banco](https://img.shields.io/badge/DB-PostgreSQL%2016-336791)
+![Infra](https://img.shields.io/badge/Infra-Docker%20Compose-2496ED)
+![Licença](https://img.shields.io/badge/Licen%C3%A7a-MIT-green)
 
-O CloudAtlas permite que times de infraestrutura e engenharia visualizem e operem recursos AWS + Azure + GCP, administrem o ambiente Microsoft 365 (usuários, licenças, Exchange, SharePoint, Teams, GDAP), controlem custos, recebam alertas, identifiquem desperdícios automaticamente, apliquem economias reais, gerenciem backup e segurança multi-cloud, e conduzam operações MSP/Enterprise — tudo sem precisar alternar entre consoles.
+---
+
+## 📖 O que é o CloudAtlas?
+
+O CloudAtlas é uma **plataforma SaaS de gestão multi-cloud** que reúne, em um só lugar, tudo o que um time de infraestrutura precisa para operar ambientes de nuvem complexos:
+
+- **Visualizar e operar** recursos de AWS, Azure e GCP (criar, iniciar, parar, configurar) sem abrir os consoles nativos.
+- **Administrar o Microsoft 365** completo — usuários, licenças, Exchange, SharePoint, Teams, GDAP e migração entre tenants.
+- **Gerenciar clusters Kubernetes** de qualquer nuvem ou on-premises em uma visão unificada.
+- **Controlar custos (FinOps)** — detectar desperdício automaticamente e aplicar economias com 1 clique.
+- **Garantir segurança e conformidade** — scans multi-cloud, automação de resposta a incidentes e backups.
+- **Operar como MSP** — gerenciar dezenas de organizações-cliente com hierarquia, white-label e cobrança.
+
+### 👥 Para quem é?
+
+| Perfil | Como usa o CloudAtlas |
+|--------|------------------------|
+| **Times de Infra/DevOps** | Operam recursos multi-cloud e clusters K8s de um só painel, com RBAC e auditoria. |
+| **Gestores FinOps** | Acompanham custos, recebem alertas de orçamento e eliminam desperdício. |
+| **Consultorias / MSPs** | Gerenciam o ambiente de vários clientes com white-label, GDAP e relatórios executivos. |
+| **Administradores M365** | Conduzem operações de identidade, Exchange, Teams e migrações T2T. |
+
+---
+
+## 🧭 Índice
+
+- [Stack Tecnológica](#stack-tecnológica)
+- [Arquitetura](#arquitetura)
+  - [Modelo de Hierarquia](#modelo-de-hierarquia)
+  - [RBAC — Papéis](#hierarquia-msp-enterprise)
+- [Funcionalidades](#funcionalidades)
+  - [Provedores Cloud (AWS · Azure · GCP)](#aws)
+  - [Kubernetes & Containers](#kubernetes--containers)
+  - [Microsoft 365](#microsoft-365-enterprise)
+  - [FinOps](#finops--otimização-de-custos-finops)
+  - [Segurança & Backup](#segurança-multi-cloud)
+  - [Migration365](#migration365-m365migration--enterprise)
+- [Estrutura do Projeto](#estrutura-do-projeto)
+- [Como Executar](#como-executar)
+- [Variáveis de Ambiente](#variáveis-de-ambiente)
+- [Permissões nas Clouds](#permissões-necessárias-nas-clouds)
+- [Banco de Dados](#banco-de-dados--20-tabelas)
+- [Roadmap](#roadmap)
 
 ---
 
@@ -24,6 +70,8 @@ O CloudAtlas permite que times de infraestrutura e engenharia visualizem e opere
 | Azure SDK | azure-identity + azure-mgmt-compute + azure-mgmt-network + azure-mgmt-monitor + azure-mgmt-costmanagement + azure-mgmt-recoveryservices |
 | GCP SDK | google-cloud-compute + google-cloud-storage + google-cloud-functions + google-api-python-client |
 | Microsoft 365 | MSAL + Microsoft Graph API v1.0 + Exchange Online Admin API (beta + v2.0) |
+| Kubernetes | kubernetes (client oficial Python) + azure-mgmt-containerservice (descoberta AKS) |
+| Workers assíncronos | Celery + Redis (broker) — migração M365 de longa duração |
 | Gráficos | Recharts |
 | Drag-and-drop | @dnd-kit/core + @dnd-kit/sortable |
 | HTTP Client | httpx (webhook delivery) |

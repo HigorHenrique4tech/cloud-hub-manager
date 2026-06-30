@@ -3,6 +3,25 @@ import api, { wsUrl } from './api';
 export const awsService = {
   testConnection: async () => (await api.get(wsUrl('/aws/test-connection'))).data,
 
+  // ── ECS / Fargate ─────────────────────────────────────────────────────────
+  listEcsClusters: async () => (await api.get(wsUrl('/aws/ecs/clusters'))).data,
+  listEcsServices: async (cluster) => (await api.get(wsUrl(`/aws/ecs/clusters/${cluster}/services`))).data,
+  listEcsTasks: async (cluster) => (await api.get(wsUrl(`/aws/ecs/clusters/${cluster}/tasks`))).data,
+  scaleEcsService: async (cluster, service, desired_count) =>
+    (await api.post(wsUrl(`/aws/ecs/clusters/${cluster}/services/${service}/scale`), { desired_count })).data,
+  stopEcsTask: async (cluster, taskId) =>
+    (await api.post(wsUrl(`/aws/ecs/clusters/${cluster}/tasks/${taskId}/stop`))).data,
+
+  // ── DynamoDB ──────────────────────────────────────────────────────────────
+  listDynamoTables: async () => (await api.get(wsUrl('/aws/dynamodb/tables'))).data,
+
+  // ── CloudFront ────────────────────────────────────────────────────────────
+  listCloudFront: async () => (await api.get(wsUrl('/aws/cloudfront/distributions'))).data,
+
+  // ── Route 53 ──────────────────────────────────────────────────────────────
+  listRoute53Zones: async () => (await api.get(wsUrl('/aws/route53/zones'))).data,
+  listRoute53Records: async (zoneId) => (await api.get(wsUrl(`/aws/route53/zones/${zoneId}/records`))).data,
+
   // Overview
   getOverview: async () => (await api.get(wsUrl('/aws/overview'))).data,
 

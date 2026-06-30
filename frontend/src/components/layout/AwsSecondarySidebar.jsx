@@ -1,14 +1,18 @@
 import { useState } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, MonitorPlay, HardDrive, Database, Zap, Network, ShieldAlert, HardDriveDownload, Lightbulb, ChevronLeft, ChevronRight } from 'lucide-react';
+import { LayoutGrid, MonitorPlay, HardDrive, Database, Zap, Network, ShieldAlert, HardDriveDownload, Lightbulb, ChevronLeft, ChevronRight, Boxes, Table2, Globe } from 'lucide-react';
 
 const awsNavItems = [
   { to: '/aws', label: 'Visão Geral', icon: LayoutGrid, end: true },
   { to: '/aws/ec2', label: 'EC2', icon: MonitorPlay },
+  { to: '/aws/ecs', label: 'ECS / Fargate', icon: Boxes },
   { to: '/aws/s3', label: 'S3', icon: HardDrive },
   { to: '/aws/rds', label: 'RDS', icon: Database },
+  { to: '/aws/dynamodb', label: 'DynamoDB', icon: Table2 },
   { to: '/aws/lambda', label: 'Lambda', icon: Zap },
   { to: '/aws/vpc', label: 'VPC', icon: Network },
+  { to: '/aws/cloudfront', label: 'CloudFront', icon: Globe },
+  { to: '/aws/route53', label: 'Route 53', icon: Network },
   { to: '/aws/backup', label: 'Backup', icon: HardDriveDownload },
   { to: '/aws/security', label: 'Segurança', icon: ShieldAlert },
   { to: '/aws/advisor', label: 'Advisor', icon: Lightbulb },

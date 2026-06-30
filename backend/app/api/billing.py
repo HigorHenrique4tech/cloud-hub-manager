@@ -270,6 +270,8 @@ async def abacatepay_webhook(
         db.commit()
         logger.info("AbacatePay webhook: payment %s set to %s", payment.id, status_value)
 
+    return {"received": True}
+
 
 # ── Downgrade Logic ──────────────────────────────────────────────────────────
 

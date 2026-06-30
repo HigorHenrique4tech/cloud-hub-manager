@@ -1311,12 +1311,17 @@ def delete_account(
 
     # Revoke all active sessions first
     revoke_all_user_tokens(db, current_user.id)
-    from app.core.redis_client import revoke_access_jti
+    from app.core.redis_client import revoke_jti
+    import time as _time
     auth = request.headers.get("Authorization", "")
     if auth.startswith("Bearer "):
         claims = decode_token_claims(auth[7:])
         if claims and claims.get("jti"):
-            revoke_access_jti(claims["jti"], claims.get("exp"))
+            # revoke_jti espera TTL em segundos; 'exp' é timestamp absoluto.
+            exp = claims.get("exp")
+            ttl = max(0, int(exp - _time.time())) if exp else 0
+            if ttl > 0:
+                revoke_jti(claims["jti"], ttl)
 
     # Anonymize PII — keep id/created_at for audit integrity
     current_user.email = anon_email

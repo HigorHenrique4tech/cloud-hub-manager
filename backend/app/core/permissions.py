@@ -66,6 +66,10 @@ class Permission(str, Enum):
     M365_VIEW   = "m365.view"   # view M365 tenant data (users, licenses, teams, security)
     M365_MANAGE = "m365.manage" # save / delete M365 credentials, configure integration
 
+    # Kubernetes
+    K8S_VIEW   = "k8s.view"     # view clusters, workloads, ingress, logs, topology
+    K8S_MANAGE = "k8s.manage"   # mutating actions: scale, restart (rollback/delete future)
+
     # Helpdesk (platform-level)
     HELPDESK_MANAGE = "helpdesk.manage"  # manage support tickets (used by helpdesk role)
 
@@ -99,6 +103,8 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.WEBHOOKS_MANAGE,
         Permission.M365_VIEW,
         Permission.M365_MANAGE,
+        Permission.K8S_VIEW,
+        Permission.K8S_MANAGE,
     },
 
     "viewer": {
@@ -111,6 +117,7 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
         Permission.TEMPLATES_VIEW,
         Permission.WEBHOOKS_VIEW,
         Permission.M365_VIEW,
+        Permission.K8S_VIEW,
     },
 
     "billing": {

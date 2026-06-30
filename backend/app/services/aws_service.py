@@ -20,6 +20,11 @@ class AWSService:
         self._lambda_client = None
         self._ce_client = None
         self._iam_client = None
+        self._eks_client = None
+        self._ecs_client = None
+        self._dynamodb_client = None
+        self._cloudfront_client = None
+        self._route53_client = None
 
     def _boto3_client(self, service: str, region_override: str = None):
         return boto3.client(
@@ -64,6 +69,70 @@ class AWSService:
         if not self._iam_client:
             self._iam_client = self._boto3_client('iam', 'us-east-1')
         return self._iam_client
+
+    @property
+    def eks_client(self):
+        if not self._eks_client:
+            self._eks_client = self._boto3_client('eks')
+        return self._eks_client
+
+    @property
+    def ecs_client(self):
+        if not self._ecs_client:
+            self._ecs_client = self._boto3_client('ecs')
+        return self._ecs_client
+
+    @property
+    def dynamodb_client(self):
+        if not self._dynamodb_client:
+            self._dynamodb_client = self._boto3_client('dynamodb')
+        return self._dynamodb_client
+
+    @property
+    def cloudfront_client(self):
+        if not self._cloudfront_client:
+            self._cloudfront_client = self._boto3_client('cloudfront', 'us-east-1')
+        return self._cloudfront_client
+
+    @property
+    def route53_client(self):
+        if not self._route53_client:
+            self._route53_client = self._boto3_client('route53', 'us-east-1')
+        return self._route53_client
+
+    # ── EKS (token + discovery helper) ────────────────────────────────────────
+
+    def get_eks_token(self, cluster_name: str) -> str:
+        """Gera o bearer token EKS via STS GetCallerIdentity presigned (expira ~15min)."""
+        import base64
+        from botocore.signers import RequestSigner
+
+        session = boto3.session.Session(
+            aws_access_key_id=self.access_key,
+            aws_secret_access_key=self.secret_key,
+            region_name=self.region,
+        )
+        sts = session.client("sts")
+        service_id = sts.meta.service_model.service_id
+        signer = RequestSigner(
+            service_id, self.region, "sts", "v4",
+            session.get_credentials(), session.events,
+        )
+        params = {
+            "method": "GET",
+            "url": f"https://sts.{self.region}.amazonaws.com/"
+                   "?Action=GetCallerIdentity&Version=2011-06-15",
+            "body": {},
+            "headers": {"x-k8s-aws-id": cluster_name},
+            "context": {},
+        }
+        signed_url = signer.generate_presigned_url(
+            params, region_name=self.region, expires_in=60, operation_name="",
+        )
+        token = "k8s-aws-v1." + base64.urlsafe_b64encode(
+            signed_url.encode("utf-8")
+        ).decode("utf-8").rstrip("=")
+        return token
 
     # ── EC2 ──────────────────────────────────────────────────────────────────
 
@@ -1195,6 +1264,177 @@ class AWSService:
         except (NoCredentialsError, ClientError, Exception) as e:
             logger.error(f"delete_vpc_peering error: {e}")
             return {'success': False, 'error': str(e)}
+
+    # ── ECS / Fargate ─────────────────────────────────────────────────────────
+
+    def list_ecs_clusters(self) -> Dict:
+        try:
+            arns = self.ecs_client.list_clusters().get('clusterArns', [])
+            clusters = []
+            if arns:
+                desc = self.ecs_client.describe_clusters(clusters=arns).get('clusters', [])
+                for c in desc:
+                    clusters.append({
+                        'name': c.get('clusterName'),
+                        'arn': c.get('clusterArn'),
+                        'status': c.get('status'),
+                        'running_tasks': c.get('runningTasksCount', 0),
+                        'pending_tasks': c.get('pendingTasksCount', 0),
+                        'active_services': c.get('activeServicesCount', 0),
+                        'registered_instances': c.get('registeredContainerInstancesCount', 0),
+                    })
+            return {'success': True, 'region': self.region, 'total': len(clusters), 'clusters': clusters}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_ecs_clusters error: {e}")
+            return {'success': False, 'error': str(e), 'clusters': []}
+
+    def list_ecs_services(self, cluster: str) -> Dict:
+        try:
+            arns = self.ecs_client.list_services(cluster=cluster, maxResults=100).get('serviceArns', [])
+            services = []
+            for i in range(0, len(arns), 10):
+                desc = self.ecs_client.describe_services(cluster=cluster, services=arns[i:i+10]).get('services', [])
+                for s in desc:
+                    services.append({
+                        'name': s.get('serviceName'),
+                        'status': s.get('status'),
+                        'desired_count': s.get('desiredCount', 0),
+                        'running_count': s.get('runningCount', 0),
+                        'pending_count': s.get('pendingCount', 0),
+                        'launch_type': s.get('launchType'),
+                        'task_definition': (s.get('taskDefinition') or '').split('/')[-1],
+                    })
+            return {'success': True, 'cluster': cluster, 'total': len(services), 'services': services}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_ecs_services error: {e}")
+            return {'success': False, 'error': str(e), 'services': []}
+
+    def list_ecs_tasks(self, cluster: str) -> Dict:
+        try:
+            arns = self.ecs_client.list_tasks(cluster=cluster, maxResults=100).get('taskArns', [])
+            tasks = []
+            if arns:
+                desc = self.ecs_client.describe_tasks(cluster=cluster, tasks=arns).get('tasks', [])
+                for t in desc:
+                    tasks.append({
+                        'task_id': (t.get('taskArn') or '').split('/')[-1],
+                        'last_status': t.get('lastStatus'),
+                        'desired_status': t.get('desiredStatus'),
+                        'launch_type': t.get('launchType'),
+                        'cpu': t.get('cpu'),
+                        'memory': t.get('memory'),
+                        'task_definition': (t.get('taskDefinitionArn') or '').split('/')[-1],
+                    })
+            return {'success': True, 'cluster': cluster, 'total': len(tasks), 'tasks': tasks}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_ecs_tasks error: {e}")
+            return {'success': False, 'error': str(e), 'tasks': []}
+
+    def update_ecs_service_count(self, cluster: str, service: str, desired_count: int) -> Dict:
+        try:
+            self.ecs_client.update_service(cluster=cluster, service=service, desiredCount=int(desired_count))
+            return {'success': True, 'service': service, 'desired_count': int(desired_count)}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"update_ecs_service_count error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def stop_ecs_task(self, cluster: str, task_id: str) -> Dict:
+        try:
+            self.ecs_client.stop_task(cluster=cluster, task=task_id, reason="Stopped via CloudAtlas")
+            return {'success': True, 'task_id': task_id}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"stop_ecs_task error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── DynamoDB ──────────────────────────────────────────────────────────────
+
+    def list_dynamodb_tables(self) -> Dict:
+        try:
+            names = self.dynamodb_client.list_tables().get('TableNames', [])
+            tables = []
+            for name in names:
+                try:
+                    t = self.dynamodb_client.describe_table(TableName=name).get('Table', {})
+                    keys = {k['AttributeName']: k['KeyType'] for k in t.get('KeySchema', [])}
+                    billing = (t.get('BillingModeSummary') or {}).get('BillingMode') \
+                        or ('PROVISIONED' if (t.get('ProvisionedThroughput') or {}).get('ReadCapacityUnits') else 'PAY_PER_REQUEST')
+                    tables.append({
+                        'name': name,
+                        'status': t.get('TableStatus'),
+                        'item_count': t.get('ItemCount', 0),
+                        'size_bytes': t.get('TableSizeBytes', 0),
+                        'partition_key': next((k for k, v in keys.items() if v == 'HASH'), None),
+                        'sort_key': next((k for k, v in keys.items() if v == 'RANGE'), None),
+                        'billing_mode': billing,
+                        'gsi_count': len(t.get('GlobalSecondaryIndexes', []) or []),
+                    })
+                except Exception as e:
+                    logger.warning(f"describe_table {name}: {e}")
+            return {'success': True, 'region': self.region, 'total': len(tables), 'tables': tables}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_dynamodb_tables error: {e}")
+            return {'success': False, 'error': str(e), 'tables': []}
+
+    # ── CloudFront ────────────────────────────────────────────────────────────
+
+    def list_cloudfront_distributions(self) -> Dict:
+        try:
+            dl = self.cloudfront_client.list_distributions().get('DistributionList', {})
+            distributions = []
+            for d in dl.get('Items', []) or []:
+                origins = [o.get('DomainName') for o in (d.get('Origins', {}).get('Items', []) or [])]
+                distributions.append({
+                    'id': d.get('Id'),
+                    'domain_name': d.get('DomainName'),
+                    'status': d.get('Status'),
+                    'enabled': d.get('Enabled'),
+                    'aliases': (d.get('Aliases', {}) or {}).get('Items', []) or [],
+                    'origins': origins,
+                    'price_class': d.get('PriceClass'),
+                    'comment': d.get('Comment'),
+                })
+            return {'success': True, 'total': len(distributions), 'distributions': distributions}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_cloudfront_distributions error: {e}")
+            return {'success': False, 'error': str(e), 'distributions': []}
+
+    # ── Route 53 ──────────────────────────────────────────────────────────────
+
+    def list_route53_zones(self) -> Dict:
+        try:
+            zones = []
+            for z in self.route53_client.list_hosted_zones().get('HostedZones', []):
+                zones.append({
+                    'id': (z.get('Id') or '').split('/')[-1],
+                    'name': z.get('Name'),
+                    'record_count': z.get('ResourceRecordSetCount', 0),
+                    'private': (z.get('Config') or {}).get('PrivateZone', False),
+                    'comment': (z.get('Config') or {}).get('Comment'),
+                })
+            return {'success': True, 'total': len(zones), 'zones': zones}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_route53_zones error: {e}")
+            return {'success': False, 'error': str(e), 'zones': []}
+
+    def list_route53_records(self, zone_id: str) -> Dict:
+        try:
+            records = []
+            paginator = self.route53_client.get_paginator('list_resource_record_sets')
+            for page in paginator.paginate(HostedZoneId=zone_id):
+                for r in page.get('ResourceRecordSets', []):
+                    values = [v.get('Value') for v in (r.get('ResourceRecords', []) or [])]
+                    if r.get('AliasTarget'):
+                        values = [f"ALIAS → {r['AliasTarget'].get('DNSName')}"]
+                    records.append({
+                        'name': r.get('Name'),
+                        'type': r.get('Type'),
+                        'ttl': r.get('TTL'),
+                        'values': values,
+                    })
+            return {'success': True, 'zone_id': zone_id, 'total': len(records), 'records': records}
+        except (NoCredentialsError, ClientError, Exception) as e:
+            logger.error(f"list_route53_records error: {e}")
+            return {'success': False, 'error': str(e), 'records': []}
 
     # ── Connection test ───────────────────────────────────────────────────────
 

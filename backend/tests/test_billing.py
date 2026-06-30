@@ -61,14 +61,14 @@ def _history_url(setup):
 def test_checkout_creates_payment(mock_create, client, billing_setup):
     resp = client.post(
         _checkout_url(billing_setup),
-        json={"plan_tier": "pro"},
+        json={"plan_tier": "enterprise_e1"},  # diferente do plano atual (standard)
         headers=billing_setup["headers"],
     )
     assert resp.status_code == 200, resp.text
     data = resp.json()
     assert "payment_id" in data
     assert "payment_url" in data
-    assert data["plan_tier"] == "pro"
+    assert data["plan_tier"] == "enterprise_e1"
     assert data["amount"] > 0
     mock_create.assert_called_once()
 
@@ -82,7 +82,7 @@ def test_checkout_dev_mode_returns_success_url(mock_create, client, billing_setu
     """Quando AbacatePay não retorna URL (modo dev), deve redirecionar para /billing/success."""
     resp = client.post(
         _checkout_url(billing_setup),
-        json={"plan_tier": "pro"},
+        json={"plan_tier": "enterprise_e1"},  # diferente do plano atual (standard)
         headers=billing_setup["headers"],
     )
     assert resp.status_code == 200
@@ -105,12 +105,12 @@ def test_checkout_already_on_same_plan(client, billing_setup, db):
     org = db.query(Organization).filter(
         Organization.slug == billing_setup["org_slug"]
     ).first()
-    org.plan_tier = "pro"
+    org.plan_tier = "standard"
     db.commit()
 
     resp = client.post(
         _checkout_url(billing_setup),
-        json={"plan_tier": "pro"},
+        json={"plan_tier": "standard"},  # mesmo plano atual → deve recusar
         headers=billing_setup["headers"],
     )
     assert resp.status_code == 400
@@ -118,8 +118,9 @@ def test_checkout_already_on_same_plan(client, billing_setup, db):
 
 
 def test_checkout_requires_authentication(client, billing_setup):
-    resp = client.post(_checkout_url(billing_setup), json={"plan_tier": "pro"})
-    assert resp.status_code == 401
+    resp = client.post(_checkout_url(billing_setup), json={"plan_tier": "enterprise_e1"})
+    # HTTPBearer retorna 403 sem credenciais; CSRF também pode barrar (403). 401 aceitável.
+    assert resp.status_code in (401, 403)
 
 
 def test_checkout_requires_owner_or_admin(client, billing_setup, db):
@@ -134,7 +135,7 @@ def test_checkout_requires_owner_or_admin(client, billing_setup, db):
 
     resp = client.post(
         _checkout_url(billing_setup),
-        json={"plan_tier": "pro"},
+        json={"plan_tier": "standard"},
         headers={"Authorization": f"Bearer {viewer_token}"},
     )
     # Deve ser 403 (sem permissão) ou 404 (org diferente)
@@ -150,7 +151,7 @@ def _create_pending_payment(db, org_id, user_id, billing_id="bill_test_001"):
         organization_id=org_id,
         user_id=user_id,
         abacate_billing_id=billing_id,
-        plan_tier="pro",
+        plan_tier="standard",
         amount=9900,
         status="PENDING",
         payment_url="https://pay.example.com/checkout/x",
@@ -182,7 +183,7 @@ def test_verify_payment_not_found(client, billing_setup):
     return_value="PAID",
 )
 def test_verify_payment_activates_plan(mock_check, client, billing_setup, db):
-    from app.models.db_models import Organization, OrgMember
+    from app.models.db_models import Organization, OrganizationMember
     org = db.query(Organization).filter(
         Organization.slug == billing_setup["org_slug"]
     ).first()
@@ -190,8 +191,8 @@ def test_verify_payment_activates_plan(mock_check, client, billing_setup, db):
     db.commit()
 
     # Encontrar o usuário owner
-    member_row = db.query(OrgMember).filter(
-        OrgMember.organization_id == org.id
+    member_row = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id
     ).first()
 
     payment = _create_pending_payment(db, org.id, member_row.user_id, "bill_verify_paid")
@@ -206,7 +207,7 @@ def test_verify_payment_activates_plan(mock_check, client, billing_setup, db):
 
     # Org deve ter sido atualizada
     db.refresh(org)
-    assert org.plan_tier == "pro"
+    assert org.plan_tier == "standard"
 
 
 @patch(
@@ -216,12 +217,12 @@ def test_verify_payment_activates_plan(mock_check, client, billing_setup, db):
 )
 def test_verify_already_paid_is_idempotent(mock_check, client, billing_setup, db):
     """Verificar um pagamento já PAID não deve chamar check_billing_status."""
-    from app.models.db_models import OrgMember, Organization, Payment
+    from app.models.db_models import OrganizationMember, Organization, Payment
     org = db.query(Organization).filter(
         Organization.slug == billing_setup["org_slug"]
     ).first()
-    member_row = db.query(OrgMember).filter(
-        OrgMember.organization_id == org.id
+    member_row = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id
     ).first()
 
     from datetime import datetime
@@ -229,7 +230,7 @@ def test_verify_already_paid_is_idempotent(mock_check, client, billing_setup, db
         organization_id=org.id,
         user_id=member_row.user_id,
         abacate_billing_id="bill_already_paid",
-        plan_tier="pro",
+        plan_tier="standard",
         amount=9900,
         status="PAID",
         payment_url="https://pay.example.com/x",
@@ -254,12 +255,12 @@ def test_verify_already_paid_is_idempotent(mock_check, client, billing_setup, db
     return_value="EXPIRED",
 )
 def test_verify_expired_payment(mock_check, client, billing_setup, db):
-    from app.models.db_models import OrgMember, Organization
+    from app.models.db_models import OrganizationMember, Organization
     org = db.query(Organization).filter(
         Organization.slug == billing_setup["org_slug"]
     ).first()
-    member_row = db.query(OrgMember).filter(
-        OrgMember.organization_id == org.id
+    member_row = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id
     ).first()
 
     payment = _create_pending_payment(db, org.id, member_row.user_id, "bill_verify_expired")
@@ -284,7 +285,8 @@ def test_history_returns_list(client, billing_setup):
 
 def test_history_requires_authentication(client, billing_setup):
     resp = client.get(_history_url(billing_setup))
-    assert resp.status_code == 401
+    # HTTPBearer retorna 403 sem credenciais; 401 também é aceitável.
+    assert resp.status_code in (401, 403)
 
 
 # ── POST /billing/webhook (AbacatePay) ────────────────────────────────────────
@@ -332,7 +334,7 @@ def test_webhook_unknown_billing_id_acknowledged(client, billing_setup):
 
 def test_webhook_paid_activates_plan(client, billing_setup, db):
     """Webhook PAID deve marcar payment como PAID e atualizar plan_tier da org."""
-    from app.models.db_models import Organization, OrgMember
+    from app.models.db_models import Organization, OrganizationMember
 
     org = db.query(Organization).filter(
         Organization.slug == billing_setup["org_slug"]
@@ -340,8 +342,8 @@ def test_webhook_paid_activates_plan(client, billing_setup, db):
     org.plan_tier = "free"
     db.commit()
 
-    member_row = db.query(OrgMember).filter(
-        OrgMember.organization_id == org.id
+    member_row = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id
     ).first()
 
     payment = _create_pending_payment(
@@ -362,26 +364,26 @@ def test_webhook_paid_activates_plan(client, billing_setup, db):
     db.refresh(org)
     assert payment.status == "PAID"
     assert payment.paid_at is not None
-    assert org.plan_tier == "pro"
+    assert org.plan_tier == "standard"
 
 
 def test_webhook_paid_idempotent(client, billing_setup, db):
     """Webhook PAID num pagamento já PAID não deve reprocessar nem dar erro."""
     from datetime import datetime
-    from app.models.db_models import OrgMember, Organization, Payment
+    from app.models.db_models import OrganizationMember, Organization, Payment
 
     org = db.query(Organization).filter(
         Organization.slug == billing_setup["org_slug"]
     ).first()
-    member_row = db.query(OrgMember).filter(
-        OrgMember.organization_id == org.id
+    member_row = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id
     ).first()
 
     p = Payment(
         organization_id=org.id,
         user_id=member_row.user_id,
         abacate_billing_id="bill_wh_idempotent",
-        plan_tier="pro",
+        plan_tier="standard",
         amount=9900,
         status="PAID",
         payment_url="https://pay.example.com/x",
@@ -404,13 +406,13 @@ def test_webhook_paid_idempotent(client, billing_setup, db):
 @pytest.mark.parametrize("status", ["EXPIRED", "CANCELLED", "REFUNDED"])
 def test_webhook_negative_statuses_update_payment(status, client, billing_setup, db):
     """Webhook com status negativo (EXPIRED/CANCELLED/REFUNDED) deve atualizar o pagamento."""
-    from app.models.db_models import OrgMember, Organization
+    from app.models.db_models import OrganizationMember, Organization
 
     org = db.query(Organization).filter(
         Organization.slug == billing_setup["org_slug"]
     ).first()
-    member_row = db.query(OrgMember).filter(
-        OrgMember.organization_id == org.id
+    member_row = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id
     ).first()
 
     billing_id = f"bill_wh_{status.lower()}_{uuid.uuid4().hex[:6]}"
@@ -430,7 +432,7 @@ def test_webhook_negative_statuses_update_payment(status, client, billing_setup,
 
 def test_webhook_nested_billing_payload(client, billing_setup, db):
     """AbacatePay pode enviar o payload aninhado: {'billing': {'id': ..., 'status': ...}}"""
-    from app.models.db_models import OrgMember, Organization
+    from app.models.db_models import OrganizationMember, Organization
 
     org = db.query(Organization).filter(
         Organization.slug == billing_setup["org_slug"]
@@ -438,8 +440,8 @@ def test_webhook_nested_billing_payload(client, billing_setup, db):
     org.plan_tier = "free"
     db.commit()
 
-    member_row = db.query(OrgMember).filter(
-        OrgMember.organization_id == org.id
+    member_row = db.query(OrganizationMember).filter(
+        OrganizationMember.organization_id == org.id
     ).first()
 
     payment = _create_pending_payment(
