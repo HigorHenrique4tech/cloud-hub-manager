@@ -16,6 +16,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application code
 COPY . .
 
+# Normaliza quebras de linha do entrypoint (evita quebra quando editado no Windows/CRLF)
+RUN sed -i 's/\r$//' /app/entrypoint.sh
+
 # Expose port
 EXPOSE 8000
 

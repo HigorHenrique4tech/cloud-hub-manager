@@ -31,25 +31,29 @@ def discover_aks(azure_service) -> list:
         )
         for mc in cs_client.managed_clusters.list():
             # resource group fica no id: /subscriptions/.../resourceGroups/<rg>/...
+            # (casing de "resourceGroups" pode variar entre versões do SDK)
             rg = None
-            try:
-                parts = mc.id.split("/")
-                rg = parts[parts.index("resourceGroups") + 1]
-            except Exception:
-                pass
+            parts = (mc.id or "").split("/")
+            for idx, seg in enumerate(parts):
+                if seg.lower() == "resourcegroups" and idx + 1 < len(parts):
+                    rg = parts[idx + 1]
+                    break
 
             kubeconfig_dict = None
-            try:
-                creds = cs_client.managed_clusters.list_cluster_user_credentials(
-                    rg, mc.name
-                )
-                if creds and creds.kubeconfigs:
-                    raw = creds.kubeconfigs[0].value  # bytes (YAML)
-                    kubeconfig_dict = yaml.safe_load(
-                        raw.decode("utf-8") if isinstance(raw, bytes) else raw
+            if not rg:
+                logger.warning(f"Não foi possível extrair o resource group do AKS {mc.name} (id={mc.id}).")
+            else:
+                try:
+                    creds = cs_client.managed_clusters.list_cluster_user_credentials(
+                        resource_group_name=rg, resource_name=mc.name,
                     )
-            except Exception as e:
-                logger.warning(f"Falha ao obter kubeconfig do AKS {mc.name}: {e}")
+                    if creds and creds.kubeconfigs:
+                        raw = creds.kubeconfigs[0].value  # bytes (YAML)
+                        kubeconfig_dict = yaml.safe_load(
+                            raw.decode("utf-8") if isinstance(raw, bytes) else raw
+                        )
+                except Exception as e:
+                    logger.warning(f"Falha ao obter kubeconfig do AKS {mc.name} (rg={rg}): {e}")
 
             results.append({
                 "name": mc.name,

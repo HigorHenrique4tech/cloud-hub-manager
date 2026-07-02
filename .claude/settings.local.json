@@ -74,7 +74,11 @@
       "Bash(ls .venv/Scripts/pytest.exe)",
       "Bash(tail -6 \"C:/Users/higor/AppData/Local/Temp/claude/c--Users-higor-Downloads-cloud-hub-manager-cloud-hub-manager/ae234096-0478-4295-a586-1ff86707e33c/tasks/bhkqqofbr.output\")",
       "Bash(python -m py_compile app/api/k8s.py app/services/k8s_service.py app/services/k8s_discovery.py app/services/aws_service.py app/core/permissions.py)",
-      "Bash(python -m py_compile app/services/aws_service.py app/api/aws.py app/services/azure_service.py app/api/azure.py)"
+      "Bash(python -m py_compile app/services/aws_service.py app/api/aws.py app/services/azure_service.py app/api/azure.py)",
+      "Bash(printf '\\\\n# Scripts shell sempre com LF \\(evita quebra em container Linux\\)\\\\n*.sh text eol=lf\\\\n')",
+      "Bash(tail -3 .gitattributes)",
+      "Bash(docker exec *)",
+      "Bash(docker stop *)"
     ]
   }
 }
