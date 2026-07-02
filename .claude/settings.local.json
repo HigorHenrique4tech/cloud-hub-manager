@@ -78,7 +78,11 @@
       "Bash(printf '\\\\n# Scripts shell sempre com LF \\(evita quebra em container Linux\\)\\\\n*.sh text eol=lf\\\\n')",
       "Bash(tail -3 .gitattributes)",
       "Bash(docker exec *)",
-      "Bash(docker stop *)"
+      "Bash(docker stop *)",
+      "Bash(python -m py_compile backend/app/api/k8s.py)",
+      "Bash(docker info *)",
+      "Bash(curl -s -o /dev/null -w \"health: %{http_code}\\\\n\" http://localhost:8000/health)",
+      "Bash(python -m py_compile backend/alembic/versions/p5q6r7s8t9u0_license_approval_fields.py)"
     ]
   }
 }

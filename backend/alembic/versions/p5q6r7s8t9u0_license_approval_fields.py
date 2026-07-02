@@ -15,15 +15,25 @@ depends_on = None
 
 
 def upgrade():
-    op.add_column('migration_licenses',
-                  sa.Column('status', sa.String(20), nullable=False, server_default='approved'))
-    op.add_column('migration_licenses',
-                  sa.Column('admin_notes', sa.Text(), nullable=True))
-    op.add_column('migration_licenses',
-                  sa.Column('reviewed_by', UUID(as_uuid=True),
-                            sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True))
-    op.add_column('migration_licenses',
-                  sa.Column('reviewed_at', sa.DateTime(), nullable=True))
+    # Idempotente: a migration que cria `migration_licenses` (o4p5q6r7s8t9) foi
+    # editada para já incluir estas colunas. Só adicionamos as que faltarem —
+    # evita "column already exists" em deploys limpos e reconcilia bancos antigos.
+    conn = op.get_bind()
+    existing = {c["name"] for c in sa.inspect(conn).get_columns("migration_licenses")}
+
+    if "status" not in existing:
+        op.add_column('migration_licenses',
+                      sa.Column('status', sa.String(20), nullable=False, server_default='approved'))
+    if "admin_notes" not in existing:
+        op.add_column('migration_licenses',
+                      sa.Column('admin_notes', sa.Text(), nullable=True))
+    if "reviewed_by" not in existing:
+        op.add_column('migration_licenses',
+                      sa.Column('reviewed_by', UUID(as_uuid=True),
+                                sa.ForeignKey('users.id', ondelete='SET NULL'), nullable=True))
+    if "reviewed_at" not in existing:
+        op.add_column('migration_licenses',
+                      sa.Column('reviewed_at', sa.DateTime(), nullable=True))
 
 
 def downgrade():

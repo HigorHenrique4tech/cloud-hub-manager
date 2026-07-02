@@ -252,8 +252,13 @@ async def discover_clusters(
     if not azure_accounts and not aws_accounts:
         raise HTTPException(status_code=400, detail="Nenhuma conta Azure ou AWS configurada neste workspace.")
 
-    added, skipped = [], []
+    added, skipped, seen = [], [], set()
     for d, account in found:
+        # Dedup dentro do próprio lote — múltiplas contas da mesma subscription
+        # descobrem o mesmo cluster (viola uq_k8s_cluster_ws_name).
+        if d["name"] in seen:
+            skipped.append(d["name"])
+            continue
         existing = db.query(K8sCluster).filter(
             K8sCluster.workspace_id == member.workspace_id,
             K8sCluster.name == d["name"],
@@ -268,6 +273,7 @@ async def discover_clusters(
         if existing or payload is None:
             skipped.append(d["name"])
             continue
+        seen.add(d["name"])
         enc = encrypt_for_org(db, member.organization_id, payload)
         cluster = K8sCluster(
             id=uuid.uuid4(),
