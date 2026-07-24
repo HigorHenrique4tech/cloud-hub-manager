@@ -32,6 +32,7 @@ class Permission(str, Enum):
     RESOURCES_CREATE     = "resources.create"
     RESOURCES_START_STOP = "resources.start_stop"
     RESOURCES_DELETE     = "resources.delete"
+    RESOURCES_MANAGE     = "resources.manage"   # policies, approvals, reports settings
 
     # Costs
     COSTS_VIEW = "costs.view"
@@ -43,6 +44,35 @@ class Permission(str, Enum):
     # Activity logs
     LOGS_VIEW = "logs.view"
 
+    # FinOps
+    FINOPS_VIEW      = "finops.view"      # see recommendations and dashboard
+    FINOPS_RECOMMEND = "finops.recommend" # see full detail + reasoning
+    FINOPS_EXECUTE   = "finops.execute"   # apply / dismiss / rollback actions
+    FINOPS_BUDGET    = "finops.budget"    # create / edit budgets
+
+    # Schedules
+    SCHEDULES_VIEW   = "schedules.view"   # list schedules and run history
+    SCHEDULES_MANAGE = "schedules.manage" # create / edit / delete / run schedules
+
+    # Resource Templates
+    TEMPLATES_VIEW   = "templates.view"   # see and load templates
+    TEMPLATES_MANAGE = "templates.manage" # create / edit / delete templates
+
+    # Webhooks
+    WEBHOOKS_VIEW   = "webhooks.view"   # list webhooks and delivery history
+    WEBHOOKS_MANAGE = "webhooks.manage" # create / edit / delete / test webhooks
+
+    # Microsoft 365
+    M365_VIEW   = "m365.view"   # view M365 tenant data (users, licenses, teams, security)
+    M365_MANAGE = "m365.manage" # save / delete M365 credentials, configure integration
+
+    # Kubernetes
+    K8S_VIEW   = "k8s.view"     # view clusters, workloads, ingress, logs, topology
+    K8S_MANAGE = "k8s.manage"   # mutating actions: scale, restart (rollback/delete future)
+
+    # Helpdesk (platform-level)
+    HELPDESK_MANAGE = "helpdesk.manage"  # manage support tickets (used by helpdesk role)
+
 
 _ALL_PERMISSIONS: Set[str] = {p.value for p in Permission}
 
@@ -51,25 +81,60 @@ ROLE_PERMISSIONS: Dict[str, Set[str]] = {
 
     "admin": _ALL_PERMISSIONS - {
         Permission.ORG_DELETE,
+        Permission.WS_DELETE,
     },
 
     "operator": {
+        Permission.ACCOUNTS_VIEW,
         Permission.RESOURCES_VIEW,
         Permission.RESOURCES_CREATE,
         Permission.RESOURCES_START_STOP,
-        Permission.LOGS_VIEW,
+        Permission.RESOURCES_MANAGE,
+        Permission.COSTS_VIEW,
+        Permission.ALERTS_VIEW,
+        Permission.ALERTS_MANAGE,
+        Permission.FINOPS_VIEW,
+        Permission.FINOPS_RECOMMEND,
+        Permission.SCHEDULES_VIEW,
+        Permission.SCHEDULES_MANAGE,
+        Permission.TEMPLATES_VIEW,
+        Permission.TEMPLATES_MANAGE,
+        Permission.WEBHOOKS_VIEW,
+        Permission.WEBHOOKS_MANAGE,
+        Permission.M365_VIEW,
+        Permission.M365_MANAGE,
+        Permission.K8S_VIEW,
+        Permission.K8S_MANAGE,
     },
 
     "viewer": {
+        Permission.ACCOUNTS_VIEW,
         Permission.RESOURCES_VIEW,
-        Permission.LOGS_VIEW,
+        Permission.COSTS_VIEW,
+        Permission.ALERTS_VIEW,
+        Permission.FINOPS_VIEW,
+        Permission.SCHEDULES_VIEW,
+        Permission.TEMPLATES_VIEW,
+        Permission.WEBHOOKS_VIEW,
+        Permission.M365_VIEW,
+        Permission.K8S_VIEW,
     },
 
     "billing": {
         Permission.COSTS_VIEW,
         Permission.ALERTS_VIEW,
         Permission.ALERTS_MANAGE,
-        Permission.LOGS_VIEW,
+        Permission.FINOPS_VIEW,
+        Permission.FINOPS_RECOMMEND,
+        Permission.FINOPS_BUDGET,
+        Permission.SCHEDULES_VIEW,
+        Permission.TEMPLATES_VIEW,
+        Permission.M365_VIEW,
+    },
+
+    # Platform-level helpdesk role (org-role entry, but only ticket access)
+    "helpdesk": {
+        Permission.HELPDESK_MANAGE,
     },
 }
 

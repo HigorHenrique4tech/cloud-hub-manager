@@ -7,9 +7,11 @@ from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.web import WebSiteManagementClient
 from azure.mgmt.sql import SqlManagementClient
 from azure.mgmt.costmanagement import CostManagementClient
-from azure.mgmt.costmanagement.models import QueryDefinition, QueryTimePeriod, QueryDataset, QueryAggregation, QueryGrouping
+from azure.mgmt.costmanagement.models import QueryDefinition, QueryTimePeriod, QueryDataset, QueryAggregation, QueryGrouping, QueryFilter, QueryComparisonExpression
+from azure.mgmt.monitor import MonitorManagementClient
 from typing import Dict, List
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 import logging
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,8 @@ class AzureService:
         self._storage_client = None
         self._sql_client = None
         self._web_client = None
+        self._recovery_services_client = None
+        self._backup_client = None
 
     @property
     def credential(self):
@@ -77,9 +81,23 @@ class AzureService:
             self._web_client = WebSiteManagementClient(self.credential, self.subscription_id)
         return self._web_client
 
+    @property
+    def recovery_services_client(self):
+        if not self._recovery_services_client:
+            from azure.mgmt.recoveryservices import RecoveryServicesClient
+            self._recovery_services_client = RecoveryServicesClient(self.credential, self.subscription_id)
+        return self._recovery_services_client
+
+    @property
+    def backup_client(self):
+        if not self._backup_client:
+            from azure.mgmt.recoveryservicesbackup import RecoveryServicesBackupClient
+            self._backup_client = RecoveryServicesBackupClient(self.credential, self.subscription_id)
+        return self._backup_client
+
     # ── Helpers for form dropdowns ────────────────────────────────────────────
 
-    async def list_locations(self) -> Dict:
+    def list_locations(self) -> Dict:
         try:
             sub_client = SubscriptionClient(credential=self.credential)
             locations = []
@@ -91,16 +109,30 @@ class AzureService:
             logger.error(f"list_locations error: {e}")
             return {'success': False, 'error': str(e), 'locations': []}
 
-    async def list_vm_sizes(self, location: str) -> Dict:
+    def list_vm_sizes(self, location: str) -> Dict:
         try:
+            # Fetch HyperV generation capabilities from resource SKUs
+            gen_map: Dict[str, list] = {}
+            try:
+                for sku in self.compute_client.resource_skus.list(filter=f"location eq '{location}'"):
+                    if sku.resource_type != "virtualMachines":
+                        continue
+                    caps = {c.name: c.value for c in (sku.capabilities or [])}
+                    hv = caps.get("HyperVGenerations", "V1")
+                    gen_map[sku.name] = [g.strip() for g in hv.split(",")]
+            except Exception as sku_err:
+                logger.warning("Failed to fetch resource SKUs for generation info: %s", sku_err)
+
             sizes = []
             for size in self.compute_client.virtual_machine_sizes.list(location):
+                generations = gen_map.get(size.name, ["V1"])
                 sizes.append({
                     'name': size.name,
                     'vcpus': size.number_of_cores,
                     'memory_mb': size.memory_in_mb,
                     'max_data_disks': size.max_data_disk_count,
                     'os_disk_size_mb': size.os_disk_size_in_mb,
+                    'hyper_v_generations': generations,
                 })
             sizes.sort(key=lambda x: (x['vcpus'], x['memory_mb']))
             return {'success': True, 'sizes': sizes}
@@ -108,7 +140,7 @@ class AzureService:
             logger.error(f"list_vm_sizes error: {e}")
             return {'success': False, 'error': str(e), 'sizes': []}
 
-    async def list_vm_image_publishers(self, location: str) -> Dict:
+    def list_vm_image_publishers(self, location: str) -> Dict:
         try:
             publishers = [p.name for p in self.compute_client.virtual_machine_images.list_publishers(location)]
             return {'success': True, 'publishers': sorted(publishers)}
@@ -116,7 +148,7 @@ class AzureService:
             logger.error(f"list_vm_image_publishers error: {e}")
             return {'success': False, 'error': str(e), 'publishers': []}
 
-    async def list_vm_image_offers(self, location: str, publisher: str) -> Dict:
+    def list_vm_image_offers(self, location: str, publisher: str) -> Dict:
         try:
             offers = [o.name for o in self.compute_client.virtual_machine_images.list_offers(location, publisher)]
             return {'success': True, 'offers': sorted(offers)}
@@ -124,7 +156,7 @@ class AzureService:
             logger.error(f"list_vm_image_offers error: {e}")
             return {'success': False, 'error': str(e), 'offers': []}
 
-    async def list_vm_image_skus(self, location: str, publisher: str, offer: str) -> Dict:
+    def list_vm_image_skus(self, location: str, publisher: str, offer: str) -> Dict:
         try:
             skus = [s.name for s in self.compute_client.virtual_machine_images.list_skus(location, publisher, offer)]
             return {'success': True, 'skus': sorted(skus)}
@@ -134,7 +166,7 @@ class AzureService:
 
     # ── VMs ─────────────────────────────────────────────────────────────────
 
-    async def list_virtual_machines(self) -> Dict:
+    def list_virtual_machines(self) -> Dict:
         try:
             vms = []
             resource_groups = list(self.resource_client.resource_groups.list())
@@ -169,29 +201,27 @@ class AzureService:
             logger.error(f"Error listing Azure VMs: {e}")
             return {'success': False, 'error': str(e), 'virtual_machines': []}
 
-    async def start_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+    def start_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
         try:
-            poller = self.compute_client.virtual_machines.begin_start(
+            self.compute_client.virtual_machines.begin_start(
                 resource_group_name=resource_group, vm_name=vm_name
             )
-            poller.result()
-            return {'success': True, 'message': f'VM {vm_name} iniciada com sucesso'}
+            return {'success': True, 'message': f'VM {vm_name} iniciando'}
         except Exception as e:
             logger.error(f"Error starting VM {vm_name}: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def stop_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+    def stop_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
         try:
-            poller = self.compute_client.virtual_machines.begin_deallocate(
+            self.compute_client.virtual_machines.begin_deallocate(
                 resource_group_name=resource_group, vm_name=vm_name
             )
-            poller.result()
-            return {'success': True, 'message': f'VM {vm_name} parada com sucesso'}
+            return {'success': True, 'message': f'VM {vm_name} parando'}
         except Exception as e:
             logger.error(f"Error stopping VM {vm_name}: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def create_virtual_machine(self, params: dict) -> Dict:
+    def create_virtual_machine(self, params: dict) -> Dict:
         try:
             from azure.mgmt.network.models import (
                 NetworkInterface, NetworkInterfaceIPConfiguration,
@@ -303,7 +333,7 @@ class AzureService:
 
     # ── Resource Groups ───────────────────────────────────────────────────────
 
-    async def list_resource_groups(self) -> Dict:
+    def list_resource_groups(self) -> Dict:
         try:
             resource_groups = []
             for rg in self.resource_client.resource_groups.list():
@@ -318,7 +348,7 @@ class AzureService:
             logger.error(f"Error listing resource groups: {e}")
             return {'success': False, 'error': str(e), 'resource_groups': []}
 
-    async def list_resource_group_resources(self, rg_name: str) -> Dict:
+    def list_resource_group_resources(self, rg_name: str) -> Dict:
         try:
             resources = []
             for r in self.resource_client.resources.list_by_resource_group(rg_name):
@@ -335,9 +365,65 @@ class AzureService:
             logger.error(f"Error listing resources in RG {rg_name}: {e}")
             return {'success': False, 'error': str(e), 'resources': []}
 
+    def get_resource_groups_overview(self) -> Dict:
+        """List all RGs enriched with per-type resource counts (single subscription sweep)."""
+        try:
+            rg_map = {}
+            for rg in self.resource_client.resource_groups.list():
+                rg_map[rg.name] = {
+                    'name': rg.name,
+                    'location': rg.location,
+                    'tags': rg.tags or {},
+                    'provisioning_state': rg.properties.provisioning_state if rg.properties else None,
+                    'resource_counts': {},
+                    'resources': [],
+                    'total_resources': 0,
+                }
+
+            # Single sweep of all resources in the subscription
+            for r in self.resource_client.resources.list():
+                parts = (r.id or '').split('/')
+                try:
+                    rg_idx = [p.lower() for p in parts].index('resourcegroups')
+                    rg_name = parts[rg_idx + 1]
+                except (ValueError, IndexError):
+                    continue
+
+                if rg_name not in rg_map:
+                    rg_map[rg_name] = {
+                        'name': rg_name,
+                        'location': r.location or '',
+                        'tags': {},
+                        'provisioning_state': None,
+                        'resource_counts': {},
+                        'resources': [],
+                        'total_resources': 0,
+                    }
+
+                type_key = r.type.split('/')[-1] if r.type else 'unknown'
+                rg_data = rg_map[rg_name]
+                rg_data['resource_counts'][type_key] = rg_data['resource_counts'].get(type_key, 0) + 1
+                rg_data['total_resources'] += 1
+                rg_data['resources'].append({
+                    'name': r.name,
+                    'type': r.type,
+                    'location': r.location,
+                })
+
+            rgs = sorted(rg_map.values(), key=lambda x: (-x['total_resources'], x['name']))
+            return {
+                'success': True,
+                'resource_groups': rgs,
+                'total_rgs': len(rgs),
+                'total_resources': sum(r['total_resources'] for r in rgs),
+            }
+        except Exception as e:
+            logger.error(f"Error getting resource groups overview: {e}")
+            return {'success': False, 'error': str(e), 'resource_groups': []}
+
     # ── Storage ───────────────────────────────────────────────────────────────
 
-    async def list_storage_accounts(self) -> Dict:
+    def list_storage_accounts(self) -> Dict:
         try:
             accounts = []
             for sa in self.storage_client.storage_accounts.list():
@@ -358,7 +444,7 @@ class AzureService:
             logger.error(f"Error listing storage accounts: {e}")
             return {'success': False, 'error': str(e), 'storage_accounts': []}
 
-    async def create_storage_account(self, params: dict) -> Dict:
+    def create_storage_account(self, params: dict) -> Dict:
         try:
             from azure.mgmt.storage.models import StorageAccountCreateParameters, Sku, Kind
             sa_params = StorageAccountCreateParameters(
@@ -382,7 +468,7 @@ class AzureService:
 
     # ── VNets ────────────────────────────────────────────────────────────────
 
-    async def list_vnets(self) -> Dict:
+    def list_vnets(self) -> Dict:
         try:
             vnets = []
             for vnet in self.network_client.virtual_networks.list_all():
@@ -395,6 +481,10 @@ class AzureService:
                     'location': vnet.location,
                     'address_space': address_spaces,
                     'subnets_count': len(vnet.subnets) if vnet.subnets else 0,
+                    'subnets': [
+                        {'name': s.name, 'address_prefix': s.address_prefix or ''}
+                        for s in (vnet.subnets or [])
+                    ],
                     'provisioning_state': vnet.provisioning_state,
                     'tags': vnet.tags or {},
                 })
@@ -403,7 +493,7 @@ class AzureService:
             logger.error(f"Error listing VNets: {e}")
             return {'success': False, 'error': str(e), 'vnets': []}
 
-    async def create_vnet(self, params: dict) -> Dict:
+    def create_vnet(self, params: dict) -> Dict:
         try:
             from azure.mgmt.network.models import VirtualNetwork, AddressSpace, Subnet
             subnets = [
@@ -427,7 +517,7 @@ class AzureService:
 
     # ── Databases ────────────────────────────────────────────────────────────
 
-    async def list_databases(self) -> Dict:
+    def list_databases(self) -> Dict:
         try:
             servers = []
             for server in self.sql_client.servers.list():
@@ -454,7 +544,7 @@ class AzureService:
             logger.error(f"Error listing databases: {e}")
             return {'success': False, 'error': str(e), 'servers': []}
 
-    async def create_sql_database(self, params: dict) -> Dict:
+    def create_sql_database(self, params: dict) -> Dict:
         try:
             from azure.mgmt.sql.models import Server, Database, Sku
             server_params = Server(
@@ -488,11 +578,18 @@ class AzureService:
             }
         except Exception as e:
             logger.error(f"create_sql_database error: {e}")
-            return {'success': False, 'error': str(e)}
+            error_msg = str(e)
+            if 'RegionDoesNotAllowProvisioning' in error_msg:
+                return {
+                    'success': False,
+                    'error': 'Esta região não aceita criação de novos servidores SQL no momento. Tente Brazil South, East US 2, West US 2 ou West Europe.',
+                    'code': 'REGION_NOT_ALLOWED',
+                }
+            return {'success': False, 'error': error_msg}
 
     # ── App Services ──────────────────────────────────────────────────────────
 
-    async def list_app_services(self) -> Dict:
+    def list_app_services(self) -> Dict:
         try:
             apps = []
             for app in self.web_client.web_apps.list():
@@ -513,7 +610,7 @@ class AzureService:
             logger.error(f"Error listing App Services: {e}")
             return {'success': False, 'error': str(e), 'app_services': []}
 
-    async def start_app_service(self, resource_group: str, app_name: str) -> Dict:
+    def start_app_service(self, resource_group: str, app_name: str) -> Dict:
         try:
             self.web_client.web_apps.start(resource_group, app_name)
             return {'success': True, 'message': f'App Service {app_name} iniciado com sucesso'}
@@ -521,7 +618,7 @@ class AzureService:
             logger.error(f"Error starting App Service {app_name}: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def stop_app_service(self, resource_group: str, app_name: str) -> Dict:
+    def stop_app_service(self, resource_group: str, app_name: str) -> Dict:
         try:
             self.web_client.web_apps.stop(resource_group, app_name)
             return {'success': True, 'message': f'App Service {app_name} parado com sucesso'}
@@ -529,7 +626,7 @@ class AzureService:
             logger.error(f"Error stopping App Service {app_name}: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def create_app_service(self, params: dict) -> Dict:
+    def create_app_service(self, params: dict) -> Dict:
         try:
             from azure.mgmt.web.models import AppServicePlan, SkuDescription, Site, SiteConfig
             rg = params['resource_group']
@@ -570,25 +667,62 @@ class AzureService:
 
     # ── Subscriptions ────────────────────────────────────────────────────────
 
-    async def list_subscriptions(self) -> Dict:
+    def list_subscriptions(self) -> Dict:
         try:
             subscription_client = SubscriptionClient(credential=self.credential)
             subs = []
-            for sub in subscription_client.subscriptions.list():
+            try:
+                for sub in subscription_client.subscriptions.list():
+                    subs.append({
+                        'subscription_id': sub.subscription_id,
+                        'display_name': sub.display_name,
+                        'state': str(sub.state),
+                        'tenant_id': sub.tenant_id,
+                    })
+            except Exception as list_err:
+                logger.warning(f"subscriptions.list() failed: {list_err}")
+
+            # Fallback 1: direct GET by subscription_id
+            if not subs and self.subscription_id:
+                try:
+                    sub = subscription_client.subscriptions.get(self.subscription_id)
+                    subs.append({
+                        'subscription_id': sub.subscription_id,
+                        'display_name': sub.display_name,
+                        'state': str(sub.state),
+                        'tenant_id': sub.tenant_id,
+                    })
+                except Exception as get_err:
+                    logger.warning(f"subscriptions.get({self.subscription_id}) failed: {get_err}")
+
+            # Fallback 2: use credential info so the UI doesn't show "0"
+            if not subs and self.subscription_id:
                 subs.append({
-                    'subscription_id': sub.subscription_id,
-                    'display_name': sub.display_name,
-                    'state': str(sub.state),
-                    'tenant_id': sub.tenant_id,
+                    'subscription_id': self.subscription_id,
+                    'display_name': self.subscription_id[:8] + '...',
+                    'state': 'Enabled',
+                    'tenant_id': self.tenant_id,
                 })
+                logger.info(f"Using credential subscription_id as fallback: {self.subscription_id}")
+
+            logger.info(f"list_subscriptions: found {len(subs)} subscription(s)")
             return {'success': True, 'subscriptions': subs}
         except Exception as e:
             logger.error(f"Error listing subscriptions: {e}")
-            return {'success': False, 'error': str(e), 'subscriptions': []}
+            # Even on total failure, return the known subscription
+            fallback = []
+            if self.subscription_id:
+                fallback.append({
+                    'subscription_id': self.subscription_id,
+                    'display_name': self.subscription_id[:8] + '...',
+                    'state': 'Enabled',
+                    'tenant_id': self.tenant_id,
+                })
+            return {'success': False, 'error': str(e), 'subscriptions': fallback}
 
     # ── Connection test ───────────────────────────────────────────────────────
 
-    async def test_connection(self) -> Dict:
+    def test_connection(self) -> Dict:
         try:
             subscription_client = SubscriptionClient(credential=self.credential)
             subscriptions = list(subscription_client.subscriptions.list())
@@ -604,7 +738,7 @@ class AzureService:
 
     # ── Costs ─────────────────────────────────────────────────────────────────
 
-    async def get_cost_by_subscription(self, start_date: str, end_date: str, granularity: str = 'Monthly') -> Dict:
+    def get_cost_by_subscription(self, start_date: str, end_date: str, granularity: str = 'Monthly') -> Dict:
         try:
             cost_client = CostManagementClient(self.credential)
             scope = f"/subscriptions/{self.subscription_id}"
@@ -620,19 +754,51 @@ class AzureService:
                     grouping=[QueryGrouping(type="Dimension", name="ServiceName")],
                 ),
             )
-            result = cost_client.query.usage(scope=scope, parameters=query)
+            # Retry on 429 (rate limit) respecting the Retry-After header when present
+            import time as _time
+            _max_retries = 3
+            for _attempt in range(_max_retries):
+                try:
+                    result = cost_client.query.usage(scope=scope, parameters=query)
+                    break
+                except Exception as _rate_err:
+                    if "429" not in str(_rate_err) or _attempt >= _max_retries - 1:
+                        raise
+                    # Tenta ler o Retry-After do header da resposta
+                    _wait = (2 ** _attempt) * 5  # fallback: 5s, 10s
+                    try:
+                        _hdrs = _rate_err.response.headers  # type: ignore[union-attr]
+                        for _hdr in ("x-ms-ratelimit-microsoft.costmanagement-entity-retry-after",
+                                     "x-ms-ratelimit-microsoft.costmanagement-clienttype-retry-after",
+                                     "Retry-After"):
+                            if _hdr.lower() in {k.lower() for k in _hdrs}:
+                                _wait = int(next(v for k, v in _hdrs.items() if k.lower() == _hdr.lower()))
+                                break
+                    except Exception:
+                        pass
+                    logger.warning("Cost Management 429 rate-limited, retrying in %ds (attempt %d/%d)", _wait, _attempt + 1, _max_retries)
+                    _time.sleep(_wait)
             rows = result.rows or []
             columns = [col.name for col in (result.columns or [])]
+            logger.info("Azure cost columns: %s", columns)
             cost_candidates = ['PreTaxCost', 'Cost', 'CostUSD', 'BillingCurrencyTotalCost']
             cost_idx = next((columns.index(c) for c in cost_candidates if c in columns), 0)
             date_idx = next((columns.index(c) for c in ['UsageDate', 'BillingMonth', 'Date'] if c in columns), None)
             svc_idx = columns.index('ServiceName') if 'ServiceName' in columns else None
+            # Detect actual billing currency from result columns or rows
+            currency_col_names = ['BillingCurrency', 'Currency']
+            currency_idx = next((columns.index(c) for c in currency_col_names if c in columns), None)
+            # Which cost column did we use? PreTaxCost is in billing currency, CostUSD is always USD
+            cost_col_name = columns[cost_idx] if cost_idx < len(columns) else 'PreTaxCost'
+            detected_currency = 'USD' if cost_col_name == 'CostUSD' else None
             total = 0.0
             service_map: Dict[str, float] = {}
             daily_map: Dict[str, float] = {}
             for row in rows:
                 amount = float(row[cost_idx]) if cost_idx < len(row) else 0.0
                 total += amount
+                if currency_idx is not None and currency_idx < len(row) and not detected_currency:
+                    detected_currency = str(row[currency_idx])
                 svc = str(row[svc_idx]) if svc_idx is not None and svc_idx < len(row) else 'Other'
                 service_map[svc] = service_map.get(svc, 0.0) + amount
                 if date_idx is not None and date_idx < len(row):
@@ -644,6 +810,11 @@ class AzureService:
                     else:
                         date_str = raw_date[:10]
                     daily_map[date_str] = daily_map.get(date_str, 0.0) + amount
+            if not detected_currency:
+                # PreTaxCost is always in billing currency; we couldn't detect it from columns.
+                # Log for debugging and default to billing currency (likely BRL for BR subscriptions).
+                logger.warning("Could not detect Azure billing currency from columns: %s. Defaulting to 'BRL'.", columns)
+                detected_currency = 'BRL'
             by_service = sorted(
                 [{'name': k, 'amount': round(v, 4)} for k, v in service_map.items()],
                 key=lambda x: x['amount'], reverse=True,
@@ -654,7 +825,7 @@ class AzureService:
                 'period': {'start': start_date, 'end': end_date},
                 'granularity': granularity,
                 'total': round(total, 4),
-                'currency': 'USD',
+                'currency': detected_currency,
                 'by_service': by_service,
                 'daily': daily,
             }
@@ -662,9 +833,669 @@ class AzureService:
             logger.error(f"Azure cost error: {e}", exc_info=True)
             return {'success': False, 'error': str(e)}
 
+    def _parse_cost_rows(self, rows, columns) -> Dict:
+        """Parse Cost Management query rows into totals, resource map, daily map, and currency."""
+        cost_candidates = ['PreTaxCost', 'Cost', 'CostUSD', 'BillingCurrencyTotalCost']
+        cost_idx = next((columns.index(c) for c in cost_candidates if c in columns), 0)
+        date_idx = next((columns.index(c) for c in ['UsageDate', 'BillingMonth', 'Date'] if c in columns), None)
+        res_idx = columns.index('ResourceId') if 'ResourceId' in columns else None
+        currency_col_names = ['BillingCurrency', 'Currency']
+        currency_idx = next((columns.index(c) for c in currency_col_names if c in columns), None)
+        cost_col_name = columns[cost_idx] if cost_idx < len(columns) else 'PreTaxCost'
+        detected_currency = 'USD' if cost_col_name == 'CostUSD' else None
+
+        total = 0.0
+        resource_map: Dict[str, float] = {}
+        daily_map: Dict[str, float] = {}
+        for row in rows:
+            amount = float(row[cost_idx]) if cost_idx < len(row) else 0.0
+            total += amount
+            if currency_idx is not None and currency_idx < len(row) and not detected_currency:
+                detected_currency = str(row[currency_idx])
+            if res_idx is not None and res_idx < len(row):
+                res_id = str(row[res_idx])
+                resource_map[res_id] = resource_map.get(res_id, 0.0) + amount
+            if date_idx is not None and date_idx < len(row):
+                raw_date = str(int(row[date_idx])) if isinstance(row[date_idx], float) else str(row[date_idx])
+                if len(raw_date) == 8:
+                    date_str = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+                elif len(raw_date) == 6:
+                    date_str = f"{raw_date[:4]}-{raw_date[4:6]}-01"
+                else:
+                    date_str = raw_date[:10]
+                daily_map[date_str] = daily_map.get(date_str, 0.0) + amount
+
+        if not detected_currency:
+            detected_currency = 'BRL'
+        return {
+            'total': total,
+            'resource_map': resource_map,
+            'daily_map': daily_map,
+            'currency': detected_currency,
+        }
+
+    def get_cost_by_resource(self, service_name: str, start_date: str, end_date: str) -> Dict:
+        """Get cost breakdown by resource for a specific Azure service.
+
+        Tries grouping by ResourceId first. If the API rejects it (some services
+        don't support resource-level breakdown), falls back to daily-only query
+        so the user still sees the cost trend and total.
+        """
+        try:
+            cost_client = CostManagementClient(self.credential)
+            scope = f"/subscriptions/{self.subscription_id}"
+            dt_start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            dt_end = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+
+            svc_filter = QueryFilter(
+                dimensions=QueryComparisonExpression(name="ServiceName", operator="In", values=[service_name]),
+            )
+
+            # ── Attempt 1: group by ResourceId ────────────────────────────────
+            try:
+                query = QueryDefinition(
+                    type="Usage",
+                    timeframe="Custom",
+                    time_period=QueryTimePeriod(from_property=dt_start, to=dt_end),
+                    dataset=QueryDataset(
+                        granularity="Daily",
+                        aggregation={"totalCost": QueryAggregation(name="PreTaxCost", function="Sum")},
+                        grouping=[QueryGrouping(type="Dimension", name="ResourceId")],
+                        filter=svc_filter,
+                    ),
+                )
+                result = cost_client.query.usage(scope=scope, parameters=query)
+                rows = result.rows or []
+                columns = [col.name for col in (result.columns or [])]
+                parsed = self._parse_cost_rows(rows, columns)
+            except Exception as e:
+                logger.warning("Azure ResourceId grouping failed for '%s', falling back to daily-only: %s", service_name, e)
+                parsed = None
+
+            # ── Attempt 2 (fallback): no resource grouping, daily only ────────
+            if parsed is None or not parsed['resource_map']:
+                try:
+                    query_daily = QueryDefinition(
+                        type="Usage",
+                        timeframe="Custom",
+                        time_period=QueryTimePeriod(from_property=dt_start, to=dt_end),
+                        dataset=QueryDataset(
+                            granularity="Daily",
+                            aggregation={"totalCost": QueryAggregation(name="PreTaxCost", function="Sum")},
+                            filter=svc_filter,
+                        ),
+                    )
+                    result2 = cost_client.query.usage(scope=scope, parameters=query_daily)
+                    rows2 = result2.rows or []
+                    columns2 = [col.name for col in (result2.columns or [])]
+                    parsed = self._parse_cost_rows(rows2, columns2)
+                except Exception as e2:
+                    logger.error("Azure daily-only cost query also failed for '%s': %s", service_name, e2)
+                    err_msg = str(e2)
+                    if "AuthorizationFailed" in err_msg or "403" in err_msg:
+                        return {'success': False, 'error': 'Sem permissão para consultar custos. Verifique se o Service Principal tem a role "Cost Management Reader".'}
+                    return {'success': False, 'error': f'Erro ao consultar custos do serviço "{service_name}": {err_msg}'}
+
+            resources = sorted(
+                [{'id': k, 'name': k.split('/')[-1] if '/' in k else k, 'amount': round(v, 4)} for k, v in parsed['resource_map'].items()],
+                key=lambda x: x['amount'], reverse=True,
+            )
+            daily = [{'date': k, 'total': round(v, 4)} for k, v in sorted(parsed['daily_map'].items())]
+            return {
+                'success': True,
+                'service': service_name,
+                'total': round(parsed['total'], 4),
+                'currency': parsed['currency'],
+                'resources': resources,
+                'daily': daily,
+            }
+        except Exception as e:
+            logger.error(f"Azure cost by resource error: {e}", exc_info=True)
+            return {'success': False, 'error': str(e)}
+
+    # ── Detail operations ─────────────────────────────────────────────────────
+
+    def get_vm_detail(self, resource_group: str, vm_name: str) -> Dict:
+        try:
+            vm = self.compute_client.virtual_machines.get(resource_group, vm_name, expand='instanceView')
+            # OS disk
+            os_disk = {}
+            if vm.storage_profile and vm.storage_profile.os_disk:
+                d = vm.storage_profile.os_disk
+                os_disk = {
+                    'name': d.name,
+                    'type': d.managed_disk.storage_account_type if d.managed_disk else '—',
+                    'size_gb': d.disk_size_gb or '—',
+                    'caching': d.caching,
+                }
+            # Data disks
+            data_disks = []
+            if vm.storage_profile and vm.storage_profile.data_disks:
+                for d in vm.storage_profile.data_disks:
+                    data_disks.append({
+                        'name': d.name,
+                        'lun': d.lun,
+                        'size_gb': d.disk_size_gb or '—',
+                        'type': d.managed_disk.storage_account_type if d.managed_disk else '—',
+                    })
+            # NICs — resolve IPs, subnet e NSG name
+            network_interfaces = []
+            if vm.network_profile and vm.network_profile.network_interfaces:
+                for nic_ref in vm.network_profile.network_interfaces:
+                    nic_name = nic_ref.id.split('/')[-1] if nic_ref.id else '—'
+                    try:
+                        nic_rg = nic_ref.id.split('/resourceGroups/')[1].split('/')[0]
+                        nic = self.network_client.network_interfaces.get(nic_rg, nic_name)
+                        private_ip = None
+                        public_ip = None
+                        subnet_name = ''
+                        vnet_name = ''
+                        nsg_name_val = ''
+                        nsg_rg = ''
+                        if nic.ip_configurations:
+                            primary = next((c for c in nic.ip_configurations if c.primary), nic.ip_configurations[0])
+                            private_ip = primary.private_ip_address
+                            if primary.public_ip_address and primary.public_ip_address.id:
+                                pip_name = primary.public_ip_address.id.split('/')[-1]
+                                pip_rg_val = primary.public_ip_address.id.split('/resourceGroups/')[1].split('/')[0]
+                                try:
+                                    pip = self.network_client.public_ip_addresses.get(pip_rg_val, pip_name)
+                                    public_ip = pip.ip_address
+                                except Exception:
+                                    pass
+                            if primary.subnet and primary.subnet.id:
+                                parts = primary.subnet.id.split('/')
+                                subnet_name = parts[-1]
+                                vnet_name = parts[-3] if len(parts) >= 3 else ''
+                        if nic.network_security_group and nic.network_security_group.id:
+                            nsg_name_val = nic.network_security_group.id.split('/')[-1]
+                            nsg_rg = nic.network_security_group.id.split('/resourceGroups/')[1].split('/')[0]
+                        network_interfaces.append({
+                            'id': nic_name,
+                            'resource_group': nic_rg,
+                            'private_ip': private_ip,
+                            'public_ip': public_ip,
+                            'subnet': subnet_name,
+                            'vnet': vnet_name,
+                            'nsg_name': nsg_name_val,
+                            'nsg_rg': nsg_rg,
+                            'mac_address': nic.mac_address or '',
+                            'enable_ip_forwarding': nic.enable_ip_forwarding or False,
+                        })
+                    except Exception:
+                        network_interfaces.append({'id': nic_name})
+            # Admin username
+            admin_username = '—'
+            if vm.os_profile:
+                admin_username = vm.os_profile.admin_username or '—'
+            # Image
+            image = {}
+            if vm.storage_profile and vm.storage_profile.image_reference:
+                ir = vm.storage_profile.image_reference
+                image = {
+                    'publisher': ir.publisher or '—',
+                    'offer': ir.offer or '—',
+                    'sku': ir.sku or '—',
+                    'version': ir.exact_version or ir.version or 'latest',
+                }
+            # Power state from instance view
+            power_state = '—'
+            if vm.instance_view and vm.instance_view.statuses:
+                for status in vm.instance_view.statuses:
+                    if status.code and status.code.startswith('PowerState/'):
+                        power_state = status.code.split('/')[-1]
+                        break
+            return {
+                'success': True,
+                'power_state': power_state,
+                'os_disk': os_disk,
+                'data_disks': data_disks,
+                'network_interfaces': network_interfaces,
+                'admin_username': admin_username,
+                'image': image,
+                'zones': list(vm.zones) if vm.zones else [],
+                'tags': vm.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_vm_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_nic_detail(self, resource_group: str, nic_name: str) -> Dict:
+        """Retorna detalhes completos de uma NIC, incluindo NSG e suas regras."""
+        try:
+            nic = self.network_client.network_interfaces.get(resource_group, nic_name)
+            ip_configs = []
+            for ip_config in (nic.ip_configurations or []):
+                private_ip = ip_config.private_ip_address
+                public_ip = None
+                public_ip_name = None
+                if ip_config.public_ip_address and ip_config.public_ip_address.id:
+                    pip_name = ip_config.public_ip_address.id.split('/')[-1]
+                    pip_rg = ip_config.public_ip_address.id.split('/resourceGroups/')[1].split('/')[0]
+                    try:
+                        pip = self.network_client.public_ip_addresses.get(pip_rg, pip_name)
+                        public_ip = pip.ip_address
+                        public_ip_name = pip_name
+                    except Exception:
+                        pass
+                subnet_name = ''
+                vnet_name = ''
+                if ip_config.subnet and ip_config.subnet.id:
+                    parts = ip_config.subnet.id.split('/')
+                    subnet_name = parts[-1]
+                    vnet_name = parts[-3] if len(parts) >= 3 else ''
+                ip_configs.append({
+                    'name': ip_config.name,
+                    'private_ip': private_ip,
+                    'public_ip': public_ip,
+                    'public_ip_name': public_ip_name,
+                    'subnet': subnet_name,
+                    'vnet': vnet_name,
+                    'is_primary': ip_config.primary or False,
+                })
+
+            nsg_info = None
+            nsg_rules = []
+            if nic.network_security_group and nic.network_security_group.id:
+                nsg_id = nic.network_security_group.id
+                nsg_name_val = nsg_id.split('/')[-1]
+                nsg_rg = nsg_id.split('/resourceGroups/')[1].split('/')[0]
+                try:
+                    nsg = self.network_client.network_security_groups.get(nsg_rg, nsg_name_val)
+                    nsg_info = {'name': nsg.name, 'id': nsg.id, 'resource_group': nsg_rg}
+                    for rule in (nsg.security_rules or []):
+                        nsg_rules.append({
+                            'name': rule.name,
+                            'priority': rule.priority,
+                            'direction': str(rule.direction),
+                            'access': str(rule.access),
+                            'protocol': str(rule.protocol),
+                            'source_address': rule.source_address_prefix or ', '.join(rule.source_address_prefixes or []),
+                            'source_port': rule.source_port_range or ', '.join(rule.source_port_ranges or []),
+                            'dest_address': rule.destination_address_prefix or ', '.join(rule.destination_address_prefixes or []),
+                            'dest_port': rule.destination_port_range or ', '.join(rule.destination_port_ranges or []),
+                            'description': rule.description or '',
+                        })
+                    nsg_rules.sort(key=lambda r: (r['direction'], r['priority']))
+                except Exception as e:
+                    logger.warning(f"Could not fetch NSG {nsg_name_val}: {e}")
+
+            return {
+                'success': True,
+                'name': nic.name,
+                'id': nic.id,
+                'mac_address': nic.mac_address or '',
+                'enable_ip_forwarding': nic.enable_ip_forwarding or False,
+                'ip_configurations': ip_configs,
+                'nsg': nsg_info,
+                'nsg_rules': nsg_rules,
+            }
+        except Exception as e:
+            logger.error(f"get_nic_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def add_nsg_rule(self, resource_group: str, nsg_name: str, rule_name: str,
+                     priority: int, direction: str, access: str, protocol: str,
+                     source_address: str, source_port: str,
+                     dest_address: str, dest_port: str, description: str = '') -> Dict:
+        """Adiciona ou atualiza uma regra em um NSG."""
+        try:
+            from azure.mgmt.network.models import SecurityRule
+            rule = SecurityRule(
+                protocol=protocol,
+                source_address_prefix=source_address,
+                source_port_range=source_port,
+                destination_address_prefix=dest_address,
+                destination_port_range=dest_port,
+                access=access,
+                direction=direction,
+                priority=priority,
+                description=description,
+            )
+            poller = self.network_client.security_rules.begin_create_or_update(
+                resource_group, nsg_name, rule_name, rule
+            )
+            result = poller.result()
+            return {'success': True, 'name': result.name, 'priority': result.priority}
+        except Exception as e:
+            logger.error(f"add_nsg_rule error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_nsg_rule(self, resource_group: str, nsg_name: str, rule_name: str) -> Dict:
+        """Remove uma regra de um NSG."""
+        try:
+            poller = self.network_client.security_rules.begin_delete(resource_group, nsg_name, rule_name)
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_nsg_rule error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def list_nsgs(self) -> Dict:
+        """Lista todos os NSGs da subscription com suas regras."""
+        try:
+            nsgs = []
+            for nsg in self.network_client.network_security_groups.list_all():
+                parts = (nsg.id or '').split('/')
+                rg = parts[4] if len(parts) > 4 else ''
+                rules = self._parse_nsg_rules(nsg.security_rules or [])
+                default_rules = self._parse_nsg_rules(nsg.default_security_rules or [])
+                subnets = []
+                for sub in (nsg.subnets or []):
+                    sub_parts = (sub.id or '').split('/')
+                    subnets.append(sub_parts[-1] if sub_parts else sub.id)
+                nsgs.append({
+                    'name': nsg.name,
+                    'id': nsg.id,
+                    'resource_group': rg,
+                    'location': nsg.location,
+                    'provisioning_state': nsg.provisioning_state,
+                    'subnets': subnets,
+                    'rules_count': len(rules),
+                    'rules': rules,
+                    'default_rules': default_rules,
+                })
+            return {'success': True, 'nsgs': nsgs, 'total': len(nsgs)}
+        except Exception as e:
+            logger.error(f"list_nsgs error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_nsg_rules(self, resource_group: str, nsg_name: str) -> Dict:
+        """Retorna regras de um NSG específico."""
+        try:
+            nsg = self.network_client.network_security_groups.get(resource_group, nsg_name)
+            rules = self._parse_nsg_rules(nsg.security_rules or [])
+            default_rules = self._parse_nsg_rules(nsg.default_security_rules or [])
+            subnets = []
+            for sub in (nsg.subnets or []):
+                sub_parts = (sub.id or '').split('/')
+                subnets.append(sub_parts[-1] if sub_parts else sub.id)
+            return {
+                'success': True,
+                'name': nsg.name,
+                'resource_group': resource_group,
+                'location': nsg.location,
+                'provisioning_state': nsg.provisioning_state,
+                'subnets': subnets,
+                'rules': rules,
+                'default_rules': default_rules,
+            }
+        except Exception as e:
+            logger.error(f"get_nsg_rules error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    @staticmethod
+    def _parse_nsg_rules(rules) -> list:
+        result = []
+        for r in rules:
+            result.append({
+                'name': r.name,
+                'priority': r.priority,
+                'direction': r.direction,
+                'access': r.access,
+                'protocol': r.protocol,
+                'source_address_prefix': r.source_address_prefix or '*',
+                'source_port_range': r.source_port_range or '*',
+                'destination_address_prefix': r.destination_address_prefix or '*',
+                'destination_port_range': r.destination_port_range or '*',
+                'description': r.description or '',
+                'provisioning_state': r.provisioning_state,
+            })
+        result.sort(key=lambda x: x['priority'])
+        return result
+
+    def get_sql_server_detail(self, resource_group: str, server_name: str) -> Dict:
+        try:
+            server = self.sql_client.servers.get(resource_group, server_name)
+            # Firewall rules
+            firewall_rules = []
+            try:
+                for rule in self.sql_client.firewall_rules.list_by_server(resource_group, server_name):
+                    firewall_rules.append({
+                        'name': rule.name,
+                        'start_ip': rule.start_ip_address,
+                        'end_ip': rule.end_ip_address,
+                    })
+            except Exception:
+                pass
+            return {
+                'success': True,
+                'admin_login': server.administrator_login or '—',
+                'fqdn': server.fully_qualified_domain_name or '—',
+                'state': server.state or '—',
+                'version': server.version or '—',
+                'minimal_tls_version': server.minimal_tls_version or '—',
+                'public_network_access': str(server.public_network_access) if server.public_network_access else '—',
+                'firewall_rules': firewall_rules,
+                'tags': server.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_sql_server_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_app_service_detail(self, resource_group: str, app_name: str) -> Dict:
+        try:
+            app = self.web_client.web_apps.get(resource_group, app_name)
+            site_config = app.site_config
+            return {
+                'success': True,
+                'default_host_name': app.default_host_name or '—',
+                'outbound_ip_addresses': app.outbound_ip_addresses or '—',
+                'https_only': app.https_only,
+                'state': app.state or '—',
+                'kind': app.kind or '—',
+                'runtime': (
+                    (site_config.linux_fx_version or site_config.windows_fx_version or 'N/A')
+                    if site_config else 'N/A'
+                ),
+                'always_on': site_config.always_on if site_config else False,
+                'min_tls_version': site_config.min_tls_version if site_config else '—',
+                'ftps_state': site_config.ftps_state if site_config else '—',
+                'http20_enabled': site_config.http20_enabled if site_config else False,
+                'custom_domains': [h for h in (app.host_names or []) if not h.endswith('.azurewebsites.net')],
+                'tags': app.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_app_service_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_storage_account_detail(self, resource_group: str, account_name: str) -> Dict:
+        try:
+            sa = self.storage_client.storage_accounts.get_properties(resource_group, account_name)
+            endpoints = {}
+            if sa.primary_endpoints:
+                pe = sa.primary_endpoints
+                endpoints = {
+                    'blob': pe.blob or '—',
+                    'file': pe.file or '—',
+                    'queue': pe.queue or '—',
+                    'table': pe.table or '—',
+                }
+            return {
+                'success': True,
+                'access_tier': sa.access_tier or '—',
+                'https_only': sa.enable_https_traffic_only,
+                'min_tls_version': sa.minimum_tls_version or '—',
+                'allow_blob_public_access': sa.allow_blob_public_access,
+                'creation_time': sa.creation_time.isoformat() if sa.creation_time else '—',
+                'endpoints': endpoints,
+                'provisioning_state': sa.provisioning_state or '—',
+                'tags': sa.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_storage_account_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_vnet_detail(self, resource_group: str, vnet_name: str) -> Dict:
+        try:
+            vnet = self.network_client.virtual_networks.get(resource_group, vnet_name)
+            subnets = []
+            for s in (vnet.subnets or []):
+                nsg_name = ''
+                if s.network_security_group and s.network_security_group.id:
+                    nsg_name = s.network_security_group.id.split('/')[-1]
+                route_table_name = ''
+                if s.route_table and s.route_table.id:
+                    route_table_name = s.route_table.id.split('/')[-1]
+                delegation = ''
+                if s.delegations:
+                    delegation = s.delegations[0].service_name or ''
+                connected_devices = len(s.ip_configurations or [])
+                subnets.append({
+                    'name': s.name,
+                    'address_prefix': s.address_prefix or '—',
+                    'provisioning_state': s.provisioning_state or '—',
+                    'nsg_name': nsg_name,
+                    'route_table_name': route_table_name,
+                    'delegation': delegation,
+                    'connected_devices_count': connected_devices,
+                })
+            dns_servers = []
+            if vnet.dhcp_options and vnet.dhcp_options.dns_servers:
+                dns_servers = list(vnet.dhcp_options.dns_servers)
+            peerings = []
+            for p in (vnet.virtual_network_peerings or []):
+                remote_vnet_id = p.remote_virtual_network.id if p.remote_virtual_network else ''
+                remote_vnet_name = remote_vnet_id.split('/')[-1] if remote_vnet_id else ''
+                peerings.append({
+                    'name': p.name,
+                    'peering_state': p.peering_state or '—',
+                    'remote_vnet_id': remote_vnet_id,
+                    'remote_vnet_name': remote_vnet_name,
+                    'allow_forwarded_traffic': p.allow_forwarded_traffic or False,
+                    'allow_gateway_transit': p.allow_gateway_transit or False,
+                    'use_remote_gateways': p.use_remote_gateways or False,
+                    'allow_virtual_network_access': p.allow_virtual_network_access or False,
+                })
+            return {
+                'success': True,
+                'address_space': list(vnet.address_space.address_prefixes) if vnet.address_space else [],
+                'subnets': subnets,
+                'dns_servers': dns_servers,
+                'peerings': peerings,
+                'peerings_count': len(peerings),
+                'provisioning_state': vnet.provisioning_state or '—',
+                'tags': vnet.tags or {},
+            }
+        except Exception as e:
+            logger.error(f"get_vnet_detail error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── Subnet management ─────────────────────────────────────────────────────
+
+    def create_subnet(self, resource_group: str, vnet_name: str,
+                      subnet_name: str, address_prefix: str,
+                      nsg_id: str = None) -> Dict:
+        try:
+            from azure.mgmt.network.models import Subnet, NetworkSecurityGroup
+            subnet_params = Subnet(address_prefix=address_prefix)
+            if nsg_id:
+                subnet_params.network_security_group = NetworkSecurityGroup(id=nsg_id)
+            poller = self.network_client.subnets.begin_create_or_update(
+                resource_group, vnet_name, subnet_name, subnet_params
+            )
+            result = poller.result()
+            return {'success': True, 'name': result.name, 'id': result.id}
+        except Exception as e:
+            logger.error(f"create_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def update_subnet(self, resource_group: str, vnet_name: str,
+                      subnet_name: str, address_prefix: str,
+                      nsg_id: str = None) -> Dict:
+        try:
+            from azure.mgmt.network.models import Subnet, NetworkSecurityGroup
+            subnet_params = Subnet(address_prefix=address_prefix)
+            if nsg_id:
+                subnet_params.network_security_group = NetworkSecurityGroup(id=nsg_id)
+            poller = self.network_client.subnets.begin_create_or_update(
+                resource_group, vnet_name, subnet_name, subnet_params
+            )
+            result = poller.result()
+            return {'success': True, 'name': result.name, 'id': result.id}
+        except Exception as e:
+            logger.error(f"update_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_subnet(self, resource_group: str, vnet_name: str,
+                      subnet_name: str) -> Dict:
+        try:
+            poller = self.network_client.subnets.begin_delete(
+                resource_group, vnet_name, subnet_name
+            )
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_subnet error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── VNet Peering ──────────────────────────────────────────────────────────
+
+    def list_vnet_peerings(self, resource_group: str, vnet_name: str) -> Dict:
+        try:
+            peerings = []
+            for p in self.network_client.virtual_network_peerings.list(resource_group, vnet_name):
+                remote_vnet_id = p.remote_virtual_network.id if p.remote_virtual_network else ''
+                remote_vnet_name = remote_vnet_id.split('/')[-1] if remote_vnet_id else ''
+                peerings.append({
+                    'name': p.name,
+                    'peering_state': p.peering_state or '—',
+                    'remote_vnet_id': remote_vnet_id,
+                    'remote_vnet_name': remote_vnet_name,
+                    'allow_forwarded_traffic': p.allow_forwarded_traffic or False,
+                    'allow_gateway_transit': p.allow_gateway_transit or False,
+                    'use_remote_gateways': p.use_remote_gateways or False,
+                    'allow_virtual_network_access': p.allow_virtual_network_access or False,
+                })
+            return {'success': True, 'total': len(peerings), 'peerings': peerings}
+        except Exception as e:
+            logger.error(f"list_vnet_peerings error: {e}")
+            return {'success': False, 'error': str(e), 'peerings': []}
+
+    def create_vnet_peering(self, resource_group: str, vnet_name: str,
+                            peering_name: str, remote_vnet_id: str,
+                            allow_forwarded_traffic: bool = True,
+                            allow_gateway_transit: bool = False,
+                            use_remote_gateways: bool = False) -> Dict:
+        try:
+            from azure.mgmt.network.models import (
+                VirtualNetworkPeering, SubResource,
+            )
+            peering_params = VirtualNetworkPeering(
+                remote_virtual_network=SubResource(id=remote_vnet_id),
+                allow_virtual_network_access=True,
+                allow_forwarded_traffic=allow_forwarded_traffic,
+                allow_gateway_transit=allow_gateway_transit,
+                use_remote_gateways=use_remote_gateways,
+            )
+            poller = self.network_client.virtual_network_peerings.begin_create_or_update(
+                resource_group, vnet_name, peering_name, peering_params
+            )
+            result = poller.result()
+            return {
+                'success': True,
+                'name': result.name,
+                'peering_state': result.peering_state,
+            }
+        except Exception as e:
+            logger.error(f"create_vnet_peering error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_vnet_peering(self, resource_group: str, vnet_name: str,
+                            peering_name: str) -> Dict:
+        try:
+            poller = self.network_client.virtual_network_peerings.begin_delete(
+                resource_group, vnet_name, peering_name
+            )
+            poller.result()
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_vnet_peering error: {e}")
+            return {'success': False, 'error': str(e)}
+
     # ── Delete operations ─────────────────────────────────────────────────────
 
-    async def delete_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
+    def delete_virtual_machine(self, resource_group: str, vm_name: str) -> Dict:
         try:
             poller = self.compute_client.virtual_machines.begin_delete(resource_group, vm_name)
             poller.result()
@@ -673,7 +1504,7 @@ class AzureService:
             logger.error(f"delete_virtual_machine error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_storage_account(self, resource_group: str, account_name: str) -> Dict:
+    def delete_storage_account(self, resource_group: str, account_name: str) -> Dict:
         try:
             self.storage_client.storage_accounts.delete(resource_group, account_name)
             return {'success': True}
@@ -681,7 +1512,7 @@ class AzureService:
             logger.error(f"delete_storage_account error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_virtual_network(self, resource_group: str, vnet_name: str) -> Dict:
+    def delete_virtual_network(self, resource_group: str, vnet_name: str) -> Dict:
         try:
             poller = self.network_client.virtual_networks.begin_delete(resource_group, vnet_name)
             poller.result()
@@ -690,7 +1521,7 @@ class AzureService:
             logger.error(f"delete_virtual_network error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_sql_server(self, resource_group: str, server_name: str) -> Dict:
+    def delete_sql_server(self, resource_group: str, server_name: str) -> Dict:
         try:
             poller = self.sql_client.servers.begin_delete(resource_group, server_name)
             poller.result()
@@ -699,10 +1530,288 @@ class AzureService:
             logger.error(f"delete_sql_server error: {e}")
             return {'success': False, 'error': str(e)}
 
-    async def delete_app_service(self, resource_group: str, app_name: str) -> Dict:
+    def delete_app_service(self, resource_group: str, app_name: str) -> Dict:
         try:
             self.web_client.web_apps.delete(resource_group, app_name)
             return {'success': True}
         except Exception as e:
             logger.error(f"delete_app_service error: {e}")
             return {'success': False, 'error': str(e)}
+
+    # ── Storage Containers & Keys ─────────────────────────────────────────────
+
+    def _get_storage_connection_string(self, resource_group: str, account_name: str) -> str:
+        keys = self.storage_client.storage_accounts.list_keys(resource_group, account_name)
+        key_value = keys.keys[0].value if keys.keys else ''
+        return (
+            f"DefaultEndpointsProtocol=https;"
+            f"AccountName={account_name};"
+            f"AccountKey={key_value};"
+            f"EndpointSuffix=core.windows.net"
+        )
+
+    def list_containers(self, resource_group: str, account_name: str) -> Dict:
+        """Lista containers de um Storage Account via SDK de gerenciamento."""
+        try:
+            containers = []
+            for c in self.storage_client.blob_containers.list(resource_group, account_name):
+                containers.append({
+                    'name': c.name,
+                    'public_access': c.public_access or 'None',
+                    'last_modified': c.last_modified_time.isoformat() if c.last_modified_time else None,
+                    'lease_state': c.lease_state,
+                    'deleted': c.deleted or False,
+                })
+            return {'success': True, 'containers': containers, 'total': len(containers)}
+        except Exception as e:
+            logger.error(f"list_containers error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def create_container(self, resource_group: str, account_name: str, container_name: str, public_access: str = 'None') -> Dict:
+        """Cria um container Blob."""
+        try:
+            from azure.mgmt.storage.models import BlobContainer, PublicAccess
+            access_map = {'Blob': PublicAccess.BLOB, 'Container': PublicAccess.CONTAINER}
+            blob_container = BlobContainer(
+                public_access=access_map.get(public_access)
+            )
+            result = self.storage_client.blob_containers.create(
+                resource_group, account_name, container_name, blob_container
+            )
+            return {'success': True, 'name': result.name, 'public_access': result.public_access or 'None'}
+        except Exception as e:
+            logger.error(f"create_container error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def delete_container(self, resource_group: str, account_name: str, container_name: str) -> Dict:
+        """Remove um container Blob."""
+        try:
+            self.storage_client.blob_containers.delete(resource_group, account_name, container_name)
+            return {'success': True}
+        except Exception as e:
+            logger.error(f"delete_container error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    def get_storage_keys(self, resource_group: str, account_name: str) -> Dict:
+        """Retorna as chaves de acesso e connection string de um Storage Account."""
+        try:
+            keys_result = self.storage_client.storage_accounts.list_keys(resource_group, account_name)
+            key_list = []
+            for k in (keys_result.keys or []):
+                key_list.append({'key_name': k.key_name, 'value': k.value, 'permissions': k.permissions})
+            primary_key = keys_result.keys[0].value if keys_result.keys else ''
+            connection_string = (
+                f"DefaultEndpointsProtocol=https;"
+                f"AccountName={account_name};"
+                f"AccountKey={primary_key};"
+                f"EndpointSuffix=core.windows.net"
+            )
+            return {'success': True, 'keys': key_list, 'connection_string': connection_string}
+        except Exception as e:
+            logger.error(f"get_storage_keys error: {e}")
+            return {'success': False, 'error': str(e)}
+
+    # ── Metrics (Azure Monitor) ───────────────────────────────────────────────
+
+    def get_metrics(self, limit: int = 15) -> dict:
+        """Return CPU metrics for running VMs via Azure Monitor."""
+        end = datetime.now(timezone.utc)
+        start = end - timedelta(hours=1)
+        timespan = f"{start.strftime('%Y-%m-%dT%H:%M:%SZ')}/{end.strftime('%Y-%m-%dT%H:%M:%SZ')}"
+
+        try:
+            monitor = MonitorManagementClient(self.credential, self.subscription_id)
+        except Exception as e:
+            logger.error(f"Azure Monitor client error: {e}")
+            return {"resources": [], "scanned_at": end.isoformat()}
+
+        # Collect running VMs (up to limit)
+        running_vms = []
+        try:
+            resource_groups = list(self.resource_client.resource_groups.list())
+            for rg in resource_groups:
+                if len(running_vms) >= limit:
+                    break
+                try:
+                    rg_vms = list(self.compute_client.virtual_machines.list(resource_group_name=rg.name))
+                    for vm in rg_vms:
+                        if len(running_vms) >= limit:
+                            break
+                        try:
+                            iv = self.compute_client.virtual_machines.instance_view(
+                                resource_group_name=rg.name, vm_name=vm.name
+                            )
+                            power_state = "unknown"
+                            for s in (iv.statuses or []):
+                                if s.code.startswith("PowerState/"):
+                                    power_state = s.code.split("/")[-1]
+                                    break
+                            if power_state == "running":
+                                running_vms.append({
+                                    "vm_id": vm.id,
+                                    "name": vm.name,
+                                    "resource_group": rg.name,
+                                    "location": vm.location,
+                                    "vm_size": vm.hardware_profile.vm_size if vm.hardware_profile else None,
+                                })
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.warning(f"Azure get_metrics VM listing error: {e}")
+
+        def _fetch_cpu(vm: dict) -> dict:
+            cpu_pct = None
+            try:
+                resp = monitor.metrics.list(
+                    vm["vm_id"],
+                    timespan=timespan,
+                    interval="PT1H",
+                    metricnames="Percentage CPU",
+                    aggregation="Average",
+                )
+                for metric in resp.value:
+                    for ts in metric.timeseries:
+                        vals = [d.average for d in ts.data if d.average is not None]
+                        if vals:
+                            cpu_pct = round(sum(vals) / len(vals), 1)
+                            break
+            except Exception as e:
+                logger.debug(f"Azure metrics fetch error for {vm['name']}: {e}")
+            return {
+                "id": vm["vm_id"],
+                "name": vm["name"],
+                "type": "vm",
+                "region": vm["location"],
+                "status": "running",
+                "cpu_pct": cpu_pct,
+                "memory_pct": None,
+                "net_in_bytes": None,
+                "net_out_bytes": None,
+            }
+
+        resources = []
+        if running_vms:
+            with ThreadPoolExecutor(max_workers=5) as ex:
+                resources = list(ex.map(_fetch_cpu, running_vms))
+
+        return {"resources": resources, "scanned_at": end.isoformat()}
+
+    # ── Azure Container Registry (ACR) ────────────────────────────────────────
+
+    @property
+    def acr_client(self):
+        if getattr(self, "_acr_client", None) is None:
+            from azure.mgmt.containerregistry import ContainerRegistryManagementClient
+            self._acr_client = ContainerRegistryManagementClient(self.credential, self.subscription_id)
+        return self._acr_client
+
+    @staticmethod
+    def _rg_from_id(resource_id: str):
+        try:
+            parts = resource_id.split("/")
+            return parts[parts.index("resourceGroups") + 1]
+        except Exception:
+            return None
+
+    def list_acr_registries(self) -> Dict:
+        try:
+            registries = []
+            for r in self.acr_client.registries.list():
+                registries.append({
+                    "name": r.name,
+                    "login_server": r.login_server,
+                    "location": r.location,
+                    "sku": r.sku.name if r.sku else None,
+                    "admin_enabled": getattr(r, "admin_user_enabled", None),
+                    "resource_group": self._rg_from_id(r.id),
+                    "provisioning_state": getattr(r, "provisioning_state", None),
+                })
+            return {"success": True, "total": len(registries), "registries": registries}
+        except Exception as e:
+            logger.error(f"list_acr_registries error: {e}")
+            return {"success": False, "error": str(e), "registries": []}
+
+    def list_acr_repositories(self, login_server: str) -> Dict:
+        try:
+            from azure.containerregistry import ContainerRegistryClient
+            endpoint = login_server if login_server.startswith("http") else f"https://{login_server}"
+            client = ContainerRegistryClient(
+                endpoint, self.credential,
+                audience="https://management.azure.com",
+            )
+            repos = []
+            for name in client.list_repository_names():
+                tags = []
+                try:
+                    props = client.get_repository_properties(name)
+                    for t in client.list_tag_properties(name):
+                        tags.append(t.name)
+                    repos.append({
+                        "name": name,
+                        "tag_count": len(tags),
+                        "tags": tags[:20],
+                        "last_updated": props.last_updated_on.isoformat() if getattr(props, "last_updated_on", None) else None,
+                    })
+                except Exception:
+                    repos.append({"name": name, "tag_count": len(tags), "tags": tags[:20]})
+            return {"success": True, "login_server": login_server, "total": len(repos), "repositories": repos}
+        except Exception as e:
+            logger.error(f"list_acr_repositories error: {e}")
+            return {"success": False, "error": str(e), "repositories": []}
+
+    # ── Azure Function Apps ───────────────────────────────────────────────────
+
+    def list_function_apps(self) -> Dict:
+        try:
+            apps = []
+            for site in self.web_client.web_apps.list():
+                kind = (site.kind or "")
+                if "functionapp" not in kind:
+                    continue
+                apps.append({
+                    "name": site.name,
+                    "resource_group": self._rg_from_id(site.id),
+                    "location": site.location,
+                    "state": site.state,
+                    "default_hostname": site.default_host_name,
+                    "https_only": getattr(site, "https_only", None),
+                    "runtime": kind,
+                    "enabled": getattr(site, "enabled", None),
+                })
+            return {"success": True, "total": len(apps), "function_apps": apps}
+        except Exception as e:
+            logger.error(f"list_function_apps error: {e}")
+            return {"success": False, "error": str(e), "function_apps": []}
+
+    def list_functions(self, resource_group: str, app_name: str) -> Dict:
+        try:
+            funcs = []
+            for f in self.web_client.web_apps.list_functions(resource_group, app_name):
+                cfg = getattr(f, "config", None) or {}
+                funcs.append({
+                    "name": (f.name or "").split("/")[-1],
+                    "disabled": getattr(f, "is_disabled", None),
+                    "trigger": (cfg.get("bindings", [{}])[0].get("type") if isinstance(cfg, dict) and cfg.get("bindings") else None),
+                })
+            return {"success": True, "app": app_name, "total": len(funcs), "functions": funcs}
+        except Exception as e:
+            logger.error(f"list_functions error: {e}")
+            return {"success": False, "error": str(e), "functions": []}
+
+    def function_app_action(self, resource_group: str, app_name: str, action: str) -> Dict:
+        try:
+            ops = self.web_client.web_apps
+            if action == "start":
+                ops.start(resource_group, app_name)
+            elif action == "stop":
+                ops.stop(resource_group, app_name)
+            elif action == "restart":
+                ops.restart(resource_group, app_name)
+            else:
+                return {"success": False, "error": f"Ação inválida: {action}"}
+            return {"success": True, "app": app_name, "action": action}
+        except Exception as e:
+            logger.error(f"function_app_action {action} error: {e}")
+            return {"success": False, "error": str(e)}

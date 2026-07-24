@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from typing import List
 
 
@@ -10,17 +11,19 @@ class Settings(BaseSettings):
     APP_VERSION: str = "0.1.0"
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
-    DEBUG: bool = True
+    DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
     # CORS
     ALLOWED_ORIGINS: List[str] = [
         "http://localhost:3000",
         "http://localhost:8000",
+        "https://cloudatlas.app.br",
+        "https://www.cloudatlas.app.br",
     ]
 
     # Database
-    DATABASE_URL: str = "postgresql://cloudhub:cloudhub_pass@localhost:5432/cloudhub_db"
+    DATABASE_URL: str = "postgresql://cloudatlas:cloudatlas_pass@localhost:5432/cloudatlas_db"
 
     # Authentication
     SECRET_KEY: str = "changeme-use-openssl-rand-hex-32-in-production"
@@ -36,16 +39,24 @@ class Settings(BaseSettings):
     SMTP_FROM: str = "noreply@cloudatlas.io"
     SMTP_USE_TLS: bool = True
     FRONTEND_URL: str = "http://localhost:3000"
+    DESK_URL: str = "http://localhost:3001"
 
     # OAuth (SSO)
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
     GITHUB_CLIENT_ID: str = ""
     GITHUB_CLIENT_SECRET: str = ""
+    MICROSOFT_CLIENT_ID: str = ""
+    MICROSOFT_CLIENT_SECRET: str = ""
+    MICROSOFT_TENANT_ID: str = "common"  # "common" = multi-tenant; set to your tenant ID for single-tenant
+
+    # Termos de Uso — incrementar para forçar re-aceitação de usuários existentes
+    TERMS_VERSION: str = "1.0"
 
     # AbacatePay
     ABACATEPAY_API_KEY: str = ""
     ABACATEPAY_API_URL: str = "https://api.abacatepay.com/v1"
+    ABACATEPAY_WEBHOOK_SECRET: str = ""
 
     # AWS (global fallback)
     AWS_ACCESS_KEY_ID: str = ""
@@ -57,6 +68,67 @@ class Settings(BaseSettings):
     AZURE_TENANT_ID: str = ""
     AZURE_CLIENT_ID: str = ""
     AZURE_CLIENT_SECRET: str = ""
+
+    # GCP (global fallback)
+    GCP_PROJECT_ID: str = ""
+    GCP_CLIENT_EMAIL: str = ""
+    GCP_PRIVATE_KEY: str = ""
+    GCP_PRIVATE_KEY_ID: str = ""
+
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # Database pool
+    DB_POOL_SIZE: int = 20
+    DB_MAX_OVERFLOW: int = 30
+    DB_POOL_TIMEOUT: int = 30
+    DB_POOL_RECYCLE: int = 1800
+
+    # Azure Backup
+    BACKUP_AZURE_STORAGE_ACCOUNT: str = ""
+    BACKUP_AZURE_STORAGE_KEY: str = ""
+    BACKUP_AZURE_CONTAINER: str = "cloudatlas-backups"
+    BACKUP_RETENTION_DAYS: int = 30
+
+    # Prometheus /metrics endpoint — set a bearer token to restrict access.
+    # If empty, /metrics is only accessible in DEBUG mode.
+    METRICS_TOKEN: str = ""
+
+    # Knowledge Base storage (Azure Blob Storage)
+    # Aceita connection string OU account+key separados
+    KB_AZURE_CONNECTION_STRING: str = ""
+    KB_AZURE_STORAGE_ACCOUNT: str = ""
+    KB_AZURE_STORAGE_KEY: str = ""
+    KB_AZURE_CONTAINER: str = "knowledge-base"
+    KB_UPLOAD_MAX_MB: int = 500
+    KB_PRESIGN_GET_EXPIRE_SECONDS: int = 3600  # 1h
+    KB_PRESIGN_PUT_EXPIRE_SECONDS: int = 900   # 15min
+
+    @model_validator(mode='after')
+    def validate_production_secrets(self) -> 'Settings':
+        """Prevent the app from starting with insecure defaults in production."""
+        if not self.DEBUG:
+            errors = []
+            if self.SECRET_KEY.startswith("changeme"):
+                errors.append(
+                    "SECRET_KEY está com o valor padrão inseguro. "
+                    "Gere uma chave com: openssl rand -hex 32"
+                )
+            elif len(self.SECRET_KEY) < 32:
+                errors.append(
+                    f"SECRET_KEY muito curta ({len(self.SECRET_KEY)} chars). "
+                    "Mínimo 32 caracteres. Gere com: openssl rand -hex 32"
+                )
+            if not self.ENCRYPTION_KEY:
+                errors.append(
+                    "ENCRYPTION_KEY está vazia. Gere uma com: "
+                    "python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+                )
+            if errors:
+                raise ValueError(
+                    "Configuração de produção inválida:\n" + "\n".join(f"  - {e}" for e in errors)
+                )
+        return self
 
     class Config:
         env_file = ".env"

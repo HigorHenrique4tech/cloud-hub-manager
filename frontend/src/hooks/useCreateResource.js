@@ -29,7 +29,20 @@ const useCreateResource = (createFn, { invalidateKey, onSuccess } = {}) => {
       onSuccess?.(result);
       return result;
     } catch (err) {
-      const msg = err.response?.data?.detail || err.message || 'Erro ao criar recurso';
+      const detail = err.response?.data?.detail;
+      let msg;
+      if (Array.isArray(detail)) {
+        msg = detail.map((e) => {
+          const field = Array.isArray(e.loc) ? e.loc.filter((x) => x !== 'body').join('.') : '';
+          return field ? `${field}: ${e.msg}` : e.msg;
+        }).join('; ');
+      } else if (typeof detail === 'string') {
+        msg = detail;
+      } else if (detail && typeof detail === 'object') {
+        msg = detail.msg || JSON.stringify(detail);
+      } else {
+        msg = err.message || 'Erro ao criar recurso';
+      }
       setError(msg);
       throw err;
     } finally {

@@ -1,14 +1,21 @@
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Crown, ArrowUpRight, CreditCard } from 'lucide-react';
+import { useState } from 'react';
 import { useOrgWorkspace } from '../contexts/OrgWorkspaceContext';
 import billingService from '../services/billingService';
+
 import Layout from '../components/layout/layout';
+import AddOnsPanel from '../components/billing/AddOnsPanel';
 
 const PLAN_INFO = {
   free: { name: 'Free', price: 'R$ 0', color: 'gray' },
-  pro: { name: 'Pro', price: 'R$ 199/mês', color: 'primary' },
-  enterprise: { name: 'Enterprise', price: 'Sob consulta', color: 'amber' },
+  basic: { name: 'Basic', price: 'R$ 397/mês', color: 'primary' },
+  standard: { name: 'Standard', price: 'R$ 797/mês', color: 'primary' },
+  enterprise_e1: { name: 'Enterprise E1', price: 'R$ 2.997/mês + add-ons', color: 'amber' },
+  enterprise_e2: { name: 'Enterprise E2', price: 'R$ 4.997/mês + add-ons', color: 'amber' },
+  enterprise_e3: { name: 'Enterprise E3', price: 'R$ 7.997/mês + add-ons', color: 'amber' },
+  enterprise_migration: { name: 'Enterprise + Migration', price: 'R$ 4.747/mês', color: 'purple' },
 };
 
 const STATUS_BADGE = {
@@ -50,8 +57,12 @@ const UsageBar = ({ label, current, max }) => {
 
 const Billing = () => {
   const navigate = useNavigate();
-  const { currentOrg } = useOrgWorkspace();
+  const { currentOrg, isMasterOrg, refreshOrgs } = useOrgWorkspace();
   const slug = currentOrg?.slug;
+  const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
+  const isEnterprise = effectivePlan.startsWith('enterprise');
+  const trial = currentOrg?.trial || {};
+  const qc = useQueryClient();
 
   const { data: usageData, isLoading: usageLoading } = useQuery({
     queryKey: ['org-usage', slug],
@@ -65,7 +76,10 @@ const Billing = () => {
     enabled: !!slug,
   });
 
-  const plan = PLAN_INFO[currentOrg?.plan_tier] || PLAN_INFO.free;
+
+
+
+  const plan = PLAN_INFO[effectivePlan] || PLAN_INFO.free;
   const usage = usageData?.usage || {};
   const limits = usageData?.limits || {};
   const payments = historyData?.payments || [];
@@ -106,15 +120,56 @@ const Billing = () => {
                 <p className="text-sm text-gray-500 dark:text-gray-400">{plan.price}</p>
               </div>
             </div>
-            <button
-              onClick={() => navigate('/select-plan')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
-            >
-              Alterar plano
-              <ArrowUpRight className="w-4 h-4" />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => navigate('/select-plan')}
+                className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Alterar plano
+                <ArrowUpRight className="w-4 h-4" />
+              </button>
+            </div>
           </div>
+
         </div>
+
+        {/* Trial info */}
+        {trial.has_trial && (
+          <div className={`rounded-xl border p-4 flex items-center justify-between ${
+            trial.trial_active
+              ? trial.days_remaining <= 7
+                ? 'bg-red-50 border-red-200 dark:bg-red-900/10 dark:border-red-800'
+                : trial.days_remaining <= 14
+                  ? 'bg-amber-50 border-amber-200 dark:bg-amber-900/10 dark:border-amber-800'
+                  : 'bg-emerald-50 border-emerald-200 dark:bg-emerald-900/10 dark:border-emerald-800'
+              : 'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'
+          }`}>
+            <div>
+              <p className={`text-sm font-semibold ${
+                trial.trial_active
+                  ? trial.days_remaining <= 7 ? 'text-red-700 dark:text-red-400' : trial.days_remaining <= 14 ? 'text-amber-700 dark:text-amber-400' : 'text-emerald-700 dark:text-emerald-400'
+                  : 'text-gray-600 dark:text-gray-400'
+              }`}>
+                {trial.trial_active
+                  ? `Trial Pro — ${trial.days_remaining} dia${trial.days_remaining !== 1 ? 's' : ''} restante${trial.days_remaining !== 1 ? 's' : ''}`
+                  : 'Trial expirado'}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                {trial.trial_active
+                  ? 'Aproveite todos os recursos Pro durante o período de teste'
+                  : 'Faça upgrade para continuar usando os recursos Pro'}
+              </p>
+            </div>
+            {!trial.trial_active && currentOrg?.plan_tier === 'free' && (
+              <button
+                onClick={() => navigate('/select-plan')}
+                className="px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors"
+              >
+                Fazer upgrade
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Usage */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">
@@ -131,6 +186,16 @@ const Billing = () => {
             </div>
           )}
         </div>
+
+        {/* Add-ons Panel */}
+        <AddOnsPanel
+          orgSlug={slug}
+          currentPlan={effectivePlan}
+          currentMembers={usage.members || 0}
+          currentWorkspaces={usage.workspaces || 0}
+          maxMembers={limits.members}
+          maxWorkspaces={limits.workspaces}
+        />
 
         {/* Payment history */}
         <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-6">

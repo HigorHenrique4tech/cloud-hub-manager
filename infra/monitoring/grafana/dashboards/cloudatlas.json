@@ -201,25 +201,145 @@
       }
     },
     {
-      "title": "Requests by Endpoint",
+      "title": "Requests by Endpoint (com Org e Workspace reais)",
       "type": "table",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 12 },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "" },
       "targets": [
         {
-          "expr": "topk(20, sum by (handler, method) (increase(http_requests_total[1h])))",
-          "legendFormat": "{{method}} {{handler}}",
+          "expr": "topk(30, sum by (org_slug, workspace_id, route, method, status_class) (increase(cloudatlas_org_requests_total[1h])))",
+          "legendFormat": "",
           "refId": "A",
           "format": "table",
           "instant": true
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "custom": { "align": "left", "displayMode": "auto" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Requests (1h)" },
+            "properties": [
+              { "id": "custom.width", "value": 120 },
+              { "id": "custom.align", "value": "right" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "status_class" },
+            "properties": [
+              { "id": "custom.width", "value": 80 },
+              {
+                "id": "custom.displayMode",
+                "value": "color-background"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "green", "value": null }
+                  ]
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  { "options": { "2xx": { "color": "green",  "text": "2xx" }, "3xx": { "color": "blue",   "text": "3xx" }, "4xx": { "color": "orange", "text": "4xx" }, "5xx": { "color": "red",    "text": "5xx" } }, "type": "value" }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true },
+            "renameByName": {
+              "org_slug":     "Organização",
+              "workspace_id": "Workspace ID",
+              "route":        "Endpoint",
+              "method":       "Method",
+              "status_class": "Status",
+              "Value":        "Requests (1h)"
+            },
+            "indexByName": {
+              "org_slug":     0,
+              "workspace_id": 1,
+              "route":        2,
+              "method":       3,
+              "status_class": 4,
+              "Value":        5
+            }
+          }
+        },
+        { "id": "sortBy", "options": { "fields": [{ "desc": true, "displayName": "Requests (1h)" }] } }
+      ]
+    },
+    {
+      "title": "Top Organizações por Volume (1h)",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "topk(10, sum by (org_slug) (increase(cloudatlas_org_requests_total[1h])))",
+          "legendFormat": "{{org_slug}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": { "mode": "palette-classic" },
+          "custom": { "orientation": "horizontal" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true
+      }
+    },
+    {
+      "title": "Erros 4xx/5xx por Organização (1h)",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "" },
+      "targets": [
+        {
+          "expr": "topk(20, sum by (org_slug, workspace_id, route, status_class) (increase(cloudatlas_org_requests_total{status_class=~\"4xx|5xx\"}[1h])))",
+          "legendFormat": "",
+          "refId": "A",
+          "format": "table",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": { "custom": { "align": "left" } },
         "overrides": []
       },
       "transformations": [
-        { "id": "organize", "options": { "renameByName": { "handler": "Endpoint", "method": "Method", "Value": "Requests (1h)" } } }
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true, "__name__": true, "job": true, "instance": true },
+            "renameByName": {
+              "org_slug":     "Organização",
+              "workspace_id": "Workspace ID",
+              "route":        "Endpoint",
+              "status_class": "Status",
+              "Value":        "Erros (1h)"
+            }
+          }
+        },
+        { "id": "sortBy", "options": { "fields": [{ "desc": true, "displayName": "Erros (1h)" }] } }
       ]
     }
   ],

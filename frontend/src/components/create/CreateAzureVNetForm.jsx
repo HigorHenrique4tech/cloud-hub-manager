@@ -1,16 +1,26 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
+import FieldError from '../common/FieldError';
 import azureService from '../../services/azureservices';
 import { AZURE_LOCATIONS } from '../../data/azureConstants';
+import useFormValidation from '../../hooks/useFormValidation';
 
 const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary';
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 
-export default function CreateAzureVNetForm({ form, setForm }) {
+const RULES = {
+  name: [{ required: true, message: 'Nome da VNet é obrigatório' }],
+  resource_group: [{ required: true, message: 'Resource Group é obrigatório' }],
+  location: [{ required: true, message: 'Localização é obrigatória' }],
+};
+
+const CreateAzureVNetForm = forwardRef(function CreateAzureVNetForm({ form, setForm }, ref) {
   const [apiLocations, setApiLocations] = useState([]);
   const [resourceGroups, setResourceGroups] = useState([]);
+  const { errors, touched, touch, touchAll, isValid } = useFormValidation(form, RULES);
+  useImperativeHandle(ref, () => ({ touchAll, isValid }));
 
   const locations = apiLocations.length > 0 ? apiLocations : AZURE_LOCATIONS;
 
@@ -34,25 +44,50 @@ export default function CreateAzureVNetForm({ form, setForm }) {
       <FormSection title="Básico">
         <div>
           <label className={labelCls}>Nome <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="minha-vnet" />
+          <input
+            className={`${inputCls} ${touched.name && errors.name ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.name || ''}
+            onChange={(e) => set('name', e.target.value)}
+            onBlur={() => touch('name')}
+            placeholder="minha-vnet"
+          />
+          <FieldError message={touched.name ? errors.name : null} />
         </div>
         <div>
           <label className={labelCls}>Resource Group <span className="text-red-500">*</span></label>
           {resourceGroups.length > 0 ? (
-            <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
+            <select
+              className={`${inputCls} ${touched.resource_group && errors.resource_group ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.resource_group || ''}
+              onChange={(e) => set('resource_group', e.target.value)}
+              onBlur={() => touch('resource_group')}
+            >
               <option value="">Selecione...</option>
               {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
             </select>
           ) : (
-            <input className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)} placeholder="meu-resource-group" />
+            <input
+              className={`${inputCls} ${touched.resource_group && errors.resource_group ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.resource_group || ''}
+              onChange={(e) => set('resource_group', e.target.value)}
+              onBlur={() => touch('resource_group')}
+              placeholder="meu-resource-group"
+            />
           )}
+          <FieldError message={touched.resource_group ? errors.resource_group : null} />
         </div>
         <div>
           <label className={labelCls}>Localização <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={form.location || ''} onChange={(e) => set('location', e.target.value)}>
+          <select
+            className={`${inputCls} ${touched.location && errors.location ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.location || ''}
+            onChange={(e) => set('location', e.target.value)}
+            onBlur={() => touch('location')}
+          >
             <option value="">Selecione...</option>
             {locations.map((l) => <option key={l.name} value={l.name}>{l.display_name || l.name}</option>)}
           </select>
+          <FieldError message={touched.location ? errors.location : null} />
         </div>
       </FormSection>
 
@@ -100,4 +135,6 @@ export default function CreateAzureVNetForm({ form, setForm }) {
       </FormSection>
     </>
   );
-}
+});
+
+export default CreateAzureVNetForm;

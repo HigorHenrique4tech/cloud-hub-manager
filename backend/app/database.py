@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
@@ -11,8 +11,12 @@ logger = logging.getLogger(__name__)
 engine = create_engine(
     settings.DATABASE_URL,
     pool_pre_ping=True,
-    pool_size=5,
-    max_overflow=10
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW,
+    pool_timeout=settings.DB_POOL_TIMEOUT,
+    pool_recycle=settings.DB_POOL_RECYCLE,
+    pool_reset_on_return="rollback",
+    echo_pool=settings.DEBUG,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -40,6 +44,32 @@ def _get_alembic_config():
     return cfg
 
 
+def _migrate_existing_tables():
+    """Add missing columns to existing tables (PostgreSQL ADD COLUMN IF NOT EXISTS)."""
+    migrations = [
+        # users — new FK to organizations
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS default_org_id UUID REFERENCES organizations(id) ON DELETE SET NULL",
+        # cost_alerts — workspace + created_by + cloud_account
+        "ALTER TABLE cost_alerts ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE CASCADE",
+        "ALTER TABLE cost_alerts ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL",
+        "ALTER TABLE cost_alerts ADD COLUMN IF NOT EXISTS cloud_account_id UUID REFERENCES cloud_accounts(id) ON DELETE SET NULL",
+        # activity_logs — org + workspace scope
+        "ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS organization_id UUID REFERENCES organizations(id) ON DELETE SET NULL",
+        "ALTER TABLE activity_logs ADD COLUMN IF NOT EXISTS workspace_id UUID REFERENCES workspaces(id) ON DELETE SET NULL",
+        # cloud_accounts — account_id + created_by (added after initial table creation)
+        "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS account_id VARCHAR(255)",
+        "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS created_by UUID REFERENCES users(id) ON DELETE SET NULL",
+        "ALTER TABLE cloud_accounts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()",
+    ]
+    with engine.connect() as conn:
+        for sql in migrations:
+            try:
+                conn.execute(text(sql))
+            except Exception:
+                pass  # column may already exist or table may not exist yet
+        conn.commit()
+
+
 def run_migrations():
     """Run Alembic migrations programmatically (upgrade to head).
 
@@ -48,7 +78,7 @@ def run_migrations():
     doesn't try to re-create everything.
     """
     from alembic import command
-    from sqlalchemy import inspect, text
+    from sqlalchemy import inspect
 
     inspector = inspect(engine)
     existing_tables = inspector.get_table_names()
@@ -62,11 +92,14 @@ def run_migrations():
         logger.info("Existing database detected without Alembic history. Stamping as current...")
         command.stamp(cfg, "head")
         logger.info("Database stamped at head.")
-        return
+    else:
+        logger.info("Running Alembic migrations (upgrade head)...")
+        command.upgrade(cfg, "head")
+        logger.info("Alembic migrations complete.")
 
-    logger.info("Running Alembic migrations (upgrade head)...")
-    command.upgrade(cfg, "head")
-    logger.info("Alembic migrations complete.")
+    # Always apply manual column additions for backwards compatibility
+    _migrate_existing_tables()
+    logger.info("Column migrations applied.")
 
 
 def stamp_existing_db():

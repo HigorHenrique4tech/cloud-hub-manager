@@ -5,12 +5,14 @@ const CreateResourceModal = ({
   isOpen,
   onClose,
   onSubmit,
+  onValidate = null,
   title,
   submitLabel = 'Criar Recurso',
   isLoading = false,
   error = '',
   success = '',
   estimate = null,
+  templateBar = null,
   children,
 }) => {
   useEffect(() => {
@@ -45,9 +47,14 @@ const CreateResourceModal = ({
 
         {/* Body */}
         <div className="flex-1 overflow-y-auto p-5 space-y-6">
+          {templateBar && (
+            <div className="pb-4 border-b border-gray-200 dark:border-gray-700">
+              {templateBar}
+            </div>
+          )}
           {error && (
             <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-700 dark:text-red-400 text-sm">
-              {error}
+              {typeof error === 'string' ? error : JSON.stringify(error)}
             </div>
           )}
           {success && (
@@ -69,7 +76,10 @@ const CreateResourceModal = ({
             Cancelar
           </button>
           <button
-            onClick={onSubmit}
+            onClick={() => {
+              if (onValidate && !onValidate()) return;
+              onSubmit();
+            }}
             disabled={isLoading}
             className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary-dark rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >

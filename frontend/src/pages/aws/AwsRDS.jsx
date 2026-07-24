@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
-import { AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { AlertCircle, Plus, Trash2, Database, Search, X, RefreshCw } from 'lucide-react';
 import Layout from '../../components/layout/layout';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateRDSForm from '../../components/create/CreateRDSForm';
@@ -12,6 +13,8 @@ import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import CostEstimatePanel from '../../components/common/CostEstimatePanel';
 import awsService from '../../services/awsservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { db_instance_identifier: '', engine: 'mysql', engine_version: '', db_instance_class: 'db.t3.micro', allocated_storage: 20, storage_type: 'gp2', db_name: '', master_username: '', master_password: '', security_group_ids: [], db_subnet_group: '', multi_az: false, publicly_accessible: false, backup_retention: 7, storage_encrypted: false, deletion_protection: false, tags: {}, tags_list: [] };
 
@@ -22,15 +25,19 @@ const statusClass = (s) => {
 };
 
 const AwsRDS = () => {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const q = (searchParams.get('q') || '').toLowerCase();
+  const [searchValue, setSearchValue] = useState(q);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
+  const formRef = useRef();
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['aws-rds'],
     queryFn: () => awsService.listRDSInstances(),
     retry: false,
@@ -55,8 +62,6 @@ const AwsRDS = () => {
     }
   };
 
-  if (isLoading) return <Layout><LoadingSpinner text="Carregando instâncias RDS..." /></Layout>;
-
   if (error?.response?.status === 400) {
     return <Layout><NoCredentialsMessage provider="aws" /></Layout>;
   }
@@ -72,7 +77,7 @@ const AwsRDS = () => {
     );
   }
 
-  const instances = (data?.instances || []).filter(i =>
+  const instances = isLoading ? [] : (data?.instances || []).filter(i =>
     !q || i.db_instance_id?.toLowerCase().includes(q) || i.engine?.toLowerCase().includes(q)
   );
 
@@ -82,72 +87,142 @@ const AwsRDS = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">RDS — Banco de Dados</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Região: {data?.region || 'N/A'} · {instances.length} instância(s){q && ` · filtrado por "${q}"`}
+            {isLoading ? 'Carregando...' : `Região: ${data?.region || 'N/A'} · ${instances.length} instância(s)${q ? ` · filtrado por "${q}"` : ''}`}
           </p>
         </div>
-        <PermissionGate permission="resources.create">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            onClick={() => refetch()}
+            disabled={isRefetching || isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
           >
-            <Plus className="w-4 h-4" /> Criar Instância
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            Atualizar
           </button>
-        </PermissionGate>
+          <PermissionGate permission="resources.create">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Criar Instância
+            </button>
+          </PermissionGate>
+        </div>
       </div>
 
-      <div className="card overflow-x-auto">
-        {instances.length === 0 ? (
-          <p className="text-center py-8 text-gray-500 dark:text-gray-400">Nenhuma instância RDS encontrada</p>
+      {!isLoading && instances.length > 0 && (
+        <div className="mb-6 relative w-80">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                navigate(searchValue ? `?q=${encodeURIComponent(searchValue)}` : '');
+              }
+              if (e.key === 'Escape') {
+                setSearchValue('');
+                navigate('');
+              }
+            }}
+            placeholder="Buscar por ID, engine ou classe..."
+            className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
+          {searchValue && (
+            <button
+              onClick={() => {
+                setSearchValue('');
+                navigate('');
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+            >
+              <X size={14} className="text-gray-400" />
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="card">
+        {isLoading ? (
+          <SkeletonTable columns={9} rows={5} />
+        ) : instances.length === 0 ? (
+          <EmptyState
+            icon={Database}
+            title="Nenhuma instância RDS"
+            description="Crie seu primeiro banco de dados gerenciado na AWS."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar Instância
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : (
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900/50">
-              <tr>
-                {['ID', 'Engine', 'Versão', 'Classe', 'Status', 'Endpoint', 'AZ', 'Multi-AZ', 'Storage (GB)', 'Ações'].map(h => (
-                  <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {instances.map(i => (
-                <tr key={i.db_instance_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                  <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.db_instance_id}</td>
-                  <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.engine}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.engine_version || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.db_instance_class}</td>
-                  <td className="px-4 py-3 whitespace-nowrap"><span className={statusClass(i.status)}>{i.status}</span></td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono text-xs">{i.endpoint || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.availability_zone || '—'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.multi_az ? 'Sim' : 'Não'}</td>
-                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.storage_gb ?? '—'}</td>
-                  <td className="px-4 py-3 whitespace-nowrap">
-                    <PermissionGate permission="resources.delete">
-                      <button
-                        onClick={() => setDeleteTarget(i)}
-                        className="text-red-400 hover:text-red-600 transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </PermissionGate>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
+                <tr>
+                  {['ID', 'Engine', 'Versão', 'Classe', 'Status', 'Endpoint', 'AZ', 'Multi-AZ', 'Storage (GB)', 'Ações'].map(h => (
+                    <th key={h} className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {instances.map(i => (
+                  <tr key={i.db_instance_id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(i)}>
+                    <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.db_instance_id}</td>
+                    <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">{i.engine}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.engine_version || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.db_instance_class}</td>
+                    <td className="px-4 py-3 whitespace-nowrap"><span className={statusClass(i.status)}>{i.status}</span></td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono text-xs">{i.endpoint || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.availability_zone || '—'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.multi_az ? 'Sim' : 'Não'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">{i.storage_gb ?? '—'}</td>
+                    <td className="px-4 py-3 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <PermissionGate permission="resources.delete">
+                        <button
+                          onClick={() => setDeleteTarget(i)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </PermissionGate>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
       <CreateResourceModal
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
-        onSubmit={() => createInstance(form)}
+        onSubmit={() => {
+          const toIntOrNull = (v) => (v === '' || v == null || Number.isNaN(+v) ? null : +v);
+          createInstance({
+            ...form,
+            allocated_storage_gb: toIntOrNull(form.allocated_storage_gb ?? form.allocated_storage) ?? 20,
+            iops: toIntOrNull(form.iops),
+          });
+        }}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Instância RDS"
         isLoading={creating}
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="rds" form={form} />}
+        templateBar={<TemplateBar provider="aws" resourceType="rds" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
-        <CreateRDSForm form={form} setForm={setForm} />
+        <CreateRDSForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal
@@ -159,6 +234,40 @@ const AwsRDS = () => {
         confirmText={deleteTarget?.db_instance_id}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.db_instance_id}
+        subtitle="RDS Instance"
+        statusText={detailTarget?.status}
+        statusColor={detailTarget?.status === 'available' ? 'green' : detailTarget?.status === 'stopped' ? 'red' : 'yellow'}
+        queryKey={['aws-rds-detail', detailTarget?.db_instance_id]}
+        queryFn={detailTarget ? () => awsService.getRDSInstanceDetail(detailTarget.db_instance_id) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'ID', value: detailTarget?.db_instance_id },
+            { label: 'Engine', value: detailTarget?.engine },
+            { label: 'Versão', value: detailTarget?.engine_version },
+            { label: 'Classe', value: detailTarget?.db_instance_class },
+            { label: 'Storage (GB)', value: String(detailTarget?.storage_gb ?? '—') },
+          ]},
+          { title: 'Configuração', fields: [
+            { label: 'Parameter Group', value: detail?.parameter_group },
+            { label: 'Subnet Group', value: detail?.subnet_group },
+            { label: 'Retenção Backup (d)', value: detail?.backup_retention != null ? String(detail.backup_retention) : undefined },
+            { label: 'Janela Backup', value: detail?.preferred_backup_window },
+            { label: 'Janela Manutenção', value: detail?.preferred_maintenance_window },
+          ]},
+          { title: 'Rede e Segurança', fields: [
+            { label: 'Endpoint', value: detailTarget?.endpoint, mono: true },
+            { label: 'VPC Security Groups', value: detail?.vpc_security_groups?.join(', ') },
+            { label: 'Multi-AZ', value: detailTarget?.multi_az ? 'Sim' : 'Não' },
+            { label: 'Acesso Público', value: detail?.publicly_accessible ? 'Sim' : 'Não' },
+            { label: 'Storage Criptografado', value: detail?.storage_encrypted ? 'Sim' : 'Não' },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

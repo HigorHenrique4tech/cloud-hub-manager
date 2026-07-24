@@ -1,26 +1,33 @@
 import { Link } from 'react-router-dom';
 import { Settings, ArrowRight } from 'lucide-react';
+import { AwsIcon, AzureIcon, GcpIcon } from './CloudProviderIcons';
 
 const NoCredentialsMessage = ({ provider }) => {
   const providerLabel = {
     aws: 'Amazon Web Services (AWS)',
     azure: 'Microsoft Azure',
+    gcp: 'Google Cloud Platform (GCP)',
     costs: 'nenhuma cloud',
   }[provider] ?? provider;
 
   const icon = {
     aws: (
-      <div className="w-16 h-16 rounded-2xl bg-orange-50 border border-orange-200 flex items-center justify-center mx-auto mb-6">
-        <span className="text-3xl font-bold text-orange-500">AWS</span>
+      <div className="w-20 h-14 rounded-2xl bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700/40 flex items-center justify-center mx-auto mb-6">
+        <AwsIcon className="w-14 h-9" />
       </div>
     ),
     azure: (
-      <div className="w-16 h-16 rounded-2xl bg-sky-50 border border-sky-200 flex items-center justify-center mx-auto mb-6">
-        <span className="text-2xl font-bold text-sky-500">Az</span>
+      <div className="w-16 h-16 rounded-2xl bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-700/40 flex items-center justify-center mx-auto mb-6">
+        <AzureIcon className="w-9 h-9" />
+      </div>
+    ),
+    gcp: (
+      <div className="w-16 h-16 rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center mx-auto mb-6">
+        <GcpIcon className="w-10 h-10" />
       </div>
     ),
     costs: (
-      <div className="w-16 h-16 rounded-2xl bg-gray-100 border border-gray-200 flex items-center justify-center mx-auto mb-6">
+      <div className="w-16 h-16 rounded-2xl bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 flex items-center justify-center mx-auto mb-6">
         <span className="text-3xl">💰</span>
       </div>
     ),
@@ -30,7 +37,7 @@ const NoCredentialsMessage = ({ provider }) => {
     <div className="flex flex-col items-center justify-center py-20 px-4">
       {icon}
 
-      <h2 className="text-xl font-semibold text-gray-800 mb-2">
+      <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-2">
         Nenhuma credencial configurada
       </h2>
 

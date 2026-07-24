@@ -5,14 +5,28 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 
 # FastAPI Documentation
-python-multipart==0.0.6
+python-multipart==0.0.9
 
 # AWS SDK
 boto3==1.34.34
 botocore==1.34.34
 
+# GCP SDK
+google-cloud-compute==1.14.1
+google-cloud-storage==2.14.0
+google-cloud-functions==1.13.3
+google-cloud-monitoring>=2.18.0
+google-api-python-client==2.111.0
+google-auth==2.26.1
+google-cloud-recommender>=2.0.0
+google-cloud-bigquery==3.25.0
+
+# Microsoft 365 / Graph API
+msal>=1.28.0
+
 # Azure SDK
 azure-identity==1.15.0
+azure-storage-blob>=12.19.0
 azure-mgmt-compute==30.5.0
 azure-mgmt-resource==23.0.1
 azure-mgmt-subscription==3.1.1
@@ -21,6 +35,16 @@ azure-mgmt-network==25.0.0
 azure-mgmt-web==7.2.0
 azure-mgmt-sql==3.0.1
 azure-mgmt-costmanagement==3.0.0
+azure-mgmt-monitor>=6.0.0
+azure-mgmt-recoveryservices>=3.0.0
+azure-mgmt-recoveryservicesbackup>=9.0.0
+azure-mgmt-advisor>=9.0.0
+azure-mgmt-containerservice>=28.0.0
+azure-mgmt-containerregistry>=10.0.0
+azure-containerregistry>=1.2.0
+
+# Kubernetes (agentless cluster management)
+kubernetes>=29.0.0
 
 # Database
 sqlalchemy==2.0.25
@@ -28,22 +52,37 @@ alembic==1.13.1
 psycopg2-binary==2.9.9
 
 # Authentication
-python-jose[cryptography]==3.3.0
+PyJWT[crypto]==2.9.0
 passlib[bcrypt]==1.7.4
-bcrypt==3.2.2
+bcrypt==4.2.1
 cryptography==42.0.8
 email-validator==2.1.0
 
 # Utilities
 python-dotenv==1.0.0
-python-multipart==0.0.6
 httpx==0.26.0
+redis==5.0.1
 
 # Production server
 gunicorn==21.2.0
 
+# Rate limiting
+slowapi==0.1.9
+
+# Task scheduling
+apscheduler==3.10.4
+
+# Migration worker
+celery==5.3.6
+flower==2.0.1
+exchangelib==5.2.0
+
 # Monitoring
 prometheus-fastapi-instrumentator==7.0.0
+prometheus-client==0.19.0
+
+# PDF generation (Executive Reports)
+reportlab==4.2.5
 
 # Structured logging
 python-json-logger==2.0.7

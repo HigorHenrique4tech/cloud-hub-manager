@@ -1,0 +1,1291 @@
+"""Migration365 API — project and mailbox management."""
+
+import logging
+from typing import Optional
+from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, validator
+from sqlalchemy.orm import Session
+
+from app.core.auth_context import MemberContext
+from app.core.dependencies import require_permission
+from app.database import get_db
+from app.services import migration_service as svc
+from app.services.plan_service import (
+    check_migration_access, get_migration_license_summary,
+    consume_migration_license,
+)
+
+logger = logging.getLogger(__name__)
+
+ws_router = APIRouter(
+    prefix="/orgs/{org_slug}/workspaces/{workspace_id}/migration",
+    tags=["Migration365"],
+)
+
+
+# ── Schemas ───────────────────────────────────────────────────────────────────
+
+VALID_MIGRATION_TYPES = {
+    "tenant_to_tenant",
+}
+
+
+class CreateProjectRequest(BaseModel):
+    name: str
+    description: Optional[str] = None
+    migration_type: str
+    source_config: dict
+    destination_config: dict
+    strip_mip_labels: bool = False
+    preserve_sp_permissions: bool = False
+    migrate_inbox_rules: bool = False
+
+    @validator("migration_type")
+    def validate_migration_type(cls, v):
+        if v not in VALID_MIGRATION_TYPES:
+            raise ValueError(
+                f"migration_type inválido: '{v}'. "
+                f"Use: {', '.join(sorted(VALID_MIGRATION_TYPES))}"
+            )
+        return v
+
+
+class UpdateProjectRequest(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    source_config: Optional[dict] = None
+    destination_config: Optional[dict] = None
+
+
+class BulkAddMailboxesRequest(BaseModel):
+    mailboxes: list[dict]  # [{source_email, destination_email?, display_name?}]
+
+
+class SetStatusRequest(BaseModel):
+    status: str   # draft | ready | running | paused | completed | failed
+
+
+class ScheduleRequest(BaseModel):
+    scheduled_at: str  # ISO 8601 datetime string
+
+
+# ── License purchase schemas ─────────────────────────────────────────────────
+
+class PurchaseLicensesRequest(BaseModel):
+    quantity: int   # number of licenses to purchase
+    notes: Optional[str] = None
+
+
+# ── Migration access helper ──────────────────────────────────────────────────
+
+def _require_migration_plan(db: Session, org_id):
+    """Raise 403 if the org cannot use Migration365."""
+    allowed, remaining, message = check_migration_access(db, org_id)
+    if not allowed:
+        raise HTTPException(status_code=403, detail=message)
+    return allowed, remaining, message
+
+
+# ── License info ─────────────────────────────────────────────────────────────
+
+@ws_router.get("/license-summary")
+async def license_summary(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return migration license summary for the current org."""
+    return get_migration_license_summary(db, member.organization_id)
+
+
+@ws_router.post("/licenses/request", status_code=201)
+async def request_licenses(
+    body: PurchaseLicensesRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Request migration licenses (Enterprise only). Requires admin approval."""
+    from app.models.db_models import Organization, MigrationLicense
+    from app.services.plan_service import get_effective_plan, PLAN_PRICES, _ENTERPRISE_TIERS
+
+    org = db.query(Organization).filter(Organization.id == member.organization_id).first()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+
+    effective = get_effective_plan(org)
+    if effective not in _ENTERPRISE_TIERS:
+        raise HTTPException(status_code=403,
+                            detail="Licenças de migração requerem plano Enterprise ou superior.")
+
+    if body.quantity < 1 or body.quantity > 10000:
+        raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 10.000.")
+
+    unit_price = PLAN_PRICES.get("migration_license_unit", 7500)
+    total = unit_price * body.quantity
+
+    import uuid
+    license_record = MigrationLicense(
+        id=uuid.uuid4(),
+        organization_id=member.organization_id,
+        purchased_by=member.user.id,
+        status="pending",
+        licenses_purchased=body.quantity,
+        licenses_used=0,
+        amount_cents=total,
+        unit_price_cents=unit_price,
+        is_active=False,
+        notes=body.notes,
+    )
+    db.add(license_record)
+    db.commit()
+    db.refresh(license_record)
+
+    return {
+        "id": str(license_record.id),
+        "status": license_record.status,
+        "licenses_purchased": license_record.licenses_purchased,
+        "unit_price_cents": license_record.unit_price_cents,
+        "amount_cents": license_record.amount_cents,
+        "notes": license_record.notes,
+        "created_at": license_record.created_at.isoformat() if license_record.created_at else None,
+    }
+
+
+@ws_router.get("/licenses/history")
+async def license_history(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Return all license purchase records for the current org."""
+    from app.models.db_models import MigrationLicense
+
+    records = (
+        db.query(MigrationLicense)
+        .filter(MigrationLicense.organization_id == member.organization_id)
+        .order_by(MigrationLicense.created_at.desc())
+        .all()
+    )
+    return {
+        "licenses": [
+            {
+                "id": str(r.id),
+                "status": r.status,
+                "licenses_purchased": r.licenses_purchased,
+                "licenses_used": r.licenses_used,
+                "licenses_remaining": r.licenses_purchased - r.licenses_used if r.status == "approved" else 0,
+                "unit_price_cents": r.unit_price_cents,
+                "amount_cents": r.amount_cents,
+                "is_active": r.is_active,
+                "notes": r.notes,
+                "admin_notes": r.admin_notes,
+                "reviewed_at": r.reviewed_at.isoformat() if r.reviewed_at else None,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in records
+        ]
+    }
+
+
+# ── Projects ──────────────────────────────────────────────────────────────────
+
+@ws_router.get("/projects")
+async def list_projects(
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    return svc.list_projects(db, str(member.workspace_id))
+
+
+@ws_router.post("/projects", status_code=201)
+async def create_project(
+    body: CreateProjectRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    _require_migration_plan(db, member.organization_id)
+    return svc.create_project(
+        db,
+        workspace_id=str(member.workspace_id),
+        user_id=str(member.user.id),
+        name=body.name,
+        description=body.description,
+        migration_type=body.migration_type,
+        source_config=body.source_config,
+        destination_config=body.destination_config,
+        strip_mip_labels=body.strip_mip_labels,
+        preserve_sp_permissions=body.preserve_sp_permissions,
+        migrate_inbox_rules=body.migrate_inbox_rules,
+    )
+
+
+@ws_router.get("/projects/{project_id}")
+async def get_project(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    return project
+
+
+@ws_router.patch("/projects/{project_id}")
+async def update_project(
+    project_id: str,
+    body: UpdateProjectRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    project = svc.update_project(
+        db, str(member.workspace_id), project_id,
+        **{k: v for k, v in body.dict().items() if v is not None}
+    )
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    return project
+
+
+@ws_router.delete("/projects/{project_id}", status_code=204)
+async def delete_project(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    if not svc.delete_project(db, str(member.workspace_id), project_id):
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+
+@ws_router.post("/projects/{project_id}/status")
+async def set_project_status(
+    project_id: str,
+    body: SetStatusRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    valid = {"draft", "ready", "running", "paused", "completed", "failed"}
+    if body.status not in valid:
+        raise HTTPException(status_code=400, detail=f"Status inválido. Use: {', '.join(valid)}")
+
+    # Ao iniciar migração, verificar acesso e consumir licenças
+    if body.status == "running":
+        allowed, remaining, msg = _require_migration_plan(db, member.organization_id)
+        # Consumir licenças apenas na primeira execução (draft/ready → running)
+        # Retomar de pausa (paused → running) NÃO consome licenças novamente
+        project_data = svc.get_project(db, str(member.workspace_id), project_id)
+        if project_data and project_data.get("status") in ("draft", "ready"):
+            # Licenças são por usuário distinto (source_email), não por objeto
+            pending_count = project_data.get("user_count", 0) or project_data.get("mailbox_count", 0)
+            if pending_count > 0 and remaining is not None:
+                if not consume_migration_license(db, member.organization_id, pending_count):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Licenças insuficientes. Necessário: {pending_count} (usuários distintos), disponível: {remaining}. Solicite mais licenças."
+                    )
+
+    project = svc.set_project_status(db, str(member.workspace_id), project_id, body.status)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    # Dispara o worker Celery ao iniciar migração.
+    # Se o dispatch falhar, reverte o status para evitar que o projeto fique "running" sem worker.
+    if body.status == "running":
+        try:
+            _dispatch_migration_worker(project_id)
+        except Exception as exc:
+            logger.error(f"Falha ao despachar worker para {project_id}: {exc}")
+            svc.set_project_status(db, str(member.workspace_id), project_id, "draft")
+            raise HTTPException(
+                status_code=503,
+                detail="Worker de migração indisponível. Verifique se o container migration-worker está rodando.",
+            )
+
+    return project
+
+
+@ws_router.get("/projects/{project_id}/stats")
+async def get_project_stats(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Retorna métricas detalhadas do projeto incluindo contagens por fase."""
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    return svc.get_project_stats(db, str(member.workspace_id), project_id)
+
+
+# ── Mailboxes ─────────────────────────────────────────────────────────────────
+
+@ws_router.get("/projects/{project_id}/mailboxes")
+async def list_mailboxes(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    return svc.list_mailboxes(db, str(member.workspace_id), project_id)
+
+
+@ws_router.post("/projects/{project_id}/mailboxes")
+async def add_mailboxes(
+    project_id: str,
+    body: BulkAddMailboxesRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    return svc.bulk_add_mailboxes(
+        db, str(member.workspace_id), project_id, body.mailboxes
+    )
+
+
+@ws_router.post("/projects/{project_id}/mailboxes/import-csv")
+async def import_csv_preview(
+    project_id: str,
+    file: UploadFile = File(...),
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Faz parse do CSV enviado e retorna preview sem persistir nada.
+    Colunas aceitas (case-insensitive): source_email, destination_email, display_name.
+    Primeira coluna é sempre tratada como source_email se o header não for reconhecido.
+    """
+    import csv, io
+
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")  # remove BOM se presente
+    except UnicodeDecodeError:
+        text = content.decode("latin-1")
+
+    reader = csv.DictReader(io.StringIO(text))
+    # Normaliza headers
+    if reader.fieldnames:
+        reader.fieldnames = [f.strip().lower().replace(" ", "_") for f in reader.fieldnames]
+
+    valid, invalid = [], []
+    EMAIL_RE = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+    import re
+
+    is_file_migration = False  # apenas tenant_to_tenant suportado
+
+    for i, row in enumerate(reader, start=2):  # linha 1 = header
+        # Tenta encontrar source_email por nome ou primeira coluna
+        src = (row.get("source_email") or row.get("email") or
+               row.get("origem") or next(iter(row.values()), "")).strip()
+        if not is_file_migration:
+            src = src.lower()
+        dst = (row.get("destination_email") or row.get("destino") or "").strip() or None
+        if dst and not is_file_migration:
+            dst = dst.lower()
+        name = (row.get("display_name") or row.get("nome") or row.get("name") or "").strip() or None
+
+        if not src:
+            invalid.append({"line": i, "reason": "identificador vazio"})
+            continue
+        if not is_file_migration and not re.match(EMAIL_RE, src):
+            invalid.append({"line": i, "value": src, "reason": "e-mail inválido"})
+            continue
+
+        valid.append({"source_email": src, "destination_email": dst, "display_name": name})
+
+    return {
+        "valid": valid,
+        "invalid": invalid,
+        "total_rows": len(valid) + len(invalid),
+    }
+
+
+@ws_router.delete("/projects/{project_id}/mailboxes/{mailbox_id}", status_code=204)
+async def delete_mailbox(
+    project_id: str,
+    mailbox_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    if not svc.delete_mailbox(db, str(member.workspace_id), project_id, mailbox_id):
+        raise HTTPException(status_code=404, detail="Caixa de correio não encontrada.")
+
+
+@ws_router.post("/projects/{project_id}/mailboxes/{mailbox_id}/pause")
+async def pause_mailbox(
+    project_id: str,
+    mailbox_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Pausa uma caixa individual em execução."""
+    mb = svc.pause_mailbox(db, str(member.workspace_id), project_id, mailbox_id)
+    if not mb:
+        raise HTTPException(status_code=404, detail="Caixa não encontrada ou não está em execução.")
+    return mb
+
+
+@ws_router.post("/projects/{project_id}/mailboxes/{mailbox_id}/retry")
+async def retry_mailbox(
+    project_id: str,
+    mailbox_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Reseta uma caixa individual (failed/paused) para pending e redispara o worker se necessário."""
+    mb = svc.retry_mailbox(db, str(member.workspace_id), project_id, mailbox_id)
+    if not mb:
+        raise HTTPException(status_code=404, detail="Caixa não encontrada ou não está em estado de falha/pausa.")
+
+    # Se projeto não está rodando, dispara worker para pegar a caixa resetada.
+    # Retry individual não consome licenças — a caixa já foi contabilizada na execução original.
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if project and project["status"] not in ("running",):
+        svc.set_project_status(db, str(member.workspace_id), project_id, "running")
+        try:
+            _dispatch_migration_worker(project_id)
+        except Exception as exc:
+            logger.error(f"Falha ao despachar worker no retry de mailbox {mailbox_id}: {exc}")
+            svc.set_project_status(db, str(member.workspace_id), project_id, project["status"])
+            raise HTTPException(
+                status_code=503,
+                detail="Worker de migração indisponível. Verifique se o container migration-worker está rodando.",
+            )
+
+    return mb
+
+
+@ws_router.get("/projects/{project_id}/mailboxes/{mailbox_id}/ledger")
+async def get_mailbox_ledger(
+    project_id: str,
+    mailbox_id: str,
+    limit: int = 200,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Retorna o ledger de mensagens de uma caixa — útil para auditoria."""
+    return svc.get_mailbox_ledger(db, str(member.workspace_id), project_id, mailbox_id, limit=limit)
+
+
+@ws_router.post("/projects/{project_id}/pre-assess")
+async def pre_assess_project(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Avalia caixas de e-mail pendentes: conta mensagens e estima tamanho via Graph API.
+    Atualiza items_total em cada caixa. Não inicia a migração.
+    """
+    from app.models.db_models import MigrationProject as MPrj, MigrationMailbox as MMb
+    from app.workers.engines import get_engine
+    from app.services.migration_service import decrypt_project_configs
+
+    prj = db.query(MPrj).filter(
+        MPrj.id == project_id,
+        MPrj.workspace_id == member.workspace_id,
+    ).first()
+    if not prj:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    if prj.status == "running":
+        raise HTTPException(status_code=400, detail="Não é possível avaliar enquanto a migração está em andamento.")
+
+    mailboxes = db.query(MMb).filter(
+        MMb.project_id == project_id,
+        MMb.object_type == "email",
+        MMb.status.in_(["pending", "failed", "paused"]),
+    ).all()
+
+    if not mailboxes:
+        return {
+            "project_id": project_id,
+            "mailboxes_assessed": 0,
+            "total_messages": 0,
+            "total_estimated_size_bytes": 0,
+            "warnings": [],
+            "mailboxes": [],
+        }
+
+    src_cfg, dst_cfg = decrypt_project_configs(db, prj)
+    results = []
+    total_messages = 0
+    total_size_bytes = 0
+    warnings = []
+
+    for mb in mailboxes:
+        try:
+            engine = get_engine(
+                migration_type=prj.migration_type,
+                source_cfg=src_cfg,
+                dest_cfg=dst_cfg,
+                db=db,
+                mailbox=mb,
+            )
+            result = engine.assess()
+            mb.items_total = result["total_messages"]
+            db.add(mb)
+
+            size = result["estimated_size_bytes"]
+            total_messages += result["total_messages"]
+            total_size_bytes += size
+
+            entry = {
+                "mailbox_id": str(mb.id),
+                "source_email": mb.source_email,
+                "total_messages": result["total_messages"],
+                "estimated_size_bytes": size,
+                "folders": result.get("folders", []),
+                "status": "ok",
+            }
+            if size > 50 * 1024 ** 3:
+                warnings.append(
+                    f"{mb.source_email}: caixa muito grande ({size // (1024 ** 3)} GB estimados)"
+                )
+            results.append(entry)
+        except Exception as exc:
+            results.append({
+                "mailbox_id": str(mb.id),
+                "source_email": mb.source_email,
+                "status": "error",
+                "error": str(exc)[:300],
+            })
+
+    db.commit()
+
+    if total_size_bytes > 200 * 1024 ** 3:
+        warnings.append(
+            f"Volume total estimado: {total_size_bytes // (1024 ** 3)} GB — a migração pode demorar muitas horas."
+        )
+
+    return {
+        "project_id": project_id,
+        "mailboxes_assessed": len(results),
+        "total_messages": total_messages,
+        "total_estimated_size_bytes": total_size_bytes,
+        "warnings": warnings,
+        "mailboxes": results,
+    }
+
+
+# ── Operações de execução ─────────────────────────────────────────────────────
+
+@ws_router.post("/projects/{project_id}/verify")
+async def verify_project(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Dispara verificação pós-migração em todas as mailboxes completadas.
+    A verificação é assíncrona — monitore via GET /mailboxes.
+    """
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    if project["status"] not in ("completed", "failed"):
+        raise HTTPException(status_code=400,
+                            detail="Verificação disponível apenas após migração completa.")
+    _dispatch_migration_worker(project_id, verify_only=True)
+    return {"message": "Verificação iniciada.", "project_id": project_id}
+
+
+@ws_router.post("/projects/{project_id}/delta")
+async def delta_sync_project(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Dispara delta sync para capturar emails novos desde a migração inicial."""
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    _dispatch_migration_worker(project_id, delta_only=True)
+    return {"message": "Delta sync iniciado.", "project_id": project_id}
+
+
+# ── Relatório exportável ──────────────────────────────────────────────────────
+
+@ws_router.get("/projects/{project_id}/report")
+async def export_report(
+    project_id: str,
+    format: str = "csv",   # csv | pdf
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Exporta relatório do projeto em CSV ou PDF."""
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    mailboxes = svc.list_mailboxes(db, str(member.workspace_id), project_id)
+    logs_errors = svc.list_logs(db, str(member.workspace_id), project_id, limit=500)
+
+    if format == "csv":
+        import csv, io
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([
+            "source_email", "destination_email", "display_name",
+            "status", "phase", "items_total", "items_migrated",
+            "size_mb", "verify_ok", "error_message",
+            "started_at", "completed_at",
+        ])
+        for mb in mailboxes:
+            verify_ok = (
+                mb.get("verify_result", {}) or {}
+            ).get("ok", "") if mb.get("verify_result") else ""
+            writer.writerow([
+                mb.get("source_email", ""),
+                mb.get("destination_email", "") or "",
+                mb.get("display_name", "") or "",
+                mb.get("status", ""),
+                mb.get("phase", "") or "",
+                mb.get("items_total", "") or "",
+                mb.get("items_migrated", ""),
+                mb.get("size_mb", "") or "",
+                verify_ok,
+                mb.get("error_message", "") or "",
+                mb.get("started_at", "") or "",
+                mb.get("completed_at", "") or "",
+            ])
+        buf.seek(0)
+        filename = f"migration_{project_id[:8]}.csv"
+        return StreamingResponse(
+            iter([buf.getvalue()]),
+            media_type="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    elif format == "pdf":
+        try:
+            from reportlab.lib.pagesizes import A4
+            from reportlab.lib import colors
+            from reportlab.lib.units import cm
+            from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+            from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+            import io as _io
+
+            buf = _io.BytesIO()
+            doc = SimpleDocTemplate(buf, pagesize=A4,
+                                    leftMargin=2*cm, rightMargin=2*cm,
+                                    topMargin=2*cm, bottomMargin=2*cm)
+            styles = getSampleStyleSheet()
+            story = []
+
+            # Título
+            title_style = ParagraphStyle("title", parent=styles["Heading1"],
+                                         fontSize=16, textColor=colors.HexColor("#1e3a5f"))
+            story.append(Paragraph(f"Relatório de Migração", title_style))
+            story.append(Paragraph(project["name"], styles["Heading2"]))
+            story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#e2e8f0")))
+            story.append(Spacer(1, 0.3*cm))
+
+            # Resumo
+            from datetime import datetime as _dt
+            now_str = _dt.utcnow().strftime("%d/%m/%Y %H:%M UTC")
+            summary_data = [
+                ["Tipo", project.get("migration_type", ""), "Gerado em", now_str],
+                ["Status", project.get("status", ""), "Origem", project.get("source_label", "") or "—"],
+                ["Total de caixas", str(project.get("mailbox_count", 0)),
+                 "Concluídas", str(project.get("completed_count", 0))],
+                ["Com falha", str(project.get("failed_count", 0)),
+                 "Verificadas", str(project.get("verified_count", 0))],
+            ]
+            summary_table = Table(summary_data, colWidths=[4*cm, 5.5*cm, 4*cm, 5.5*cm])
+            summary_table.setStyle(TableStyle([
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("TEXTCOLOR", (0, 0), (0, -1), colors.HexColor("#64748b")),
+                ("TEXTCOLOR", (2, 0), (2, -1), colors.HexColor("#64748b")),
+                ("FONTNAME", (1, 0), (1, -1), "Helvetica-Bold"),
+                ("FONTNAME", (3, 0), (3, -1), "Helvetica-Bold"),
+                ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.HexColor("#f8fafc"), colors.white]),
+                ("TOPPADDING", (0, 0), (-1, -1), 5),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+            ]))
+            story.append(summary_table)
+            story.append(Spacer(1, 0.5*cm))
+
+            # Tabela de caixas
+            story.append(Paragraph("Caixas de Correio", styles["Heading3"]))
+            story.append(Spacer(1, 0.2*cm))
+
+            STATUS_PT = {
+                "completed": "Concluído", "failed": "Falha",
+                "pending": "Aguardando", "running": "Em execução",
+                "paused": "Pausado", "skipped": "Ignorado",
+            }
+            mb_headers = ["Origem", "Destino", "Status", "Progresso", "Verificado", "Erro"]
+            mb_rows = [mb_headers]
+            for mb in mailboxes:
+                progress_str = f"{mb.get('items_migrated', 0)}/{mb.get('items_total', 0) or '?'}"
+                verify_str = "✓" if (mb.get("verify_result") or {}).get("ok") else ("✗" if mb.get("verify_result") else "—")
+                error_str = (mb.get("error_message") or "")[:40]
+                mb_rows.append([
+                    mb.get("source_email", "")[:30],
+                    (mb.get("destination_email") or "—")[:30],
+                    STATUS_PT.get(mb.get("status", ""), mb.get("status", "")),
+                    progress_str,
+                    verify_str,
+                    error_str,
+                ])
+
+            mb_table = Table(mb_rows, colWidths=[4.5*cm, 4.5*cm, 2.5*cm, 2.5*cm, 2*cm, 3*cm])
+            mb_table.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1e3a5f")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            story.append(mb_table)
+
+            doc.build(story)
+            buf.seek(0)
+            filename = f"migration_{project_id[:8]}.pdf"
+            return StreamingResponse(
+                buf,
+                media_type="application/pdf",
+                headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+            )
+        except ImportError:
+            raise HTTPException(status_code=500, detail="reportlab não instalado.")
+    else:
+        raise HTTPException(status_code=400, detail="Formato inválido. Use 'csv' ou 'pdf'.")
+
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+
+@ws_router.get("/projects/{project_id}/logs")
+async def list_logs(
+    project_id: str,
+    limit: int = 100,
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    return svc.list_logs(db, str(member.workspace_id), project_id, limit=limit)
+
+
+# ── Agendamento ──────────────────────────────────────────────────────────────
+
+@ws_router.post("/projects/{project_id}/schedule")
+async def schedule_project(
+    project_id: str,
+    body: ScheduleRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Agenda o início automático da migração para uma data/hora futura."""
+    from datetime import datetime, timezone
+    try:
+        scheduled_at = datetime.fromisoformat(body.scheduled_at.replace("Z", "+00:00"))
+        scheduled_at_utc = scheduled_at.astimezone(timezone.utc).replace(tzinfo=None)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="scheduled_at inválido. Use formato ISO 8601.")
+
+    if scheduled_at_utc <= datetime.utcnow():
+        raise HTTPException(status_code=400, detail="scheduled_at deve ser uma data/hora futura.")
+
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    if project["status"] not in ("draft", "ready", "paused"):
+        raise HTTPException(status_code=400, detail="Projeto não pode ser agendado no status atual.")
+
+    # Persiste scheduled_at no projeto
+    updated = svc.update_project(db, str(member.workspace_id), project_id,
+                                  scheduled_at=scheduled_at_utc)
+
+    # Cria job APScheduler
+    try:
+        from apscheduler.triggers.date import DateTrigger
+        from app.services.scheduler_service import scheduler
+
+        def _run_scheduled_migration():
+            _dispatch_migration_worker(project_id)
+            notify_db = None
+            try:
+                from app.database import SessionLocal as _SL
+                notify_db = _SL()
+                svc.set_project_status(notify_db, str(member.workspace_id), project_id, "running")
+            except Exception:
+                pass
+            finally:
+                if notify_db:
+                    notify_db.close()
+
+        scheduler.add_job(
+            _run_scheduled_migration,
+            trigger=DateTrigger(run_date=scheduled_at_utc),
+            id=f"migration-schedule-{project_id}",
+            replace_existing=True,
+        )
+    except Exception as exc:
+        logger.warning(f"APScheduler não disponível para agendamento: {exc}")
+
+    return updated
+
+
+@ws_router.delete("/projects/{project_id}/schedule", status_code=204)
+async def cancel_schedule(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Cancela o agendamento de início automático."""
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+
+    svc.update_project(db, str(member.workspace_id), project_id, scheduled_at=None)
+
+    try:
+        from app.services.scheduler_service import scheduler
+        scheduler.remove_job(f"migration-schedule-{project_id}")
+    except Exception:
+        pass  # job pode já não existir
+
+
+# ── Worker health & test connection ──────────────────────────────────────────
+
+@ws_router.get("/worker-health")
+async def worker_health(
+    member: MemberContext = Depends(require_permission("m365.view")),
+):
+    """
+    Verifica se Redis e o worker Celery de migração estão acessíveis.
+    Retorna em até ~2s (timeout interno do inspect).
+    """
+    import redis as redis_lib
+    from app.core.config import settings
+
+    # 1. Redis
+    redis_status = "unreachable"
+    try:
+        r = redis_lib.from_url(settings.REDIS_URL,
+                               socket_connect_timeout=2, socket_timeout=2)
+        r.ping()
+        redis_status = "ok"
+    except Exception:
+        pass
+
+    # 2. Celery worker
+    worker_status = "unknown"
+    queued_tasks = 0
+    debug_info = {}
+    if redis_status == "ok":
+        try:
+            from app.workers.celery_app import celery_app
+
+            # inspect.ping() — broadcast para todos os workers
+            try:
+                insp = celery_app.control.inspect(timeout=5)
+                ping_result = insp.ping()
+                debug_info["ping"] = str(ping_result)[:200] if ping_result else "empty"
+                if ping_result:
+                    worker_status = "ok"
+                    try:
+                        reserved = insp.reserved() or {}
+                        queued_tasks = sum(len(v) for v in reserved.values())
+                    except Exception:
+                        pass
+            except Exception as e:
+                debug_info["ping_error"] = str(e)[:100]
+
+            # Fallback: checar tarefas ativas na fila (não usa binding — ela persiste mesmo offline)
+            if worker_status != "ok":
+                try:
+                    r = redis_lib.from_url(settings.REDIS_URL,
+                                           socket_connect_timeout=2, socket_timeout=2)
+                    # Contar mensagens pendentes na fila de migração (lista kombu)
+                    migration_queue_len = r.llen("migration") or 0
+                    debug_info["migration_queue_len"] = migration_queue_len
+                    # Se inspect.ping() não respondeu, worker está offline
+                    worker_status = "offline"
+                    queued_tasks = int(migration_queue_len)
+                except Exception as e:
+                    debug_info["redis_fallback_error"] = str(e)[:100]
+                    worker_status = "offline"
+
+        except Exception as e:
+            debug_info["celery_import_error"] = str(e)[:100]
+            worker_status = "unknown"
+
+    logger.info("worker-health: redis=%s worker=%s debug=%s",
+                redis_status, worker_status, debug_info)
+
+    return {
+        "redis": redis_status,
+        "worker": worker_status,
+        "queued_tasks": queued_tasks,
+    }
+
+
+class TestConnectionRequest(BaseModel):
+    migration_type: str
+    source_config: dict
+
+    @validator("migration_type")
+    def validate_migration_type(cls, v):
+        if v not in VALID_MIGRATION_TYPES:
+            raise ValueError(f"migration_type inválido: '{v}'")
+        return v
+
+
+@ws_router.post("/test-connection")
+async def test_connection(
+    body: TestConnectionRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+):
+    """
+    Testa a conexão com a origem sem persistir nada.
+    As credenciais ficam apenas em memória durante o request.
+    """
+    try:
+        from app.workers.engines import get_engine
+        engine = get_engine(body.migration_type, body.source_config, {}, db=None, mailbox=None)
+        result = engine.test_connection()
+        return result
+    except NotImplementedError:
+        return {"ok": True, "message": "Tipo de conexão não requer teste prévio."}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+# ── Resolve SharePoint site URL → composite site_id ──────────────────────────
+
+class ResolveSharePointSiteRequest(BaseModel):
+    tenant_id: str = ""
+    client_id: str = ""
+    client_secret: str = ""
+    url: str = ""  # Ex: https://contoso.sharepoint.com/sites/MeuSite
+    # Se informado, usa as credenciais do projeto (origem ou destino) em vez das do body
+    project_id: str | None = None
+    side: str = "source"  # "source" ou "destination"
+
+
+def _resolve_sp_site_with_creds(tenant_id: str, client_id: str,
+                                 client_secret: str, url: str) -> dict:
+    """Core: dado um tenant+app+url, resolve o composite site_id via Graph."""
+    import re
+    from urllib.parse import urlparse
+    import requests as _rq
+
+    raw = (url or "").strip()
+    if not raw:
+        return {"ok": False, "message": "URL vazia."}
+    if not raw.startswith(("http://", "https://")):
+        raw = "https://" + raw
+    parsed = urlparse(raw)
+    hostname = parsed.netloc
+    path = parsed.path.rstrip("/")
+
+    if not hostname or ".sharepoint.com" not in hostname.lower():
+        return {"ok": False, "message": "URL inválida. Esperado contoso.sharepoint.com/sites/MeuSite"}
+
+    try:
+        token_resp = _rq.post(
+            f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+            data={
+                "grant_type": "client_credentials",
+                "client_id": client_id,
+                "client_secret": client_secret,
+                "scope": "https://graph.microsoft.com/.default",
+            },
+            timeout=30,
+        )
+        if token_resp.status_code != 200:
+            try:
+                err = token_resp.json()
+                desc = err.get("error_description", "")
+                m = re.search(r"AADSTS\d+", desc)
+                aad = m.group(0) if m else err.get("error", "")
+                return {"ok": False, "message": f"OAuth {aad}: {desc[:200]}"}
+            except Exception:
+                return {"ok": False, "message": f"OAuth HTTP {token_resp.status_code}"}
+        token = token_resp.json()["access_token"]
+
+        graph_url = (
+            f"https://graph.microsoft.com/v1.0/sites/{hostname}:{path}"
+            if path else
+            f"https://graph.microsoft.com/v1.0/sites/{hostname}"
+        )
+        r = _rq.get(graph_url, headers={"Authorization": f"Bearer {token}"}, timeout=15)
+        if r.status_code != 200:
+            try:
+                err = r.json().get("error", {})
+                return {"ok": False,
+                        "message": f"HTTP {r.status_code} [{err.get('code','')}]: {err.get('message','')[:200]}"}
+            except Exception:
+                return {"ok": False, "message": f"HTTP {r.status_code}: {r.text[:200]}"}
+
+        data = r.json()
+        return {
+            "ok": True,
+            "site_id": data.get("id", ""),
+            "display_name": data.get("displayName", ""),
+            "web_url": data.get("webUrl", ""),
+        }
+    except Exception as exc:
+        return {"ok": False, "message": f"Falha: {exc}"}
+
+
+@ws_router.post("/resolve-sharepoint-site")
+async def resolve_sharepoint_site(
+    body: ResolveSharePointSiteRequest,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """
+    Resolve uma URL amigável de site SharePoint (contoso.sharepoint.com/sites/MeuSite)
+    para o site_id composto que a Graph API usa (hostname,collection-guid,site-guid).
+
+    Dois modos:
+    1. body.project_id + body.side: usa credenciais persistidas do projeto (side=source|destination)
+    2. body.tenant_id + body.client_id + body.client_secret: credenciais no body (wizard)
+    """
+    tenant = body.tenant_id
+    cid = body.client_id
+    sec = body.client_secret
+
+    if body.project_id:
+        from app.models.db_models import MigrationProject
+        project = db.query(MigrationProject).filter(
+            MigrationProject.id == body.project_id,
+            MigrationProject.workspace_id == member.workspace_id,
+        ).first()
+        if not project:
+            raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+        try:
+            source_cfg, dest_cfg = svc.decrypt_project_configs(db, project)
+        except Exception as exc:
+            return {"ok": False, "message": f"Falha ao ler credenciais do projeto: {exc}"}
+        cfg = dest_cfg if body.side == "destination" else source_cfg
+        tenant = cfg.get("tenant_id", "")
+        cid = cfg.get("client_id", "")
+        sec = cfg.get("client_secret", "")
+        if not (tenant and cid and sec):
+            return {"ok": False, "message": f"Credenciais do projeto ({body.side}) incompletas."}
+
+    return _resolve_sp_site_with_creds(tenant, cid, sec, body.url)
+
+
+# ── Retry failed mailboxes ────────────────────────────────────────────────────
+
+@ws_router.post("/projects/{project_id}/retry-failed")
+async def retry_failed(
+    project_id: str,
+    member: MemberContext = Depends(require_permission("m365.manage")),
+    db: Session = Depends(get_db),
+):
+    """Reseta mailboxes com status=failed → pending e redispara o worker."""
+    project = svc.get_project(db, str(member.workspace_id), project_id)
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    if project["status"] == "running":
+        raise HTTPException(status_code=400,
+                            detail="Projeto já está em execução.")
+
+    result = svc.retry_failed_mailboxes(db, str(member.workspace_id), project_id)
+    if result.get("reset_count", 0) == 0:
+        raise HTTPException(status_code=400,
+                            detail="Nenhuma caixa com falha encontrada.")
+
+    _dispatch_migration_worker(project_id)
+    return result
+
+
+# ── Listagem de objetos do tenant (source / destination) ─────────────────────
+
+def _get_graph_token(tenant_id: str, client_id: str, client_secret: str) -> str:
+    import requests as _rq
+    resp = _rq.post(
+        f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
+        data={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://graph.microsoft.com/.default",
+        },
+        timeout=20,
+    )
+    resp.raise_for_status()
+    return resp.json()["access_token"]
+
+
+def _query_tenant_objects(cfg: dict, object_type: str, search: str) -> list[dict]:
+    """Consulta Graph API e retorna lista de objetos do tenant."""
+    import requests as _rq
+
+    tenant_id  = cfg.get("tenant_id", "")
+    client_id  = cfg.get("client_id", "")
+    client_secret = cfg.get("client_secret", "")
+    if not (tenant_id and client_id and client_secret):
+        raise ValueError("Credenciais do tenant incompletas.")
+
+    token = _get_graph_token(tenant_id, client_id, client_secret)
+    hdrs  = {"Authorization": f"Bearer {token}"}
+    graph = "https://graph.microsoft.com/v1.0"
+
+    # query param para filtro por nome (server-side quando suportado)
+    q = (search or "").strip()
+
+    if object_type in ("email", "onedrive"):
+        # $search requer ConsistencyLevel + $count; sem search usamos $filter startsWith
+        if q:
+            url = (
+                f"{graph}/users?$select=displayName,mail,userPrincipalName&$top=50&$count=true"
+                f"&$search=\"displayName:{q}\" OR \"mail:{q}\" OR \"userPrincipalName:{q}\""
+            )
+            hdrs["ConsistencyLevel"] = "eventual"
+            pages = 1  # $search não suporta nextLink
+        else:
+            url = (
+                f"{graph}/users?$select=displayName,mail,userPrincipalName&$top=100"
+            )
+            pages = 3  # até 300 usuários sem filtro
+
+        items: list[dict] = []
+        fetched = 0
+        while url and fetched < pages:
+            r = _rq.get(url, headers=hdrs, timeout=20)
+            if r.status_code == 403:
+                raise ValueError(
+                    "Permissão negada ao listar usuários. "
+                    "Verifique se o App Registration tem a permissão 'User.Read.All' (Application) no Entra ID."
+                )
+            r.raise_for_status()
+            data = r.json()
+            for u in data.get("value", []):
+                email = u.get("mail") or u.get("userPrincipalName") or ""
+                if not email:
+                    continue
+                items.append({
+                    "id": u.get("id", ""),
+                    "label": u.get("displayName") or email,
+                    "value": email,
+                    "secondary": email,
+                })
+            url = data.get("@odata.nextLink")
+            fetched += 1
+        return items
+
+    if object_type == "sharepoint":
+        url = f"{graph}/sites?search={q or '*'}&$select=displayName,webUrl,id&$top=50"
+        r = _rq.get(url, headers=hdrs, timeout=20)
+        r.raise_for_status()
+        return [
+            {
+                "id": s.get("id", ""),
+                "label": s.get("displayName") or s.get("webUrl", ""),
+                "value": s.get("webUrl", ""),
+                "secondary": s.get("webUrl", ""),
+            }
+            for s in r.json().get("value", [])
+            if s.get("webUrl")
+        ]
+
+    if object_type == "m365_group":
+        # $filter com any() em coleções exige ConsistencyLevel + $count obrigatoriamente
+        hdrs["ConsistencyLevel"] = "eventual"
+        url = (
+            f"{graph}/groups?$count=true"
+            f"&$filter=groupTypes/any(c:c eq 'Unified')"
+            f"&$select=displayName,mail,id&$top=50"
+        )
+        if q:
+            url += f"&$search=\"displayName:{q}\""
+        r = _rq.get(url, headers=hdrs, timeout=20)
+        if r.status_code == 403:
+            raise ValueError(
+                "Permissão negada ao listar grupos M365. "
+                "Verifique se o App Registration tem a permissão "
+                "'Group.Read.All' (Application) com admin consent no Entra ID."
+            )
+        r.raise_for_status()
+        return [
+            {
+                "id": g.get("id", ""),
+                "label": g.get("displayName") or g.get("mail", ""),
+                "value": g.get("mail", ""),
+                "secondary": g.get("mail", ""),
+            }
+            for g in r.json().get("value", [])
+            if g.get("mail")
+        ]
+
+    raise ValueError(f"object_type inválido: {object_type}")
+
+
+def _get_project_cfg(db, workspace_id, project_id, side: str) -> dict:
+    """Retorna source_cfg ou dest_cfg descriptografado de um projeto."""
+    from app.models.db_models import MigrationProject
+    project = db.query(MigrationProject).filter(
+        MigrationProject.id == project_id,
+        MigrationProject.workspace_id == workspace_id,
+    ).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    source_cfg, dest_cfg = svc.decrypt_project_configs(db, project)
+    return dest_cfg if side == "destination" else source_cfg
+
+
+@ws_router.get("/projects/{project_id}/source-objects")
+async def list_source_objects(
+    project_id: str,
+    object_type: str = "email",
+    search: str = "",
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista objetos disponíveis no tenant de ORIGEM para seleção no wizard."""
+    cfg = _get_project_cfg(db, member.workspace_id, project_id, "source")
+    try:
+        return {"items": _query_tenant_objects(cfg, object_type, search)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao consultar tenant de origem: {exc}")
+
+
+@ws_router.get("/projects/{project_id}/dest-objects")
+async def list_dest_objects(
+    project_id: str,
+    object_type: str = "email",
+    search: str = "",
+    member: MemberContext = Depends(require_permission("m365.view")),
+    db: Session = Depends(get_db),
+):
+    """Lista objetos disponíveis no tenant de DESTINO para mapeamento."""
+    cfg = _get_project_cfg(db, member.workspace_id, project_id, "destination")
+    try:
+        return {"items": _query_tenant_objects(cfg, object_type, search)}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Falha ao consultar tenant de destino: {exc}")
+
+
+# ── Helper: dispatch Celery ───────────────────────────────────────────────────
+
+def _dispatch_migration_worker(project_id: str, verify_only: bool = False,
+                                delta_only: bool = False) -> bool:
+    """
+    Despacha a task Celery para o worker de migração.
+    Retorna True em caso de sucesso, False se Redis/worker não estiver disponível.
+    Levanta exceção se o dispatch falhar — o chamador deve tratar.
+    """
+    import uuid as _uuid
+    from app.workers.migration_worker import run_migration_project
+    task_id = f"migration-{project_id}-{_uuid.uuid4().hex[:8]}"
+    run_migration_project.apply_async(
+        args=[project_id],
+        kwargs={"verify_only": verify_only, "delta_only": delta_only},
+        queue="migration",
+        task_id=task_id,
+    )
+    logger.info(f"Migration task despachada para projeto {project_id} (task_id={task_id})")
+    return True

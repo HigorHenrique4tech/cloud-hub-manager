@@ -1,20 +1,27 @@
 import axios from 'axios';
 
+// C3 — in-memory token storage (never persisted to localStorage, XSS-safe)
+let _accessToken = null;
+
+export function setAccessToken(t) { _accessToken = t; }
+export function clearAccessToken() { _accessToken = null; }
+export function getAccessToken() { return _accessToken; }
+
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api/v1',
-  timeout: 30000,
+  timeout: 60000,
+  withCredentials: true,
   headers: {
-    'Content-Type': 'application/json'
+    'Content-Type': 'application/json',
+    'X-Requested-With': 'XMLHttpRequest',
   }
 });
 
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // Add auth token if exists
-    const token = localStorage.getItem('token');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    if (_accessToken) {
+      config.headers.Authorization = `Bearer ${_accessToken}`;
     }
     return config;
   },
@@ -46,13 +53,6 @@ api.interceptors.response.use(
         return Promise.reject(error);
       }
 
-      const storedRefresh = localStorage.getItem('refreshToken');
-      if (!storedRefresh) {
-        localStorage.removeItem('token');
-        window.location.href = '/login';
-        return Promise.reject(error);
-      }
-
       if (isRefreshing) {
         // Queue subsequent requests while refresh is in progress
         return new Promise((resolve, reject) => {
@@ -67,25 +67,45 @@ api.interceptors.response.use(
       isRefreshing = true;
 
       try {
+        // Refresh token is sent automatically via HttpOnly cookie
         const { data } = await axios.post(
           `${api.defaults.baseURL}/auth/refresh`,
-          { refresh_token: storedRefresh }
+          {},
+          { withCredentials: true }
         );
-        localStorage.setItem('token', data.access_token);
-        localStorage.setItem('refreshToken', data.refresh_token);
+        setAccessToken(data.access_token);
         api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
         processQueue(null, data.access_token);
         originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
         return api(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError);
-        localStorage.removeItem('token');
-        localStorage.removeItem('refreshToken');
+        clearAccessToken();
         window.location.href = '/login';
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;
       }
+    }
+
+    // Normalize FastAPI/Pydantic 422 errors: `detail` can be an array of
+    // {loc, msg, type}. Many components render `detail` directly as text,
+    // which crashes when it's an array of objects.
+    if (error.response?.data && Array.isArray(error.response.data.detail)) {
+      const items = error.response.data.detail;
+      const msg = items
+        .map((it) => {
+          const field = Array.isArray(it.loc) ? it.loc.slice(-1)[0] : '';
+          return field ? `${field}: ${it.msg}` : it.msg;
+        })
+        .filter(Boolean)
+        .join('; ');
+      error.response.data.detail = msg || 'Dados inválidos';
+    }
+
+    // Org suspended/deleted — notify context to refresh org list
+    if (error.response?.status === 404 && error.response?.data?.detail === 'Organização não encontrada') {
+      window.dispatchEvent(new Event('org-suspended'));
     }
 
     if (error.response) {

@@ -1,74 +1,76 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import axios from 'axios';
+import api, { setAccessToken, clearAccessToken } from '../services/api';
 import authService from '../services/authService';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
+  const [token, setToken] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const init = async () => {
-      if (token) {
-        try {
-          const me = await authService.getMe();
-          setUser(me);
-        } catch {
-          localStorage.removeItem('token');
-          localStorage.removeItem('refreshToken');
-          setToken(null);
-        }
+      try {
+        // C3 — restore session via HttpOnly refresh cookie (no localStorage read)
+        const { data } = await axios.post(
+          `${api.defaults.baseURL}/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
+        setAccessToken(data.access_token);
+        api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
+        setToken(data.access_token);
+        const me = await authService.getMe();
+        setUser(me);
+      } catch {
+        clearAccessToken();
+        setToken(null);
       }
       setLoading(false);
     };
     init();
   }, []);
 
-  const login = async (email, password) => {
+  // useCallback with [] — React guarantees state setters (setToken/setUser) are stable,
+  // so these refs never change. Stable refs prevent spurious useEffect re-runs in
+  // consumers (e.g. OAuthCallback) that list these functions as dependencies.
+  const login = useCallback(async (email, password) => {
     const data = await authService.login(email, password);
-    localStorage.setItem('token', data.access_token);
-    if (data.refresh_token) {
-      localStorage.setItem('refreshToken', data.refresh_token);
-    }
+    if (data.mfa_required) return data;
+    setAccessToken(data.access_token);
+    api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
     setToken(data.access_token);
     setUser(data.user);
     return data;
-  };
+  }, []);
 
-  const register = async (name, email, password) => {
+  const register = useCallback(async (name, email, password) => {
     const data = await authService.register(name, email, password);
-    localStorage.setItem('token', data.access_token);
-    if (data.refresh_token) {
-      localStorage.setItem('refreshToken', data.refresh_token);
-    }
+    setAccessToken(data.access_token);
+    api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
     setToken(data.access_token);
     setUser(data.user);
     return data;
-  };
+  }, []);
 
-  /** Set auth state from a TokenResponse (used by OAuth callback) */
-  const loginWithTokens = (data) => {
-    localStorage.setItem('token', data.access_token);
-    if (data.refresh_token) {
-      localStorage.setItem('refreshToken', data.refresh_token);
-    }
+  /** Set auth state from a TokenResponse (used by OAuth callback and MFA verify) */
+  const loginWithTokens = useCallback((data) => {
+    setAccessToken(data.access_token);
+    api.defaults.headers.common.Authorization = `Bearer ${data.access_token}`;
     setToken(data.access_token);
     setUser(data.user);
-  };
+  }, []);
 
-  const logout = async () => {
-    const rt = localStorage.getItem('refreshToken');
-    if (rt) {
-      await authService.logoutServer(rt);
-    }
-    localStorage.removeItem('token');
-    localStorage.removeItem('refreshToken');
+  const logout = useCallback(async () => {
+    await authService.logoutServer();
+    clearAccessToken();
     localStorage.removeItem('selectedOrg');
     localStorage.removeItem('selectedWorkspace');
     setToken(null);
     setUser(null);
-  };
+  }, []);
 
   return (
     <AuthContext.Provider value={{ user, setUser, token, loading, login, register, loginWithTokens, logout }}>

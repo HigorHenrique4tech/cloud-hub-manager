@@ -8,7 +8,7 @@ from app.models.db_models import (
 )
 from app.services.auth_service import decode_token
 from app.core.auth_context import MemberContext
-from app.core.permissions import ROLE_PERMISSIONS
+from app.core.permissions import ROLE_PERMISSIONS, VALID_ROLES
 
 bearer_scheme = HTTPBearer()
 
@@ -60,9 +60,12 @@ def get_current_member(
     if not user:
         raise HTTPException(status_code=401, detail="Usuário não encontrado")
 
-    # 1b. Require email verification for org operations (disabled for now)
-    # if not user.is_verified:
-    #     raise HTTPException(status_code=403, detail="Email não verificado")
+    # Require email verification for org operations
+    if not user.is_verified:
+        raise HTTPException(
+            status_code=403,
+            detail="Email não verificado. Verifique seu email para continuar.",
+        )
 
     # 2. Resolve org
     org = db.query(Organization).filter(
@@ -103,17 +106,25 @@ def get_workspace_member(
     if not ws:
         raise HTTPException(status_code=404, detail="Workspace não encontrado")
 
-    # Check for workspace-level role override
+    # Check for workspace-level membership
     ws_member = db.query(WorkspaceMember).filter(
         WorkspaceMember.workspace_id == ws.id,
         WorkspaceMember.user_id == member.user.id,
     ).first()
 
-    effective_role = (
-        ws_member.role_override
-        if (ws_member and ws_member.role_override)
-        else member.role
-    )
+    # Owner and admin bypass the membership gate (they manage all workspaces)
+    if not ws_member and member.role not in ("owner", "admin"):
+        raise HTTPException(
+            status_code=403,
+            detail="Você não tem acesso a este workspace",
+        )
+
+    raw_override = ws_member.role_override if ws_member else None
+    # Silently ignore invalid role_override values to prevent lockout
+    if raw_override and raw_override not in VALID_ROLES:
+        raw_override = None
+
+    effective_role = raw_override if raw_override else member.role
 
     return MemberContext(
         user=member.user,
@@ -157,3 +168,17 @@ def require_org_permission(*permissions: str):
                 )
         return member
     return _dependency
+
+
+def get_current_admin(user: User = Depends(get_current_user)) -> User:
+    """Require the current user to be a platform admin (is_admin=True)."""
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Acesso restrito a administradores")
+    return user
+
+
+def get_current_helpdesk(user: User = Depends(get_current_user)) -> User:
+    """Require the current user to be a platform admin OR helpdesk agent."""
+    if not (user.is_admin or user.is_helpdesk):
+        raise HTTPException(status_code=403, detail="Acesso restrito a agentes de suporte")
+    return user

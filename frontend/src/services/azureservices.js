@@ -3,6 +3,18 @@ import api, { wsUrl } from './api';
 export const azureService = {
   testConnection: async () => (await api.get(wsUrl('/azure/test-connection'))).data,
 
+  // ── Container Registry (ACR) ──────────────────────────────────────────────
+  listAcrRegistries: async () => (await api.get(wsUrl('/azure/acr/registries'))).data,
+  listAcrRepositories: async (loginServer) =>
+    (await api.get(wsUrl(`/azure/acr/registries/${loginServer}/repositories`))).data,
+
+  // ── Function Apps ─────────────────────────────────────────────────────────
+  listFunctionApps: async () => (await api.get(wsUrl('/azure/function-apps'))).data,
+  listFunctions: async (rg, app) =>
+    (await api.get(wsUrl(`/azure/function-apps/${rg}/${app}/functions`))).data,
+  functionAppAction: async (rg, app, action) =>
+    (await api.post(wsUrl(`/azure/function-apps/${rg}/${app}/action`), { action })).data,
+
   // Form helpers
   listLocations: async () => (await api.get(wsUrl('/azure/locations'))).data,
   listVMSizes: async (location) => (await api.get(wsUrl('/azure/vm-sizes'), { params: { location } })).data,
@@ -19,6 +31,7 @@ export const azureService = {
   // Resource Groups
   listResourceGroups: async () => (await api.get(wsUrl('/azure/resource-groups'))).data,
   listResourceGroupResources: async (rgName) => (await api.get(wsUrl(`/azure/resource-groups/${encodeURIComponent(rgName)}/resources`))).data,
+  getResourceGroupsOverview: () => api.get(wsUrl('/azure/resource-groups-overview')).then(r => r.data),
 
   // Storage Accounts
   listStorageAccounts: async () => (await api.get(wsUrl('/azure/storage-accounts'))).data,
@@ -28,18 +41,35 @@ export const azureService = {
   listVNets: async () => (await api.get(wsUrl('/azure/vnets'))).data,
   createVNet: async (data) => (await api.post(wsUrl('/azure/vnets'), data)).data,
 
+  // Subnets
+  createSubnet: async (rg, vnetName, data) => (await api.post(wsUrl(`/azure/vnets/${rg}/${vnetName}/subnets`), data)).data,
+  updateSubnet: async (rg, vnetName, subnetName, data) => (await api.put(wsUrl(`/azure/vnets/${rg}/${vnetName}/subnets/${subnetName}`), data)).data,
+  deleteSubnet: async (rg, vnetName, subnetName) => (await api.delete(wsUrl(`/azure/vnets/${rg}/${vnetName}/subnets/${subnetName}`))).data,
+
+  // VNet Peering
+  listVNetPeerings: async (rg, vnetName) => (await api.get(wsUrl(`/azure/vnets/${rg}/${vnetName}/peerings`))).data,
+  createVNetPeering: async (rg, vnetName, data) => (await api.post(wsUrl(`/azure/vnets/${rg}/${vnetName}/peerings`), data)).data,
+  deleteVNetPeering: async (rg, vnetName, peeringName) => (await api.delete(wsUrl(`/azure/vnets/${rg}/${vnetName}/peerings/${peeringName}`))).data,
+
   // Databases
   listDatabases: async () => (await api.get(wsUrl('/azure/databases'))).data,
-  createSQLDatabase: async (data) => (await api.post(wsUrl('/azure/databases'), data)).data,
+  createSQLDatabase: async (data) => (await api.post(wsUrl('/azure/databases'), data, { timeout: 120000 })).data,
 
   // App Services
   listAppServices: async () => (await api.get(wsUrl('/azure/app-services'))).data,
   startAppService: async (resourceGroup, appName) => (await api.post(wsUrl(`/azure/app-services/${resourceGroup}/${appName}/start`))).data,
   stopAppService: async (resourceGroup, appName) => (await api.post(wsUrl(`/azure/app-services/${resourceGroup}/${appName}/stop`))).data,
-  createAppService: async (data) => (await api.post(wsUrl('/azure/app-services'), data)).data,
+  createAppService: async (data) => (await api.post(wsUrl('/azure/app-services'), data, { timeout: 120000 })).data,
 
   // Subscriptions
   listSubscriptions: async () => (await api.get(wsUrl('/azure/subscriptions'))).data,
+
+  // Detail
+  getVMDetail: async (resourceGroup, vmName) => (await api.get(wsUrl(`/azure/vms/${resourceGroup}/${vmName}`))).data,
+  getSQLServerDetail: async (resourceGroup, serverName) => (await api.get(wsUrl(`/azure/databases/${resourceGroup}/${serverName}`))).data,
+  getAppServiceDetail: async (resourceGroup, appName) => (await api.get(wsUrl(`/azure/app-services/${resourceGroup}/${appName}`))).data,
+  getStorageAccountDetail: async (resourceGroup, accountName) => (await api.get(wsUrl(`/azure/storage-accounts/${resourceGroup}/${accountName}`))).data,
+  getVNetDetail: async (resourceGroup, vnetName) => (await api.get(wsUrl(`/azure/vnets/${resourceGroup}/${vnetName}`))).data,
 
   // Delete
   deleteVM: async (resourceGroup, vmName) => (await api.delete(wsUrl(`/azure/vms/${resourceGroup}/${vmName}`))).data,
@@ -47,6 +77,49 @@ export const azureService = {
   deleteVNet: async (resourceGroup, vnetName) => (await api.delete(wsUrl(`/azure/vnets/${resourceGroup}/${vnetName}`))).data,
   deleteSQLServer: async (resourceGroup, serverName) => (await api.delete(wsUrl(`/azure/databases/${resourceGroup}/${serverName}`))).data,
   deleteAppService: async (resourceGroup, appName) => (await api.delete(wsUrl(`/azure/app-services/${resourceGroup}/${appName}`))).data,
+
+  // Metrics
+  getMetrics: async () => (await api.get(wsUrl('/azure/metrics'))).data,
+
+  // Backup — Managed Disk Snapshots
+  listSnapshots: () => api.get(wsUrl('/azure/backups/snapshots')).then(r => r.data),
+  createSnapshot: (data) => api.post(wsUrl('/azure/backups/snapshots'), data).then(r => r.data),
+  deleteSnapshot: (rg, name) => api.delete(wsUrl(`/azure/backups/snapshots/${rg}/${name}`)).then(r => r.data),
+  listDisks: () => api.get(wsUrl('/azure/backups/disks')).then(r => r.data),
+
+  // Backup — Recovery Services Vault (Azure Backup)
+  listVaults: () => api.get(wsUrl('/azure/backups/vaults')).then(r => r.data),
+  createVault: (data) => api.post(wsUrl('/azure/backups/vaults'), data).then(r => r.data),
+  listBackupPolicies: (vaultRg, vaultName) => api.get(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/policies`)).then(r => r.data),
+  createBackupPolicy: (vaultRg, vaultName, data) => api.post(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/policies`), data).then(r => r.data),
+  listProtectedItems: (vaultRg, vaultName) => api.get(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/items`)).then(r => r.data),
+  enableVMBackup: (vaultRg, vaultName, data) => api.post(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/protect`), data, { timeout: 60000 }).then(r => r.data),
+  triggerBackupNow: (vaultRg, vaultName, data) => api.post(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/backup-now`), data).then(r => r.data),
+  listBackupJobs: (vaultRg, vaultName) => api.get(wsUrl(`/azure/backups/vaults/${vaultRg}/${vaultName}/jobs`)).then(r => r.data),
+
+  // Azure Advisor
+  getAdvisorSummary: () => api.get(wsUrl('/azure/advisor/summary')).then(r => r.data),
+  getAdvisorRecommendations: (category) => api.get(wsUrl('/azure/advisor/recommendations'), { params: category ? { category } : {} }).then(r => r.data),
+  refreshAdvisor: () => api.post(wsUrl('/azure/advisor/refresh')).then(r => r.data),
+
+  // NIC + NSG
+  getNICDetail: (rg, nicName) => api.get(wsUrl(`/azure/nics/${encodeURIComponent(rg)}/${encodeURIComponent(nicName)}`)).then(r => r.data),
+  listNSGs: () => api.get(wsUrl('/azure/nsgs')).then(r => r.data),
+  getNSGRules: (rg, nsgName) => api.get(wsUrl(`/azure/nsgs/${encodeURIComponent(rg)}/${encodeURIComponent(nsgName)}/rules`)).then(r => r.data),
+  addNSGRule: (rg, nsgName, data) => api.post(wsUrl(`/azure/nsg/${encodeURIComponent(rg)}/${encodeURIComponent(nsgName)}/rules`), data).then(r => r.data),
+  deleteNSGRule: (rg, nsgName, ruleName) => api.delete(wsUrl(`/azure/nsg/${encodeURIComponent(rg)}/${encodeURIComponent(nsgName)}/rules/${encodeURIComponent(ruleName)}`)).then(r => r.data),
+
+  // Storage Containers & Keys
+  listContainers: (rg, accountName) => api.get(wsUrl(`/azure/storage-accounts/${encodeURIComponent(rg)}/${encodeURIComponent(accountName)}/containers`)).then(r => r.data),
+  createContainer: (rg, accountName, data) => api.post(wsUrl(`/azure/storage-accounts/${encodeURIComponent(rg)}/${encodeURIComponent(accountName)}/containers`), data).then(r => r.data),
+  deleteContainer: (rg, accountName, containerName) => api.delete(wsUrl(`/azure/storage-accounts/${encodeURIComponent(rg)}/${encodeURIComponent(accountName)}/containers/${encodeURIComponent(containerName)}`)).then(r => r.data),
+  getStorageKeys: (rg, accountName) => api.get(wsUrl(`/azure/storage-accounts/${encodeURIComponent(rg)}/${encodeURIComponent(accountName)}/keys`)).then(r => r.data),
+
+  // Backup Validation — coverage analysis
+  getBackupCoverage: () => api.get(wsUrl('/azure/backup-validation/coverage')).then(r => r.data),
+  getUnprotectedVMs: () => api.get(wsUrl('/azure/backup-validation/unprotected')).then(r => r.data),
+  getBackupHealth: () => api.get(wsUrl('/azure/backup-validation/health')).then(r => r.data),
+  triggerBackupScan: () => api.post(wsUrl('/azure/backup-validation/scan')).then(r => r.data),
 };
 
 export default azureService;

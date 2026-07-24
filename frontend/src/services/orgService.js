@@ -6,16 +6,20 @@ export const orgService = {
   createOrg: async (name, slug) => (await api.post('/orgs', { name, slug })).data,
   getOrg: async (slug) => (await api.get(`/orgs/${slug}`)).data,
   updateOrg: async (slug, data) => (await api.put(`/orgs/${slug}`, data)).data,
-  deleteOrg: async (slug) => (await api.delete(`/orgs/${slug}`)).data,
+  deleteOrg: async (slug, orgName) => (await api.delete(`/orgs/${slug}`, {
+    headers: { 'X-Confirm-Name': orgName },
+  })).data,
   updatePlan: async (slug, plan_tier) =>
     (await api.put(`/orgs/${slug}/plan`, { plan_tier })).data,
 
   // ── Members ──────────────────────────────────────────────────────────────
   listMembers: async (slug) => (await api.get(`/orgs/${slug}/members`)).data,
-  inviteMember: async (slug, email, role) =>
-    (await api.post(`/orgs/${slug}/members`, { email, role })).data,
+  inviteMember: async (slug, email, role, phone = null, department = null) =>
+    (await api.post(`/orgs/${slug}/members`, { email, role, phone, department })).data,
   updateMemberRole: async (slug, userId, role) =>
     (await api.put(`/orgs/${slug}/members/${userId}`, { role })).data,
+  updateMember: async (slug, userId, data) =>
+    (await api.put(`/orgs/${slug}/members/${userId}`, data)).data,
   removeMember: async (slug, userId) =>
     (await api.delete(`/orgs/${slug}/members/${userId}`)).data,
 
@@ -34,16 +38,101 @@ export const orgService = {
     (await api.get(`/orgs/${slug}/workspaces/${wsId}`)).data,
   updateWorkspace: async (slug, wsId, data) =>
     (await api.put(`/orgs/${slug}/workspaces/${wsId}`, data)).data,
-  deleteWorkspace: async (slug, wsId) =>
-    (await api.delete(`/orgs/${slug}/workspaces/${wsId}`)).data,
+  deleteWorkspace: async (slug, wsId, wsName) =>
+    (await api.delete(`/orgs/${slug}/workspaces/${wsId}`, {
+      headers: { 'X-Confirm-Name': wsName },
+    })).data,
 
-  // ── Workspace Members (role overrides) ───────────────────────────────────
+  // ── Workspace Members ────────────────────────────────────────────────────
   listWorkspaceMembers: async (slug, wsId) =>
     (await api.get(`/orgs/${slug}/workspaces/${wsId}/members`)).data,
+  listAvailableWorkspaceMembers: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/members/available`)).data,
+  addWorkspaceMember: async (slug, wsId, userId, roleOverride = null) =>
+    (await api.post(`/orgs/${slug}/workspaces/${wsId}/members`, { user_id: userId, role_override: roleOverride })).data,
   updateWorkspaceMemberRole: async (slug, wsId, userId, roleOverride) =>
     (await api.put(`/orgs/${slug}/workspaces/${wsId}/members/${userId}`, { role_override: roleOverride })).data,
-  removeWorkspaceMemberOverride: async (slug, wsId, userId) =>
+  removeWorkspaceMember: async (slug, wsId, userId) =>
     (await api.delete(`/orgs/${slug}/workspaces/${wsId}/members/${userId}`)).data,
+
+  // ── Managed Orgs (MSP / Enterprise) ─────────────────────────────────────
+  listManagedOrgs: async (slug, { page = 1, perPage = 50, search, sortBy } = {}) =>
+    (await api.get(`/orgs/${slug}/managed-orgs`, {
+      params: { page, per_page: perPage, search: search || undefined, sort_by: sortBy || undefined },
+    })).data,
+  getManagedOrgsSummary: async (slug) =>
+    (await api.get(`/orgs/${slug}/managed-orgs/summary`)).data,
+  getMspWidgetSummary: async (slug) =>
+    (await api.get(`/orgs/${slug}/managed-orgs/widget-summary`)).data,
+  batchSuspendPartners: async (slug, partnerSlugs) =>
+    (await api.post(`/orgs/${slug}/managed-orgs/batch-suspend`, { partner_slugs: partnerSlugs })).data,
+  batchActivatePartners: async (slug, partnerSlugs) =>
+    (await api.post(`/orgs/${slug}/managed-orgs/batch-activate`, { partner_slugs: partnerSlugs })).data,
+  createManagedOrg: async (slug, name) =>
+    (await api.post(`/orgs/${slug}/managed-orgs`, { name })).data,
+  removeManagedOrg: async (slug, partnerSlug) =>
+    (await api.delete(`/orgs/${slug}/managed-orgs/${partnerSlug}`)).data,
+  updateManagedOrg: async (partnerSlug, data) =>
+    (await api.put(`/orgs/${partnerSlug}`, data)).data,
+  updatePartnerNotes: async (partnerSlug, notes) =>
+    (await api.patch(`/admin/orgs/${partnerSlug}/notes`, { notes })).data,
+  invitePartnerOwner: async (masterSlug, partnerSlug, email) =>
+    (await api.post(`/orgs/${masterSlug}/managed-orgs/${partnerSlug}/invite-owner`, { email })).data,
+  getConsolidatedCosts: async (slug, months = 6) =>
+    (await api.get(`/orgs/${slug}/managed-orgs/consolidated-costs`, { params: { months } })).data,
+  updatePartnerMarkup: async (masterSlug, partnerSlug, cost_markup_pct) =>
+    (await api.patch(`/orgs/${masterSlug}/managed-orgs/${partnerSlug}/markup`, { cost_markup_pct })).data,
+  getExecutiveReport: async (slug, months = 6) =>
+    api.get(`/orgs/${slug}/managed-orgs/executive-report`, { params: { months }, responseType: 'blob' }).then(r => r.data),
+
+  // ── Currency ────────────────────────────────────────────────────────────
+  updateCurrency: async (slug, data) =>
+    (await api.put(`/orgs/${slug}/currency`, data)).data,
+  getExchangeRate: async (slug) =>
+    (await api.get(`/orgs/${slug}/exchange-rate`)).data,
+
+  // ── Branding (White Label) ──────────────────────────────────────────────
+  getBranding: async (slug) =>
+    (await api.get(`/orgs/${slug}/branding`)).data,
+  updateBranding: async (slug, data) =>
+    (await api.put(`/orgs/${slug}/branding`, data)).data,
+  resetBranding: async (slug) =>
+    (await api.delete(`/orgs/${slug}/branding`)).data,
+  sendTestBrandingEmail: async (slug) =>
+    (await api.post(`/orgs/${slug}/branding/test-email`)).data,
+
+  // ── Partner Center (CSP) ────────────────────────────────────────────────
+  pcStatus: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/status`)).data,
+  pcListCustomers: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/customers`)).data,
+  pcGetSubscriptions: async (slug, wsId, customerId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/customers/${customerId}/subscriptions`)).data,
+  pcImportCustomer: async (slug, wsId, body) =>
+    (await api.post(`/orgs/${slug}/workspaces/${wsId}/partner-center/import`, body)).data,
+  pcSyncCustomers: async (slug, wsId, customerIds) =>
+    (await api.post(`/orgs/${slug}/workspaces/${wsId}/partner-center/sync`, { customer_ids: customerIds })).data,
+  pcUpdateSubscriptionQuantity: async (slug, wsId, customerId, subscriptionId, quantity) =>
+    (await api.patch(
+      `/orgs/${slug}/workspaces/${wsId}/partner-center/customers/${customerId}/subscriptions/${subscriptionId}/quantity`,
+      { quantity },
+    )).data,
+  pcListInvoices: async (slug, wsId, params = {}) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/invoices`, { params })).data,
+  pcGetInvoice: async (slug, wsId, invoiceId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/invoices/${invoiceId}`)).data,
+  pcGetInvoiceLineItems: async (slug, wsId, invoiceId, params = {}) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/invoices/${invoiceId}/lineitems`, { params })).data,
+  pcGetInvoicePdfUrl: async (slug, wsId, invoiceId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/invoices/${invoiceId}/pdf-url`)).data,
+  pcListProducts: async (slug, wsId, params = {}) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/catalog/products`, { params })).data,
+  pcListSkus: async (slug, wsId, productId, country) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/catalog/products/${productId}/skus`, { params: { country } })).data,
+  pcListAvailabilities: async (slug, wsId, productId, skuId, country) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/partner-center/catalog/products/${productId}/skus/${skuId}/availabilities`, { params: { country } })).data,
+  pcCheckoutCart: async (slug, wsId, customerId, body) =>
+    (await api.post(`/orgs/${slug}/workspaces/${wsId}/partner-center/customers/${customerId}/cart-checkout`, body)).data,
 
   // ── Cloud Accounts ───────────────────────────────────────────────────────
   listAccounts: async (slug, wsId, provider) => {
@@ -56,6 +145,8 @@ export const orgService = {
     (await api.delete(`/orgs/${slug}/workspaces/${wsId}/accounts/${accountId}`)).data,
   testAccount: async (slug, wsId, accountId) =>
     (await api.post(`/orgs/${slug}/workspaces/${wsId}/accounts/${accountId}/test`)).data,
+  healthCheckAccounts: async (slug, wsId) =>
+    (await api.get(`/orgs/${slug}/workspaces/${wsId}/accounts/health-check`)).data,
 };
 
 export default orgService;

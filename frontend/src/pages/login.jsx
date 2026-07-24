@@ -1,137 +1,81 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { Mail, Lock, LogIn, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, LogIn, Eye, EyeOff, ShieldCheck, ArrowLeft, RefreshCw, CheckCircle } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { getAccessToken } from '../services/api';
+import authService from '../services/authService';
 import OAuthButtons from '../components/auth/OAuthButtons';
+import AuthLayout, { FormLogo, Spinner, inputStyle, iconStyle } from '../components/auth/AuthLayout';
 
-/* ── Animated cloud network SVG ─────────────────────────────────── */
-const CloudAnimation = () => (
-  <div className="relative w-full h-full flex flex-col items-center justify-center overflow-hidden select-none">
-    <svg
-      viewBox="0 0 480 480"
-      className="w-80 h-80 lg:w-96 lg:h-96"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <defs>
-        <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#60a5fa" stopOpacity="0.4" />
-          <stop offset="100%" stopColor="#60a5fa" stopOpacity="0" />
-        </radialGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="3" result="coloredBlur" />
-          <feMerge>
-            <feMergeNode in="coloredBlur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
-        <style>{`
-          @keyframes float1 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-10px)} }
-          @keyframes float2 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(8px)} }
-          @keyframes float3 { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
-          @keyframes spin-slow { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-          @keyframes pulse-dash {
-            0%   { stroke-dashoffset: 200; opacity: 0.2; }
-            50%  { opacity: 0.7; }
-            100% { stroke-dashoffset: 0;   opacity: 0.2; }
-          }
-          .n1 { animation: float1 4s ease-in-out infinite; transform-origin: 240px 240px; }
-          .n2 { animation: float2 5s ease-in-out infinite 0.8s; transform-origin: 100px 160px; }
-          .n3 { animation: float3 4.5s ease-in-out infinite 1.4s; transform-origin: 380px 150px; }
-          .n4 { animation: float1 6s ease-in-out infinite 0.3s; transform-origin: 120px 350px; }
-          .n5 { animation: float2 4.2s ease-in-out infinite 1s; transform-origin: 370px 340px; }
-          .n6 { animation: float3 5.5s ease-in-out infinite 0.5s; transform-origin: 240px 100px; }
-          .ring { animation: spin-slow 12s linear infinite; transform-origin: 240px 240px; }
-          .line { stroke-dasharray: 200; animation: pulse-dash 3s linear infinite; }
-          .line2 { stroke-dasharray: 200; animation: pulse-dash 3.5s linear infinite 0.7s; }
-          .line3 { stroke-dasharray: 200; animation: pulse-dash 4s linear infinite 1.3s; }
-          .line4 { stroke-dasharray: 200; animation: pulse-dash 3.2s linear infinite 0.4s; }
-          .line5 { stroke-dasharray: 200; animation: pulse-dash 3.8s linear infinite 1.8s; }
-        `}</style>
-      </defs>
-
-      {/* Connection lines */}
-      <line className="line"  x1="240" y1="240" x2="100" y2="160" stroke="#3b82f6" strokeWidth="1.5" />
-      <line className="line2" x1="240" y1="240" x2="380" y2="150" stroke="#60a5fa" strokeWidth="1.5" />
-      <line className="line3" x1="240" y1="240" x2="120" y2="350" stroke="#3b82f6" strokeWidth="1.5" />
-      <line className="line4" x1="240" y1="240" x2="370" y2="340" stroke="#60a5fa" strokeWidth="1.5" />
-      <line className="line5" x1="240" y1="240" x2="240" y2="100" stroke="#818cf8" strokeWidth="1.5" />
-      <line className="line"  x1="100" y1="160" x2="240" y2="100" stroke="#3b82f6" strokeWidth="1" strokeOpacity="0.5" />
-      <line className="line2" x1="380" y1="150" x2="240" y2="100" stroke="#60a5fa" strokeWidth="1" strokeOpacity="0.5" />
-
-      {/* Rotating ring around center */}
-      <circle className="ring" cx="240" cy="240" r="52" fill="none" stroke="#3b82f6" strokeWidth="1" strokeDasharray="8 6" strokeOpacity="0.5" />
-
-      {/* Center hub node */}
-      <g className="n1">
-        <circle cx="240" cy="240" r="36" fill="url(#nodeGlow)" />
-        <circle cx="240" cy="240" r="24" fill="#1e3a5f" stroke="#3b82f6" strokeWidth="2" filter="url(#glow)" />
-        {/* CloudAtlas icon */}
-        <text x="240" y="245" textAnchor="middle" dominantBaseline="middle" fontSize="18" fill="#60a5fa">⬡</text>
-      </g>
-
-      {/* AWS node */}
-      <g className="n2">
-        <circle cx="100" cy="160" r="22" fill="#1a1a2e" stroke="#f97316" strokeWidth="2" filter="url(#glow)" />
-        <text x="100" y="165" textAnchor="middle" dominantBaseline="middle" fontSize="9" fontWeight="bold" fill="#f97316">AWS</text>
-      </g>
-
-      {/* Azure node */}
-      <g className="n3">
-        <circle cx="380" cy="150" r="22" fill="#1a1a2e" stroke="#0ea5e9" strokeWidth="2" filter="url(#glow)" />
-        <text x="380" y="155" textAnchor="middle" dominantBaseline="middle" fontSize="8" fontWeight="bold" fill="#0ea5e9">Azure</text>
-      </g>
-
-      {/* Small nodes */}
-      <g className="n4">
-        <circle cx="120" cy="350" r="14" fill="#1a1a2e" stroke="#6366f1" strokeWidth="1.5" />
-        <circle cx="120" cy="350" r="5" fill="#6366f1" />
-      </g>
-
-      <g className="n5">
-        <circle cx="370" cy="340" r="14" fill="#1a1a2e" stroke="#6366f1" strokeWidth="1.5" />
-        <circle cx="370" cy="340" r="5" fill="#6366f1" />
-      </g>
-
-      <g className="n6">
-        <circle cx="240" cy="100" r="14" fill="#1a1a2e" stroke="#818cf8" strokeWidth="1.5" />
-        <circle cx="240" cy="100" r="5" fill="#818cf8" />
-      </g>
-    </svg>
-
-    <p className="mt-6 text-center text-slate-400 text-sm max-w-xs leading-relaxed px-4">
-      Gerencie sua infraestrutura multi-cloud em um só lugar
-    </p>
-
-    <div className="mt-4 flex gap-4 text-xs text-slate-500">
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400 inline-block" /> AWS</span>
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Azure</span>
-      <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-400 inline-block" /> Multi-cloud</span>
-    </div>
-  </div>
-);
-
-const inputClass =
-  'w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-lg text-gray-900 font-medium placeholder:text-gray-400 placeholder:font-normal focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent';
-
-/* ── Login page ──────────────────────────────────────────────────── */
 const Login = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail]               = useState('');
+  const [password, setPassword]         = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
-  const navigate = useNavigate();
+  const [error, setError]               = useState('');
+  const [loading, setLoading]           = useState(false);
+
+  const [step, setStep]                     = useState('credentials');
+  const [mfaToken, setMfaToken]             = useState('');
+  const [otp, setOtp]                       = useState('');
+  const [otpError, setOtpError]             = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
+  const cooldownRef = useRef(null);
+  const otpInputRef = useRef(null);
+
+  const [forgotEmail, setForgotEmail]     = useState('');
+  const [forgotError, setForgotError]     = useState('');
+  const [forgotSent, setForgotSent]       = useState(false);
+  const [forgotLoading, setForgotLoading] = useState(false);
+
+  const { login, loginWithTokens, user, loading: authLoading } = useAuth();
+  const navigate       = useNavigate();
   const [searchParams] = useSearchParams();
+  const inviteToken    = searchParams.get('invite');
+  const redirectParam  = searchParams.get('redirect');
+  const DESK_URL       = 'https://desk.cloudatlas.app.br';
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user) return;
+    if (redirectParam === 'desk') {
+      const t = getAccessToken() || '';
+      window.location.replace(`${DESK_URL}/auth/callback?token=${t}`);
+    } else {
+      navigate(inviteToken ? `/invite/${inviteToken}` : '/', { replace: true });
+    }
+  }, [authLoading, user]);
+
+  const startCooldown = () => {
+    setResendCooldown(60);
+    clearInterval(cooldownRef.current);
+    cooldownRef.current = setInterval(() => {
+      setResendCooldown((v) => {
+        if (v <= 1) { clearInterval(cooldownRef.current); return 0; }
+        return v - 1;
+      });
+    }, 1000);
+  };
+
+  useEffect(() => () => clearInterval(cooldownRef.current), []);
+  useEffect(() => {
+    if (step === 'otp') setTimeout(() => otpInputRef.current?.focus(), 50);
+  }, [step]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await login(email, password);
-      const inviteToken = searchParams.get('invite');
-      navigate(inviteToken ? `/invite/${inviteToken}` : '/');
+      const data = await login(email, password);
+      if (data.mfa_required) {
+        setMfaToken(data.mfa_token);
+        setStep('otp');
+        startCooldown();
+      } else if (redirectParam === 'desk') {
+        window.location.href = `${DESK_URL}/auth/callback?token=${data.access_token}&refresh=${data.refresh_token || ''}`;
+      } else {
+        navigate(inviteToken ? `/invite/${inviteToken}` : '/');
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Erro ao fazer login');
     } finally {
@@ -139,99 +83,294 @@ const Login = () => {
     }
   };
 
+  const handleVerifyOTP = async (e) => {
+    e.preventDefault();
+    setOtpError('');
+    setLoading(true);
+    try {
+      const data = await authService.verifyMFA(mfaToken, otp);
+      loginWithTokens(data);
+      if (redirectParam === 'desk') {
+        window.location.href = `${DESK_URL}/auth/callback?token=${data.access_token}&refresh=${data.refresh_token || ''}`;
+        return;
+      }
+      navigate(inviteToken ? `/invite/${inviteToken}` : '/');
+    } catch (err) {
+      setOtpError(err.response?.data?.detail || 'Código inválido');
+      setOtp('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    if (resendCooldown > 0) return;
+    try {
+      await authService.resendMFA(mfaToken);
+      setOtpError('');
+      setOtp('');
+      startCooldown();
+    } catch (err) {
+      setOtpError(err.response?.data?.detail || 'Erro ao reenviar código');
+    }
+  };
+
+  const handleBack = () => {
+    setStep('credentials');
+    setOtp('');
+    setOtpError('');
+    setMfaToken('');
+    clearInterval(cooldownRef.current);
+    setResendCooldown(0);
+  };
+
+  const handleForgotPassword = async (e) => {
+    e.preventDefault();
+    setForgotError('');
+    setForgotLoading(true);
+    try {
+      await authService.forgotPassword(forgotEmail);
+      setForgotSent(true);
+    } catch (err) {
+      setForgotError(err.response?.data?.detail || 'Erro ao enviar email. Tente novamente.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  const handleBackFromForgot = () => {
+    setStep('credentials');
+    setForgotEmail('');
+    setForgotError('');
+    setForgotSent(false);
+  };
+
+  /* ── Icon button (show/hide password) ── */
+  const EyeBtn = ({ show, toggle }) => (
+    <button
+      type="button"
+      onClick={toggle}
+      style={{
+        position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+        background: 'none', border: 'none', color: '#9ca3af', cursor: 'pointer',
+        padding: 4, display: 'flex', alignItems: 'center',
+      }}
+    >
+      {show ? <EyeOff style={{ width: 15, height: 15 }} /> : <Eye style={{ width: 15, height: 15 }} />}
+    </button>
+  );
+
+  const Label = ({ children }) => (
+    <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+      {children}
+    </label>
+  );
+
   return (
-    <div className="min-h-screen flex">
-      {/* Left panel – form */}
-      <div className="flex-1 flex flex-col justify-center px-8 py-12 bg-white lg:max-w-md xl:max-w-lg">
-        {/* Logo */}
-        <div className="mb-10">
-          <div className="flex items-center gap-3 mb-2">
-            <img src="/logo.png" alt="CloudAtlas" className="w-10 h-10 object-contain" />
-            <span className="text-2xl font-bold text-gray-900">CloudAtlas</span>
+    <AuthLayout>
+      <FormLogo />
+
+      {/* ── Credentials step ── */}
+      {step === 'credentials' && (
+        <>
+          <div className="af1 mb-7">
+            <h1 style={{ fontSize: 26, fontWeight: 800, color: '#111827', letterSpacing: '-0.4px', marginBottom: 6 }}>
+              Bem-vindo de volta
+            </h1>
+            <p style={{ fontSize: 14, color: '#6b7280' }}>Entre com suas credenciais para continuar</p>
           </div>
-          <p className="text-gray-500 text-sm">Gerenciamento multi-cloud centralizado</p>
-        </div>
 
-        <h1 className="text-3xl font-bold text-gray-900 mb-2">Bem-vindo de volta</h1>
-        <p className="text-gray-500 mb-8">Entre com suas credenciais para continuar</p>
+          {error && <div className="auth-error af2 mb-4">{error}</div>}
 
-        {error && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {error}
+          <form onSubmit={handleSubmit} className="af2 flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Email</Label>
+              <div className="relative">
+                <Mail style={iconStyle} />
+                <input
+                  type="email" required
+                  value={email} onChange={(e) => setEmail(e.target.value)}
+                  placeholder="seu@email.com"
+                  className="auth-input"
+                  style={inputStyle}
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between">
+                <Label>Senha</Label>
+                <button
+                  type="button"
+                  className="auth-link"
+                  style={{ fontSize: 12 }}
+                  onClick={() => { setStep('forgot'); setForgotEmail(email); }}
+                >
+                  Esqueci minha senha
+                </button>
+              </div>
+              <div className="relative">
+                <Lock style={iconStyle} />
+                <input
+                  type={showPassword ? 'text' : 'password'} required
+                  value={password} onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="auth-input auth-input-pr"
+                  style={{ ...inputStyle, paddingRight: 42 }}
+                />
+                <EyeBtn show={showPassword} toggle={() => setShowPassword(v => !v)} />
+              </div>
+            </div>
+
+            <button type="submit" disabled={loading} className="auth-btn af3 mt-1">
+              {loading ? <Spinner /> : <LogIn style={{ width: 16, height: 16 }} />}
+              {loading ? 'Entrando...' : 'Entrar'}
+            </button>
+          </form>
+
+          <div className="af4">
+            <OAuthButtons redirectTarget={redirectParam} />
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+          <p className="af5 text-center mt-4" style={{ fontSize: 13, color: '#6b7280' }}>
+            Não tem uma conta?{' '}
+            <Link to="/register" style={{ color: '#2563eb', fontWeight: 600, textDecoration: 'none' }}>
+              Criar conta
+            </Link>
+          </p>
+        </>
+      )}
+
+      {/* ── OTP / MFA step ── */}
+      {step === 'otp' && (
+        <>
+          <div className="af1 flex flex-col items-center text-center mb-6">
+            <div style={{
+              width: 60, height: 60, borderRadius: 16, marginBottom: 16,
+              background: '#eff6ff', border: '1.5px solid #bfdbfe',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <ShieldCheck style={{ width: 28, height: 28, color: '#2563eb' }} />
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', marginBottom: 6, letterSpacing: '-0.3px' }}>
+              Verificação em dois fatores
+            </h1>
+            <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
+              Enviamos um código de 6 dígitos para<br />
+              <span style={{ fontWeight: 600, color: '#374151' }}>{email}</span>
+            </p>
+          </div>
+
+          {otpError && <div className="auth-error af2 mb-4 text-center">{otpError}</div>}
+
+          <form onSubmit={handleVerifyOTP} className="af2 flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.5px', textTransform: 'uppercase', textAlign: 'center' }}>
+                Código de verificação
+              </label>
               <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu@email.com"
-                className={inputClass}
+                ref={otpInputRef}
+                type="text" inputMode="numeric" pattern="[0-9]{6}" maxLength={6} required
+                value={otp}
+                onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="auth-input auth-input-mono"
+                style={{ ...inputStyle, paddingLeft: 14, fontFamily: 'monospace', fontSize: 22, textAlign: 'center', letterSpacing: '0.45em' }}
               />
             </div>
+
+            <button type="submit" disabled={loading || otp.length !== 6} className="auth-btn">
+              {loading ? <Spinner /> : <ShieldCheck style={{ width: 16, height: 16 }} />}
+              {loading ? 'Verificando...' : 'Verificar'}
+            </button>
+          </form>
+
+          <div className="flex flex-col items-center gap-3 mt-5">
+            <button
+              type="button"
+              className="auth-link flex items-center gap-1.5"
+              disabled={resendCooldown > 0}
+              onClick={handleResend}
+              style={{ opacity: resendCooldown > 0 ? 0.5 : 1, cursor: resendCooldown > 0 ? 'not-allowed' : 'pointer' }}
+            >
+              <RefreshCw style={{ width: 13, height: 13 }} />
+              {resendCooldown > 0 ? `Reenviar em ${resendCooldown}s` : 'Reenviar código'}
+            </button>
+            <button type="button" className="auth-link flex items-center gap-1.5" onClick={handleBack}>
+              <ArrowLeft style={{ width: 13, height: 13 }} />
+              Voltar
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── Forgot password step ── */}
+      {step === 'forgot' && (
+        <>
+          <div className="af1 flex flex-col items-center text-center mb-6">
+            <div style={{
+              width: 60, height: 60, borderRadius: 16, marginBottom: 16,
+              background: '#eff6ff', border: '1.5px solid #bfdbfe',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <Mail style={{ width: 28, height: 28, color: '#2563eb' }} />
+            </div>
+            <h1 style={{ fontSize: 22, fontWeight: 800, color: '#111827', marginBottom: 6, letterSpacing: '-0.3px' }}>
+              Redefinir senha
+            </h1>
+            <p style={{ fontSize: 13, color: '#6b7280', lineHeight: 1.6 }}>
+              {forgotSent
+                ? 'Verifique seu email para continuar.'
+                : 'Informe seu email e enviaremos um link para redefinir sua senha.'}
+            </p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Senha</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className={inputClass}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword((v) => !v)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                tabIndex={-1}
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          {forgotSent ? (
+            <div className="af2 flex flex-col items-center gap-5">
+              <div className="auth-success-box w-full">
+                <CheckCircle style={{ width: 18, height: 18, flexShrink: 0 }} />
+                Email enviado! Verifique sua caixa de entrada e o spam.
+              </div>
+              <button type="button" className="auth-link flex items-center gap-1.5" onClick={handleBackFromForgot}>
+                <ArrowLeft style={{ width: 13, height: 13 }} />
+                Voltar ao login
               </button>
             </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-primary text-white rounded-lg font-medium hover:bg-primary-dark transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <LogIn className="w-4 h-4" />
-            )}
-            {loading ? 'Entrando...' : 'Entrar'}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-sm text-gray-500">
-          Não tem uma conta?{' '}
-          <Link to="/register" className="text-primary font-medium hover:underline">
-            Criar conta
-          </Link>
-        </p>
-
-        <OAuthButtons />
-      </div>
-
-      {/* Right panel – animation */}
-      <div
-        className="hidden lg:flex flex-1 items-center justify-center"
-        style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 55%, #0f172a 100%)' }}
-      >
-        <CloudAnimation />
-      </div>
-    </div>
+          ) : (
+            <>
+              {forgotError && <div className="auth-error af2 mb-4">{forgotError}</div>}
+              <form onSubmit={handleForgotPassword} className="af2 flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                    Email
+                  </label>
+                  <div className="relative">
+                    <Mail style={iconStyle} />
+                    <input
+                      type="email" required
+                      value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                      placeholder="seu@email.com"
+                      className="auth-input"
+                      style={inputStyle}
+                    />
+                  </div>
+                </div>
+                <button type="submit" disabled={forgotLoading} className="auth-btn">
+                  {forgotLoading ? <Spinner /> : <Mail style={{ width: 16, height: 16 }} />}
+                  {forgotLoading ? 'Enviando...' : 'Enviar link de redefinição'}
+                </button>
+              </form>
+              <div className="flex justify-center mt-4">
+                <button type="button" className="auth-link flex items-center gap-1.5" onClick={handleBackFromForgot}>
+                  <ArrowLeft style={{ width: 13, height: 13 }} />
+                  Voltar ao login
+                </button>
+              </div>
+            </>
+          )}
+        </>
+      )}
+    </AuthLayout>
   );
 };
 

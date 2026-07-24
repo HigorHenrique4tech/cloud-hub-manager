@@ -1,12 +1,13 @@
-import { useState, useEffect } from 'react';
-import { RefreshCw, Plus } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { RefreshCw, Plus, Monitor } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
 import AzureVMTable from '../../components/resources/azurevmtable';
 import ResourceCard from '../../components/resources/resourcecard';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import ErrorMessage from '../../components/common/errormessage';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import BatchActionBar from '../../components/common/BatchActionBar';
@@ -16,10 +17,18 @@ import CreateAzureVMForm from '../../components/create/CreateAzureVMForm';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
+import VMBackupSection from '../../components/backup/VMBackupSection';
+import VMNetworkSection from '../../components/azure/VMNetworkSection';
+import { useToast } from '../../contexts/ToastContext';
+import { useBackgroundTasks } from '../../contexts/BackgroundTasksContext';
 
 const defaultForm = { name: '', resource_group: '', location: '', vm_size: 'Standard_B1s', image_publisher: '', image_offer: '', image_sku: '', image_version: 'latest', admin_username: '', admin_password: '', create_public_ip: false, os_disk_type: 'Standard_LRS', data_disks: [], tags: {}, tags_list: [] };
 
 const AzureVMs = () => {
+  const { toast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
@@ -31,6 +40,9 @@ const AzureVMs = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [stopTarget, setStopTarget] = useState(null);
+  const [pendingOps, setPendingOps] = useState(new Map()); // vmId → 'starting'|'stopping'
+  const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -40,6 +52,7 @@ const AzureVMs = () => {
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchErrors, setBatchErrors] = useState([]);
+  const [detailTarget, setDetailTarget] = useState(null);
 
   const fetchVMs = async (isRefresh = false) => {
     try {
@@ -62,32 +75,62 @@ const AzureVMs = () => {
 
   useEffect(() => { fetchVMs(); }, []);
 
+  // Poll while ops are pending
+  useEffect(() => {
+    if (pendingOps.size === 0) return;
+    const id = setInterval(() => fetchVMs(true), 5000);
+    return () => clearInterval(id);
+  }, [pendingOps.size]);
+
   const { mutate: createVM, isLoading: creating, error: createError, success: createSuccess, reset } = useCreateResource(
     (data) => azureService.createVM(data),
-    { onSuccess: () => { setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchVMs(true); }, 1500); } }
+    {
+      onSuccess: (result) => {
+        // Backend returns 202 with task_id — close modal immediately and track in background
+        if (result?.task_id) {
+          addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_vm_create' });
+          toast.info('VM em criação em background. Você será notificado quando terminar.');
+          setModalOpen(false);
+          reset();
+          setForm(defaultForm);
+        } else {
+          setTimeout(() => { setModalOpen(false); reset(); setForm(defaultForm); fetchVMs(true); }, 1500);
+        }
+      }
+    }
   );
 
-  const handleStart = async (rg, name) => {
+  const addPending = (id, op) => setPendingOps(m => new Map(m).set(id, op));
+  const removePending = (id) => setPendingOps(m => { const n = new Map(m); n.delete(id); return n; });
+
+  const handleStart = async (rg, name, vmId) => {
+    addPending(vmId, 'starting');
     try {
-      setRefreshing(true);
       await azureService.startVM(rg, name);
+      toast.success(`VM "${name}" iniciada com sucesso.`);
       await fetchVMs(true);
     } catch (err) {
-      setError(`Erro ao iniciar VM: ${err.message}`);
+      toast.error(`Erro ao iniciar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
-      setRefreshing(false);
+      removePending(vmId);
     }
   };
 
-  const handleStop = async (rg, name) => {
+  const handleStop = (vm) => setStopTarget(vm);
+
+  const confirmStop = async () => {
+    if (!stopTarget) return;
+    const { resource_group: rg, name, vm_id: vmId } = stopTarget;
+    addPending(vmId, 'stopping');
+    setStopTarget(null);
     try {
-      setRefreshing(true);
       await azureService.stopVM(rg, name);
+      toast.success(`VM "${name}" parada com sucesso.`);
       await fetchVMs(true);
     } catch (err) {
-      setError(`Erro ao parar VM: ${err.message}`);
+      toast.error(`Erro ao parar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
-      setRefreshing(false);
+      removePending(vmId);
     }
   };
 
@@ -95,9 +138,16 @@ const AzureVMs = () => {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await azureService.deleteVM(deleteTarget.resource_group, deleteTarget.name);
+      const result = await azureService.deleteVM(deleteTarget.resource_group, deleteTarget.name);
+      if (result?.task_id) {
+        addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_vm_delete' });
+        toast.info(`Exclusão de "${deleteTarget.name}" em andamento em background.`);
+        setVms(prev => prev.filter(v => v.name !== deleteTarget.name));
+      } else {
+        toast.success(`VM "${deleteTarget.name}" excluída.`);
+        fetchVMs(true);
+      }
       setDeleteTarget(null);
-      fetchVMs(true);
     } catch (err) {
       setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir VM');
     } finally {
@@ -131,7 +181,7 @@ const AzureVMs = () => {
     fetchVMs(true);
   };
 
-  const filtered = query
+  const filtered = loading ? [] : query
     ? vms.filter(v =>
         v.name?.toLowerCase().includes(query) ||
         v.resource_group?.toLowerCase().includes(query) ||
@@ -159,9 +209,8 @@ const AzureVMs = () => {
     setBatchDeleteOpen(false);
   };
 
-  if (loading) return <Layout><LoadingSpinner text="Carregando VMs Azure..." /></Layout>;
   if (noCredentials) return <Layout><NoCredentialsMessage provider="azure" /></Layout>;
-  if (error && vms.length === 0) return <Layout><ErrorMessage message={error} onRetry={fetchVMs} /></Layout>;
+  if (error && vms.length === 0 && !loading) return <Layout><ErrorMessage message={error} onRetry={fetchVMs} /></Layout>;
 
   return (
     <Layout>
@@ -169,7 +218,7 @@ const AzureVMs = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">Azure — Virtual Machines</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            {filtered.length} de {vms.length} VM(s){query && ` para "${query}"`}
+            {loading ? 'Carregando...' : `${filtered.length} de ${vms.length} VM(s)${query ? ` para "${query}"` : ''}`}
           </p>
         </div>
         <PermissionGate permission="resources.create">
@@ -207,18 +256,36 @@ const AzureVMs = () => {
       </div>
 
       <div className="card">
-        {filtered.length === 0 ? (
-          <p className="text-center py-12 text-gray-500 dark:text-gray-400">Nenhuma VM encontrada</p>
+        {loading ? (
+          <SkeletonTable columns={6} rows={5} hasCheckbox />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Monitor}
+            title="Nenhuma VM Azure"
+            description="Crie sua primeira Virtual Machine para começar a gerenciar sua infraestrutura Azure."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar VM
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : viewType === 'table' ? (
           <AzureVMTable
             vms={filtered}
             onStart={handleStart}
-            onStop={handleStop}
+            onStop={(rg, name, vm) => handleStop(vm)}
             onDelete={(vm) => setDeleteTarget(vm)}
+            onRowClick={setDetailTarget}
             loading={refreshing}
             selectedIds={selectedIds}
             onToggleSelect={toggleSelect}
             onToggleAll={toggleAll}
+            pendingOps={pendingOps}
           />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -231,14 +298,26 @@ const AzureVMs = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createVM(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Virtual Machine"
         isLoading={creating}
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="azure-vm" form={form} />}
+        templateBar={<TemplateBar provider="azure" resourceType="vm" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
-        <CreateAzureVMForm form={form} setForm={setForm} />
+        <CreateAzureVMForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!stopTarget}
+        onClose={() => setStopTarget(null)}
+        onConfirm={confirmStop}
+        title="Parar Virtual Machine"
+        description={`Tem certeza que deseja parar a VM "${stopTarget?.name}"? Ela deixará de estar disponível até ser reiniciada.`}
+        confirmLabel="Parar VM"
+        variant="warning"
+      />
 
       <ConfirmDeleteModal
         isOpen={!!deleteTarget}
@@ -270,6 +349,49 @@ const AzureVMs = () => {
         resources={selectedVMs.map(v => ({ id: v.vm_id, name: v.name }))}
         isLoading={batchLoading}
         errors={batchErrors}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="Azure Virtual Machine"
+        statusText={detailTarget?.power_state}
+        statusColor={detailTarget?.power_state === 'running' ? 'green' : ['deallocated', 'stopped'].includes(detailTarget?.power_state) ? 'red' : 'yellow'}
+        queryKey={['azure-vm-detail', detailTarget?.resource_group, detailTarget?.name]}
+        queryFn={detailTarget ? () => azureService.getVMDetail(detailTarget.resource_group, detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Resource Group', value: detailTarget?.resource_group },
+            { label: 'Localização', value: detailTarget?.location },
+            { label: 'Tamanho', value: detailTarget?.vm_size },
+            { label: 'Sistema Operacional', value: detailTarget?.os_type },
+            { label: 'Zonas', value: detail?.zones?.join(', ') || '—' },
+          ]},
+          { title: 'SO e Imagem', fields: [
+            { label: 'Admin Username', value: detail?.admin_username },
+            { label: 'Publisher', value: detail?.image?.publisher },
+            { label: 'Offer', value: detail?.image?.offer },
+            { label: 'SKU', value: detail?.image?.sku },
+          ]},
+          { title: 'Armazenamento', fields: [
+            { label: 'OS Disk', value: detail?.os_disk?.name },
+            { label: 'OS Disk Tipo', value: detail?.os_disk?.type },
+            { label: 'OS Disk Tamanho', value: detail?.os_disk?.size_gb != null ? `${detail.os_disk.size_gb} GB` : undefined },
+            { label: 'Data Disks', value: detail?.data_disks?.length != null ? String(detail.data_disks.length) : undefined },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
+        extraContent={detailTarget && (
+          <VMBackupSection
+            provider="azure"
+            resourceGroup={detailTarget.resource_group}
+            vmName={detailTarget.name}
+          />
+        )}
+        extraContentFn={(detail) => (
+          <VMNetworkSection networkInterfaces={detail?.network_interfaces || []} />
+        )}
       />
     </Layout>
   );

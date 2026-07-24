@@ -1,8 +1,8 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text, Float, UniqueConstraint, Index
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, ForeignKey, Text, Float, Numeric, UniqueConstraint, Index
 from sqlalchemy.orm import relationship
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.database import Base
 
@@ -13,16 +13,47 @@ from app.database import Base
 class Organization(Base):
     __tablename__ = "organizations"
 
-    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name       = Column(String(255), nullable=False)
-    slug       = Column(String(100), unique=True, nullable=False, index=True)
-    plan_tier  = Column(String(50), nullable=False, default="free")  # free | pro | enterprise
-    is_active  = Column(Boolean, default=True, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name          = Column(String(255), nullable=False)
+    slug          = Column(String(100), unique=True, nullable=False, index=True)
+    plan_tier     = Column(String(50), nullable=False, default="free")  # free | pro | enterprise
+    org_type      = Column(String(20), nullable=False, default="standalone")  # standalone | master | partner
+    parent_org_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    is_active        = Column(Boolean, default=True, nullable=False)
+    notes            = Column(Text, nullable=True)            # internal admin notes (partner SLA, contacts, etc.)
+    suspended_reason = Column(String(500), nullable=True)     # reason shown when org is suspended
+    suspended_at     = Column(DateTime, nullable=True)
+    encrypted_org_key = Column(Text, nullable=True)           # per-org Fernet key, encrypted by master key
+    trial_ends_at    = Column(DateTime, nullable=True)        # end of 30-day Pro trial
+    currency_display = Column(String(10), nullable=False, default="USD")  # USD | BRL
+    exchange_rate_brl = Column(Float, nullable=True)           # manual rate (1 USD = X BRL)
+    exchange_rate_auto = Column(Boolean, default=False, nullable=False)  # auto-fetch from BCB
+    exchange_rate_updated_at = Column(DateTime, nullable=True)
+    # ── White-label branding (enterprise only) ──────────────────────────────
+    wl_platform_name    = Column(String(100), nullable=True)        # custom platform name
+    wl_logo_light       = Column(Text, nullable=True)               # base64 logo for light bg
+    wl_logo_dark        = Column(Text, nullable=True)               # base64 logo for dark bg
+    wl_logo_mime        = Column(String(50), nullable=True)         # image/png, image/svg+xml
+    wl_favicon          = Column(Text, nullable=True)               # base64 favicon
+    wl_favicon_mime     = Column(String(50), nullable=True)         # favicon mime type
+    wl_color_primary    = Column(String(7), nullable=True)          # hex #RRGGBB
+    wl_color_accent     = Column(String(7), nullable=True)          # hex #RRGGBB
+    wl_powered_by       = Column(Boolean, default=True, nullable=False)  # show "Powered by CloudAtlas"
+    wl_email_sender_name = Column(String(100), nullable=True)       # custom email sender name
+    # ── Partner Center (CSP) ────────────────────────────────────────────────
+    partner_center_id     = Column(String(100), nullable=True)     # PC customer ID (for partner orgs)
+    partner_center_tenant = Column(String(100), nullable=True)     # Azure AD tenant ID do cliente
+    # ── CSP Cost Management ──────────────────────────────────────────────────
+    cost_source_preference = Column(String(30), nullable=False, default="auto")  # auto | cost_management | partner_center | estimated
+    cost_markup_pct        = Column(Float, nullable=False, default=0)             # % markup sobre custo partner (CSP)
+    phone            = Column(String(30), nullable=True)
+    cnpj             = Column(String(18), nullable=True)
+    created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at       = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     members    = relationship("OrganizationMember", back_populates="organization", cascade="all, delete-orphan")
     workspaces = relationship("Workspace", back_populates="organization", cascade="all, delete-orphan")
+    parent_org = relationship("Organization", remote_side="Organization.id", foreign_keys="Organization.parent_org_id", backref="child_orgs")
 
 
 class OrganizationMember(Base):
@@ -39,6 +70,9 @@ class OrganizationMember(Base):
     is_active       = Column(Boolean, default=True, nullable=False)
     invited_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     joined_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    phone           = Column(String(50), nullable=True)
+    department      = Column(String(100), nullable=True)
+    notes           = Column(String(500), nullable=True)
 
     organization = relationship("Organization", back_populates="members")
     user         = relationship("User", foreign_keys=[user_id])
@@ -64,6 +98,31 @@ class PendingInvitation(Base):
 
     organization = relationship("Organization")
     inviter      = relationship("User", foreign_keys=[invited_by])
+
+
+class OrganizationAddOn(Base):
+    __tablename__ = "organization_addons"
+    __table_args__ = (
+        Index("ix_org_addon_type", "organization_id", "addon_type"),
+    )
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    addon_type      = Column(String(50), nullable=False)  # "workspace" | "user"
+    quantity        = Column(Integer, nullable=False, default=0)
+    monthly_price_cents = Column(Integer, nullable=False)  # centavos
+    is_active       = Column(Boolean, default=True, nullable=False)
+    status          = Column(String(20), nullable=False, default="pending")  # pending|approved|rejected
+    notes           = Column(Text, nullable=True)
+    admin_notes     = Column(Text, nullable=True)
+    reviewed_by     = Column(String(255), nullable=True)
+    reviewed_at     = Column(DateTime, nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    organization = relationship("Organization")
+    creator      = relationship("User", foreign_keys=[created_by])
 
 
 class Workspace(Base):
@@ -115,11 +174,44 @@ class CloudAccount(Base):
     created_by     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at     = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    allocation_tags = Column(JSONB, nullable=True)  # list of tag keys enabled for cost allocation
+    bigquery_project = Column(String(255), nullable=True)
+    bigquery_dataset = Column(String(255), nullable=True)
+    bigquery_table   = Column(String(255), nullable=True)
+    billing_export_enabled = Column(Boolean, default=False, nullable=False)
 
     workspace = relationship("Workspace", back_populates="cloud_accounts")
 
     __table_args__ = (
         Index("ix_cloudaccount_ws_provider", "workspace_id", "provider"),
+    )
+
+
+class K8sCluster(Base):
+    __tablename__ = "k8s_clusters"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id        = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    name                = Column(String(255), nullable=False)
+    source              = Column(String(20), nullable=False, default="manual")  # aks | eks | gke | manual
+    cloud_account_id    = Column(UUID(as_uuid=True), ForeignKey("cloud_accounts.id", ondelete="SET NULL"), nullable=True)
+    provider_cluster_id = Column(String(512), nullable=True)  # ARM resource id / EKS arn / GKE self-link
+    region              = Column(String(64), nullable=True)
+    distribution        = Column(String(40), nullable=True)   # AKS | EKS | GKE | k3s | vanilla
+    k8s_version         = Column(String(32), nullable=True)
+    endpoint            = Column(Text, nullable=True)
+    encrypted_kubeconfig = Column(Text, nullable=False)       # Fernet-encrypted JSON (kubeconfig or {server,token,ca})
+    status              = Column(String(20), nullable=False, default="unknown")  # connected | unreachable | unknown
+    node_count          = Column(Integer, nullable=True)
+    last_synced_at      = Column(DateTime, nullable=True)
+    is_active           = Column(Boolean, default=True, nullable=False)
+    created_by          = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_k8s_cluster_ws_name"),
+        Index("ix_k8s_clusters_ws", "workspace_id"),
     )
 
 
@@ -151,14 +243,45 @@ class User(Base):
     is_active          = Column(Boolean, default=True, nullable=False)
     is_verified        = Column(Boolean, default=False, nullable=False)
     verification_token = Column(String(255), nullable=True, index=True)
+    verification_token_expires_at = Column(DateTime, nullable=True)
     default_org_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
     oauth_provider     = Column(String(50), nullable=True)    # "google" | "github" | None
     oauth_id           = Column(String(255), nullable=True)   # Provider's user ID
     avatar_url         = Column(String(500), nullable=True)
+    mfa_enabled        = Column(Boolean, default=False, nullable=False)
+    mfa_otp_hash       = Column(String(64), nullable=True)    # SHA-256 do OTP temporário
+    mfa_otp_expires_at = Column(DateTime, nullable=True)
+    mfa_otp_attempts   = Column(Integer, default=0, nullable=False)
+    is_admin           = Column(Boolean, default=False, nullable=False)
+    is_helpdesk        = Column(Boolean, default=False, nullable=False)
+    is_support_agent   = Column(Boolean, default=False, nullable=False)
+    onboarding_completed = Column(Boolean, default=False, nullable=False)
+    phone              = Column(String(30), nullable=True)
+    company_name       = Column(String(255), nullable=True)
+    cnpj               = Column(String(18), nullable=True)
+    password_reset_token      = Column(String(255), nullable=True, index=True)
+    password_reset_expires_at = Column(DateTime, nullable=True)
+    pending_email             = Column(String(255), nullable=True)
+    email_change_token        = Column(String(64), nullable=True, index=True)
+    email_change_expires_at   = Column(DateTime, nullable=True)
     created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     org_memberships  = relationship("OrganizationMember", foreign_keys="OrganizationMember.user_id", back_populates="user")
+    terms_acceptances = relationship("TermsAcceptance", back_populates="user", cascade="all, delete-orphan")
+
+
+class TermsAcceptance(Base):
+    __tablename__ = "terms_acceptances"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id     = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    version     = Column(String(20), nullable=False)
+    accepted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    ip_address  = Column(String(45), nullable=True)
+    user_agent  = Column(String(500), nullable=True)
+
+    user = relationship("User", back_populates="terms_acceptances")
 
 
 class CostAlert(Base):
@@ -177,6 +300,8 @@ class CostAlert(Base):
     period = Column(String(20), nullable=False)         # 'daily' | 'monthly'
     is_active = Column(Boolean, default=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_evaluated_at = Column(DateTime, nullable=True)
+    last_triggered_at = Column(DateTime, nullable=True)
 
     user = relationship("User", foreign_keys=[user_id])
     events = relationship("AlertEvent", back_populates="alert", cascade="all, delete-orphan")
@@ -186,18 +311,25 @@ class AlertEvent(Base):
     __tablename__ = "alert_events"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    alert_id = Column(UUID(as_uuid=True), ForeignKey("cost_alerts.id", ondelete="CASCADE"), nullable=False)
-    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    current_value = Column(Float, nullable=False)
-    threshold_value = Column(Float, nullable=False)
+    alert_id = Column(UUID(as_uuid=True), ForeignKey("cost_alerts.id", ondelete="CASCADE"), nullable=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True, index=True)
+    triggered_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    current_value = Column(Float, nullable=True)
+    threshold_value = Column(Float, nullable=True)
     message = Column(String(500), nullable=True)
     is_read = Column(Boolean, default=False, nullable=False)
+    notification_type = Column(String(50), default='cost_alert', nullable=False)
+    link_to = Column(String(255), nullable=True)
 
     alert = relationship("CostAlert", back_populates="events")
 
 
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
+    __table_args__ = (
+        Index("ix_activity_ws_created", "workspace_id", "created_at"),
+        Index("ix_activity_user_created", "user_id", "created_at"),
+    )
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id         = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -235,3 +367,950 @@ class Payment(Base):
 
     organization = relationship("Organization")
     user         = relationship("User")
+
+
+# ── FinOps ─────────────────────────────────────────────────────────────────
+
+
+class FinOpsRecommendation(Base):
+    __tablename__ = "finops_recommendations"
+
+    id                      = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id            = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    cloud_account_id        = Column(UUID(as_uuid=True), ForeignKey("cloud_accounts.id", ondelete="SET NULL"), nullable=True)
+    provider                = Column(String(20), nullable=False)   # aws | azure
+    resource_id             = Column(String(255), nullable=False)
+    resource_name           = Column(String(255), nullable=False)
+    resource_type           = Column(String(100), nullable=False)  # ec2 | ebs | elastic_ip | rds | snapshot | lambda | vm | managed_disk | public_ip | sql | app_service
+    region                  = Column(String(100), nullable=True)
+    recommendation_type     = Column(String(50), nullable=False)   # right_size | stop | delete | schedule | reserve
+    severity                = Column(String(20), nullable=False, default="medium")  # high | medium | low
+    estimated_saving_monthly = Column(Float, nullable=False, default=0.0)
+    current_monthly_cost    = Column(Float, nullable=False, default=0.0)
+    reasoning               = Column(Text, nullable=False)
+    current_spec            = Column(JSONB, nullable=True)    # {"instance_type": "m5.xlarge"}
+    recommended_spec        = Column(JSONB, nullable=True)    # {"instance_type": "m5.large"}
+    status                  = Column(String(20), nullable=False, default="pending", index=True)  # pending | applied | dismissed | failed
+    detected_at             = Column(DateTime, default=datetime.utcnow, nullable=False)
+    applied_at              = Column(DateTime, nullable=True)
+    applied_by              = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+class FinOpsBudget(Base):
+    __tablename__ = "finops_budgets"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name            = Column(String(255), nullable=False)
+    provider        = Column(String(20), nullable=False, default="all")  # aws | azure | all
+    amount          = Column(Float, nullable=False)
+    period          = Column(String(20), nullable=False, default="monthly")  # monthly | quarterly | annual
+    start_date      = Column(DateTime, nullable=False, default=datetime.utcnow)
+    alert_threshold   = Column(Float, nullable=False, default=0.8)  # 0.8 = alert at 80%
+    is_active         = Column(Boolean, default=True, nullable=False)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+    last_spend        = Column(Float, nullable=True)
+    last_evaluated_at = Column(DateTime(timezone=True), nullable=True)
+    alert_sent_at     = Column(DateTime(timezone=True), nullable=True)
+    spend_breakdown   = Column(Text, nullable=True)  # JSON: {"aws": X, "azure": Y, "gcp": Z}
+
+
+class FinOpsCostHistory(Base):
+    """Per-month spend snapshot. Populated by a scheduled job on day 1
+    of each month (consolidating the previous month) and on demand by
+    the executive report flow when a requested month is missing."""
+    __tablename__ = "finops_cost_history"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id  = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"),
+                           nullable=False, index=True)
+    provider      = Column(String(20), nullable=False)            # aws | azure | gcp
+    year_month    = Column(String(7), nullable=False)             # 'YYYY-MM'
+    spend         = Column(Numeric(14, 2), nullable=False, default=0)
+    currency      = Column(String(3), nullable=False, default="USD")
+    source        = Column(String(20), nullable=False, default="api")  # api | manual | snapshot
+    is_partial    = Column(Boolean, nullable=False, default=False)     # True for current-month MTD
+    collected_at  = Column(DateTime(timezone=True), nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "provider", "year_month",
+                         name="uq_cost_history_ws_provider_period"),
+        Index("ix_cost_history_ws_period", "workspace_id", "year_month"),
+    )
+
+
+class FinOpsAction(Base):
+    __tablename__ = "finops_actions"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id      = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    recommendation_id = Column(UUID(as_uuid=True), ForeignKey("finops_recommendations.id", ondelete="SET NULL"), nullable=True)
+    action_type       = Column(String(50), nullable=False)   # right_size | stop | delete | release_ip | rollback
+    provider          = Column(String(20), nullable=False)
+    resource_id       = Column(String(255), nullable=False)
+    resource_name     = Column(String(255), nullable=False)
+    resource_type     = Column(String(100), nullable=False)
+    estimated_saving  = Column(Float, nullable=False, default=0.0)
+    status            = Column(String(30), nullable=False, default="executed", index=True)  # executed | failed | rolled_back
+    executed_at       = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    executed_by       = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    rollback_data     = Column(JSONB, nullable=True)   # data to reverse the action
+    error_message     = Column(Text, nullable=True)
+
+    recommendation = relationship("FinOpsRecommendation", foreign_keys=[recommendation_id])
+
+
+class FinOpsAnomaly(Base):
+    __tablename__ = "finops_anomalies"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id   = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider       = Column(String(20), nullable=False)
+    service_name   = Column(String(255), nullable=False)
+    detected_date  = Column(DateTime, nullable=False)
+    baseline_cost  = Column(Float, nullable=False)
+    actual_cost    = Column(Float, nullable=False)
+    deviation_pct  = Column(Float, nullable=False)
+    status         = Column(String(20), nullable=False, default="open")  # open | acknowledged | resolved
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+
+# ── Resource Templates ──────────────────────────────────────────────────────
+
+
+# ── Scheduled Actions ────────────────────────────────────────────────────────
+
+
+class ScheduledAction(Base):
+    __tablename__ = "scheduled_actions"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider        = Column(String(20), nullable=False)       # "aws" | "azure"
+    resource_id     = Column(String(500), nullable=False)      # "i-0abc" or "rg/vm_name"
+    resource_name   = Column(String(255), nullable=False)
+    resource_type   = Column(String(50), nullable=False)       # "ec2" | "vm" | "app_service"
+    action          = Column(String(10), nullable=False)       # "start" | "stop"
+    schedule_type   = Column(String(20), nullable=False, default="weekdays")  # "daily"|"weekdays"|"weekends"
+    schedule_time   = Column(String(5), nullable=False)        # "08:00" HH:MM UTC
+    timezone        = Column(String(50), nullable=False, default="America/Sao_Paulo")
+    is_enabled      = Column(Boolean, default=True, nullable=False)
+    last_run_at     = Column(DateTime, nullable=True)
+    last_run_status = Column(String(10), nullable=True)        # "success" | "failed"
+    last_run_error  = Column(String(500), nullable=True)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    custom_days   = Column(JSONB, nullable=True)       # ["mon","wed","fri"] for custom
+    monthly_days  = Column(JSONB, nullable=True)       # [1, 15] for monthly
+
+    workspace  = relationship("Workspace")
+    creator    = relationship("User", foreign_keys=[created_by])
+    runs       = relationship("ScheduleRun", back_populates="schedule", cascade="all, delete-orphan",
+                              order_by="ScheduleRun.triggered_at.desc()", lazy="dynamic")
+
+
+class ScheduleRun(Base):
+    __tablename__ = "schedule_runs"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    schedule_id   = Column(UUID(as_uuid=True), ForeignKey("scheduled_actions.id", ondelete="CASCADE"), nullable=False, index=True)
+    triggered_at  = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    completed_at  = Column(DateTime, nullable=True)
+    status        = Column(String(10), nullable=False)      # "success" | "failed" | "running"
+    error         = Column(String(500), nullable=True)
+    trigger_type  = Column(String(10), nullable=False, default="scheduled")  # "scheduled" | "manual"
+
+    schedule = relationship("ScheduledAction", back_populates="runs")
+
+
+# ── FinOps Scan Schedule ─────────────────────────────────────────────────────
+
+
+class FinOpsScanSchedule(Base):
+    __tablename__ = "finops_scan_schedules"
+    __table_args__ = (UniqueConstraint("workspace_id", name="uq_finops_scan_ws"),)
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_enabled      = Column(Boolean, default=True, nullable=False)
+    schedule_type   = Column(String(20), nullable=False, default="daily")  # "daily"|"weekdays"|"weekends"
+    schedule_time   = Column(String(5), nullable=False)        # "HH:MM"
+    timezone        = Column(String(50), nullable=False, default="America/Sao_Paulo")
+    provider        = Column(String(20), nullable=False, default="all")  # "all"|"aws"|"azure"
+    last_run_at     = Column(DateTime, nullable=True)
+    last_run_status = Column(String(10), nullable=True)        # "success"|"failed"
+    last_run_error  = Column(String(500), nullable=True)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    creator   = relationship("User", foreign_keys=[created_by])
+
+
+# ── Approval Flow ─────────────────────────────────────────────────────────────
+
+
+class ApprovalRequest(Base):
+    __tablename__ = "approval_requests"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id   = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    requester_id   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    resolved_by    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    action_type    = Column(String(100), nullable=False)   # apply_recommendation | stop_instance | delete_resource
+    action_payload = Column(JSONB, nullable=False)          # all data needed to execute the action
+    status         = Column(String(20), nullable=False, default="pending", index=True)  # pending | approved | rejected | cancelled
+    notes          = Column(Text, nullable=True)
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    resolved_at    = Column(DateTime, nullable=True)
+
+    workspace  = relationship("Workspace")
+    requester  = relationship("User", foreign_keys=[requester_id])
+    resolver   = relationship("User", foreign_keys=[resolved_by])
+
+
+# ── Policy Engine ─────────────────────────────────────────────────────────────
+
+
+class Policy(Base):
+    __tablename__ = "policies"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id      = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name              = Column(String(255), nullable=False)
+    description       = Column(Text, nullable=True)
+    provider          = Column(String(20), nullable=False, default="all")  # aws | azure | gcp | all
+    conditions        = Column(JSONB, nullable=False)   # {"metric": ..., "operator": ..., "threshold": ..., "window_hours": ...}
+    action            = Column(JSONB, nullable=False)   # {"type": ..., "params": {}, "also_notify": bool}
+    is_active         = Column(Boolean, default=True, nullable=False)
+    last_triggered_at = Column(DateTime, nullable=True)
+    trigger_count     = Column(Integer, default=0, nullable=False)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    creator   = relationship("User", foreign_keys=[created_by])
+    logs      = relationship("PolicyLog", back_populates="policy", cascade="all, delete-orphan")
+
+
+class PolicyLog(Base):
+    __tablename__ = "policy_logs"
+
+    id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    policy_id          = Column(UUID(as_uuid=True), ForeignKey("policies.id", ondelete="CASCADE"), nullable=False, index=True)
+    triggered_at       = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    condition_snapshot = Column(JSONB, nullable=True)   # actual values that triggered the rule
+    action_taken       = Column(String(100), nullable=True)
+    result             = Column(String(50), nullable=True)   # success | failed | skipped
+    error              = Column(Text, nullable=True)
+
+    policy = relationship("Policy", back_populates="logs")
+
+
+# ── Executive Reports ─────────────────────────────────────────────────────────
+
+
+class ExecutiveReportSettings(Base):
+    __tablename__ = "executive_report_settings"
+    __table_args__ = (UniqueConstraint("workspace_id", name="uq_exec_report_settings_ws"),)
+
+    id                      = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id            = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    is_enabled              = Column(Boolean, default=False, nullable=False)
+    recipients              = Column(JSONB, nullable=False, default=list)  # ["email1", "email2"]
+    send_day                = Column(Integer, nullable=False, default=1)   # 1-28
+    include_costs           = Column(Boolean, default=True, nullable=False)
+    include_anomalies       = Column(Boolean, default=True, nullable=False)
+    include_recommendations = Column(Boolean, default=True, nullable=False)
+    include_schedules       = Column(Boolean, default=True, nullable=False)
+    updated_at              = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+
+
+class ExecutiveReport(Base):
+    __tablename__ = "executive_reports"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    period       = Column(String(7), nullable=False)   # "2025-03"
+    status       = Column(String(20), nullable=False, default="generating")  # generating | ready | failed
+    pdf_bytes    = Column(Text, nullable=True)          # base64-encoded PDF
+    summary_data = Column(JSONB, nullable=True)         # data snapshot used to generate
+    generated_at = Column(DateTime, nullable=True)
+    sent_at      = Column(DateTime, nullable=True)
+    recipients   = Column(JSONB, nullable=True)         # snapshot of recipients at send time
+    error        = Column(Text, nullable=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+
+
+# ── User Dashboard Config ────────────────────────────────────────────────────
+
+
+class UserDashboardConfig(Base):
+    __tablename__ = "user_dashboard_configs"
+    __table_args__ = (
+        UniqueConstraint("user_id", "workspace_id", name="uq_user_dashboard_ws"),
+    )
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    config       = Column(JSONB, nullable=False)   # [{id, visible, order}]
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    user      = relationship("User", foreign_keys=[user_id])
+    workspace = relationship("Workspace", foreign_keys=[workspace_id])
+
+
+# ── Resource Templates ──────────────────────────────────────────────────────
+
+
+class ResourceTemplate(Base):
+    __tablename__ = "resource_templates"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id  = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    provider      = Column(String(50), nullable=False)    # aws | azure
+    resource_type = Column(String(100), nullable=False)   # ec2 | s3 | rds | lambda | vpc | vm | storage | vnet | sql | app_service
+    name          = Column(String(255), nullable=False)
+    description   = Column(Text, nullable=True)
+    form_config   = Column(JSONB, nullable=False)          # serialized form state
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ── Enterprise Leads ──────────────────────────────────────────────────────────
+
+
+class EnterpriseLead(Base):
+    __tablename__ = "enterprise_leads"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    org_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True)
+    name       = Column(String(200), nullable=False)
+    email      = Column(String(200), nullable=False)
+    company    = Column(String(200), nullable=True)
+    phone      = Column(String(50), nullable=True)
+    message    = Column(Text, nullable=True)
+    status     = Column(String(30), nullable=False, default="new")  # new | contacted | converted | lost
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, nullable=True)
+
+    user = relationship("User", foreign_keys=[user_id])
+    org  = relationship("Organization", foreign_keys=[org_id])
+
+
+# ── Billing Records ───────────────────────────────────────────────────────────
+
+
+class BillingRecord(Base):
+    __tablename__ = "billing_records"
+    __table_args__ = (
+        Index("ix_billing_status_created", "status", "created_at"),
+        Index("ix_billing_client_period", "client_name", "period_ref"),
+    )
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    org_id              = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    client_name         = Column(String(255), nullable=False)           # e.g. "Advanced Informática LTDA"
+    client_email        = Column(String(255), nullable=True)            # for invoice emails; fallback to org owner
+    amount              = Column(Numeric(12, 2), nullable=False)         # in BRL or configured currency
+    period_type         = Column(String(10), nullable=False, default="monthly")  # monthly | annual
+    period_ref          = Column(String(20), nullable=False)            # e.g. "2026-03" or "2026"
+    due_date            = Column(DateTime, nullable=True)
+    paid_at             = Column(DateTime, nullable=True)
+    status              = Column(String(20), nullable=False, default="pending")  # pending | paid | overdue | cancelled
+    notes               = Column(Text, nullable=True)
+    description         = Column(Text, nullable=True)                   # client-facing details shown in invoice email
+    attachment_filename = Column(String(255), nullable=True)            # original uploaded filename
+    attachment_path     = Column(String(512), nullable=True)            # path on disk
+    created_by          = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    is_recurring      = Column(Boolean, nullable=False, default=False)
+    recurrence_months = Column(Integer, nullable=True)  # 1 | 3 | 6 | 12
+
+    payment_id        = Column(String(255), nullable=True)   # AbacatePay billing ID
+    payment_url       = Column(String(512), nullable=True)   # AbacatePay checkout URL
+
+    org            = relationship("Organization", foreign_keys=[org_id])
+    creator        = relationship("User", foreign_keys=[created_by])
+    status_history = relationship("BillingStatusHistory", back_populates="record",
+                                  cascade="all, delete-orphan",
+                                  order_by="BillingStatusHistory.changed_at")
+
+
+class BillingStatusHistory(Base):
+    __tablename__ = "billing_status_history"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    billing_id    = Column(UUID(as_uuid=True), ForeignKey("billing_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    old_status    = Column(String(20), nullable=True)
+    new_status    = Column(String(20), nullable=False)
+    changed_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    changed_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    notes         = Column(Text, nullable=True)
+
+    record     = relationship("BillingRecord", back_populates="status_history")
+    changed_by = relationship("User", foreign_keys=[changed_by_id])
+
+
+# ── Billing Config (singleton) ────────────────────────────────────────────────
+
+
+class BillingConfig(Base):
+    __tablename__ = "billing_config"
+
+    id                    = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    auto_generate_enabled = Column(Boolean, nullable=False, default=False)
+    default_amount        = Column(Numeric(12, 2), nullable=True)
+    default_due_day       = Column(Integer, nullable=False, default=10)
+    default_period_type   = Column(String(10), nullable=False, default="monthly")
+    reminder_days_before  = Column(Integer, nullable=False, default=3)
+    reminder_days_after   = Column(Integer, nullable=False, default=1)
+    auto_overdue_enabled  = Column(Boolean, nullable=False, default=True)
+    auto_overdue_days     = Column(Integer, nullable=False, default=1)
+    notes_template        = Column(Text, nullable=True)
+    updated_at            = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_by            = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+
+# ── Notification Channels ─────────────────────────────────────────────────────
+
+
+class NotificationChannel(Base):
+    __tablename__ = "notification_channels"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name         = Column(String(200), nullable=False)
+    channel_type = Column(String(20), nullable=False)            # teams | telegram
+    config       = Column(JSONB, nullable=False, default=dict)   # teams: {url}, telegram: {bot_token, chat_id}
+    events       = Column(JSONB, nullable=False, default=list)   # ["alert.triggered", ...]
+    is_active    = Column(Boolean, default=True, nullable=False)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at   = Column(DateTime, nullable=True)
+
+    workspace  = relationship("Workspace")
+    creator    = relationship("User", foreign_keys=[created_by])
+    deliveries = relationship("NotificationDelivery", back_populates="channel", cascade="all, delete-orphan")
+
+
+class NotificationDelivery(Base):
+    __tablename__ = "notification_deliveries"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    channel_id    = Column(UUID(as_uuid=True), ForeignKey("notification_channels.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type    = Column(String(100), nullable=False)
+    payload       = Column(JSONB, nullable=True)
+    status        = Column(String(20), nullable=False, default="pending")  # pending | delivered | failed
+    error_message = Column(Text, nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    channel = relationship("NotificationChannel", back_populates="deliveries")
+
+
+# ── Report Schedules ──────────────────────────────────────────────────────────
+
+
+class ReportSchedule(Base):
+    __tablename__ = "report_schedules"
+    __table_args__ = (UniqueConstraint("workspace_id", name="uq_report_schedule_workspace"),)
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name            = Column(String(200), nullable=False)
+    schedule_type   = Column(String(20), nullable=False)           # weekly | monthly
+    send_day        = Column(Integer, nullable=False)               # 0-6 (mon-sun) for weekly; 1-28 for monthly
+    send_time       = Column(String(5), nullable=False)            # HH:MM
+    timezone        = Column(String(64), nullable=False, default="America/Sao_Paulo")
+    recipients      = Column(JSONB, nullable=False, default=list)  # list of email strings
+    include_budgets = Column(Boolean, nullable=False, default=True)
+    include_finops  = Column(Boolean, nullable=False, default=True)
+    include_costs   = Column(Boolean, nullable=False, default=True)
+    is_enabled      = Column(Boolean, nullable=False, default=True)
+    last_run_at     = Column(DateTime(timezone=True), nullable=True)
+    last_run_status = Column(String(20), nullable=True)            # success | error
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    creator   = relationship("User", foreign_keys=[created_by])
+
+
+# ── Support Tickets ───────────────────────────────────────────────────────────
+
+
+class Ticket(Base):
+    __tablename__ = "tickets"
+
+    id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_number   = Column(Integer, nullable=True, index=True)            # TKT-001, auto from sequence
+    organization_id = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    workspace_id    = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True, index=True)
+    creator_id      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    title           = Column(String(255), nullable=False)
+    category        = Column(String(50), nullable=False, default="other")   # billing | technical | feature_request | other
+    priority        = Column(String(20), nullable=False, default="normal")  # low | normal | high | urgent
+    status          = Column(String(30), nullable=False, default="open", index=True)  # open | in_progress | waiting_client | resolved | closed
+    created_at      = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    resolved_at     = Column(DateTime, nullable=True)
+
+    # SLA / assignment / escalation
+    assigned_to              = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    sla_first_response_hours = Column(Integer, nullable=True)
+    sla_deadline             = Column(DateTime, nullable=True, index=True)
+    first_response_at        = Column(DateTime, nullable=True)
+    sla_breached             = Column(Boolean, nullable=False, default=False)
+    escalated_at             = Column(DateTime, nullable=True)
+    tags                     = Column(JSONB, nullable=True)
+    plan_at_creation         = Column(String(50), nullable=True)
+
+    organization = relationship("Organization")
+    workspace    = relationship("Workspace")
+    creator      = relationship("User", foreign_keys=[creator_id])
+    assignee     = relationship("User", foreign_keys=[assigned_to])
+    messages     = relationship("TicketMessage", back_populates="ticket", cascade="all, delete-orphan")
+    rating       = relationship("TicketRating", back_populates="ticket", uselist=False, cascade="all, delete-orphan")
+
+
+class TicketMessage(Base):
+    __tablename__ = "ticket_messages"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id   = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_id   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    content     = Column(Text, nullable=False)
+    is_internal = Column(Boolean, default=False, nullable=False)  # True = admin-only note
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    ticket = relationship("Ticket", back_populates="messages")
+    sender = relationship("User", foreign_keys=[sender_id])
+
+
+class SupportConfig(Base):
+    __tablename__ = "support_configs"
+
+    id                      = Column(Integer, primary_key=True, default=1)
+    inbox_email             = Column(String(255), nullable=True)
+    auto_reply_enabled      = Column(Boolean, nullable=False, default=True)
+    notify_on_new_ticket    = Column(Boolean, nullable=False, default=True)
+    notify_on_sla_risk      = Column(Boolean, nullable=False, default=True)
+    notify_on_escalation    = Column(Boolean, nullable=False, default=True)
+    business_hours_start    = Column(Integer, nullable=False, default=9)
+    business_hours_end      = Column(Integer, nullable=False, default=18)
+    business_days           = Column(String(20), nullable=False, default="1,2,3,4,5")
+    slack_webhook_url       = Column(String(500), nullable=True)
+    csat_enabled            = Column(Boolean, nullable=False, default=True)
+    updated_at              = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class SupportMacro(Base):
+    __tablename__ = "support_macros"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title      = Column(String(200), nullable=False)
+    category   = Column(String(50), nullable=True, index=True)
+    content    = Column(Text, nullable=False)
+    shortcut   = Column(String(50), nullable=True)
+    is_active  = Column(Boolean, nullable=False, default=True)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+
+    creator = relationship("User", foreign_keys=[created_by])
+
+
+class TicketRating(Base):
+    __tablename__ = "ticket_ratings"
+
+    id        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    ticket_id = Column(UUID(as_uuid=True), ForeignKey("tickets.id", ondelete="CASCADE"), nullable=False, unique=True)
+    rating    = Column(Integer, nullable=False)  # 1-5
+    comment   = Column(Text, nullable=True)
+    rated_by  = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    rated_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    ticket = relationship("Ticket", back_populates="rating")
+    rater  = relationship("User", foreign_keys=[rated_by])
+
+
+class BackgroundTask(Base):
+    __tablename__ = "background_tasks"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id      = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    type         = Column(String(80), nullable=False)          # e.g. azure_vm_create, azure_storage_create
+    label        = Column(String(255), nullable=False)         # human-readable: "Criar VM prod-web-01"
+    status       = Column(String(20), nullable=False, default="queued", index=True)  # queued | running | completed | failed
+    result       = Column(JSONB, nullable=True)
+    error        = Column(Text, nullable=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    updated_at   = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    user      = relationship("User", foreign_keys=[user_id])
+
+
+class WebhookEndpoint(Base):
+    __tablename__ = "webhook_endpoints"
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name         = Column(String(200), nullable=False)
+    url          = Column(String(500), nullable=False)
+    events       = Column(JSONB, nullable=False, default=list)
+    secret       = Column(String(100), nullable=False)
+    is_active    = Column(Boolean, nullable=False, default=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace  = relationship("Workspace")
+    creator    = relationship("User", foreign_keys=[created_by])
+    deliveries = relationship("WebhookDelivery", back_populates="endpoint", cascade="all, delete-orphan")
+
+
+class WebhookDelivery(Base):
+    __tablename__ = "webhook_deliveries"
+
+    id             = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    webhook_id     = Column(UUID(as_uuid=True), ForeignKey("webhook_endpoints.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type     = Column(String(100), nullable=False)
+    payload        = Column(JSONB, nullable=True)
+    status         = Column(String(20), nullable=False, default="pending")  # pending | delivered | failed | retrying
+    http_status    = Column(Integer, nullable=True)
+    response_body  = Column(Text, nullable=True)
+    attempt_count  = Column(Integer, nullable=False, default=1)
+    next_retry_at  = Column(DateTime, nullable=True)
+    delivered_at   = Column(DateTime, nullable=True)
+    created_at     = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    endpoint = relationship("WebhookEndpoint", back_populates="deliveries")
+
+
+# ── Migration365 ─────────────────────────────────────────────────────────────
+
+class MigrationProject(Base):
+    __tablename__ = "migration_projects"
+
+    id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id       = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    created_by         = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    name               = Column(String(255), nullable=False)
+    description        = Column(Text, nullable=True)
+    migration_type     = Column(String(50), nullable=False)  # google_workspace | tenant_to_tenant | imap | onedrive_to_onedrive | sharepoint_to_sharepoint | teams_chat
+    status             = Column(String(30), nullable=False, default="draft", index=True)  # draft | ready | running | paused | completed | failed
+    source_config      = Column(Text, nullable=True)   # Fernet-encrypted JSON
+    destination_config = Column(Text, nullable=True)   # Fernet-encrypted JSON
+    mailbox_count      = Column(Integer, nullable=False, default=0)
+    completed_count    = Column(Integer, nullable=False, default=0)
+    failed_count       = Column(Integer, nullable=False, default=0)
+    verified_count     = Column(Integer, nullable=False, default=0)
+    strip_mip_labels        = Column(Boolean, nullable=False, default=False)  # remove MIP/AIP sensitivity label headers during migration
+    preserve_sp_permissions = Column(Boolean, nullable=False, default=False)  # copy SharePoint item permissions to destination
+    migrate_inbox_rules     = Column(Boolean, nullable=False, default=False)  # copy inbox messageRules to destination tenant
+    started_at         = Column(DateTime, nullable=True)
+    completed_at       = Column(DateTime, nullable=True)
+    scheduled_at       = Column(DateTime, nullable=True)
+    created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    mailboxes = relationship("MigrationMailbox", back_populates="project", cascade="all, delete-orphan")
+    logs      = relationship("MigrationLog",     back_populates="project", cascade="all, delete-orphan")
+
+
+class MigrationMailbox(Base):
+    __tablename__ = "migration_mailboxes"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id        = Column(UUID(as_uuid=True), ForeignKey("migration_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_email      = Column(String(255), nullable=False)
+    destination_email = Column(String(255), nullable=True)
+    display_name      = Column(String(255), nullable=True)
+    object_type       = Column(String(20), nullable=False, default="email")  # email | onedrive | sharepoint
+    status            = Column(String(30), nullable=False, default="pending")  # pending | running | completed | failed | skipped
+    phase             = Column(String(20), nullable=True)  # initial | delta | verify | done
+    error_message     = Column(Text, nullable=True)
+    items_total       = Column(Integer, nullable=True)
+    items_migrated    = Column(Integer, nullable=False, default=0)
+    size_bytes        = Column(Integer, nullable=True)
+    started_at        = Column(DateTime, nullable=True)
+    completed_at      = Column(DateTime, nullable=True)
+    verified_at       = Column(DateTime, nullable=True)
+    verify_result     = Column(JSONB, nullable=True)  # {ok, missing_count, missing[]}
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    project     = relationship("MigrationProject", back_populates="mailboxes")
+    ledger      = relationship("MigrationMessageLedger", back_populates="mailbox", cascade="all, delete-orphan")
+    checkpoints = relationship("MigrationFolderCheckpoint", back_populates="mailbox", cascade="all, delete-orphan")
+
+
+class MigrationLog(Base):
+    __tablename__ = "migration_logs"
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    project_id = Column(UUID(as_uuid=True), ForeignKey("migration_projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    mailbox_id = Column(UUID(as_uuid=True), ForeignKey("migration_mailboxes.id", ondelete="SET NULL"), nullable=True)
+    level      = Column(String(20), nullable=False, default="info")  # info | warning | error
+    message    = Column(Text, nullable=False)
+    details    = Column(JSONB, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    project = relationship("MigrationProject", back_populates="logs")
+
+
+class MigrationMessageLedger(Base):
+    """Registro imutável de cada mensagem processada — append-only."""
+    __tablename__ = "migration_message_ledger"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mailbox_id        = Column(UUID(as_uuid=True), ForeignKey("migration_mailboxes.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_uid        = Column(String(500), nullable=False)     # IMAP UID / Graph Message ID / Gmail ID
+    source_folder     = Column(String(500), nullable=False)
+    message_id_header = Column(String(500), nullable=True)      # cabeçalho Message-ID do RFC 2822
+    content_hash      = Column(String(64), nullable=True)       # SHA-256 dos primeiros 4KB do MIME
+    dest_message_id   = Column(String(500), nullable=True)      # ID no Exchange Online após copiar
+    size_bytes        = Column(Integer, nullable=True)
+    status            = Column(String(20), nullable=False, default="copied")  # copied | verified | failed
+    error             = Column(Text, nullable=True)
+    copied_at         = Column(DateTime, nullable=True)
+    verified_at       = Column(DateTime, nullable=True)
+
+    mailbox = relationship("MigrationMailbox", back_populates="ledger")
+
+    __table_args__ = (
+        UniqueConstraint("mailbox_id", "source_folder", "source_uid", name="uq_ledger_uid"),
+        Index("ix_ledger_mailbox_status", "mailbox_id", "status"),
+        Index("ix_ledger_msg_id", "message_id_header"),
+    )
+
+
+class MigrationFolderCheckpoint(Base):
+    """Checkpoint por pasta — permite retomada sem reiniciar do zero."""
+    __tablename__ = "migration_folder_checkpoints"
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    mailbox_id       = Column(UUID(as_uuid=True), ForeignKey("migration_mailboxes.id", ondelete="CASCADE"), nullable=False, index=True)
+    folder_path      = Column(String(500), nullable=False)
+    last_uid         = Column(String(500), nullable=True)       # último UID processado nesta pasta
+    total_in_folder  = Column(Integer, nullable=True)
+    copied_count     = Column(Integer, nullable=False, default=0)
+    phase            = Column(String(20), nullable=False, default="initial")  # initial | delta | verify
+    completed        = Column(Boolean, nullable=False, default=False)
+    updated_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    mailbox = relationship("MigrationMailbox", back_populates="checkpoints")
+
+    __table_args__ = (
+        UniqueConstraint("mailbox_id", "folder_path", name="uq_checkpoint_folder"),
+    )
+
+
+class MigrationLicense(Base):
+    """Licenças avulsas de Migration365 — fluxo: pending → approved/rejected."""
+    __tablename__ = "migration_licenses"
+
+    id                  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id     = Column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
+    purchased_by        = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    status              = Column(String(20), nullable=False, default="pending")  # pending | approved | rejected
+    licenses_purchased  = Column(Integer, nullable=False, default=0)
+    licenses_used       = Column(Integer, nullable=False, default=0)
+    amount_cents        = Column(Integer, nullable=False, default=0)   # valor total em centavos
+    unit_price_cents    = Column(Integer, nullable=False, default=7000)  # R$ 70,00 por licença
+    is_active           = Column(Boolean, default=True, nullable=False)
+    notes               = Column(Text, nullable=True)                  # nota do solicitante
+    admin_notes         = Column(Text, nullable=True)                  # nota do admin ao aprovar/rejeitar
+    reviewed_by         = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at         = Column(DateTime, nullable=True)
+    created_at          = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+# ── Security Automation ───────────────────────────────────────────────────────
+
+
+class SecurityEvent(Base):
+    """Evento de segurança detectado por um collector (Defender, Entra, M365)."""
+    __tablename__ = "security_events"
+    __table_args__ = (
+        Index("ix_secevents_ws_status", "workspace_id", "status"),
+        Index("ix_secevents_ws_severity", "workspace_id", "severity"),
+    )
+
+    id           = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    source       = Column(String(50), nullable=False)     # defender | entra_risk | entra_signin | m365 | activity
+    severity     = Column(String(20), nullable=False)     # low | medium | high | critical
+    event_type   = Column(String(100), nullable=False)
+    title        = Column(String(500), nullable=False)
+    entity_type  = Column(String(50), nullable=True)      # user | vm | resource | subscription
+    entity_id    = Column(String(500), nullable=True)
+    details      = Column(JSONB, nullable=True)
+    detected_at  = Column(DateTime, nullable=True)
+    status       = Column(String(20), nullable=False, default="open")  # open | contained | dismissed | expired
+    dismissed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    dismissed_at = Column(DateTime, nullable=True)
+    created_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+    actions   = relationship("SecurityAction", back_populates="event", cascade="all, delete-orphan")
+
+
+class SecurityAction(Base):
+    """Ação de contenção executada — audit trail completo."""
+    __tablename__ = "security_actions"
+    __table_args__ = (
+        Index("ix_secactions_ws_executed", "workspace_id", "executed_at"),
+    )
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    event_id      = Column(UUID(as_uuid=True), ForeignKey("security_events.id", ondelete="SET NULL"), nullable=True, index=True)
+    workspace_id  = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    playbook_name = Column(String(100), nullable=True)
+    action_type   = Column(String(50), nullable=False)
+    auto_executed = Column(Boolean, nullable=False, default=False)
+    executed_by   = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    result        = Column(JSONB, nullable=True)
+    error_message = Column(Text, nullable=True)
+    executed_at   = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    event     = relationship("SecurityEvent", back_populates="actions")
+    workspace = relationship("Workspace")
+    executor  = relationship("User", foreign_keys=[executed_by])
+
+
+class SecurityPlaybook(Base):
+    """Playbook de detecção/resposta configurável por workspace."""
+    __tablename__ = "security_playbooks"
+    __table_args__ = (
+        UniqueConstraint("workspace_id", "name", name="uq_secplaybook_ws_name"),
+    )
+
+    id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id     = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True)
+    name             = Column(String(100), nullable=False)
+    description      = Column(Text, nullable=True)
+    sources          = Column(JSONB, nullable=False)            # ["defender_alerts", "entra_risk"]
+    severity_min     = Column(String(20), nullable=False, default="high")
+    actions          = Column(JSONB, nullable=False)            # ["notify", "block_user"]
+    auto_execute     = Column(Boolean, nullable=False, default=False)
+    cooldown_minutes = Column(Integer, nullable=False, default=30)
+    is_active        = Column(Boolean, nullable=False, default=True)
+    is_default       = Column(Boolean, nullable=False, default=False)
+    created_at       = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+
+
+class PartnerCenterConfig(Base):
+    """Credenciais Partner Center por workspace (CSP)."""
+    __tablename__ = "partner_center_configs"
+
+    id                       = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id             = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, unique=True)
+    partner_tenant_id        = Column(String(255), nullable=False)
+    encrypted_credentials    = Column(Text, nullable=False)          # Fernet: {client_id, client_secret}
+    gdap_security_group_id   = Column(String(255), nullable=True)
+    created_at               = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at               = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    workspace = relationship("Workspace")
+
+
+class IncidentResponse(Base):
+    """Execução de template de resposta a incidente — requer aprovação."""
+    __tablename__ = "incident_responses"
+    __table_args__ = (
+        Index("ix_ir_ws_status", "workspace_id", "status"),
+    )
+
+    id                        = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    workspace_id              = Column(UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False)
+    title                     = Column(String(500), nullable=False)
+    template_type             = Column(String(50), nullable=False)    # containment | containment_with_suspend
+    target_subscription_id    = Column(String(255), nullable=True)
+    target_customer_tenant_id = Column(String(255), nullable=True)
+    target_resource_ids       = Column(JSONB, nullable=True)          # lista de resource IDs Azure afetados
+    affected_users            = Column(JSONB, nullable=True)          # lista de UPNs/user IDs
+    status                    = Column(String(30), nullable=False, default="pending_approval")
+    # pending_approval | approved | running | completed | failed | cancelled
+    triggered_by              = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    approved_by               = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    started_at                = Column(DateTime, nullable=True)
+    completed_at              = Column(DateTime, nullable=True)
+    steps                     = Column(JSONB, nullable=True)          # [{name, status, result, executed_at, error}]
+    notes                     = Column(Text, nullable=True)
+    created_at                = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    workspace    = relationship("Workspace")
+    requester    = relationship("User", foreign_keys=[triggered_by])
+    approver     = relationship("User", foreign_keys=[approved_by])
+
+
+# ── Knowledge Base (help center) ────────────────────────────────────────────
+
+
+class KBCategory(Base):
+    __tablename__ = "kb_categories"
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name        = Column(String(120), nullable=False)
+    slug        = Column(String(120), unique=True, nullable=False, index=True)
+    icon        = Column(String(40), nullable=True)   # Lucide icon name
+    description = Column(Text, nullable=True)
+    order       = Column(Integer, nullable=False, default=0)
+    created_at  = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    articles = relationship("KBArticle", back_populates="category", cascade="all, delete-orphan")
+
+
+class KBArticle(Base):
+    __tablename__ = "kb_articles"
+    __table_args__ = (
+        Index("ix_kb_articles_category_order", "category_id", "order"),
+    )
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    category_id   = Column(UUID(as_uuid=True), ForeignKey("kb_categories.id", ondelete="CASCADE"), nullable=False, index=True)
+    title         = Column(String(200), nullable=False)
+    slug          = Column(String(200), unique=True, nullable=False, index=True)
+    summary       = Column(String(400), nullable=True)
+    content       = Column(Text, nullable=False, default="")
+    order         = Column(Integer, nullable=False, default=0)
+    is_published  = Column(Boolean, nullable=False, default=True)
+    created_by_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    category = relationship("KBCategory", back_populates="articles")
+    videos   = relationship("KBArticleVideo", back_populates="article", cascade="all, delete-orphan", order_by="KBArticleVideo.order")
+    author   = relationship("User", foreign_keys=[created_by_id])
+
+
+class KBArticleVideo(Base):
+    __tablename__ = "kb_article_videos"
+
+    id                = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    article_id        = Column(UUID(as_uuid=True), ForeignKey("kb_articles.id", ondelete="CASCADE"), nullable=False, index=True)
+    title             = Column(String(200), nullable=True)
+    s3_key            = Column(String(500), nullable=False)
+    content_type      = Column(String(80), nullable=True)
+    size_bytes        = Column(Integer, nullable=True)
+    duration_seconds  = Column(Integer, nullable=True)
+    thumbnail_s3_key  = Column(String(500), nullable=True)
+    order             = Column(Integer, nullable=False, default=0)
+    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    article = relationship("KBArticle", back_populates="videos")

@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Globe, Play, Square, Plus, Trash2 } from 'lucide-react';
+import { useToast } from '../../contexts/ToastContext';
+import { useBackgroundTasks } from '../../contexts/BackgroundTasksContext';
 import { useSearchParams } from 'react-router-dom';
 import Layout from '../../components/layout/layout';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import BatchActionBar from '../../components/common/BatchActionBar';
@@ -13,10 +16,14 @@ import CreateAzureAppServiceForm from '../../components/create/CreateAzureAppSer
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import azureService from '../../services/azureservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { name: '', resource_group: '', location: '', runtime: 'PYTHON|3.11', plan_name: '', plan_sku: 'B1', always_on: false, tags: {}, tags_list: [] };
 
 const AzureAppServices = () => {
+  const { toast } = useToast();
+  const { addTask } = useBackgroundTasks();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
@@ -27,6 +34,8 @@ const AzureAppServices = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [stopTarget, setStopTarget] = useState(null);
+  const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -36,6 +45,7 @@ const AzureAppServices = () => {
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [batchErrors, setBatchErrors] = useState([]);
+  const [detailTarget, setDetailTarget] = useState(null);
 
   const fetchData = async (isRefresh = false) => {
     try {
@@ -57,21 +67,28 @@ const AzureAppServices = () => {
     try {
       setRefreshing(true);
       await azureService.startAppService(rg, name);
+      toast.success(`App Service "${name}" iniciado.`);
       await fetchData(true);
     } catch (err) {
-      setError(`Erro ao iniciar App Service: ${err.message}`);
+      toast.error(`Erro ao iniciar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
       setRefreshing(false);
     }
   };
 
-  const handleStop = async (rg, name) => {
+  const handleStop = (app) => setStopTarget(app);
+
+  const confirmStop = async () => {
+    if (!stopTarget) return;
+    const { resource_group: rg, name } = stopTarget;
+    setStopTarget(null);
     try {
       setRefreshing(true);
       await azureService.stopAppService(rg, name);
+      toast.success(`App Service "${name}" parado.`);
       await fetchData(true);
     } catch (err) {
-      setError(`Erro ao parar App Service: ${err.message}`);
+      toast.error(`Erro ao parar "${name}": ${err.response?.data?.detail || err.message}`);
     } finally {
       setRefreshing(false);
     }
@@ -81,9 +98,16 @@ const AzureAppServices = () => {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await azureService.deleteAppService(deleteTarget.resource_group, deleteTarget.name);
+      const result = await azureService.deleteAppService(deleteTarget.resource_group, deleteTarget.name);
+      if (result?.task_id) {
+        addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_appservice_delete' });
+        toast.info(`Exclusão de "${deleteTarget.name}" em andamento em background.`);
+        setApps(prev => prev.filter(a => a.name !== deleteTarget.name));
+      } else {
+        toast.success(`App Service "${deleteTarget.name}" excluído.`);
+        fetchData(true);
+      }
       setDeleteTarget(null);
-      fetchData(true);
     } catch (err) {
       setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir App Service');
     } finally {
@@ -124,7 +148,7 @@ const AzureAppServices = () => {
     fetchData(true);
   };
 
-  const filtered = query
+  const filtered = loading ? [] : query
     ? apps.filter(a =>
         a.name?.toLowerCase().includes(query) ||
         a.resource_group?.toLowerCase().includes(query) ||
@@ -156,7 +180,6 @@ const AzureAppServices = () => {
     setBatchDeleteOpen(false);
   };
 
-  if (loading) return <Layout><LoadingSpinner text="Carregando App Services..." /></Layout>;
   if (noCredentials) return <Layout><NoCredentialsMessage provider="azure" /></Layout>;
 
   return (
@@ -165,7 +188,7 @@ const AzureAppServices = () => {
         <div>
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-1">App Services</h1>
           <p className="text-gray-600 dark:text-gray-400">
-            {filtered.length} de {apps.length} app(s){query && ` para "${query}"`}
+            {loading ? 'Carregando...' : `${filtered.length} de ${apps.length} app(s)${query ? ` para "${query}"` : ''}`}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -192,11 +215,24 @@ const AzureAppServices = () => {
       )}
 
       <div className="card overflow-hidden p-0">
-        {filtered.length === 0 ? (
-          <div className="text-center py-12">
-            <Globe className="w-10 h-10 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
-            <p className="text-gray-500 dark:text-gray-400">Nenhum App Service encontrado</p>
-          </div>
+        {loading ? (
+          <SkeletonTable columns={7} rows={5} hasCheckbox />
+        ) : filtered.length === 0 ? (
+          <EmptyState
+            icon={Globe}
+            title="Nenhum App Service"
+            description="Crie seu primeiro App Service para hospedar aplicações web na Azure."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar App Service
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
@@ -218,8 +254,8 @@ const AzureAppServices = () => {
               </thead>
               <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                 {filtered.map(app => (
-                  <tr key={app.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                    <td className="px-3 py-4">
+                  <tr key={app.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(app)}>
+                    <td className="px-3 py-4" onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedIds.has(app.id)}
@@ -249,7 +285,7 @@ const AzureAppServices = () => {
                           : 'bg-red-100 text-red-700 dark:bg-red-800 dark:text-red-100'
                       }`}>{app.state || '—'}</span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <div className="flex gap-2">
                         <PermissionGate permission="resources.start_stop">
                           {app.state !== 'Running' && (
@@ -259,7 +295,7 @@ const AzureAppServices = () => {
                             </button>
                           )}
                           {app.state === 'Running' && (
-                            <button onClick={() => handleStop(app.resource_group, app.name)} disabled={refreshing}
+                            <button onClick={() => handleStop(app)} disabled={refreshing}
                               className="text-danger hover:text-danger-dark disabled:opacity-50" title="Parar">
                               <Square className="w-5 h-5" />
                             </button>
@@ -288,14 +324,26 @@ const AzureAppServices = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createApp(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar App Service"
         isLoading={creating}
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="azure-app-service" form={form} />}
+        templateBar={<TemplateBar provider="azure" resourceType="app_service" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
-        <CreateAzureAppServiceForm form={form} setForm={setForm} />
+        <CreateAzureAppServiceForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
+
+      <ConfirmDeleteModal
+        isOpen={!!stopTarget}
+        onClose={() => setStopTarget(null)}
+        onConfirm={confirmStop}
+        title="Parar App Service"
+        description={`Tem certeza que deseja parar "${stopTarget?.name}"? O app ficará offline.`}
+        confirmLabel="Parar"
+        variant="warning"
+      />
 
       <ConfirmDeleteModal
         isOpen={!!deleteTarget}
@@ -327,6 +375,39 @@ const AzureAppServices = () => {
         resources={selectedApps.map(a => ({ id: a.id, name: a.name }))}
         isLoading={batchLoading}
         errors={batchErrors}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="App Service"
+        statusText={detailTarget?.state}
+        statusColor={detailTarget?.state === 'Running' ? 'green' : 'red'}
+        queryKey={['azure-app-detail', detailTarget?.resource_group, detailTarget?.name]}
+        queryFn={detailTarget ? () => azureService.getAppServiceDetail(detailTarget.resource_group, detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Resource Group', value: detailTarget?.resource_group },
+            { label: 'Localização', value: detailTarget?.location },
+            { label: 'Runtime', value: detailTarget?.runtime || detail?.runtime },
+            { label: 'Plano', value: detailTarget?.app_service_plan },
+            { label: 'Estado', value: detailTarget?.state },
+          ]},
+          { title: 'URLs', fields: [
+            { label: 'Host Padrão', value: detail?.default_host_name, mono: true },
+            { label: 'IPs de Saída', value: detail?.outbound_ip_addresses },
+            { label: 'Domínios Customizados', value: detail?.custom_domains?.join(', ') || '—' },
+          ]},
+          { title: 'Configuração', fields: [
+            { label: 'Always On', value: detail?.always_on != null ? (detail.always_on ? 'Ativado' : 'Desativado') : undefined },
+            { label: 'HTTPS Only', value: detail?.https_only != null ? (detail.https_only ? 'Sim' : 'Não') : undefined },
+            { label: 'TLS Mínimo', value: detail?.min_tls_version },
+            { label: 'FTPS State', value: detail?.ftps_state },
+            { label: 'HTTP/2', value: detail?.http20_enabled != null ? (detail.http20_enabled ? 'Ativado' : 'Desativado') : undefined },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

@@ -36,7 +36,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
   const inputRef = useRef(null);
   const listRef = useRef(null);
   const navigate = useNavigate();
-  const { currentOrg, workspaces, currentWorkspace } = useOrgWorkspace();
+  const { currentOrg, workspaces, currentWorkspace, switchWorkspace } = useOrgWorkspace();
   const slug = currentOrg?.slug;
   const wsId = currentWorkspace?.id;
 
@@ -75,10 +75,11 @@ const CommandPalette = ({ isOpen, onClose }) => {
       items.push({
         id: `ws-${ws.id}`,
         label: ws.name,
-        sublabel: ws.slug,
-        path: '/workspace/settings',
+        sublabel: ws.id === currentWorkspace?.id ? `${ws.slug} — ativo` : ws.slug,
+        path: '/',
         icon: Layers,
         category: 'Workspaces',
+        action: () => switchWorkspace(ws.id),
       });
     });
 
@@ -94,7 +95,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
     });
 
     return items;
-  }, [members, workspaces, accounts]);
+  }, [members, workspaces, accounts, currentWorkspace, switchWorkspace]);
 
   const filteredItems = useMemo(() => {
     if (!query.trim()) return allItems;
@@ -139,6 +140,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
         e.preventDefault();
         const item = filteredItems[selectedIndex];
         if (item) {
+          if (item.action) item.action();
           navigate(item.path);
           onClose();
         }
@@ -209,6 +211,7 @@ const CommandPalette = ({ isOpen, onClose }) => {
                       key={item.id}
                       data-index={idx}
                       onClick={() => {
+                        if (item.action) item.action();
                         navigate(item.path);
                         onClose();
                       }}

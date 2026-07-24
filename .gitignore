@@ -4,6 +4,13 @@ __pycache__/
 *$py.class
 *.so
 .Python
+
+# Test artifacts
+backend/test.db
+backend/_results.txt
+backend/_fails.txt
+.pytest_cache/
+.venv/
 env/
 venv/
 ENV/
@@ -47,7 +54,10 @@ build/
 .env.*.local
 *.key
 *.pem
-PROJETO.md
+# Documentation / internal .md files (keep README.md tracked)
+*.md
+!README.md
+docs/
 
 # Docker
 .dockerignore
@@ -74,3 +84,8 @@ tutorialgdap.md
 ONBOARDING.md
 APRESENTACAO_PARCEIROS_ENTERPRISE.md
 settings.local.json
+docker-compose.yml
+.env.example
+
+# Pentest internal docs (não versionar — relatórios contêm contexto sensível)
+implementação pentest/

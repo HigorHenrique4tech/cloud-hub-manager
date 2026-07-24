@@ -1,0 +1,1230 @@
+"""Tenant-to-Tenant engine — M365 Graph API → M365 Graph API.
+
+Import via EWS CreateItem (preferencial) ou Graph API como fallback.
+EWS CreateItem com MessageDisposition="SaveOnly" insere mensagens sem o
+bit MSGFLAG_UNSENT, eliminando o problema de rascunho no Outlook.
+Requer permissão 'full_access_as_app' (Exchange Online) com admin consent.
+"""
+import base64
+import email as email_lib
+from email import generator as email_generator
+import hashlib
+import io
+import logging
+import re as _re
+from urllib.parse import quote
+from xml.sax.saxutils import escape as _xml_escape
+
+import requests
+
+from .base import MigrationEngine, ProgressCallback, BATCH_SIZE
+
+logger = logging.getLogger(__name__)
+GRAPH_V1 = "https://graph.microsoft.com/v1.0"
+
+# Pastas de sistema que não devem ser migradas.
+# Resolvidas via endpoints well-known do Graph (/mailFolders/{wkn}) para obter
+# os IDs reais e filtrar — independente de idioma. wellKnownName como propriedade
+# não existe em v1.0 (só beta), então não dá para usar em $select.
+SYSTEM_WELL_KNOWN_NAMES = [
+    "deleteditems",
+    "drafts",
+    "junkemail",
+    "outbox",
+    "recoverableitemsdeletions",
+    "recoverableitemspurges",
+    "recoverableitemsversions",
+    "syncissues",
+    "conversationhistory",
+    "conflicts",
+    "localfailures",
+    "serverfailures",
+]
+# Fallback por displayName (se o GET por wkn falhar em algum tenant).
+SYSTEM_FOLDER_NAMES = {
+    "deleted items", "drafts", "junk email", "outbox",
+    "recoverable items", "sync issues", "conversation history",
+    "conflicts", "local failures", "server failures",
+    "itens excluídos", "rascunhos", "lixo eletrônico", "caixa de saída",
+    "itens recuperáveis", "problemas de sincronização",
+    "histórico de conversas",
+}
+
+
+class TenantToTenantEngine(MigrationEngine):
+    """
+    Fonte: tenant M365 de origem (app registration com Mail.Read).
+    Destino: tenant M365 de destino (app registration com Mail.ReadWrite).
+    Usa Graph API em ambos os lados.
+    """
+
+    # ── Auth / headers ────────────────────────────────────────────────────────
+
+    def _get_token(self, tenant_id: str, client_id: str, client_secret: str) -> str:
+        url = f"https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token"
+        resp = requests.post(url, data={
+            "grant_type": "client_credentials",
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "scope": "https://graph.microsoft.com/.default",
+        }, timeout=30)
+        if not resp.ok:
+            # Extrai error/error_description da resposta OAuth para diagnóstico claro
+            try:
+                data = resp.json()
+                code = data.get("error", "")
+                desc = data.get("error_description", "")[:300]
+                raise Exception(
+                    f"OAuth {resp.status_code} [{code}] tenant={tenant_id[:8]}...: {desc}"
+                )
+            except (ValueError, KeyError):
+                raise Exception(
+                    f"OAuth {resp.status_code} tenant={tenant_id[:8]}...: {resp.text[:200]}"
+                )
+        return resp.json()["access_token"]
+
+    def _src_headers(self) -> dict:
+        token = self._get_token(
+            self.source_cfg["tenant_id"],
+            self.source_cfg["client_id"],
+            self.source_cfg["client_secret"],
+        )
+        src_user = self.source_cfg.get("src_user_id") or (self.mailbox.source_email if self.mailbox else "")
+        return {
+            "Authorization": f"Bearer {token}",
+            "X-AnchorMailbox": src_user,
+        }
+
+    def _dst_headers(self) -> dict:
+        token = self._get_token(
+            self.dest_cfg["tenant_id"],
+            self.dest_cfg["client_id"],
+            self.dest_cfg["client_secret"],
+        )
+        dest_user = self.dest_cfg.get("dest_user_id") or (self.mailbox.destination_email if self.mailbox else "")
+        return {
+            "Authorization": f"Bearer {token}",
+            "X-AnchorMailbox": dest_user,
+        }
+
+    @staticmethod
+    def _enc_user(user_id: str) -> str:
+        """URL-encode de UPN para segmento de path."""
+        return quote(user_id or "", safe="@.")
+
+    # ── EWS CreateItem — método primário de importação ───────────────────────
+    # EWS CreateItem com MessageDisposition="SaveOnly" insere a mensagem
+    # diretamente na pasta com IsRead=true, sem o bit MSGFLAG_UNSENT.
+    # É o método usado por ferramentas de migração profissionais (AvePoint, etc.)
+    # quando operam via EWS.
+    #
+    # Requer no App Registration do tenant DESTINO:
+    #   Office 365 Exchange Online → full_access_as_app  (Application, admin consent)
+    # NÃO requer PowerShell de Exchange Online — apenas admin consent do Azure AD.
+
+    # Pastas well-known do Exchange → DistinguishedFolderId EWS
+    _EWS_DISTINGUISHED: dict = {
+        "inbox":             "inbox",
+        "caixa de entrada":  "inbox",
+        "sent items":        "sentitems",
+        "itens enviados":    "sentitems",
+        "archive":           "archive",
+        "arquivo morto":     "archive",
+        "deleted items":     "deleteditems",
+        "itens excluídos":   "deleteditems",
+        "junk email":        "junkemail",
+        "lixo eletrônico":   "junkemail",
+        "outbox":            "outbox",
+        "caixa de saída":    "outbox",
+    }
+
+    def _get_exchange_token(self) -> str:
+        """OAuth token com escopo outlook.office365.com (EWS)."""
+        url = f"https://login.microsoftonline.com/{self.dest_cfg['tenant_id']}/oauth2/v2.0/token"
+        resp = requests.post(url, data={
+            "grant_type": "client_credentials",
+            "client_id": self.dest_cfg["client_id"],
+            "client_secret": self.dest_cfg["client_secret"],
+            "scope": "https://outlook.office365.com/.default",
+        }, timeout=30)
+        resp.raise_for_status()
+        return resp.json()["access_token"]
+
+    def _ews_post(self, dest_user: str, soap: str, token: str, timeout: int = 60) -> requests.Response:
+        """Envia requisição SOAP para EWS com ExchangeImpersonation."""
+        return requests.post(
+            "https://outlook.office365.com/EWS/Exchange.asmx",
+            data=soap.encode("utf-8"),
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "text/xml; charset=utf-8",
+                "X-AnchorMailbox": dest_user,
+            },
+            timeout=timeout,
+        )
+
+    def _ews_impersonation_header(self, dest_user: str) -> str:
+        return (
+            "<t:ExchangeImpersonation>"
+            f"<t:ConnectingSID><t:PrimarySmtpAddress>{_xml_escape(dest_user)}</t:PrimarySmtpAddress></t:ConnectingSID>"
+            "</t:ExchangeImpersonation>"
+        )
+
+    def _ews_envelope(self, dest_user: str, body: str) -> str:
+        return (
+            '<?xml version="1.0" encoding="utf-8"?>'
+            '<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"'
+            ' xmlns:t="http://schemas.microsoft.com/exchange/services/2006/types"'
+            ' xmlns:m="http://schemas.microsoft.com/exchange/services/2006/messages">'
+            "<soap:Header>"
+            '<t:RequestServerVersion Version="Exchange2016" />'
+            f"{self._ews_impersonation_header(dest_user)}"
+            "</soap:Header>"
+            f"<soap:Body>{body}</soap:Body>"
+            "</soap:Envelope>"
+        )
+
+    def _ews_resolve_folder(self, dest_user: str, folder_name: str, token: str) -> str:
+        """
+        Retorna XML do SavedItemFolderId para usar em CreateItem.
+        Tenta: DistinguishedFolderId → FindFolder → CreateFolder → fallback inbox.
+        Resultado em cache por pasta (self._ews_folder_cache).
+        """
+        if not hasattr(self, "_ews_folder_cache"):
+            self._ews_folder_cache: dict = {}
+
+        cache_key = folder_name.lower()
+        if cache_key in self._ews_folder_cache:
+            return self._ews_folder_cache[cache_key]
+
+        # 1) Pasta well-known
+        wk = self._EWS_DISTINGUISHED.get(cache_key)
+        if wk:
+            xml = f'<t:DistinguishedFolderId Id="{wk}" />'
+            self._ews_folder_cache[cache_key] = xml
+            return xml
+
+        # 2) FindFolder por displayName
+        name_esc = _xml_escape(folder_name)
+        find_body = (
+            f'<m:FindFolder Traversal="Deep">'
+            "<m:FolderShape>"
+            "<t:BaseShape>IdOnly</t:BaseShape>"
+            "<t:AdditionalProperties><t:FieldURI FieldURI=\"folder:DisplayName\"/></t:AdditionalProperties>"
+            "</m:FolderShape>"
+            "<m:Restriction>"
+            "<t:IsEqualTo>"
+            '<t:FieldURI FieldURI="folder:DisplayName"/>'
+            f"<t:FieldURIOrConstant><t:Constant Value=\"{name_esc}\"/></t:FieldURIOrConstant>"
+            "</t:IsEqualTo>"
+            "</m:Restriction>"
+            "<m:ParentFolderIds><t:DistinguishedFolderId Id=\"msgfolderroot\" /></m:ParentFolderIds>"
+            "</m:FindFolder>"
+        )
+        try:
+            r = self._ews_post(dest_user, self._ews_envelope(dest_user, find_body), token, timeout=20)
+            if r.ok:
+                m = _re.search(r'<t:FolderId Id="([^"]+)" ChangeKey="([^"]+)"', r.text)
+                if m:
+                    xml = f'<t:FolderId Id="{_xml_escape(m.group(1))}" ChangeKey="{_xml_escape(m.group(2))}" />'
+                    self._ews_folder_cache[cache_key] = xml
+                    return xml
+        except Exception as exc:
+            logger.debug(f"EWS FindFolder '{folder_name}': {exc}")
+
+        # 3) Criar pasta
+        create_body = (
+            "<m:CreateFolder>"
+            "<m:ParentFolderId><t:DistinguishedFolderId Id=\"msgfolderroot\" /></m:ParentFolderId>"
+            "<m:Folders>"
+            f"<t:Folder><t:DisplayName>{name_esc}</t:DisplayName></t:Folder>"
+            "</m:Folders>"
+            "</m:CreateFolder>"
+        )
+        try:
+            r2 = self._ews_post(dest_user, self._ews_envelope(dest_user, create_body), token, timeout=20)
+            if r2.ok:
+                m2 = _re.search(r'<t:FolderId Id="([^"]+)" ChangeKey="([^"]+)"', r2.text)
+                if m2:
+                    xml = f'<t:FolderId Id="{_xml_escape(m2.group(1))}" ChangeKey="{_xml_escape(m2.group(2))}" />'
+                    self._ews_folder_cache[cache_key] = xml
+                    return xml
+        except Exception as exc:
+            logger.debug(f"EWS CreateFolder '{folder_name}': {exc}")
+
+        # 4) Fallback: inbox
+        logger.warning(f"EWS: pasta '{folder_name}' não resolvida para {dest_user} — usando inbox")
+        xml = '<t:DistinguishedFolderId Id="inbox" />'
+        self._ews_folder_cache[cache_key] = xml
+        return xml
+
+    def _ews_clear_draft_flag(
+        self,
+        dest_user: str,
+        item_id: str,
+        change_key: str,
+        token: str,
+    ) -> None:
+        """
+        Força PR_MESSAGE_FLAGS=1 via UpdateItem, zerando MSGFLAG_UNSENT.
+        Usa o ItemId retornado pelo próprio CreateItem (sem conversão de ID).
+        ConflictResolution=AlwaysOverwrite ignora ChangeKey stale.
+        """
+        body = (
+            '<m:UpdateItem MessageDisposition="SaveOnly" ConflictResolution="AlwaysOverwrite">'
+            "<m:ItemChanges><t:ItemChange>"
+            f'<t:ItemId Id="{_xml_escape(item_id)}" ChangeKey="{_xml_escape(change_key)}" />'
+            "<t:Updates>"
+            "<t:SetItemField>"
+            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
+            "<t:Message><t:ExtendedProperty>"
+            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
+            "<t:Value>1</t:Value>"
+            "</t:ExtendedProperty></t:Message>"
+            "</t:SetItemField>"
+            "</t:Updates>"
+            "</t:ItemChange></m:ItemChanges>"
+            "</m:UpdateItem>"
+        )
+        try:
+            r = self._ews_post(dest_user, self._ews_envelope(dest_user, body), token, timeout=30)
+            if r.status_code != 200 or 'ResponseClass="Success"' not in r.text:
+                msg_m = _re.search(r"<m:MessageText>([^<]+)</m:MessageText>", r.text)
+                logger.debug(
+                    f"EWS clear_draft_flag: {msg_m.group(1) if msg_m else r.text[:200]}"
+                )
+        except Exception as exc:
+            logger.debug(f"EWS clear_draft_flag exc: {exc}")
+
+    def _ews_create_item(
+        self,
+        dest_user: str,
+        folder_name: str,
+        mime_bytes: bytes,
+        token: str,
+    ) -> bool:
+        """
+        Importa mensagem via EWS CreateItem + UpdateItem.
+
+        Passo 1 — CreateItem com MimeContent + PR_MESSAGE_FLAGS=1 na criação.
+          MessageDisposition="SaveOnly" cria o item na pasta alvo, mas Exchange
+          ainda seta MSGFLAG_UNSENT internamente ao processar MimeContent.
+
+        Passo 2 — UpdateItem imediato com o ItemId retornado pelo CreateItem.
+          Zeramos MSGFLAG_UNSENT via SetItemField em PR_MESSAGE_FLAGS usando o
+          ItemId fresco (sem necessidade de ConvertId ou FindItem).
+        """
+        folder_xml = self._ews_resolve_folder(dest_user, folder_name, token)
+        mime_b64 = base64.b64encode(mime_bytes).decode("ascii")
+
+        body = (
+            '<m:CreateItem MessageDisposition="SaveOnly">'
+            f"<m:SavedItemFolderId>{folder_xml}</m:SavedItemFolderId>"
+            "<m:Items>"
+            "<t:Message>"
+            f'<t:MimeContent CharacterSet="UTF-8">{mime_b64}</t:MimeContent>'
+            "<t:IsRead>true</t:IsRead>"
+            # Tenta setar PR_MESSAGE_FLAGS já na criação (Exchange pode ignorar,
+            # mas reduz o janela de tempo em que o item aparece como rascunho)
+            "<t:ExtendedProperty>"
+            '<t:ExtendedFieldURI PropertyTag="0x0E07" PropertyType="Integer" />'
+            "<t:Value>1</t:Value>"
+            "</t:ExtendedProperty>"
+            "</t:Message>"
+            "</m:Items>"
+            "</m:CreateItem>"
+        )
+
+        r = self._ews_post(dest_user, self._ews_envelope(dest_user, body), token, timeout=120)
+
+        if r.status_code == 200 and 'ResponseClass="Success"' in r.text:
+            # Extrair ItemId do CreateItem para UpdateItem imediato
+            m = _re.search(r'<t:ItemId Id="([^"]+)" ChangeKey="([^"]+)"', r.text)
+            if m:
+                self._ews_clear_draft_flag(dest_user, m.group(1), m.group(2), token)
+            else:
+                logger.debug("EWS CreateItem: ItemId não encontrado na resposta para clear_draft_flag")
+            return True
+
+        msg_m = _re.search(r"<m:MessageText>([^<]+)</m:MessageText>", r.text)
+        err_text = msg_m.group(1) if msg_m else r.text[:300]
+        raise Exception(f"EWS CreateItem HTTP {r.status_code}: {err_text}")
+
+    # ── MIP label stripping ───────────────────────────────────────────────────
+
+    # Headers that carry Microsoft Information Protection (MIP/AIP) sensitivity
+    # labels. Removing them prevents "orphan label" errors when the destination
+    # tenant has different label policies.
+    _MIP_HEADERS = frozenset({
+        "msip_labels",
+        "x-protecting-labels",
+        "x-microsoft-msip-policy-revision",
+    })
+
+    @staticmethod
+    def _strip_mip_headers(raw_bytes: bytes) -> bytes:
+        """Return MIME bytes with MIP sensitivity label headers removed."""
+        msg = email_lib.message_from_bytes(raw_bytes)
+        for header_name in list(msg.keys()):
+            if header_name.lower() in TenantToTenantEngine._MIP_HEADERS:
+                del msg[header_name]
+        buf = io.BytesIO()
+        gen = email_generator.BytesGenerator(buf, mangle_from_=False)
+        gen.flatten(msg)
+        return buf.getvalue()
+
+    # ── Download MIME (fonte) ─────────────────────────────────────────────────
+
+    def _get_mime(self, user_id: str, msg_id: str, headers: dict) -> bytes:
+        """Baixa mensagem em formato MIME bruto."""
+        url = (
+            f"{GRAPH_V1}/users/{self._enc_user(user_id)}"
+            f"/messages/{quote(msg_id, safe='')}/$value"
+        )
+
+        def do():
+            r = requests.get(url, headers=headers, timeout=120)
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            r.raise_for_status()
+            return r.content
+
+        return self.retry_on_throttle(do)
+
+    # ── Import MIME (destino) ─────────────────────────────────────────────────
+
+    def _import_message(
+        self,
+        dest_user: str,
+        raw_mime_bytes: bytes,
+        dst_hdrs: dict,
+        dest_folder_id: str,
+        folder_name: str = "",
+    ) -> str:
+        """
+        Importa mensagem com preservação completa de flags.
+
+        Estratégia primária — EWS CreateItem (sem rascunho):
+          SOAP CreateItem com MessageDisposition="SaveOnly" + IsRead=true.
+          Requer full_access_as_app (Exchange Online) com admin consent.
+          Retorna ID sintético "ews:<hash>" — dedup é feito pelo Message-ID header.
+
+        Fallback — Graph POST + MOVE (cria rascunho, inevitável via Graph):
+          Passo 1: POST base64(MIME) em /users/{id}/messages → vai para Drafts.
+          Passo 2: POST /messages/{id}/move → pasta alvo, retorna novo ID.
+          Passo 3: PATCH PR_MESSAGE_FLAGS=1 (best-effort, Exchange ignora às vezes).
+        """
+        # ── Método primário: EWS CreateItem ──────────────────────────────────
+        # Tentamos EWS na primeira mensagem de cada mailbox. Se funcionar,
+        # usamos EWS para todas as mensagens desse mailbox. Se falhar, usamos
+        # Graph API como fallback (com aviso sobre rascunho).
+        ews_available = getattr(self, "_ews_available", None)  # None = ainda não testado
+
+        if folder_name and ews_available is not False:
+            try:
+                # Token EWS em cache por mailbox (evita roundtrip OAuth por msg)
+                if not getattr(self, "_ews_token_cache", None):
+                    self._ews_token_cache = self._get_exchange_token()
+
+                ok = self._ews_create_item(dest_user, folder_name, raw_mime_bytes, self._ews_token_cache)
+                if ok:
+                    if ews_available is None:
+                        self.add_log(
+                            "✓ EWS CreateItem ativo — emails importados sem status de rascunho.",
+                            "info",
+                        )
+                        self._ews_available = True
+                    digest = hashlib.sha256(raw_mime_bytes[:512]).hexdigest()[:20]
+                    return f"ews:{digest}"
+            except Exception as exc:
+                if ews_available is None:
+                    self._ews_available = False
+                    self._ews_token_cache = None
+                    self.add_log(
+                        f"EWS CreateItem indisponível ({str(exc)[:250]}). "
+                        "Verifique se a permissão 'Office 365 Exchange Online → "
+                        "full_access_as_app' (Application) está concedida no App "
+                        "Registration do tenant destino com admin consent.",
+                        "warning",
+                    )
+
+        # ── Fallback: Graph POST + MOVE ───────────────────────────────────────
+        base_user = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}"
+        auth = dst_hdrs["Authorization"]
+
+        # Passo 1: upload do MIME em base64 no endpoint top-level (vai para Drafts)
+        b64_mime = base64.b64encode(raw_mime_bytes).decode("ascii")
+        post_hdrs = {
+            "Authorization": auth,
+            "Content-Type": "text/plain",
+            "X-AnchorMailbox": dest_user,
+        }
+
+        def post_mime():
+            r = requests.post(
+                f"{base_user}/messages",
+                headers=post_hdrs,
+                data=b64_mime,
+                timeout=180,
+            )
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(
+                        f"POST MIME HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"POST MIME HTTP {r.status_code}: {r.text[:300]}")
+            return r.json()
+
+        created = self.retry_on_throttle(post_mime)
+        draft_id = created.get("id", "")
+        if not draft_id:
+            raise Exception("Graph não retornou ID da mensagem importada")
+
+        # Passo 2: mover para a pasta alvo
+        json_hdrs = {
+            "Authorization": auth,
+            "Content-Type": "application/json",
+            "X-AnchorMailbox": dest_user,
+        }
+        move_url = f"{base_user}/messages/{quote(draft_id, safe='')}/move"
+
+        def post_move():
+            r = requests.post(
+                move_url,
+                headers=json_hdrs,
+                json={"destinationId": dest_folder_id},
+                timeout=30,
+            )
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(
+                        f"MOVE HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"MOVE HTTP {r.status_code}: {r.text[:300]}")
+            return r.json()
+
+        moved = self.retry_on_throttle(post_move)
+        moved_id = moved.get("id", draft_id)
+
+        # Passo 3: tentar limpar flag de rascunho (Graph — funciona em alguns tenants)
+        patch_url = f"{base_user}/messages/{quote(moved_id, safe='')}"
+        try:
+            requests.patch(patch_url, headers=json_hdrs, json={
+                "isRead": True,
+                "singleValueExtendedProperties": [
+                    {"id": "Integer 0x0E070003", "value": "1"}
+                ],
+            }, timeout=30)
+        except Exception:
+            pass
+
+        if not getattr(self, "_warned_graph_draft", False):
+            self.add_log(
+                "⚠️ Usando Graph API para importar — mensagens aparecerão como rascunho. "
+                "Para resolver: adicione a permissão 'Office 365 Exchange Online → "
+                "full_access_as_app' (Application) ao App Registration do tenant destino "
+                "e faça admin consent.",
+                "warning",
+            )
+            self._warned_graph_draft = True
+
+        logger.debug(
+            f"Graph import: {draft_id[:20]}…→{moved_id[:20]}… "
+            f"folder={dest_folder_id[:20]}… {len(raw_mime_bytes)}B"
+        )
+        return moved_id
+
+    # ── Descoberta de pastas ──────────────────────────────────────────────────
+
+    def _resolve_system_folder_ids(self, user_id: str, headers: dict) -> set[str]:
+        """
+        Resolve os IDs reais das pastas de sistema via endpoints well-known.
+        Retorna um set com todos os IDs encontrados — pastas não existentes
+        simplesmente não entram no set (GET retorna 404, ignoramos).
+        """
+        base = f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders"
+        ids: set[str] = set()
+        for wkn in SYSTEM_WELL_KNOWN_NAMES:
+            try:
+                r = requests.get(f"{base}/{wkn}?$select=id", headers=headers, timeout=15)
+                if r.ok:
+                    fid = r.json().get("id")
+                    if fid:
+                        ids.add(fid)
+            except Exception as exc:
+                logger.debug(f"Ignorando pasta de sistema '{wkn}': {exc}")
+        return ids
+
+    def _list_folders(self, user_id: str, headers: dict) -> list[dict]:
+        """Lista pastas de email do usuário, excluindo pastas de sistema."""
+        system_ids = self._resolve_system_folder_ids(user_id, headers)
+
+        url = (
+            f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders"
+            f"?$top=100&$select=id,displayName,totalItemCount,parentFolderId"
+        )
+        folders: list[dict] = []
+        while url:
+            resp = requests.get(url, headers=headers, timeout=30)
+            if not resp.ok:
+                try:
+                    err = resp.json().get("error", {})
+                    raise Exception(
+                        f"HTTP {resp.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {resp.status_code}: {resp.text[:300]}")
+            data = resp.json()
+            for f in data.get("value", []):
+                if f.get("id") in system_ids:
+                    continue
+                name = (f.get("displayName") or "").strip().lower()
+                if name in SYSTEM_FOLDER_NAMES:
+                    continue
+                folders.append(f)
+            url = data.get("@odata.nextLink")
+        return folders
+
+    def _get_or_create_folder(
+        self,
+        dest_user: str,
+        folder_name: str,
+        dst_hdrs: dict,
+        _cache: dict,
+    ) -> str:
+        """Retorna o ID da pasta no destino, criando se não existir. Cache em memória."""
+        if folder_name in _cache:
+            return _cache[folder_name]
+
+        base_user = f"{GRAPH_V1}/users/{self._enc_user(dest_user)}"
+        get_hdrs = {
+            "Authorization": dst_hdrs["Authorization"],
+            "X-AnchorMailbox": dest_user,
+        }
+
+        # Rastreia o que aconteceu em cada passo para diagnóstico.
+        steps: list[str] = []
+
+        def _describe(resp: requests.Response) -> str:
+            """Extrai code + message da resposta da Graph de forma segura."""
+            try:
+                err = resp.json().get("error", {}) or {}
+                return f"HTTP {resp.status_code} [{err.get('code','')}] {err.get('message','')[:160]}"
+            except Exception:
+                return f"HTTP {resp.status_code} body={resp.text[:160]}"
+
+        # ── Passo 1: tentativa via well-known name ─────────────────────────
+        WELL_KNOWN = {
+            "inbox": "inbox", "caixa de entrada": "inbox",
+            "sent items": "sentitems", "itens enviados": "sentitems",
+            "archive": "archive", "arquivo morto": "archive",
+        }
+        wk = WELL_KNOWN.get(folder_name.lower())
+        if wk:
+            try:
+                r = requests.get(f"{base_user}/mailFolders/{wk}", headers=get_hdrs, timeout=15)
+                if r.ok:
+                    fid = r.json()["id"]
+                    _cache[folder_name] = fid
+                    return fid
+                steps.append(f"wkn({wk}): {_describe(r)}")
+            except Exception as exc:
+                steps.append(f"wkn({wk}): exc={exc}")
+
+        # ── Passo 2: listar pastas e casar por displayName ─────────────────
+        try:
+            r = requests.get(
+                f"{base_user}/mailFolders?$top=100&$select=id,displayName",
+                headers=get_hdrs, timeout=15,
+            )
+            if r.ok:
+                for f in r.json().get("value", []):
+                    if (f.get("displayName") or "").lower() == folder_name.lower():
+                        _cache[folder_name] = f["id"]
+                        return f["id"]
+                steps.append(f"list: ok mas '{folder_name}' não encontrada")
+            else:
+                steps.append(f"list: {_describe(r)}")
+        except Exception as exc:
+            steps.append(f"list: exc={exc}")
+
+        # ── Passo 3: criar pasta nova ───────────────────────────────────────
+        try:
+            create_hdrs = {**get_hdrs, "Content-Type": "application/json"}
+            r = requests.post(
+                f"{base_user}/mailFolders",
+                headers=create_hdrs,
+                json={"displayName": folder_name},
+                timeout=15,
+            )
+            if r.ok:
+                fid = r.json()["id"]
+                _cache[folder_name] = fid
+                return fid
+            steps.append(f"create: {_describe(r)}")
+        except Exception as exc:
+            steps.append(f"create: exc={exc}")
+
+        # ── Passo 4: fallback para Inbox ────────────────────────────────────
+        try:
+            r = requests.get(f"{base_user}/mailFolders/inbox", headers=get_hdrs, timeout=15)
+            if r.ok:
+                inbox_id = r.json()["id"]
+                _cache[folder_name] = inbox_id
+                self.add_log(
+                    f"Pasta '{folder_name}' não resolvida — usando Inbox como fallback. "
+                    f"Detalhes: {' | '.join(steps)}",
+                    "warning",
+                )
+                return inbox_id
+            steps.append(f"inbox: {_describe(r)}")
+        except Exception as exc:
+            steps.append(f"inbox: exc={exc}")
+
+        # Nada funcionou — logar tudo no detalhe
+        diag = " | ".join(steps) if steps else "(sem detalhes)"
+        self.add_log(
+            f"Falha total em _get_or_create_folder('{folder_name}') para {dest_user}: {diag}",
+            "error",
+        )
+        raise Exception(
+            f"Falha ao resolver pasta '{folder_name}' no destino ({dest_user}): {diag}"
+        )
+
+    # ── Teste de conexão ──────────────────────────────────────────────────────
+
+    def test_connection(self) -> dict:
+        """
+        Valida auth e (se UPN informado) acesso à Graph nos tenants de origem
+        e destino.
+
+        Sem UPN: valida apenas o OAuth — confirma que tenant_id, client_id e
+        client_secret estão corretos (pega a maioria dos erros).
+        Com UPN: também faz GET /users/{id}/mailFolders/inbox — valida
+        permissão Mail.Read/ReadWrite + existência do usuário.
+        """
+
+        def _describe_err(resp: requests.Response) -> str:
+            try:
+                err = resp.json().get("error", {}) or {}
+                return f"HTTP {resp.status_code} [{err.get('code','')}] {err.get('message','')[:200]}"
+            except Exception:
+                return f"HTTP {resp.status_code} {resp.text[:200]}"
+
+        notes: list[str] = []
+
+        # ── Origem: OAuth ───────────────────────────────────────────────────
+        try:
+            src_headers = self._src_headers()
+        except Exception as exc:
+            return {"ok": False, "message": f"Origem (OAuth): {exc}"}
+
+        # ── Origem: validação de permissão (opcional, se UPN disponível) ────
+        src_user = self.source_cfg.get("src_user_id") or (
+            self.mailbox.source_email if self.mailbox else ""
+        )
+        if src_user:
+            try:
+                url = (
+                    f"{GRAPH_V1}/users/{self._enc_user(src_user)}"
+                    f"/mailFolders/inbox?$select=id,totalItemCount"
+                )
+                resp = requests.get(url, headers=src_headers, timeout=15)
+                if not resp.ok:
+                    return {"ok": False, "message": f"Origem ({src_user}): {_describe_err(resp)}"}
+                src_count = resp.json().get("totalItemCount", 0)
+                notes.append(f"Origem OK ({src_user}, {src_count} msgs no Inbox)")
+            except Exception as exc:
+                return {"ok": False, "message": f"Origem ({src_user}): {exc}"}
+        else:
+            notes.append("Origem OAuth OK (permissão será validada na migração)")
+
+        # ── Destino: OAuth ──────────────────────────────────────────────────
+        if not self.dest_cfg.get("tenant_id"):
+            return {"ok": True, "message": " · ".join(notes) + " · Destino não informado."}
+
+        try:
+            dst_headers = self._dst_headers()
+        except Exception as exc:
+            return {"ok": False, "message": f"Destino (OAuth): {exc}"}
+
+        # ── Destino: validação de permissão (opcional) ──────────────────────
+        dest_user = self.dest_cfg.get("dest_user_id") or (
+            self.mailbox.destination_email if self.mailbox else ""
+        )
+        if dest_user:
+            try:
+                url = (
+                    f"{GRAPH_V1}/users/{self._enc_user(dest_user)}"
+                    f"/mailFolders/inbox?$select=id"
+                )
+                resp = requests.get(url, headers=dst_headers, timeout=15)
+                if not resp.ok:
+                    return {"ok": False, "message": f"Destino ({dest_user}): {_describe_err(resp)}"}
+                notes.append(f"Destino OK ({dest_user})")
+            except Exception as exc:
+                return {"ok": False, "message": f"Destino ({dest_user}): {exc}"}
+        else:
+            notes.append("Destino OAuth OK (permissão será validada na migração)")
+
+        return {"ok": True, "message": " · ".join(notes)}
+
+    # ── Fase 1: Assessment ────────────────────────────────────────────────────
+
+    def assess(self) -> dict:
+        src_user = self.source_cfg.get("src_user_id") or self.mailbox.source_email
+        src_hdrs = self._src_headers()
+        folders = self._list_folders(src_user, src_hdrs)
+        total = sum(f.get("totalItemCount", 0) for f in folders)
+        size_estimate = total * 80_000  # ~80KB média Exchange
+        return {
+            "total_messages": total,
+            "estimated_size_bytes": size_estimate,
+            "folders": [f["displayName"] for f in folders],
+        }
+
+    # ── Fase 2: Migração ──────────────────────────────────────────────────────
+
+    def migrate_mailbox(self, on_progress: ProgressCallback) -> None:
+        src_user = self.source_cfg.get("src_user_id") or self.mailbox.source_email
+        dest_user = self.dest_cfg.get("dest_user_id") or self.mailbox.destination_email
+
+        # Captura erros de auth logo no início com mensagem clara.
+        try:
+            src_hdrs = self._src_headers()
+        except Exception as exc:
+            self.add_log(
+                f"Falha ao autenticar no tenant de ORIGEM: {exc}. "
+                f"Verifique client_id, client_secret (pode ter expirado) e tenant_id.",
+                "error",
+            )
+            raise
+        try:
+            dst_hdrs = self._dst_headers()
+        except Exception as exc:
+            self.add_log(
+                f"Falha ao autenticar no tenant de DESTINO: {exc}. "
+                f"Verifique client_id, client_secret (pode ter expirado) e tenant_id.",
+                "error",
+            )
+            raise
+
+        if self.source_cfg.get("strip_mip_labels"):
+            self.add_log(
+                "Remoção de labels MIP ativada: headers msip_labels serão removidos de cada mensagem antes da importação.",
+                "info",
+            )
+
+        total_migrated = self.mailbox.items_migrated or 0
+        folders = self._list_folders(src_user, src_hdrs)
+        _folder_cache: dict = {}  # folder_name → dest folder_id
+
+        src_enc = self._enc_user(src_user)
+
+        for folder in folders:
+            folder_id = folder["id"]
+            folder_name = folder["displayName"]
+
+            chk = self.get_checkpoint(folder_name)
+            if chk and chk.completed and chk.phase == "initial":
+                continue
+
+            skip_token = chk.last_uid if chk else None
+            batch_count = 0
+            last_uid = skip_token or ""
+
+            # 'size' não existe em Microsoft.OutlookServices.Message (Exchange Online)
+            url = (
+                f"{GRAPH_V1}/users/{src_enc}/mailFolders/{quote(folder_id, safe='')}/messages"
+                f"?$top=50&$select=id,internetMessageId"
+            )
+            if skip_token and skip_token.startswith("http"):
+                url = skip_token  # retomada: last_uid guarda o nextLink
+
+            while url:
+                _url = url  # captura para closure
+
+                def fetch_page():
+                    r = requests.get(_url, headers=src_hdrs, timeout=30)
+                    if r.status_code == 429:
+                        raise Exception("429 throttle")
+                    if not r.ok:
+                        try:
+                            err = r.json().get("error", {})
+                            raise Exception(
+                                f"HTTP {r.status_code} [{err.get('code','')}]: "
+                                f"{err.get('message','')[:300]}"
+                            )
+                        except (ValueError, KeyError):
+                            raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+                    return r.json()
+
+                page = self.retry_on_throttle(fetch_page)
+                messages = page.get("value", [])
+
+                for msg in messages:
+                    msg_id = msg["id"]
+                    msg_int_id = (msg.get("internetMessageId") or "").strip()
+
+                    if self.is_already_migrated(folder_name, msg_id, msg_int_id or None):
+                        batch_count += 1
+                        last_uid = msg_id
+                        continue
+
+                    try:
+                        raw_bytes = self._get_mime(src_user, msg_id, src_hdrs)
+                        if self.source_cfg.get("strip_mip_labels"):
+                            raw_bytes = self._strip_mip_headers(raw_bytes)
+                        parsed = email_lib.message_from_bytes(raw_bytes)
+                        msg_id_header = (parsed.get("Message-ID") or msg_int_id or "").strip()
+                        content_hash = hashlib.sha256(raw_bytes[:4096]).hexdigest()
+
+                        dest_folder_id = self._get_or_create_folder(
+                            dest_user, folder_name, dst_hdrs, _folder_cache
+                        )
+                        dest_id = self._import_message(
+                            dest_user, raw_bytes, dst_hdrs, dest_folder_id,
+                            folder_name=folder_name,
+                        )
+                        self.record_copied(
+                            folder=folder_name,
+                            uid=msg_id,
+                            dest_id=dest_id,
+                            msg_id_header=msg_id_header or None,
+                            content_hash=content_hash,
+                            size_bytes=len(raw_bytes),
+                        )
+                        total_migrated += 1
+                    except Exception as e:
+                        self.record_failed(folder_name, msg_id, str(e))
+                        self.add_log(
+                            f"Falha msg {msg_id} em '{folder_name}': {e}",
+                            "warning",
+                        )
+
+                    batch_count += 1
+                    last_uid = msg_id
+
+                    if batch_count % BATCH_SIZE == 0:
+                        next_url = page.get("@odata.nextLink", "")
+                        self.save_checkpoint(folder_name, next_url or last_uid, batch_count)
+                        on_progress(total_migrated, self.mailbox.items_total or 0, 0)
+
+                url = page.get("@odata.nextLink")
+
+            self.save_checkpoint(folder_name, last_uid, batch_count, completed=True)
+            self.add_log(f"Pasta '{folder_name}' concluída: {batch_count} msgs processadas.")
+            on_progress(total_migrated, self.mailbox.items_total or 0, 0)
+
+        # Limpa cache de token EWS ao fim do mailbox (token expira em 1h)
+        self._ews_token_cache = None
+
+    # ── Fase 2b: Regras de caixa de entrada ───────────────────────────────────
+
+    def _list_inbox_rules(self, user_id: str, headers: dict) -> list[dict]:
+        """Lista as regras de caixa de entrada via Graph API."""
+        url = f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders/inbox/messageRules"
+
+        def fetch():
+            r = requests.get(url, headers=headers, timeout=30)
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(
+                        f"HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+            return r.json().get("value", [])
+
+        return self.retry_on_throttle(fetch)
+
+    def _build_folder_id_map(self, user_id: str, headers: dict) -> dict:
+        """
+        Constrói mapa folder_id → displayName para traduzir IDs de pastas
+        presentes em ações de regras (moveToFolder/copyToFolder).
+        """
+        list_url = (
+            f"{GRAPH_V1}/users/{self._enc_user(user_id)}"
+            f"/mailFolders?$top=100&$select=id,displayName"
+        )
+        result: dict = {}
+        while list_url:
+            r = requests.get(list_url, headers=headers, timeout=30)
+            if not r.ok:
+                break
+            data = r.json()
+            for f in data.get("value", []):
+                result[f["id"]] = f.get("displayName", "")
+            list_url = data.get("@odata.nextLink")
+
+        # Complementa com well-known names (inbox, sentitems, etc.)
+        for wk in ("inbox", "sentitems", "drafts", "deleteditems", "archive"):
+            try:
+                r = requests.get(
+                    f"{GRAPH_V1}/users/{self._enc_user(user_id)}/mailFolders/{wk}"
+                    f"?$select=id,displayName",
+                    headers=headers, timeout=15,
+                )
+                if r.ok:
+                    fdata = r.json()
+                    result[fdata["id"]] = fdata.get("displayName", "")
+            except Exception:
+                pass
+        return result
+
+    def _prepare_rule_for_destination(
+        self,
+        rule: dict,
+        src_folder_map: dict,
+        dest_user: str,
+        dst_hdrs: dict,
+        dst_folder_cache: dict,
+    ) -> dict:
+        """
+        Sanitiza um messageRule para criação no destino:
+        - Remove campos somente-leitura (id, hasError)
+        - Traduz IDs de pasta em actions.moveToFolder / actions.copyToFolder
+          usando o mapa da origem e resolvendo/criando no destino
+        """
+        import copy
+        body = copy.deepcopy(rule)
+        body.pop("id", None)
+        body.pop("hasError", None)
+
+        # Graph API exige que todos os valores em arrays de condições sejam strings.
+        # Algumas regras retornam null ou outros tipos — filtrar para evitar 400.
+        conditions = body.get("conditions", {})
+        _str_array_fields = (
+            "bodyContains", "bodyOrSubjectContains", "senderContains",
+            "subjectContains", "recipientContains", "headerContains",
+            "messageActionFlag",
+        )
+        for _field in _str_array_fields:
+            if _field in conditions and isinstance(conditions[_field], list):
+                conditions[_field] = [v for v in conditions[_field] if isinstance(v, str)]
+                if not conditions[_field]:
+                    conditions.pop(_field)
+
+        actions = body.get("actions", {})
+        for action_key in ("moveToFolder", "copyToFolder"):
+            src_folder_id = actions.get(action_key)
+            if not src_folder_id:
+                continue
+            folder_name = src_folder_map.get(src_folder_id, "")
+            if folder_name:
+                try:
+                    dst_folder_id = self._get_or_create_folder(
+                        dest_user, folder_name, dst_hdrs, dst_folder_cache
+                    )
+                    actions[action_key] = dst_folder_id
+                except Exception as exc:
+                    self.add_log(
+                        f"Não foi possível resolver pasta '{folder_name}' no destino "
+                        f"para ação '{action_key}' — ação removida da regra: {exc}",
+                        "warning",
+                    )
+                    actions.pop(action_key, None)
+            else:
+                self.add_log(
+                    f"ID de pasta '{src_folder_id[:20]}...' não encontrado no mapa da origem "
+                    f"— ação '{action_key}' removida da regra.",
+                    "warning",
+                )
+                actions.pop(action_key, None)
+        return body
+
+    def _create_inbox_rule(self, user_id: str, rule_body: dict, headers: dict) -> dict:
+        """Cria uma regra de caixa de entrada no tenant de destino."""
+        url = (
+            f"{GRAPH_V1}/users/{self._enc_user(user_id)}"
+            f"/mailFolders/inbox/messageRules"
+        )
+        json_hdrs = {**headers, "Content-Type": "application/json"}
+
+        def create():
+            r = requests.post(url, headers=json_hdrs, json=rule_body, timeout=30)
+            if r.status_code == 429:
+                raise Exception("429 throttle")
+            if not r.ok:
+                try:
+                    err = r.json().get("error", {})
+                    raise Exception(
+                        f"HTTP {r.status_code} [{err.get('code','')}]: "
+                        f"{err.get('message','')[:300]}"
+                    )
+                except (ValueError, KeyError):
+                    raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+            return r.json()
+
+        return self.retry_on_throttle(create)
+
+    def migrate_inbox_rules(self) -> dict:
+        """
+        Copia as regras de caixa de entrada (inbox rules) da origem para o destino.
+        Resolve IDs de pasta para o tenant destino. Não é crítico — falhas são
+        logadas como warning e não interrompem a migração de mensagens.
+        Retorna {"copied": int, "skipped": int, "failed": int}.
+        """
+        src_user = self.source_cfg.get("src_user_id") or self.mailbox.source_email
+        dest_user = self.dest_cfg.get("dest_user_id") or self.mailbox.destination_email
+        src_hdrs = self._src_headers()
+        dst_hdrs = self._dst_headers()
+
+        try:
+            rules = self._list_inbox_rules(src_user, src_hdrs)
+        except Exception as exc:
+            self.add_log(f"Não foi possível listar regras da origem: {exc}", "warning")
+            return {"copied": 0, "skipped": 0, "failed": 0}
+
+        if not rules:
+            self.add_log("Nenhuma regra de caixa de entrada na origem.", "info")
+            return {"copied": 0, "skipped": 0, "failed": 0}
+
+        self.add_log(
+            f"Encontrada(s) {len(rules)} regra(s) na origem. Copiando para o destino...",
+            "info",
+        )
+
+        src_folder_map: dict = {}
+        try:
+            src_folder_map = self._build_folder_id_map(src_user, src_hdrs)
+        except Exception as exc:
+            self.add_log(
+                f"Aviso: não foi possível construir mapa de pastas da origem ({exc}). "
+                "Ações 'mover para pasta' podem ser perdidas.",
+                "warning",
+            )
+
+        dst_folder_cache: dict = {}
+        copied = skipped = failed = 0
+
+        for rule in rules:
+            rule_name = rule.get("displayName", "(sem nome)")
+            try:
+                body = self._prepare_rule_for_destination(
+                    rule, src_folder_map, dest_user, dst_hdrs, dst_folder_cache
+                )
+                actions = body.get("actions") or {}
+                has_action = any(
+                    v not in (None, False, [], {}, "")
+                    for v in actions.values()
+                )
+                if not has_action:
+                    self.add_log(
+                        f"Regra '{rule_name}' ignorada — nenhuma ação válida após tradução.",
+                        "warning",
+                    )
+                    skipped += 1
+                    continue
+
+                self._create_inbox_rule(dest_user, body, dst_hdrs)
+                copied += 1
+                self.add_log(f"Regra '{rule_name}' copiada.", "info")
+
+            except Exception as exc:
+                failed += 1
+                self.add_log(f"Falha ao copiar regra '{rule_name}': {exc}", "warning")
+
+        return {"copied": copied, "skipped": skipped, "failed": failed}
+
+    # ── Fase 3: Delta sync ────────────────────────────────────────────────────
+
+    def delta_sync(self, on_progress: ProgressCallback) -> None:
+        """Pega mensagens novas desde o início da migração, por pasta."""
+        if not self.mailbox.started_at:
+            return
+
+        src_user = self.source_cfg.get("src_user_id") or self.mailbox.source_email
+        dest_user = self.dest_cfg.get("dest_user_id") or self.mailbox.destination_email
+        src_hdrs = self._src_headers()
+        dst_hdrs = self._dst_headers()
+        total_migrated = self.mailbox.items_migrated or 0
+        _folder_cache: dict = {}
+
+        cutoff = self.mailbox.started_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+        folders = self._list_folders(src_user, src_hdrs)
+        src_enc = self._enc_user(src_user)
+
+        for folder in folders:
+            folder_id = folder["id"]
+            folder_name = folder["displayName"]
+
+            url = (
+                f"{GRAPH_V1}/users/{src_enc}/mailFolders/{quote(folder_id, safe='')}/messages"
+                f"?$filter=createdDateTime ge {cutoff}"
+                f"&$select=id,internetMessageId&$top=50"
+            )
+
+            while url:
+                _url = url
+
+                def fetch():
+                    r = requests.get(_url, headers=src_hdrs, timeout=30)
+                    if r.status_code == 429:
+                        raise Exception("429 throttle")
+                    if not r.ok:
+                        try:
+                            err = r.json().get("error", {})
+                            raise Exception(
+                                f"HTTP {r.status_code} [{err.get('code','')}]: "
+                                f"{err.get('message','')[:300]}"
+                            )
+                        except (ValueError, KeyError):
+                            raise Exception(f"HTTP {r.status_code}: {r.text[:300]}")
+                    return r.json()
+
+                page = self.retry_on_throttle(fetch)
+
+                for msg in page.get("value", []):
+                    msg_id = msg["id"]
+                    msg_int_id = (msg.get("internetMessageId") or "").strip()
+                    if self.is_already_migrated(folder_name, msg_id, msg_int_id or None):
+                        continue
+                    try:
+                        raw_bytes = self._get_mime(src_user, msg_id, src_hdrs)
+                        if self.source_cfg.get("strip_mip_labels"):
+                            raw_bytes = self._strip_mip_headers(raw_bytes)
+                        parsed = email_lib.message_from_bytes(raw_bytes)
+                        msg_id_header = (parsed.get("Message-ID") or msg_int_id or "").strip()
+                        dest_folder_id = self._get_or_create_folder(
+                            dest_user, folder_name, dst_hdrs, _folder_cache
+                        )
+                        dest_id = self._import_message(
+                            dest_user, raw_bytes, dst_hdrs, dest_folder_id,
+                            folder_name=folder_name,
+                        )
+                        self.record_copied(
+                            folder=folder_name,
+                            uid=msg_id,
+                            dest_id=dest_id,
+                            msg_id_header=msg_id_header or None,
+                            size_bytes=len(raw_bytes),
+                        )
+                        total_migrated += 1
+                        on_progress(total_migrated, self.mailbox.items_total or 0, 0)
+                    except Exception as e:
+                        self.record_failed(folder_name, msg_id, str(e))
+                        self.add_log(
+                            f"Delta falha msg {msg_id} em '{folder_name}': {e}",
+                            "warning",
+                        )
+
+                url = page.get("@odata.nextLink")
+
+        # Limpa cache de token EWS ao fim do mailbox (token expira em 1h)
+        self._ews_token_cache = None

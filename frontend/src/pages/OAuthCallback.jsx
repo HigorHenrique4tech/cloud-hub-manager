@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import authService from '../services/authService';
@@ -8,30 +8,62 @@ export default function OAuthCallback({ provider }) {
   const { loginWithTokens } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const calledRef = useRef(false);
 
   useEffect(() => {
+    if (calledRef.current) return;
+    calledRef.current = true;
+
     const code = searchParams.get('code');
+    const stateFromUrl = searchParams.get('state');
+    const stateStored = sessionStorage.getItem(`oauth_state_${provider}`);
     if (!code) {
       setError('Código de autorização não encontrado.');
       return;
     }
+    if (!stateFromUrl || !stateStored || stateFromUrl !== stateStored) {
+      setError('Sessão OAuth inválida ou expirada. Reinicie o login.');
+      sessionStorage.removeItem(`oauth_state_${provider}`);
+      return;
+    }
+    sessionStorage.removeItem(`oauth_state_${provider}`);
+
+    let cancelled = false;
 
     (async () => {
       try {
         let data;
         if (provider === 'google') {
           const redirectUri = `${window.location.origin}/auth/google/callback`;
-          data = await authService.googleCallback(code, redirectUri);
+          data = await authService.googleCallback(code, redirectUri, stateFromUrl);
+        } else if (provider === 'microsoft') {
+          const redirectUri = `${window.location.origin}/auth/microsoft/callback`;
+          data = await authService.microsoftCallback(code, redirectUri, stateFromUrl);
         } else {
-          data = await authService.githubCallback(code);
+          data = await authService.githubCallback(code, stateFromUrl);
         }
+        if (cancelled) return;
         loginWithTokens(data);
+        const oauthRedirect = sessionStorage.getItem('oauth_redirect');
+        if (oauthRedirect === 'desk') {
+          sessionStorage.removeItem('oauth_redirect');
+          window.location.href = `https://desk.cloudatlas.app.br/auth/callback?token=${data.access_token}&refresh=${data.refresh_token || ''}`;
+          return;
+        }
+        if (data.needs_company_info) {
+          navigate('/complete-profile', { replace: true });
+          return;
+        }
         navigate('/', { replace: true });
       } catch (err) {
-        setError(err.response?.data?.detail || `Falha na autenticação com ${provider}.`);
+        if (!cancelled) {
+          setError(err.response?.data?.detail || `Falha na autenticação com ${provider}.`);
+        }
       }
     })();
-  }, []);
+
+    return () => { cancelled = true; };
+  }, [provider, searchParams, loginWithTokens, navigate]);
 
   if (error) {
     return (

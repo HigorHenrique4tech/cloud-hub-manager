@@ -1,0 +1,159 @@
+groups:
+  - name: migration365
+    interval: 30s
+    rules:
+      # ── Worker Health ────────────────────────────────────────────────────────
+      - alert: MigrationWorkerOffline
+        expr: migration_worker_available == 0
+        for: 5m
+        labels:
+          severity: critical
+          service: migration
+        annotations:
+          summary: "🔴 Migration worker OFFLINE"
+          description: "Migration worker está offline por mais de 5 minutos. Nenhuma migração está sendo processada."
+
+      # ── Memory & Resources ───────────────────────────────────────────────────
+      - alert: WorkerMemoryHigh
+        expr: migration_worker_memory_bytes > 3.5e9
+        for: 10m
+        labels:
+          severity: warning
+          service: migration
+        annotations:
+          summary: "⚠️  Worker usando > 3.5GB de RAM"
+          description: "Worker memory: {{ $value | humanize }}. Possível memory leak."
+
+      - alert: WorkerCPUHigh
+        expr: migration_worker_cpu_percent > 80
+        for: 5m
+        labels:
+          severity: warning
+          service: migration
+        annotations:
+          summary: "⚠️  Worker CPU > 80%"
+          description: "CPU utilization: {{ $value }}%. Considere aumentar recursos."
+
+      # ── Graph API Rate Limiting ──────────────────────────────────────────────
+      - alert: GraphAPIRateLimitApproaching
+        expr: graph_api_requests_per_minute > 150
+        for: 2m
+        labels:
+          severity: warning
+          service: graph_api
+        annotations:
+          summary: "⚠️  Graph API: Rate limit se aproximando"
+          description: "Requests/min: {{ $value | humanize }}. Limite: 166 (10k/10min). Reduzir paralelismo."
+
+      - alert: GraphAPIThrottled
+        expr: increase(graph_api_throttled_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          service: graph_api
+        annotations:
+          summary: "🔴 Graph API: Throttled/Rate Limited"
+          description: "Graph API retornou 429 (rate limit). Migração será lenta. Erros: {{ $value }}"
+
+      # ── Migration Task Failures ──────────────────────────────────────────────
+      - alert: HighMigrationFailureRate
+        expr: |
+          (increase(migration_tasks_failed_total[10m]) /
+           (increase(migration_tasks_failed_total[10m]) + increase(migration_tasks_completed_total[10m])))
+          > 0.15
+        for: 5m
+        labels:
+          severity: warning
+          service: migration
+        annotations:
+          summary: "⚠️  Taxa de falha > 15%"
+          description: "Failure rate: {{ $value | humanizePercentage }}. Investigar logs do worker."
+
+      - alert: CriticalMigrationFailures
+        expr: increase(migration_tasks_failed_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: critical
+          service: migration
+        annotations:
+          summary: "🔴 Múltiplas falhas em 5min"
+          description: "Falhas nos últimos 5min: {{ $value }}. Worker pode estar com problema."
+
+      # ── Queue Backlog ────────────────────────────────────────────────────────
+      - alert: QueueBacklogHigh
+        expr: migration_tasks_pending > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: migration
+        annotations:
+          summary: "⚠️  Fila de migração > 100 jobs"
+          description: "Pending tasks: {{ $value }}. Taxa de processamento lenta."
+
+      - alert: QueueStuck
+        expr: |
+          (increase(migration_tasks_completed_total[10m]) == 0) and
+          (migration_tasks_pending > 0) and
+          (migration_worker_available == 1)
+        for: 15m
+        labels:
+          severity: critical
+          service: migration
+        annotations:
+          summary: "🔴 Fila parada: nenhum progresso por 15min"
+          description: "Worker online mas nenhuma task completada. Jobs pendentes: {{ $value }}"
+
+      # ── PostgreSQL Issues ────────────────────────────────────────────────────
+      - alert: PostgreSQLConnectionPoolHigh
+        expr: pg_stat_activity_count > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: postgresql
+        annotations:
+          summary: "⚠️  PostgreSQL: > 30 conexões ativas"
+          description: "Active connections: {{ $value }}. Possível deadlock ou query lenta."
+
+      - alert: PostgreSQLCacheHitRatioLow
+        expr: pg_stat_database_blks_hit / (pg_stat_database_blks_hit + pg_stat_database_blks_read) < 0.95
+        for: 10m
+        labels:
+          severity: warning
+          service: postgresql
+        annotations:
+          summary: "⚠️  PostgreSQL: Cache hit ratio < 95%"
+          description: "Hit ratio: {{ $value | humanizePercentage }}. Aumentar shared_buffers."
+
+      # ── Redis Issues ─────────────────────────────────────────────────────────
+      - alert: RedisMemoryHigh
+        expr: redis_memory_used_bytes / redis_memory_max_bytes > 0.85
+        for: 5m
+        labels:
+          severity: warning
+          service: redis
+        annotations:
+          summary: "⚠️  Redis: Usando > 85% da memória"
+          description: "Memory: {{ $value | humanizePercentage }}. Limpar jobs completados."
+
+      - alert: RedisDown
+        expr: up{job="redis"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: redis
+        annotations:
+          summary: "🔴 Redis: Servidor DOWN"
+          description: "Redis não respondendo por 2 minutos. Fila de migração parada."
+
+      # ── Task Duration Anomalies ─────────────────────────────────────────────
+      - alert: TaskDurationAnomalouslyHigh
+        expr: |
+          histogram_quantile(0.95, rate(migration_task_duration_seconds_bucket[5m]))
+          > 300
+        for: 10m
+        labels:
+          severity: warning
+          service: migration
+        annotations:
+          summary: "⚠️  Tarefas levando > 5min (p95)"
+          description: "P95 duration: {{ $value | humanizeDuration }}. Possível gargalo na rede/Graph API."

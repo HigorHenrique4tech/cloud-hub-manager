@@ -1,5 +1,29 @@
-import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown } from 'lucide-react';
-import { useState, useRef, useEffect } from 'react';
+import { Sun, Moon, LogOut, Bell, Mail, CheckCircle2, Crown, TrendingDown, Clock, Zap, Headphones, Shield, ShieldAlert, Hourglass, CloudCog, Users, CreditCard, Wallet, Menu, ArrowRightLeft, Database, AlertTriangle, Info, ShieldCheck } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+
+// Hoisted outside component — created once, not per render
+const NOTIFICATION_TYPE_META = {
+  anomaly:        { Icon: TrendingDown,   color: 'text-red-500',    label: 'Anomalia' },
+  budget:         { Icon: Wallet,         color: 'text-yellow-500', label: 'Orçamento' },
+  schedule:       { Icon: Clock,          color: 'text-blue-500',   label: 'Agendamento' },
+  finops_scan:    { Icon: Zap,            color: 'text-primary',    label: 'FinOps' },
+  cost_alert:     { Icon: Bell,           color: 'text-orange-500', label: 'Alerta de Custo' },
+  trial:          { Icon: Hourglass,      color: 'text-purple-500', label: 'Trial' },
+  approval:       { Icon: CheckCircle2,   color: 'text-green-500',  label: 'Aprovação' },
+  policy:         { Icon: Shield,         color: 'text-gray-500',   label: 'Política' },
+  security:       { Icon: Shield,         color: 'text-red-500',    label: 'Segurança' },
+  security_alert: { Icon: ShieldAlert,    color: 'text-red-500',    label: 'Alerta de Segurança' },
+  security_auto:  { Icon: ShieldCheck,    color: 'text-orange-500', label: 'Automação de Segurança' },
+  cloud_account:  { Icon: CloudCog,       color: 'text-cyan-500',   label: 'Conta Cloud' },
+  workspace:      { Icon: Users,          color: 'text-teal-500',   label: 'Workspace' },
+  billing:        { Icon: CreditCard,     color: 'text-green-500',  label: 'Cobrança' },
+  member:         { Icon: Users,          color: 'text-blue-500',   label: 'Membro' },
+  plan:           { Icon: Crown,          color: 'text-amber-500',  label: 'Plano' },
+  migration:      { Icon: ArrowRightLeft, color: 'text-blue-500',   label: 'Migração' },
+  backup:         { Icon: Database,       color: 'text-sky-500',    label: 'Backup' },
+  warning:        { Icon: AlertTriangle,  color: 'text-amber-500',  label: 'Aviso' },
+  info:           { Icon: Info,           color: 'text-gray-400',   label: 'Info' },
+};
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -8,10 +32,12 @@ import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
 import SearchBar from '../common/SearchBar';
 import CommandPalette from '../common/CommandPalette';
 import OrgSwitcher from './OrgSwitcher';
+import NewTicketModal from '../support/NewTicketModal';
+import Logo from '../common/Logo';
 import alertService from '../../services/alertService';
 import authService from '../../services/authService';
 
-const Header = () => {
+const Header = ({ onMenuToggle }) => {
   const { isDark, toggleTheme } = useTheme();
   const { user, logout } = useAuth();
   const { currentOrg, refreshOrgs } = useOrgWorkspace();
@@ -19,6 +45,7 @@ const Header = () => {
   const [bellOpen, setBellOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [ticketOpen, setTicketOpen] = useState(false);
   const bellRef = useRef(null);
   const inviteRef = useRef(null);
   const qc = useQueryClient();
@@ -29,7 +56,7 @@ const Header = () => {
     refetchInterval: 60000,
     retry: false,
   });
-  const unreadEvents = eventsData?.events || eventsData || [];
+  const unreadEvents = Array.isArray(eventsData) ? eventsData : (eventsData?.events || []);
   const unreadCount = unreadEvents.length;
 
   const markReadMutation = useMutation({
@@ -58,26 +85,28 @@ const Header = () => {
     },
   });
 
-  // Close dropdowns when clicking outside
+  // Close dropdowns when clicking outside or pressing Esc
   useEffect(() => {
-    const handler = (e) => {
+    const handleClick = (e) => {
       if (bellRef.current && !bellRef.current.contains(e.target)) setBellOpen(false);
       if (inviteRef.current && !inviteRef.current.contains(e.target)) setInviteOpen(false);
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  // Ctrl+K → toggle command palette
-  useEffect(() => {
-    const handler = (e) => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setBellOpen(false);
+        setInviteOpen(false);
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         setPaletteOpen((prev) => !prev);
       }
     };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
+    document.addEventListener('mousedown', handleClick);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -86,16 +115,20 @@ const Header = () => {
   };
 
   return (
-    <header className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 shadow-sm z-10">
-      <div className="px-4 sm:px-6 py-3">
+    <header className="header-bar z-50 relative">
+      <div className="px-5 sm:px-8 py-3.5">
         <div className="flex items-center gap-4">
+          {/* Mobile menu toggle */}
+          <button
+            onClick={onMenuToggle}
+            className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 dark:text-gray-400 dark:hover:bg-gray-700"
+            aria-label="Abrir menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
           {/* Logo */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-            <img src={isDark ? '/logoblack.png' : '/logo.png'} alt="CloudAtlas" className="w-8 h-8 object-contain" />
-            <span className="text-lg font-bold text-gray-900 dark:text-gray-100 hidden sm:block">
-              CloudAtlas
-            </span>
-          </div>
+          <Logo size="md" />
 
           {/* Org switcher */}
           <OrgSwitcher />
@@ -113,6 +146,9 @@ const Header = () => {
                 <button
                   onClick={() => setInviteOpen((o) => !o)}
                   title="Convites pendentes"
+                  aria-label={`Convites pendentes — ${myInvites.length}`}
+                  aria-expanded={inviteOpen}
+                  aria-haspopup="true"
                   className="relative p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100
                              dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700
                              transition-colors"
@@ -139,7 +175,7 @@ const Header = () => {
                             <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
                               {inv.organization_name}
                             </p>
-                            <p className="text-xs text-gray-400">
+                            <p className="text-xs text-gray-400 dark:text-gray-500">
                               Role: {inv.role}
                             </p>
                           </div>
@@ -159,11 +195,26 @@ const Header = () => {
               </div>
             )}
 
+            {/* Support shortcut */}
+            <button
+              onClick={() => setTicketOpen(true)}
+              title="Abrir chamado de suporte"
+              aria-label="Abrir chamado de suporte"
+              className="p-2 rounded-lg text-gray-600 hover:text-gray-900 hover:bg-gray-100
+                         dark:text-gray-300 dark:hover:text-white dark:hover:bg-gray-700
+                         transition-colors"
+            >
+              <Headphones className="w-5 h-5" />
+            </button>
+
             {/* Bell notification */}
             <div className="relative" ref={bellRef}>
               <button
                 onClick={() => setBellOpen((o) => !o)}
-                title="Alertas de custo"
+                title="Notificações"
+                aria-label={unreadCount > 0 ? `Notificações — ${unreadCount} não lidas` : 'Notificações'}
+                aria-expanded={bellOpen}
+                aria-haspopup="true"
                 className="relative p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100
                            dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700
                            transition-colors"
@@ -179,17 +230,17 @@ const Header = () => {
 
               {/* Dropdown */}
               {bellOpen && (
-                <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-xl
+                <div role="menu" aria-label="Alertas" className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-xl shadow-xl
                                 border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
                   <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-200 dark:border-gray-700">
                     <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
-                      Alertas não lidos {unreadCount > 0 && `(${unreadCount})`}
+                      Notificações {unreadCount > 0 && `(${unreadCount} não lidas)`}
                     </span>
                     <button
-                      onClick={() => { setBellOpen(false); navigate('/costs'); }}
+                      onClick={() => { setBellOpen(false); navigate('/notifications/history'); }}
                       className="text-xs text-primary hover:underline"
                     >
-                      Ver todos
+                      Ver histórico
                     </button>
                   </div>
                   {unreadEvents.length === 0 ? (
@@ -198,24 +249,34 @@ const Header = () => {
                     </p>
                   ) : (
                     <ul className="divide-y divide-gray-100 dark:divide-gray-700 max-h-72 overflow-y-auto">
-                      {unreadEvents.map((ev) => (
-                        <li key={ev.id} className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                          <Bell className="w-4 h-4 text-orange-500 mt-0.5 flex-shrink-0" />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug line-clamp-2">{ev.message}</p>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              {new Date(ev.triggered_at).toLocaleString('pt-BR')}
-                            </p>
-                          </div>
-                          <button
-                            onClick={() => markReadMutation.mutate(ev.id)}
-                            className="flex-shrink-0 text-gray-300 hover:text-green-500 dark:hover:text-green-400 transition-colors"
-                            title="Marcar como lido"
+                      {unreadEvents.map((ev) => {
+                        const meta = NOTIFICATION_TYPE_META[ev.notification_type] || NOTIFICATION_TYPE_META.cost_alert;
+                        const { Icon, color, label } = meta;
+                        return (
+                          <li
+                            key={ev.id}
+                            className="flex items-start gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer"
+                            onClick={() => { setBellOpen(false); navigate(ev.link_to || '/notifications/history'); }}
                           >
-                            ✓
-                          </button>
-                        </li>
-                      ))}
+                            <Icon className={`w-4 h-4 ${color} mt-0.5 flex-shrink-0`} />
+                            <div className="flex-1 min-w-0">
+                              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</span>
+                              <p className="text-sm text-gray-800 dark:text-gray-200 leading-snug line-clamp-2">{ev.message}</p>
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {new Date(ev.triggered_at).toLocaleString('pt-BR')}
+                              </p>
+                            </div>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); markReadMutation.mutate(ev.id); }}
+                              className="flex-shrink-0 text-gray-300 hover:text-green-500 dark:hover:text-green-400 transition-colors"
+                              title="Marcar como lido"
+                              aria-label="Marcar como lido"
+                            >
+                              ✓
+                            </button>
+                          </li>
+                        );
+                      })}
                     </ul>
                   )}
                 </div>
@@ -228,21 +289,28 @@ const Header = () => {
                 onClick={() => navigate('/billing')}
                 title="Gerenciar plano"
                 className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                  currentOrg.plan_tier === 'pro'
+                  ['basic', 'standard'].includes(currentOrg.effective_plan || currentOrg.plan_tier)
                     ? 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary hover:bg-primary/20 dark:hover:bg-primary/30'
-                    : currentOrg.plan_tier === 'enterprise'
+                    : currentOrg.effective_plan?.startsWith('enterprise')
                       ? 'bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30'
                       : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600'
                 }`}
               >
                 <Crown className={`w-3.5 h-3.5 ${
-                  currentOrg.plan_tier === 'pro'
+                  ['basic', 'standard'].includes(currentOrg.effective_plan || currentOrg.plan_tier)
                     ? 'text-primary'
-                    : currentOrg.plan_tier === 'enterprise'
+                    : currentOrg.effective_plan?.startsWith('enterprise')
                       ? 'text-amber-500'
                       : 'text-gray-400 dark:text-gray-500'
                 }`} />
-                {currentOrg.plan_tier === 'enterprise' ? 'Enterprise' : currentOrg.plan_tier === 'pro' ? 'Pro' : 'Free'}
+                {(() => {
+                  const ep = currentOrg.effective_plan || currentOrg.plan_tier;
+                  const isTrial = currentOrg.trial?.trial_active && currentOrg.plan_tier === 'free';
+                  if (ep === 'enterprise_migration') return 'Enterprise + Migration';
+                  if (ep?.startsWith('enterprise')) return ep.replace(/_/g, ' ').toUpperCase();
+                  if (['basic', 'standard'].includes(ep)) return isTrial ? 'Trial Standard' : (ep.charAt(0).toUpperCase() + ep.slice(1));
+                  return 'Free';
+                })()}
               </button>
             )}
 
@@ -250,6 +318,7 @@ const Header = () => {
             <button
               onClick={toggleTheme}
               title={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
+              aria-label={isDark ? 'Ativar modo claro' : 'Ativar modo escuro'}
               className="p-2 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-100
                          dark:text-gray-400 dark:hover:text-gray-200 dark:hover:bg-gray-700
                          transition-colors"
@@ -266,6 +335,7 @@ const Header = () => {
                 <button
                   onClick={handleLogout}
                   title="Sair"
+                  aria-label="Sair da conta"
                   className="p-2 rounded-lg text-gray-500 hover:text-danger hover:bg-red-50
                              dark:text-gray-400 dark:hover:text-red-400 dark:hover:bg-red-900/20
                              transition-colors"
@@ -279,6 +349,7 @@ const Header = () => {
       </div>
 
       <CommandPalette isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} />
+      {ticketOpen && <NewTicketModal onClose={() => setTicketOpen(false)} />}
     </header>
   );
 };

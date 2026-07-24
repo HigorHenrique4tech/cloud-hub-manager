@@ -1,29 +1,36 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
-import { HardDrive, ShieldAlert, ShieldCheck, AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { HardDrive, ShieldAlert, ShieldCheck, AlertCircle, Plus, Trash2, Search, X, RefreshCw } from 'lucide-react';
 import Layout from '../../components/layout/layout';
-import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import EmptyState from '../../components/common/emptystate';
 import CreateResourceModal from '../../components/common/CreateResourceModal';
 import ConfirmDeleteModal from '../../components/common/ConfirmDeleteModal';
 import CreateS3Form from '../../components/create/CreateS3Form';
 import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import awsService from '../../services/awsservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { name: '', region: 'us-east-1', versioning: false, encryption: 'AES256', kms_key_id: '', block_public_acls: true, ignore_public_acls: true, block_public_policy: true, restrict_public_buckets: true, tags: {}, tags_list: [] };
 
 const AwsS3 = () => {
+  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const q = (searchParams.get('q') || '').toLowerCase();
+  const [searchValue, setSearchValue] = useState(q);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
+  const formRef = useRef();
 
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, isRefetching, error, refetch } = useQuery({
     queryKey: ['aws-s3'],
     queryFn: () => awsService.listS3Buckets(),
     retry: false,
@@ -48,8 +55,6 @@ const AwsS3 = () => {
     }
   };
 
-  if (isLoading) return <Layout><LoadingSpinner text="Carregando buckets S3..." /></Layout>;
-
   if (error?.response?.status === 400) {
     return <Layout><NoCredentialsMessage provider="aws" /></Layout>;
   }
@@ -65,7 +70,7 @@ const AwsS3 = () => {
     );
   }
 
-  const buckets = (data?.buckets || []).filter(b =>
+  const buckets = isLoading ? [] : (data?.buckets || []).filter(b =>
     !q || b.name?.toLowerCase().includes(q) || b.region?.toLowerCase().includes(q)
   );
 
@@ -75,72 +80,133 @@ const AwsS3 = () => {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">S3 — Buckets</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {buckets.length} bucket(s){q && ` · filtrado por "${q}"`}
+            {isLoading ? 'Carregando...' : `${buckets.length} bucket(s)${q ? ` · filtrado por "${q}"` : ''}`}
           </p>
         </div>
-        <PermissionGate permission="resources.create">
+        <div className="flex items-center gap-2">
           <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            onClick={() => refetch()}
+            disabled={isRefetching || isLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
           >
-            <Plus className="w-4 h-4" /> Criar Bucket
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? 'animate-spin' : ''}`} />
+            Atualizar
           </button>
-        </PermissionGate>
+          <PermissionGate permission="resources.create">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Criar Bucket
+            </button>
+          </PermissionGate>
+        </div>
       </div>
 
-      <div className="card overflow-x-auto">
-        {buckets.length === 0 ? (
-          <p className="text-center py-8 text-gray-500 dark:text-gray-400">Nenhum bucket encontrado</p>
+      {!isLoading && buckets.length > 0 && (
+        <div className="mb-6 relative w-80">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                navigate(searchValue ? `?q=${encodeURIComponent(searchValue)}` : '');
+              }
+              if (e.key === 'Escape') {
+                setSearchValue('');
+                navigate('');
+              }
+            }}
+            placeholder="Buscar por nome ou região..."
+            className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-primary/50"
+          />
+          {searchValue && (
+            <button
+              onClick={() => {
+                setSearchValue('');
+                navigate('');
+              }}
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+            >
+              <X size={14} className="text-gray-400" />
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="card">
+        {isLoading ? (
+          <SkeletonTable columns={4} rows={5} />
+        ) : buckets.length === 0 ? (
+          <EmptyState
+            icon={HardDrive}
+            title="Nenhum bucket S3"
+            description="Crie seu primeiro bucket para armazenar objetos na AWS."
+            action={
+              <PermissionGate permission="resources.create">
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-dark transition-colors"
+                >
+                  <Plus className="w-4 h-4" /> Criar Bucket
+                </button>
+              </PermissionGate>
+            }
+          />
         ) : (
-          <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-            <thead className="bg-gray-50 dark:bg-gray-900/50">
-              <tr>
-                {['Nome', 'Região', 'Criado em', 'Acesso Público', 'Ações'].map(h => (
-                  <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-              {buckets.map(b => (
-                <tr key={b.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <HardDrive className="w-4 h-4 text-yellow-500 flex-shrink-0" />
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{b.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{b.region || 'N/A'}</td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                    {b.creation_date ? new Date(b.creation_date).toLocaleDateString('pt-BR') : '—'}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    {b.public_access === null ? (
-                      <span className="text-xs text-gray-400">—</span>
-                    ) : b.public_access ? (
-                      <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
-                        <ShieldAlert className="w-3.5 h-3.5" /> Público
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
-                        <ShieldCheck className="w-3.5 h-3.5" /> Bloqueado
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <PermissionGate permission="resources.delete">
-                      <button
-                        onClick={() => setDeleteTarget(b)}
-                        className="text-red-400 hover:text-red-600 transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </PermissionGate>
-                  </td>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-900/50">
+                <tr>
+                  {['Nome', 'Região', 'Criado em', 'Acesso Público', 'Ações'].map(h => (
+                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {buckets.map(b => (
+                  <tr key={b.name} className="hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer" onClick={() => setDetailTarget(b)}>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <HardDrive className="w-4 h-4 text-yellow-500 flex-shrink-0" />
+                        <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{b.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{b.region || 'N/A'}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                      {b.creation_date ? new Date(b.creation_date).toLocaleDateString('pt-BR') : '—'}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      {b.public_access === null ? (
+                        <span className="text-xs text-gray-400">—</span>
+                      ) : b.public_access ? (
+                        <span className="flex items-center gap-1 text-xs text-red-600 dark:text-red-400">
+                          <ShieldAlert className="w-3.5 h-3.5" /> Público
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400">
+                          <ShieldCheck className="w-3.5 h-3.5" /> Bloqueado
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                      <PermissionGate permission="resources.delete">
+                        <button
+                          onClick={() => setDeleteTarget(b)}
+                          className="text-red-400 hover:text-red-600 transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </PermissionGate>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -148,12 +214,14 @@ const AwsS3 = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createBucket(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Bucket S3"
         isLoading={creating}
         error={createError}
         success={createSuccess}
+        templateBar={<TemplateBar provider="aws" resourceType="s3" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
-        <CreateS3Form form={form} setForm={setForm} />
+        <CreateS3Form ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal
@@ -165,6 +233,27 @@ const AwsS3 = () => {
         confirmText={deleteTarget?.name}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="S3 Bucket"
+        queryKey={['aws-s3-detail', detailTarget?.name]}
+        queryFn={detailTarget ? () => awsService.getS3BucketDetail(detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Região', value: detail?.region || detailTarget?.region },
+            { label: 'Criado em', value: detailTarget?.creation_date ? new Date(detailTarget.creation_date).toLocaleDateString('pt-BR') : '—' },
+          ]},
+          { title: 'Segurança', fields: [
+            { label: 'Versionamento', value: detail?.versioning_status || '—' },
+            { label: 'Criptografia', value: detail?.encryption_type || '—' },
+            { label: 'Acesso Público', value: detailTarget?.public_access === null ? '—' : detailTarget?.public_access ? 'Público' : 'Bloqueado' },
+          ]},
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

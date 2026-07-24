@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { RefreshCw, Database, ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
+import { useBackgroundTasks } from '../../contexts/BackgroundTasksContext';
+import { useToast } from '../../contexts/ToastContext';
 import Layout from '../../components/layout/layout';
 import LoadingSpinner from '../../components/common/loadingspinner';
 import NoCredentialsMessage from '../../components/common/NoCredentialsMessage';
@@ -11,10 +13,12 @@ import PermissionGate from '../../components/common/PermissionGate';
 import useCreateResource from '../../hooks/useCreateResource';
 import CostEstimatePanel from '../../components/common/CostEstimatePanel';
 import azureService from '../../services/azureservices';
+import TemplateBar from '../../components/common/TemplateBar';
+import ResourceDetailDrawer from '../../components/common/ResourceDetailDrawer';
 
 const defaultForm = { server_name: '', resource_group: '', location: '', admin_login: '', admin_password: '', database_name: '', sku_name: 'GP_Gen5_2', max_size_bytes: 2147483648, collation: 'SQL_Latin1_General_CP1_CI_AS', tags: {}, tags_list: [] };
 
-const ServerRow = ({ server, onDelete }) => {
+const ServerRow = ({ server, onDelete, onRowClick }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -26,7 +30,7 @@ const ServerRow = ({ server, onDelete }) => {
           <div className="flex items-center gap-3">
             <Database className="w-4 h-4 text-sky-500 flex-shrink-0" />
             <div>
-              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{server.name}</span>
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100 hover:text-primary cursor-pointer" onClick={(e) => { e.stopPropagation(); onRowClick?.(server); }}>{server.name}</span>
               <span className="ml-3 text-xs text-gray-400 dark:text-gray-500 font-mono">{server.fully_qualified_domain_name}</span>
             </div>
           </div>
@@ -81,6 +85,8 @@ const ServerRow = ({ server, onDelete }) => {
 };
 
 const AzureDatabases = () => {
+  const { addTask } = useBackgroundTasks();
+  const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [noCredentials, setNoCredentials] = useState(false);
@@ -90,6 +96,8 @@ const AzureDatabases = () => {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
+  const [detailTarget, setDetailTarget] = useState(null);
+  const formRef = useRef();
   const [searchParams] = useSearchParams();
   const query = (searchParams.get('q') || '').toLowerCase();
 
@@ -118,9 +126,15 @@ const AzureDatabases = () => {
     setIsDeleting(true);
     setDeleteError('');
     try {
-      await azureService.deleteSQLServer(deleteTarget.resource_group, deleteTarget.name);
+      const result = await azureService.deleteSQLServer(deleteTarget.resource_group, deleteTarget.name);
+      if (result?.task_id) {
+        addTask({ id: result.task_id, label: result.label, status: 'queued', type: 'azure_sql_delete' });
+        toast.info(`Exclusão de "${deleteTarget.name}" em andamento em background.`);
+        setServers(prev => prev.filter(s => s.name !== deleteTarget.name));
+      } else {
+        fetchData(true);
+      }
       setDeleteTarget(null);
-      fetchData(true);
     } catch (err) {
       setDeleteError(err.response?.data?.detail || err.message || 'Erro ao excluir servidor SQL');
     } finally {
@@ -172,7 +186,7 @@ const AzureDatabases = () => {
         </div>
       ) : (
         <div className="space-y-2">
-          {filtered.map(s => <ServerRow key={s.id} server={s} onDelete={setDeleteTarget} />)}
+          {filtered.map(s => <ServerRow key={s.id} server={s} onDelete={setDeleteTarget} onRowClick={setDetailTarget} />)}
         </div>
       )}
 
@@ -180,13 +194,15 @@ const AzureDatabases = () => {
         isOpen={modalOpen}
         onClose={() => { setModalOpen(false); reset(); setForm(defaultForm); }}
         onSubmit={() => createDB(form)}
+        onValidate={() => { formRef.current?.touchAll(); return formRef.current?.isValid === true; }}
         title="Criar Banco de Dados Azure SQL"
         isLoading={creating}
         error={createError}
         success={createSuccess}
         estimate={<CostEstimatePanel type="azure-sql" form={form} />}
+        templateBar={<TemplateBar provider="azure" resourceType="sql" currentForm={form} onLoad={(cfg) => setForm({ ...defaultForm, ...cfg })} />}
       >
-        <CreateAzureSQLForm form={form} setForm={setForm} />
+        <CreateAzureSQLForm ref={formRef} form={form} setForm={setForm} />
       </CreateResourceModal>
 
       <ConfirmDeleteModal
@@ -198,6 +214,34 @@ const AzureDatabases = () => {
         confirmText={deleteTarget?.name}
         isLoading={isDeleting}
         error={deleteError}
+      />
+      <ResourceDetailDrawer
+        isOpen={!!detailTarget}
+        onClose={() => setDetailTarget(null)}
+        title={detailTarget?.name}
+        subtitle="Azure SQL Server"
+        queryKey={['azure-sql-detail', detailTarget?.resource_group, detailTarget?.name]}
+        queryFn={detailTarget ? () => azureService.getSQLServerDetail(detailTarget.resource_group, detailTarget.name) : null}
+        sections={(detail) => [
+          { title: 'Overview', fields: [
+            { label: 'Nome', value: detailTarget?.name },
+            { label: 'Resource Group', value: detailTarget?.resource_group },
+            { label: 'Localização', value: detailTarget?.location },
+            { label: 'FQDN', value: detail?.fqdn || detailTarget?.fully_qualified_domain_name, mono: true },
+            { label: 'Estado', value: detail?.state },
+            { label: 'Admin Login', value: detail?.admin_login },
+          ]},
+          { title: 'Segurança', fields: [
+            { label: 'Versão', value: detail?.version },
+            { label: 'TLS Mínimo', value: detail?.minimal_tls_version },
+            { label: 'Rede Pública', value: detail?.public_network_access },
+          ]},
+          { title: 'Regras de Firewall', fields: detail?.firewall_rules?.length > 0
+            ? detail.firewall_rules.map(r => ({ label: r.name, value: `${r.start_ip} – ${r.end_ip}`, mono: true }))
+            : [{ label: '—', value: 'Nenhuma regra configurada' }]
+          },
+        ]}
+        tags={(detail) => detail?.tags}
       />
     </Layout>
   );

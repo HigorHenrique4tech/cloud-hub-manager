@@ -1,8 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef, useImperativeHandle } from 'react';
 import FormSection from '../common/FormSection';
 import TagEditor from '../common/TagEditor';
+import FieldError from '../common/FieldError';
 import azureService from '../../services/azureservices';
 import { AZURE_LOCATIONS } from '../../data/azureConstants';
+import useFormValidation from '../../hooks/useFormValidation';
 
 const RUNTIMES = [
   { label: 'Node.js 20 LTS', value: 'NODE|20-lts' },
@@ -34,11 +36,24 @@ const inputCls = 'w-full px-3 py-2 text-sm border border-gray-300 dark:border-gr
 const labelCls = 'block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1';
 const toggleCls = 'w-4 h-4 text-primary accent-primary';
 
-export default function CreateAzureAppServiceForm({ form, setForm }) {
+const RULES = {
+  name: [
+    { required: true, message: 'Nome do App Service é obrigatório' },
+    { minLength: 2, message: 'Mínimo 2 caracteres' },
+    { maxLength: 60, message: 'Máximo 60 caracteres' },
+    { pattern: /^[a-zA-Z0-9\-]+$/, message: 'Apenas letras, números e hífens' },
+  ],
+  resource_group: [{ required: true, message: 'Resource Group é obrigatório' }],
+  location: [{ required: true, message: 'Localização é obrigatória' }],
+};
+
+const CreateAzureAppServiceForm = forwardRef(function CreateAzureAppServiceForm({ form, setForm }, ref) {
   const [apiLocations, setApiLocations] = useState([]);
   const [resourceGroups, setResourceGroups] = useState([]);
-  const isPaidTier = !['F1', 'D1'].includes(form.plan_sku || 'F1');
+  const { errors, touched, touch, touchAll, isValid } = useFormValidation(form, RULES);
+  useImperativeHandle(ref, () => ({ touchAll, isValid }));
 
+  const isPaidTier = !['F1', 'D1'].includes(form.plan_sku || 'F1');
   const locations = apiLocations.length > 0 ? apiLocations : AZURE_LOCATIONS;
 
   useEffect(() => {
@@ -53,26 +68,53 @@ export default function CreateAzureAppServiceForm({ form, setForm }) {
       <FormSection title="Básico">
         <div>
           <label className={labelCls}>Nome <span className="text-red-500">*</span></label>
-          <input className={inputCls} value={form.name || ''} onChange={(e) => set('name', e.target.value)} placeholder="meu-app" />
-          <p className="text-xs text-gray-400 mt-1">Será acessível como {form.name || 'app'}.azurewebsites.net</p>
+          <input
+            className={`${inputCls} ${touched.name && errors.name ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.name || ''}
+            onChange={(e) => set('name', e.target.value)}
+            onBlur={() => touch('name')}
+            placeholder="meu-app"
+          />
+          <FieldError message={touched.name ? errors.name : null} />
+          {!(touched.name && errors.name) && (
+            <p className="text-xs text-gray-400 mt-1">Será acessível como {form.name || 'app'}.azurewebsites.net</p>
+          )}
         </div>
         <div>
           <label className={labelCls}>Resource Group <span className="text-red-500">*</span></label>
           {resourceGroups.length > 0 ? (
-            <select className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)}>
+            <select
+              className={`${inputCls} ${touched.resource_group && errors.resource_group ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.resource_group || ''}
+              onChange={(e) => set('resource_group', e.target.value)}
+              onBlur={() => touch('resource_group')}
+            >
               <option value="">Selecione...</option>
               {resourceGroups.map((rg) => <option key={rg.name} value={rg.name}>{rg.name}</option>)}
             </select>
           ) : (
-            <input className={inputCls} value={form.resource_group || ''} onChange={(e) => set('resource_group', e.target.value)} placeholder="meu-resource-group" />
+            <input
+              className={`${inputCls} ${touched.resource_group && errors.resource_group ? 'border-red-500 dark:border-red-500' : ''}`}
+              value={form.resource_group || ''}
+              onChange={(e) => set('resource_group', e.target.value)}
+              onBlur={() => touch('resource_group')}
+              placeholder="meu-resource-group"
+            />
           )}
+          <FieldError message={touched.resource_group ? errors.resource_group : null} />
         </div>
         <div>
           <label className={labelCls}>Localização <span className="text-red-500">*</span></label>
-          <select className={inputCls} value={form.location || ''} onChange={(e) => set('location', e.target.value)}>
+          <select
+            className={`${inputCls} ${touched.location && errors.location ? 'border-red-500 dark:border-red-500' : ''}`}
+            value={form.location || ''}
+            onChange={(e) => set('location', e.target.value)}
+            onBlur={() => touch('location')}
+          >
             <option value="">Selecione...</option>
             {locations.map((l) => <option key={l.name} value={l.name}>{l.display_name || l.name}</option>)}
           </select>
+          <FieldError message={touched.location ? errors.location : null} />
         </div>
         <div>
           <label className={labelCls}>Runtime <span className="text-red-500">*</span></label>
@@ -113,4 +155,6 @@ export default function CreateAzureAppServiceForm({ form, setForm }) {
       </FormSection>
     </>
   );
-}
+});
+
+export default CreateAzureAppServiceForm;

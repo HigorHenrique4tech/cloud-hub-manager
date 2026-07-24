@@ -81,16 +81,71 @@ class AzureResourceGroupListResponse(BaseModel):
 
 # ── Auth & User schemas ──────────────────────────────────────────────────────
 
+def _validate_phone(v: str) -> str:
+    import re
+    digits = re.sub(r'\D', '', v)
+    if not (8 <= len(digits) <= 15):
+        raise ValueError('Telefone inválido: deve conter entre 8 e 15 dígitos')
+    return v
+
+
+def _validate_cnpj(v: str) -> str:
+    import re
+    digits = re.sub(r'\D', '', v)
+    if len(digits) != 14:
+        raise ValueError('CNPJ inválido: deve conter 14 dígitos')
+    if len(set(digits)) == 1:
+        raise ValueError('CNPJ inválido')
+    # Validar dígitos verificadores (algoritmo módulo 11)
+    def _calc(d, weights):
+        total = sum(int(d[i]) * w for i, w in enumerate(weights))
+        remainder = total % 11
+        return 0 if remainder < 2 else 11 - remainder
+    w1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    w2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+    if _calc(digits, w1) != int(digits[12]) or _calc(digits, w2) != int(digits[13]):
+        raise ValueError('CNPJ inválido: dígitos verificadores incorretos')
+    return v
+
+
 class UserCreate(BaseModel):
     name: str
     email: EmailStr
     password: str
+    phone: Optional[str] = None
+    company_name: Optional[str] = None
+    cnpj: Optional[str] = None
+
+    @field_validator('phone')
+    @classmethod
+    def validate_phone(cls, v: str) -> str:
+        if v is None:
+            return v
+        return _validate_phone(v)
+
+    @field_validator('cnpj')
+    @classmethod
+    def validate_cnpj(cls, v: str) -> str:
+        if v is None:
+            return v
+        return _validate_cnpj(v)
 
     @field_validator('password')
     @classmethod
-    def password_max_length(cls, v: str) -> str:
+    def validate_password(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError('A senha deve ter no mínimo 8 caracteres')
         if len(v.encode('utf-8')) > 72:
             raise ValueError('A senha deve ter no máximo 72 caracteres')
+        import re
+        if not re.search(r'[a-z]', v):
+            raise ValueError('A senha deve conter pelo menos uma letra minúscula')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('A senha deve conter pelo menos uma letra maiúscula')
+        if not re.search(r'\d', v):
+            raise ValueError('A senha deve conter pelo menos um número')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~/]', v):
+            raise ValueError('A senha deve conter pelo menos um caractere especial')
         return v
 
 
@@ -105,10 +160,15 @@ class UserResponse(BaseModel):
     name: str
     is_active: bool
     is_verified: bool = False
+    is_admin: bool = False
     default_org_id: Optional[UUID] = None
     oauth_provider: Optional[str] = None
     avatar_url: Optional[str] = None
+    mfa_enabled: bool = False
+    onboarding_completed: bool = False
     created_at: datetime
+    terms_accepted: bool = False
+    terms_version: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -118,6 +178,24 @@ class TokenResponse(BaseModel):
     refresh_token: Optional[str] = None
     token_type: str = "bearer"
     user: UserResponse
+    needs_company_info: bool = False
+
+
+# ── MFA schemas ─────────────────────────────────────────────────────────────
+
+class MFARequiredResponse(BaseModel):
+    mfa_required: bool = True
+    mfa_token: str
+
+
+class MFAVerifyRequest(BaseModel):
+    mfa_token: str
+    otp: str  # 6 dígitos como string
+
+
+class MFAToggleRequest(BaseModel):
+    enabled: bool
+    password: str  # senha atual para confirmar
 
 
 # ── Profile update schemas ───────────────────────────────────────────────────
@@ -125,6 +203,8 @@ class TokenResponse(BaseModel):
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
+    onboarding_completed: Optional[bool] = None
+    current_password: Optional[str] = None  # Required when changing email
 
 
 class PasswordChange(BaseModel):
@@ -134,6 +214,17 @@ class PasswordChange(BaseModel):
     @field_validator('new_password')
     @classmethod
     def password_max_length(cls, v: str) -> str:
+        if len(v) < 8:
+            raise ValueError('A senha deve ter no mínimo 8 caracteres')
         if len(v.encode('utf-8')) > 72:
             raise ValueError('A senha deve ter no máximo 72 caracteres')
+        import re
+        if not re.search(r'[a-z]', v):
+            raise ValueError('A senha deve conter pelo menos uma letra minúscula')
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('A senha deve conter pelo menos uma letra maiúscula')
+        if not re.search(r'\d', v):
+            raise ValueError('A senha deve conter pelo menos um número')
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>\-_=+\[\]\\;\'`~/]', v):
+            raise ValueError('A senha deve conter pelo menos um caractere especial')
         return v

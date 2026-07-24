@@ -22,6 +22,7 @@ class CreateEC2Request(BaseModel):
     name: str
     image_id: str
     instance_type: str = "t3.micro"
+    vpc_id: Optional[str] = None
     key_name: Optional[str] = None
     security_group_ids: List[str] = []
     subnet_id: Optional[str] = None
@@ -113,6 +114,18 @@ class CreateVPCRequest(BaseModel):
     tags: Dict[str, str] = {}
 
 
+class CreateVPCSubnetRequest(BaseModel):
+    name: Optional[str] = None
+    cidr_block: str
+    availability_zone: Optional[str] = None
+
+
+class CreateVPCPeeringRequest(BaseModel):
+    name: Optional[str] = None
+    peer_vpc_id: str
+    peer_region: Optional[str] = None
+
+
 # ── Azure VM ────────────────────────────────────────────────────────────────
 
 class AzureDataDisk(BaseModel):
@@ -174,6 +187,25 @@ class CreateAzureVNetRequest(BaseModel):
     tags: Dict[str, str] = {}
 
 
+class CreateSubnetRequest(BaseModel):
+    subnet_name: str
+    address_prefix: str
+    nsg_id: Optional[str] = None
+
+
+class UpdateSubnetRequest(BaseModel):
+    address_prefix: str
+    nsg_id: Optional[str] = None
+
+
+class CreateVNetPeeringRequest(BaseModel):
+    peering_name: str
+    remote_vnet_id: str
+    allow_forwarded_traffic: bool = True
+    allow_gateway_transit: bool = False
+    use_remote_gateways: bool = False
+
+
 # ── Azure SQL Database ─────────────────────────────────────────────────────
 
 class CreateAzureSQLRequest(BaseModel):
@@ -200,3 +232,16 @@ class CreateAzureAppServiceRequest(BaseModel):
     plan_sku: str = "F1"
     always_on: bool = False
     tags: Dict[str, str] = {}
+
+
+# ── GCP Network ───────────────────────────────────────────────────────────
+
+class CreateGCPSubnetRequest(BaseModel):
+    name: str
+    region: str
+    ip_cidr_range: str
+
+
+class CreateGCPPeeringRequest(BaseModel):
+    peering_name: str
+    peer_network: str

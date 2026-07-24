@@ -1,15 +1,20 @@
+import logging
 from fastapi import APIRouter, HTTPException, Depends, Path, Query
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional, Dict
 
+logger = logging.getLogger(__name__)
+
 from app.database import get_db
 from app.models.db_models import CloudAccount, Organization, Workspace
 from app.core.dependencies import get_workspace_member, require_permission
 from app.core.auth_context import MemberContext
-from app.services.auth_service import encrypt_credential, decrypt_credential
+from app.services.auth_service import encrypt_credential, decrypt_credential, encrypt_for_org, decrypt_for_account
 from app.services.log_service import log_activity
-from app.services.plan_service import check_account_limit
+from app.services.plan_service import check_account_limit, get_effective_plan
+from app.services.notification_service import push_notification
+from app.services.notification_channel_service import fire_event
 
 router = APIRouter(
     prefix="/orgs/{org_slug}/workspaces/{workspace_id}/accounts",
@@ -21,7 +26,7 @@ router = APIRouter(
 
 
 class AccountCreate(BaseModel):
-    provider: str       # 'aws' | 'azure'
+    provider: str       # 'aws' | 'azure' | 'gcp' | 'm365'
     label: str = "default"
     account_id: Optional[str] = None  # AWS account ID or Azure subscription ID (display)
     data: Dict          # credential fields to encrypt
@@ -85,22 +90,23 @@ async def create_account(
     # Plan limit check
     ws = db.query(Workspace).filter(Workspace.id == member.workspace_id).first()
     org = db.query(Organization).filter(Organization.id == ws.organization_id).first()
-    allowed, current, limit = check_account_limit(db, org.id, org.plan_tier)
+    effective = get_effective_plan(org)
+    allowed, current, limit = check_account_limit(db, org.id, effective)
     if not allowed:
         raise HTTPException(
             status_code=403,
-            detail=f"Limite de contas cloud atingido para o plano {org.plan_tier.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
+            detail=f"Limite de contas cloud atingido para o plano {effective.capitalize()} (máx {limit}). Faça upgrade para criar mais.",
         )
 
-    if payload.provider not in ("aws", "azure"):
-        raise HTTPException(status_code=400, detail="Provider deve ser 'aws' ou 'azure'")
+    if payload.provider not in ("aws", "azure", "gcp", "m365"):
+        raise HTTPException(status_code=400, detail="Provider deve ser 'aws', 'azure', 'gcp' ou 'm365'")
 
     account = CloudAccount(
         workspace_id=member.workspace_id,
         provider=payload.provider,
         label=payload.label,
         account_id=payload.account_id,
-        encrypted_data=encrypt_credential(payload.data),
+        encrypted_data=encrypt_for_org(db, org.id, payload.data),
         created_by=member.user.id,
     )
     db.add(account)
@@ -112,6 +118,17 @@ async def create_account(
         resource_id=str(account.id), resource_name=account.label,
         provider=payload.provider,
     )
+    push_notification(
+        db, member.workspace_id, "cloud_account",
+        f"Conta cloud {payload.provider.upper()} '{account.label}' adicionada.",
+        "/settings",
+    )
+    fire_event(db, member.workspace_id, "resource.started", {
+        "type": "cloud_account",
+        "provider": payload.provider,
+        "label": account.label,
+        "account_id": str(account.id),
+    })
 
     return _account_to_dict(account)
 
@@ -130,11 +147,24 @@ async def delete_account(
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
 
+    label = account.label
+    provider = account.provider
+
     log_activity(
         db, member.user, "account.delete", "CloudAccount",
-        resource_id=str(account.id), resource_name=account.label,
-        provider=account.provider,
+        resource_id=str(account.id), resource_name=label,
+        provider=provider,
     )
+    push_notification(
+        db, member.workspace_id, "cloud_account",
+        f"Conta cloud {provider.upper()} '{label}' removida.",
+        "/settings",
+    )
+    fire_event(db, member.workspace_id, "resource.stopped", {
+        "type": "cloud_account",
+        "provider": provider,
+        "label": label,
+    })
 
     db.delete(account)
     db.commit()
@@ -156,7 +186,7 @@ async def test_account_connection(
     if not account:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
 
-    data = decrypt_credential(account.encrypted_data)
+    data = decrypt_for_account(db, account)
 
     if account.provider == "aws":
         from app.services import AWSService
@@ -178,4 +208,242 @@ async def test_account_connection(
         )
         return await svc.test_connection()
 
+    if account.provider == "gcp":
+        from app.services.gcp_service import GCPService
+        svc = GCPService(
+            project_id=data.get("project_id", ""),
+            client_email=data.get("client_email", ""),
+            private_key=data.get("private_key", ""),
+            private_key_id=data.get("private_key_id", ""),
+        )
+        try:
+            buckets = svc.list_buckets()
+            return {"success": True, "project_id": svc.project_id, "bucket_count": len(buckets)}
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Falha na conexão GCP: {exc}")
+
     raise HTTPException(status_code=400, detail="Provider desconhecido")
+
+
+@router.get("/health-check")
+async def health_check_all_accounts(
+    member: MemberContext = Depends(require_permission("accounts.view")),
+    db: Session = Depends(get_db),
+):
+    """Test connectivity for ALL cloud accounts in the workspace.
+
+    Returns a per-account status so the user can see at a glance which
+    connections are healthy.
+    """
+    from app.core.config import settings
+
+    accounts = db.query(CloudAccount).filter(
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.is_active == True,
+    ).all()
+
+    if not accounts:
+        return {"accounts": [], "summary": {"total": 0, "healthy": 0, "failed": 0}}
+
+    results = []
+
+    def _test_one(account):
+        try:
+            data = decrypt_for_account(db, account)
+            if account.provider == "aws":
+                from app.services import AWSService
+                svc = AWSService(
+                    access_key=data.get("access_key_id", ""),
+                    secret_key=data.get("secret_access_key", ""),
+                    region=data.get("region", settings.AWS_DEFAULT_REGION),
+                )
+                resp = svc.test_connection()
+                return {"ok": resp.get("success", True), "detail": None}
+            elif account.provider == "azure":
+                from app.services import AzureService
+                svc = AzureService(
+                    subscription_id=data.get("subscription_id", ""),
+                    tenant_id=data.get("tenant_id", ""),
+                    client_id=data.get("client_id", ""),
+                    client_secret=data.get("client_secret", ""),
+                )
+                resp = svc.test_connection()
+                return {"ok": resp.get("success", True), "detail": None}
+            elif account.provider == "gcp":
+                from app.services.gcp_service import GCPService
+                svc = GCPService(
+                    project_id=data.get("project_id", ""),
+                    client_email=data.get("client_email", ""),
+                    private_key=data.get("private_key", ""),
+                    private_key_id=data.get("private_key_id", ""),
+                )
+                svc.list_buckets()
+                return {"ok": True, "detail": None}
+            elif account.provider == "m365":
+                return {"ok": True, "detail": None}
+            else:
+                return {"ok": False, "detail": "Provider desconhecido"}
+        except Exception as exc:
+            return {"ok": False, "detail": str(exc)[:200]}
+
+    for acc in accounts:
+        check = _test_one(acc)
+        results.append({
+            "id": str(acc.id),
+            "provider": acc.provider,
+            "label": acc.label,
+            "account_id": acc.account_id,
+            "status": "healthy" if check["ok"] else "failed",
+            "error": check["detail"] if not check["ok"] else None,
+        })
+
+    healthy = sum(1 for r in results if r["status"] == "healthy")
+    failed_accounts = [r for r in results if r["status"] == "failed"]
+
+    # Email the user about any failed accounts
+    if failed_accounts:
+        try:
+            from app.services.email_service import send_account_disconnected_email
+            from app.services.branding_service import get_branding_for_workspace
+            branding = get_branding_for_workspace(db, member.workspace_id)
+            for fa in failed_accounts:
+                send_account_disconnected_email(
+                    to_email=member.user.email,
+                    user_name=member.user.name or member.user.email,
+                    provider=fa["provider"],
+                    account_label=fa["label"],
+                    error_detail=fa.get("error", "Falha na conexão"),
+                    branding=branding,
+                )
+        except Exception:
+            pass  # Non-critical
+
+    return {
+        "accounts": results,
+        "summary": {"total": len(results), "healthy": healthy, "failed": len(results) - healthy},
+    }
+
+
+# ── GCP BigQuery Billing Export ───────────────────────────────────────────────
+
+
+class BigQueryExportConfig(BaseModel):
+    bigquery_project: Optional[str] = None
+    bigquery_dataset: str
+    bigquery_table: str
+
+
+@router.get("/{account_id}/bigquery-export")
+async def get_bigquery_export_config(
+    account_id: str = Path(...),
+    member: MemberContext = Depends(require_permission("accounts.view")),
+    db: Session = Depends(get_db),
+):
+    account = db.query(CloudAccount).filter(
+        CloudAccount.id == account_id,
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == "gcp",
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta GCP não encontrada.")
+    return {
+        "billing_export_enabled": account.billing_export_enabled,
+        "bigquery_project": account.bigquery_project,
+        "bigquery_dataset": account.bigquery_dataset,
+        "bigquery_table": account.bigquery_table,
+    }
+
+
+@router.post("/{account_id}/bigquery-export/test")
+async def test_bigquery_export(
+    account_id: str = Path(...),
+    payload: BigQueryExportConfig = None,
+    member: MemberContext = Depends(require_permission("accounts.view")),
+    db: Session = Depends(get_db),
+):
+    account = db.query(CloudAccount).filter(
+        CloudAccount.id == account_id,
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == "gcp",
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta GCP não encontrada.")
+
+    creds = decrypt_for_account(db, account)
+    dataset = (payload.bigquery_dataset if payload else account.bigquery_dataset) or ""
+    table = (payload.bigquery_table if payload else account.bigquery_table) or ""
+    bq_project = (payload.bigquery_project if payload else account.bigquery_project) or creds.get("project_id", "")
+
+    if not dataset or not table:
+        raise HTTPException(status_code=400, detail="Dataset e tabela são obrigatórios.")
+
+    from app.services.gcp_billing_service import GCPBillingService
+    sa_json = {
+        "type": "service_account",
+        "project_id": creds.get("project_id", ""),
+        "private_key_id": creds.get("private_key_id", ""),
+        "private_key": creds.get("private_key", ""),
+        "client_email": creds.get("client_email", ""),
+        "token_uri": "https://oauth2.googleapis.com/token",
+    }
+    svc = GCPBillingService(
+        service_account_json=sa_json,
+        project_id=creds.get("project_id", ""),
+        dataset=dataset,
+        table=table,
+        billing_project=bq_project,
+    )
+    result = svc.test_connection()
+    if not result.get("success"):
+        raise HTTPException(status_code=400, detail=f"Falha na conexão BigQuery: {result.get('error')}")
+    return result
+
+
+@router.put("/{account_id}/bigquery-export")
+async def save_bigquery_export_config(
+    account_id: str = Path(...),
+    payload: BigQueryExportConfig = None,
+    member: MemberContext = Depends(require_permission("accounts.manage")),
+    db: Session = Depends(get_db),
+):
+    account = db.query(CloudAccount).filter(
+        CloudAccount.id == account_id,
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == "gcp",
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta GCP não encontrada.")
+
+    if payload:
+        account.bigquery_project = payload.bigquery_project
+        account.bigquery_dataset = payload.bigquery_dataset
+        account.bigquery_table = payload.bigquery_table
+        account.billing_export_enabled = bool(payload.bigquery_dataset and payload.bigquery_table)
+    db.commit()
+    db.refresh(account)
+    return {
+        "billing_export_enabled": account.billing_export_enabled,
+        "bigquery_project": account.bigquery_project,
+        "bigquery_dataset": account.bigquery_dataset,
+        "bigquery_table": account.bigquery_table,
+    }
+
+
+@router.delete("/{account_id}/bigquery-export", status_code=204)
+async def disable_bigquery_export(
+    account_id: str = Path(...),
+    member: MemberContext = Depends(require_permission("accounts.manage")),
+    db: Session = Depends(get_db),
+):
+    account = db.query(CloudAccount).filter(
+        CloudAccount.id == account_id,
+        CloudAccount.workspace_id == member.workspace_id,
+        CloudAccount.provider == "gcp",
+    ).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="Conta GCP não encontrada.")
+    account.billing_export_enabled = False
+    account.bigquery_dataset = None
+    account.bigquery_table = None
+    account.bigquery_project = None
+    db.commit()

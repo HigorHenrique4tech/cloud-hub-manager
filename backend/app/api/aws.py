@@ -1,4 +1,7 @@
+import asyncio
+
 from fastapi import APIRouter, HTTPException, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 
@@ -7,14 +10,19 @@ from app.models.db_models import CloudAccount
 from app.models.create_schemas import (
     CreateEC2Request, CreateS3BucketRequest, CreateRDSRequest,
     CreateLambdaRequest, CreateVPCRequest,
+    CreateVPCSubnetRequest, CreateVPCPeeringRequest,
 )
 from app.core import settings
 from app.core.dependencies import require_permission
 from app.core.auth_context import MemberContext
 from app.database import get_db
-from app.services.auth_service import decrypt_credential
+from app.services.auth_service import decrypt_credential, decrypt_for_account
 from app.services.log_service import log_activity
+from app.services.security_service import AWSSecurityScanner
+from app.services.notification_service import push_notification
+from app.core.cache import cache_get, cache_set, cache_delete
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +32,8 @@ ws_router = APIRouter(
 )
 
 
-def _build_aws_service_from_account(account: CloudAccount) -> AWSService:
-    data = decrypt_credential(account.encrypted_data)
+def _build_aws_service_from_account(db: Session, account: CloudAccount) -> AWSService:
+    data = decrypt_for_account(db, account)
     access_key = data.get("access_key_id", "")
     secret_key = data.get("secret_access_key", "")
     region = data.get("region", settings.AWS_DEFAULT_REGION)
@@ -47,11 +55,22 @@ def _get_ws_aws_accounts(member: MemberContext, db: Session):
     )
 
 
+async def _run(fn, *args, _timeout=120, **kwargs):
+    """Run a synchronous AWS SDK call in a thread pool with timeout."""
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(fn, *args, **kwargs),
+            timeout=_timeout,
+        )
+    except asyncio.TimeoutError:
+        raise HTTPException(status_code=504, detail=f"Operação AWS expirou após {_timeout}s")
+
+
 def _get_single_aws_service(member: MemberContext, db: Session) -> AWSService:
     accounts = _get_ws_aws_accounts(member, db)
     if not accounts:
         raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
-    return _build_aws_service_from_account(accounts[0])
+    return _build_aws_service_from_account(db, accounts[0])
 
 
 # ── Connection ──────────────────────────────────────────────────────────────
@@ -62,7 +81,7 @@ async def ws_test_aws_connection(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.test_connection()
+    return await _run(svc.test_connection)
 
 
 # ── Overview ────────────────────────────────────────────────────────────────
@@ -72,10 +91,14 @@ async def ws_get_aws_overview(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"aws:{member.workspace_id}:overview"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_aws_service(member, db)
-    result = await svc.get_overview()
+    result = await _run(svc.get_overview)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter overview'))
+    cache_set(cache_key, result, ttl=300)
     return result
 
 
@@ -96,9 +119,15 @@ async def ws_list_ec2_instances(
         ).first()
         if not account:
             raise HTTPException(status_code=404, detail="Conta AWS não encontrada")
-        return await _build_aws_service_from_account(account).list_ec2_instances()
+        _svc = _build_aws_service_from_account(db, account)
+        return await _run(_svc.list_ec2_instances)
+    cache_key = f"aws:{member.workspace_id}:ec2"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_aws_service(member, db)
-    return await svc.list_ec2_instances()
+    result = await _run(svc.list_ec2_instances)
+    cache_set(cache_key, result, ttl=180)
+    return result
 
 
 @ws_router.post("/ec2/instances")
@@ -108,7 +137,7 @@ async def ws_create_ec2_instance(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.create_ec2_instance(body.model_dump())
+    result = await _run(svc.create_ec2_instance, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar instância EC2'))
     log_activity(db, member.user, 'ec2.create', 'EC2',
@@ -124,12 +153,17 @@ async def ws_start_ec2_instance(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.start_ec2_instance(instance_id)
+    result = await _run(svc.start_ec2_instance, instance_id)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao iniciar instância EC2'))
     log_activity(db, member.user, 'ec2.start', 'EC2',
                  resource_id=instance_id, resource_name=instance_id, provider='aws',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    from app.services.notification_channel_service import fire_event as _fire
+    _fire(db, member.workspace_id, "resource.started", {
+        "resource_id": instance_id, "resource_name": instance_id,
+        "resource_type": "ec2", "provider": "aws", "action": "start",
+    })
     return result
 
 
@@ -140,12 +174,17 @@ async def ws_stop_ec2_instance(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.stop_ec2_instance(instance_id)
+    result = await _run(svc.stop_ec2_instance, instance_id)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao parar instância EC2'))
     log_activity(db, member.user, 'ec2.stop', 'EC2',
                  resource_id=instance_id, resource_name=instance_id, provider='aws',
                  organization_id=member.organization_id, workspace_id=member.workspace_id)
+    from app.services.notification_channel_service import fire_event as _fire
+    _fire(db, member.workspace_id, "resource.stopped", {
+        "resource_id": instance_id, "resource_name": instance_id,
+        "resource_type": "ec2", "provider": "aws", "action": "stop",
+    })
     return result
 
 
@@ -157,7 +196,7 @@ async def ws_list_amis(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_amis(search=search)
+    return await _run(svc.list_amis, search)
 
 
 @ws_router.get("/ec2/instance-types")
@@ -166,7 +205,7 @@ async def ws_list_instance_types(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_instance_types()
+    return await _run(svc.list_instance_types)
 
 
 @ws_router.get("/ec2/key-pairs")
@@ -175,25 +214,33 @@ async def ws_list_key_pairs(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_key_pairs()
+    return await _run(svc.list_key_pairs)
 
 
 @ws_router.get("/ec2/security-groups")
 async def ws_list_security_groups(
+    vpc_id: str = None,
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_security_groups()
+    result = await _run(svc.list_security_groups)
+    if vpc_id and result.get('security_groups'):
+        result['security_groups'] = [sg for sg in result['security_groups'] if sg.get('vpc_id') == vpc_id]
+    return result
 
 
 @ws_router.get("/ec2/subnets")
 async def ws_list_subnets(
+    vpc_id: str = None,
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_subnets()
+    result = await _run(svc.list_subnets)
+    if vpc_id and result.get('subnets'):
+        result['subnets'] = [subnet for subnet in result['subnets'] if subnet.get('vpc_id') == vpc_id]
+    return result
 
 
 @ws_router.get("/ec2/availability-zones")
@@ -202,7 +249,7 @@ async def ws_list_availability_zones(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_availability_zones()
+    return await _run(svc.list_availability_zones)
 
 
 # ── VPC ─────────────────────────────────────────────────────────────────────
@@ -213,7 +260,7 @@ async def ws_list_vpcs(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.list_vpcs()
+    result = await _run(svc.list_vpcs)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao listar VPCs'))
     return result
@@ -226,12 +273,104 @@ async def ws_create_vpc(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.create_vpc(body.model_dump())
+    result = await _run(svc.create_vpc, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar VPC'))
     log_activity(db, member.user, 'vpc.create', 'VPC',
                  resource_id=result.get('vpc_id'), resource_name=body.name,
                  provider='aws', organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+# ── VPC Subnets ──────────────────────────────────────────────────────────
+
+@ws_router.post("/ec2/vpcs/{vpc_id}/subnets")
+async def ws_create_vpc_subnet(
+    vpc_id: str,
+    body: CreateVPCSubnetRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.create_subnet, vpc_id, body.cidr_block,
+                        body.availability_zone, body.name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar subnet'))
+    log_activity(db, member.user, 'subnet.create', 'Subnet',
+                 resource_id=result.get('subnet_id'), resource_name=body.name or '',
+                 provider='aws', detail=f"VPC: {vpc_id}, CIDR: {body.cidr_block}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/ec2/vpcs/{vpc_id}/subnets/{subnet_id}")
+async def ws_delete_vpc_subnet(
+    vpc_id: str,
+    subnet_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.delete_subnet, subnet_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao excluir subnet'))
+    log_activity(db, member.user, 'subnet.delete', 'Subnet',
+                 resource_id=subnet_id, provider='aws',
+                 detail=f"VPC: {vpc_id}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+# ── VPC Peering ──────────────────────────────────────────────────────────
+
+@ws_router.post("/ec2/vpcs/{vpc_id}/peerings")
+async def ws_create_vpc_peering(
+    vpc_id: str,
+    body: CreateVPCPeeringRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.create_vpc_peering, vpc_id, body.peer_vpc_id,
+                        body.peer_region, body.name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar VPC peering'))
+    log_activity(db, member.user, 'peering.create', 'VPCPeering',
+                 resource_id=result.get('peering_id'), resource_name=body.name or '',
+                 provider='aws', detail=f"VPC: {vpc_id} → {body.peer_vpc_id}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.post("/ec2/vpcs/peerings/{peering_id}/accept")
+async def ws_accept_vpc_peering(
+    peering_id: str,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.accept_vpc_peering, peering_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao aceitar peering'))
+    log_activity(db, member.user, 'peering.accept', 'VPCPeering',
+                 resource_id=peering_id, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.delete("/ec2/vpcs/peerings/{peering_id}")
+async def ws_delete_vpc_peering(
+    peering_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.delete_vpc_peering, peering_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao excluir peering'))
+    log_activity(db, member.user, 'peering.delete', 'VPCPeering',
+                 resource_id=peering_id, provider='aws',
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
     return result
 
 
@@ -242,10 +381,14 @@ async def ws_list_s3_buckets(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"aws:{member.workspace_id}:s3"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_aws_service(member, db)
-    result = await svc.list_s3_buckets()
+    result = await _run(svc.list_s3_buckets)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao listar buckets S3'))
+    cache_set(cache_key, result, ttl=300)
     return result
 
 
@@ -256,7 +399,7 @@ async def ws_create_s3_bucket(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.create_s3_bucket(body.model_dump())
+    result = await _run(svc.create_s3_bucket, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar bucket S3'))
     log_activity(db, member.user, 's3.create', 'S3',
@@ -271,7 +414,7 @@ async def ws_list_s3_regions(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_regions()
+    return await _run(svc.list_regions)
 
 
 # ── RDS ─────────────────────────────────────────────────────────────────────
@@ -281,10 +424,14 @@ async def ws_list_rds_instances(
     member: MemberContext = Depends(require_permission("resources.view")),
     db: Session = Depends(get_db),
 ):
+    cache_key = f"aws:{member.workspace_id}:rds"
+    if cached := cache_get(cache_key):
+        return cached
     svc = _get_single_aws_service(member, db)
-    result = await svc.list_rds_instances()
+    result = await _run(svc.list_rds_instances)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao listar instâncias RDS'))
+    cache_set(cache_key, result, ttl=180)
     return result
 
 
@@ -295,7 +442,7 @@ async def ws_create_rds_instance(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.create_rds_instance(body.model_dump())
+    result = await _run(svc.create_rds_instance, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar instância RDS'))
     log_activity(db, member.user, 'rds.create', 'RDS',
@@ -311,7 +458,7 @@ async def ws_list_rds_engine_versions(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_rds_engine_versions(engine=engine)
+    return await _run(svc.list_rds_engine_versions, engine)
 
 
 @ws_router.get("/rds/instance-classes")
@@ -321,7 +468,7 @@ async def ws_list_rds_instance_classes(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_rds_instance_classes(engine=engine)
+    return await _run(svc.list_rds_instance_classes, engine)
 
 
 @ws_router.get("/rds/subnet-groups")
@@ -330,7 +477,7 @@ async def ws_list_db_subnet_groups(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_db_subnet_groups()
+    return await _run(svc.list_db_subnet_groups)
 
 
 # ── Lambda ──────────────────────────────────────────────────────────────────
@@ -341,7 +488,7 @@ async def ws_list_lambda_functions(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.list_lambda_functions()
+    result = await _run(svc.list_lambda_functions)
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao listar funções Lambda'))
     return result
@@ -354,7 +501,7 @@ async def ws_create_lambda_function(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.create_lambda_function(body.model_dump())
+    result = await _run(svc.create_lambda_function, body.model_dump())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao criar função Lambda'))
     log_activity(db, member.user, 'lambda.create', 'Lambda',
@@ -370,7 +517,74 @@ async def ws_list_iam_roles(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    return await svc.list_iam_roles(service_filter=service)
+    return await _run(svc.list_iam_roles, service)
+
+
+# ── Detail ──────────────────────────────────────────────────────────────────
+
+@ws_router.get("/ec2/instances/{instance_id}")
+async def ws_get_ec2_instance_detail(
+    instance_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.get_ec2_instance_detail, instance_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da instância EC2'))
+    return result
+
+
+@ws_router.get("/ec2/vpcs/{vpc_id}")
+async def ws_get_vpc_detail(
+    vpc_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.get_vpc_detail, vpc_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da VPC'))
+    return result
+
+
+@ws_router.get("/s3/buckets/{bucket_name}")
+async def ws_get_s3_bucket_detail(
+    bucket_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.get_s3_bucket_detail, bucket_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe do bucket S3'))
+    return result
+
+
+@ws_router.get("/rds/instances/{db_instance_id}")
+async def ws_get_rds_instance_detail(
+    db_instance_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.get_rds_instance_detail, db_instance_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da instância RDS'))
+    return result
+
+
+@ws_router.get("/lambda/functions/{function_name}")
+async def ws_get_lambda_function_detail(
+    function_name: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.get_lambda_function_detail, function_name)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter detalhe da função Lambda'))
+    return result
 
 
 # ── Delete ──────────────────────────────────────────────────────────────────
@@ -382,7 +596,7 @@ async def ws_terminate_ec2_instance(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.terminate_ec2_instance(instance_id)
+    result = await _run(svc.terminate_ec2_instance, instance_id)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao terminar instância EC2'))
     log_activity(db, member.user, 'ec2.delete', 'EC2',
@@ -398,7 +612,7 @@ async def ws_delete_s3_bucket(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.delete_s3_bucket(bucket_name)
+    result = await _run(svc.delete_s3_bucket, bucket_name)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir bucket S3'))
     log_activity(db, member.user, 's3.delete', 'S3',
@@ -414,7 +628,7 @@ async def ws_delete_rds_instance(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.delete_rds_instance(db_instance_id)
+    result = await _run(svc.delete_rds_instance, db_instance_id)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir instância RDS'))
     log_activity(db, member.user, 'rds.delete', 'RDS',
@@ -430,7 +644,7 @@ async def ws_delete_lambda_function(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.delete_lambda_function(function_name)
+    result = await _run(svc.delete_lambda_function, function_name)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir função Lambda'))
     log_activity(db, member.user, 'lambda.delete', 'Lambda',
@@ -446,7 +660,7 @@ async def ws_delete_vpc(
     db: Session = Depends(get_db),
 ):
     svc = _get_single_aws_service(member, db)
-    result = await svc.delete_vpc(vpc_id)
+    result = await _run(svc.delete_vpc, vpc_id)
     if not result.get('success'):
         raise HTTPException(status_code=400, detail=result.get('error', 'Erro ao excluir VPC'))
     log_activity(db, member.user, 'vpc.delete', 'VPC',
@@ -475,10 +689,434 @@ async def ws_get_aws_costs(
         ).first()
         if not account:
             raise HTTPException(status_code=404, detail="Conta AWS não encontrada")
-        svc = _build_aws_service_from_account(account)
+        svc = _build_aws_service_from_account(db, account)
     else:
-        svc = _get_single_aws_service(member, db)
-    result = await svc.get_cost_and_usage(start_date=start_date, end_date=end_date, granularity=granularity.upper())
+        try:
+            svc = _get_single_aws_service(member, db)
+        except HTTPException:
+            return {"success": True, "total": 0, "by_service": [], "daily": [], "currency": "USD"}
+    result = await _run(svc.get_cost_and_usage, start_date, end_date, granularity.upper())
     if not result.get('success'):
         raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter dados de custo AWS'))
     return result
+
+
+# ── Cost Drill-down ──────────────────────────────────────────────────────────
+
+@ws_router.get("/costs/resources")
+async def ws_get_aws_cost_resources(
+    service: str = Query(..., description="AWS service name (e.g. 'Amazon EC2')"),
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    member: MemberContext = Depends(require_permission("costs.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.get_cost_by_resource, service, start_date, end_date)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Erro ao obter custos por recurso AWS'))
+    return result
+
+
+# ── Security Scan ─────────────────────────────────────────────────────────────
+
+@ws_router.get("/security/scan")
+async def aws_security_scan(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """
+    Runs basic security checks on the configured AWS account:
+    - S3 buckets without Block Public Access
+    - Security Groups with unrestricted inbound access (0.0.0.0/0) on SSH/RDP
+    - Root account active access keys
+    """
+    accounts = _get_ws_aws_accounts(member, db)
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
+
+    all_findings = []
+    for account in accounts:
+        creds = decrypt_for_account(db, account)
+        scanner = AWSSecurityScanner(
+            access_key=creds.get("access_key_id", ""),
+            secret_key=creds.get("secret_access_key", ""),
+            region=creds.get("region", "us-east-1"),
+        )
+        all_findings.extend(await _run(scanner.scan_all))
+
+    # Sort by severity
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+    all_findings.sort(key=lambda f: order.get(f.get("severity", "low"), 3))
+
+    critical = sum(1 for f in all_findings if f.get("severity") in ("critical", "high"))
+    if critical > 0:
+        push_notification(
+            db, member.workspace_id, "security",
+            f"Scan de segurança AWS: {critical} finding(s) crítico(s)/alto(s) encontrado(s).",
+            "/security",
+        )
+
+    return {
+        "findings": all_findings,
+        "total": len(all_findings),
+        "scanned_at": datetime.utcnow().isoformat(),
+        "provider": "aws",
+    }
+
+
+@ws_router.get("/metrics")
+async def ws_get_aws_metrics(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Returns CPU and network metrics for running EC2 instances (last 1 hour)."""
+    accounts = _get_ws_aws_accounts(member, db)
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
+    try:
+        svc = _build_aws_service_from_account(db, accounts[0])
+        return await _run(svc.get_metrics)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Backup (EBS Snapshots + AMIs) ────────────────────────────────────────────
+
+from pydantic import BaseModel as _BM
+
+class CreateSnapshotRequest(_BM):
+    volume_id: str
+    description: str = ""
+
+class CreateAMIRequest(_BM):
+    instance_id: str
+    name: str
+    description: str = ""
+
+
+@ws_router.get("/backups/snapshots")
+async def ws_list_aws_snapshots(
+    instance_id: Optional[str] = Query(None),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List owned EBS snapshots. Optionally filter by instance_id (looks up attached volumes)."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        def _fetch():
+            filters = [{"Name": "status", "Values": ["completed", "pending", "error"]}]
+            if instance_id:
+                resp = svc.ec2_client.describe_instances(InstanceIds=[instance_id])
+                volume_ids = []
+                for r in resp.get("Reservations", []):
+                    for inst in r.get("Instances", []):
+                        for bdm in inst.get("BlockDeviceMappings", []):
+                            vid = bdm.get("Ebs", {}).get("VolumeId")
+                            if vid:
+                                volume_ids.append(vid)
+                if not volume_ids:
+                    return {"snapshots": []}
+                filters.append({"Name": "volume-id", "Values": volume_ids})
+            resp = svc.ec2_client.describe_snapshots(OwnerIds=["self"], Filters=filters)
+            snapshots = []
+            for s in resp.get("Snapshots", []):
+                tags = {t["Key"]: t["Value"] for t in s.get("Tags", [])}
+                snapshots.append({
+                    "snapshot_id": s["SnapshotId"],
+                    "volume_id": s.get("VolumeId", ""),
+                    "description": s.get("Description", ""),
+                    "state": s.get("State", ""),
+                    "size_gb": s.get("VolumeSize"),
+                    "start_time": s["StartTime"].isoformat() if s.get("StartTime") else None,
+                    "encrypted": s.get("Encrypted", False),
+                    "tags": tags,
+                })
+            snapshots.sort(key=lambda x: x["start_time"] or "", reverse=True)
+            return {"snapshots": snapshots}
+        return await _run(_fetch)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/snapshots")
+async def ws_create_aws_snapshot(
+    body: CreateSnapshotRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Create an EBS snapshot from a volume."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        resp = await _run(svc.ec2_client.create_snapshot,
+                          VolumeId=body.volume_id, Description=body.description)
+        log_activity(db, member.user, "backup.create", "EBS_SNAPSHOT",
+                     resource_id=resp["SnapshotId"], resource_name=body.volume_id,
+                     provider="aws", organization_id=member.organization_id, workspace_id=member.workspace_id)
+        return {
+            "snapshot_id": resp["SnapshotId"],
+            "volume_id": resp.get("VolumeId", ""),
+            "state": resp.get("State", ""),
+            "start_time": resp["StartTime"].isoformat() if resp.get("StartTime") else None,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.delete("/backups/snapshots/{snapshot_id}")
+async def ws_delete_aws_snapshot(
+    snapshot_id: str,
+    member: MemberContext = Depends(require_permission("resources.delete")),
+    db: Session = Depends(get_db),
+):
+    """Delete an EBS snapshot."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        await _run(svc.ec2_client.delete_snapshot, SnapshotId=snapshot_id)
+        log_activity(db, member.user, "backup.delete", "EBS_SNAPSHOT",
+                     resource_id=snapshot_id, resource_name=snapshot_id,
+                     provider="aws", organization_id=member.organization_id, workspace_id=member.workspace_id)
+        return {"deleted": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/backups/amis")
+async def ws_list_aws_amis(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List AMIs owned by this account."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        resp = await _run(svc.ec2_client.describe_images, Owners=["self"])
+        amis = []
+        for img in resp.get("Images", []):
+            tags = {t["Key"]: t["Value"] for t in img.get("Tags", [])}
+            amis.append({
+                "image_id": img["ImageId"],
+                "name": img.get("Name", ""),
+                "description": img.get("Description", ""),
+                "state": img.get("State", ""),
+                "creation_date": img.get("CreationDate", ""),
+                "architecture": img.get("Architecture", ""),
+                "root_device_type": img.get("RootDeviceType", ""),
+                "tags": tags,
+            })
+        amis.sort(key=lambda x: x["creation_date"], reverse=True)
+        return {"amis": amis}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.post("/backups/amis")
+async def ws_create_aws_ami(
+    body: CreateAMIRequest,
+    member: MemberContext = Depends(require_permission("resources.create")),
+    db: Session = Depends(get_db),
+):
+    """Create an AMI (machine image backup) from an EC2 instance."""
+    svc = _get_single_aws_service(member, db)
+    try:
+        resp = await _run(svc.ec2_client.create_image,
+                          InstanceId=body.instance_id, Name=body.name,
+                          Description=body.description, NoReboot=True)
+        image_id = resp["ImageId"]
+        log_activity(db, member.user, "backup.create", "AMI",
+                     resource_id=image_id, resource_name=body.name,
+                     provider="aws", organization_id=member.organization_id, workspace_id=member.workspace_id)
+        return {"image_id": image_id, "name": body.name, "state": "pending"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── Advisor (Trusted Advisor + Compute Optimizer + Cost Explorer) ─────────
+
+def _build_aws_advisor_service(member: MemberContext, db: Session):
+    """Build an AWSAdvisorService from workspace credentials."""
+    from app.services.aws_advisor_service import AWSAdvisorService
+    accounts = _get_ws_aws_accounts(member, db)
+    if not accounts:
+        raise HTTPException(status_code=400, detail="Nenhuma conta AWS configurada neste workspace.")
+    account = accounts[0]
+    creds = decrypt_for_account(db, account)
+    return AWSAdvisorService(
+        access_key=creds.get("access_key_id", ""),
+        secret_key=creds.get("secret_access_key", ""),
+        region=creds.get("region", settings.AWS_DEFAULT_REGION),
+    )
+
+
+@ws_router.get("/advisor/summary")
+async def ws_aws_advisor_summary(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """Get AWS Advisor summary (counts by category and impact)."""
+    try:
+        advisor = _build_aws_advisor_service(member, db)
+        return await _run(advisor.get_summary)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@ws_router.get("/advisor/recommendations")
+async def ws_aws_advisor_recommendations(
+    category: Optional[str] = Query(None, description="cost, security, reliability, performance, service_limits"),
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    """List AWS Advisor recommendations, optionally filtered by category."""
+    try:
+        advisor = _build_aws_advisor_service(member, db)
+        recs = await _run(advisor.list_recommendations, category)
+        order = {"high": 0, "medium": 1, "low": 2}
+        recs.sort(key=lambda r: order.get(r.get("impact", "low"), 2))
+        return {"recommendations": recs, "total": len(recs)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# ── ECS / Fargate ─────────────────────────────────────────────────────────────
+
+class EcsScaleRequest(BaseModel):
+    desired_count: int
+
+
+@ws_router.get("/ecs/clusters")
+async def ws_list_ecs_clusters(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"aws:{member.workspace_id}:ecs"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.list_ecs_clusters)
+    cache_set(cache_key, result, ttl=180)
+    return result
+
+
+@ws_router.get("/ecs/clusters/{cluster}/services")
+async def ws_list_ecs_services(
+    cluster: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    return await _run(svc.list_ecs_services, cluster)
+
+
+@ws_router.get("/ecs/clusters/{cluster}/tasks")
+async def ws_list_ecs_tasks(
+    cluster: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    return await _run(svc.list_ecs_tasks, cluster)
+
+
+@ws_router.post("/ecs/clusters/{cluster}/services/{service}/scale")
+async def ws_scale_ecs_service(
+    cluster: str, service: str, body: EcsScaleRequest,
+    member: MemberContext = Depends(require_permission("resources.manage")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.update_ecs_service_count, cluster, service, body.desired_count)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Falha ao escalar serviço ECS'))
+    cache_delete(f"aws:{member.workspace_id}:ecs")
+    log_activity(db, member.user, 'ecs.scale', 'ECSService', resource_name=service,
+                 provider='aws', detail=f"cluster={cluster} desired={body.desired_count}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+@ws_router.post("/ecs/clusters/{cluster}/tasks/{task_id}/stop")
+async def ws_stop_ecs_task(
+    cluster: str, task_id: str,
+    member: MemberContext = Depends(require_permission("resources.start_stop")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.stop_ecs_task, cluster, task_id)
+    if not result.get('success'):
+        raise HTTPException(status_code=500, detail=result.get('error', 'Falha ao parar task ECS'))
+    log_activity(db, member.user, 'ecs.task.stop', 'ECSTask', resource_name=task_id,
+                 provider='aws', detail=f"cluster={cluster}",
+                 organization_id=member.organization_id, workspace_id=member.workspace_id)
+    return result
+
+
+# ── DynamoDB ──────────────────────────────────────────────────────────────────
+
+@ws_router.get("/dynamodb/tables")
+async def ws_list_dynamodb_tables(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"aws:{member.workspace_id}:dynamodb"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.list_dynamodb_tables)
+    cache_set(cache_key, result, ttl=180)
+    return result
+
+
+# ── CloudFront ────────────────────────────────────────────────────────────────
+
+@ws_router.get("/cloudfront/distributions")
+async def ws_list_cloudfront_distributions(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"aws:{member.workspace_id}:cloudfront"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.list_cloudfront_distributions)
+    cache_set(cache_key, result, ttl=300)
+    return result
+
+
+# ── Route 53 ──────────────────────────────────────────────────────────────────
+
+@ws_router.get("/route53/zones")
+async def ws_list_route53_zones(
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    cache_key = f"aws:{member.workspace_id}:route53"
+    if cached := cache_get(cache_key):
+        return cached
+    svc = _get_single_aws_service(member, db)
+    result = await _run(svc.list_route53_zones)
+    cache_set(cache_key, result, ttl=300)
+    return result
+
+
+@ws_router.get("/route53/zones/{zone_id}/records")
+async def ws_list_route53_records(
+    zone_id: str,
+    member: MemberContext = Depends(require_permission("resources.view")),
+    db: Session = Depends(get_db),
+):
+    svc = _get_single_aws_service(member, db)
+    return await _run(svc.list_route53_records, zone_id)

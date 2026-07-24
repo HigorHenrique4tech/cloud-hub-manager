@@ -1,15 +1,42 @@
 from fastapi import APIRouter
 from .aws import ws_router as aws_ws_router
 from .azure import ws_router as azure_ws_router
+from .gcp import ws_router as gcp_ws_router
 from .auth import router as auth_router
 from .alerts import ws_router as alerts_ws_router
 from .logs import ws_router as logs_ws_router
+from .finops import ws_router as finops_ws_router
+from .resource_templates import ws_router as templates_ws_router
 from .orgs import router as orgs_router
 from .workspaces import router as workspaces_router
 from .cloud_accounts import router as cloud_accounts_router
-from .billing import router as billing_router
+from .billing import router as billing_router, webhook_router as billing_webhook_router
+from .addons import router as addons_router, admin_router as addons_admin_router
+from .schedules import ws_router as schedules_ws_router
+from .dashboard_config import ws_router as dashboard_config_ws_router
+from .admin import admin_router, leads_router, public_contact_router
+from .notification_channels import ws_router as notification_channels_ws_router
+from .m365 import ws_router as m365_ws_router, org_router as m365_org_router
+from .pricing import ws_router as pricing_ws_router
+from .inventory import ws_router as inventory_ws_router
+from .approvals import ws_router as approvals_ws_router
+from .policies import ws_router as policies_ws_router
+from .executive_reports import ws_router as executive_reports_ws_router
+from .support import org_router as support_org_router, admin_support_router
+from .admin_support import router as admin_support_cfg_router
+from .background_tasks import ws_router as background_tasks_ws_router
+from .migration import ws_router as migration_ws_router
+from .cost_report import ws_router as cost_report_ws_router
+from .security_automation import ws_router as security_automation_ws_router
+from .partner_center import ws_router as partner_center_ws_router
+from .costs import ws_router as costs_ws_router
+from .k8s import ws_router as k8s_ws_router
+from .knowledge import router as knowledge_router
 
 api_router = APIRouter()
+
+# Public (no auth)
+api_router.include_router(public_contact_router)
 
 # Auth (no org scope)
 api_router.include_router(auth_router)
@@ -18,12 +45,45 @@ api_router.include_router(auth_router)
 api_router.include_router(orgs_router)
 api_router.include_router(workspaces_router)
 api_router.include_router(billing_router)
+api_router.include_router(billing_webhook_router)
+api_router.include_router(addons_router)
+
+# Admin (platform-level)
+api_router.include_router(admin_router)
+api_router.include_router(addons_admin_router)
+api_router.include_router(leads_router)
 
 # Workspace-scoped (multi-tenant)
 api_router.include_router(cloud_accounts_router)
 api_router.include_router(aws_ws_router)
 api_router.include_router(azure_ws_router)
+api_router.include_router(gcp_ws_router)
 api_router.include_router(alerts_ws_router)
 api_router.include_router(logs_ws_router)
+api_router.include_router(finops_ws_router)
+api_router.include_router(templates_ws_router)
+api_router.include_router(schedules_ws_router)
+api_router.include_router(dashboard_config_ws_router)
+api_router.include_router(notification_channels_ws_router)
+api_router.include_router(m365_ws_router)
+api_router.include_router(m365_org_router)
+api_router.include_router(pricing_ws_router)
+api_router.include_router(inventory_ws_router)
+api_router.include_router(approvals_ws_router)
+api_router.include_router(policies_ws_router)
+api_router.include_router(executive_reports_ws_router)
+api_router.include_router(support_org_router)
+api_router.include_router(admin_support_router)
+api_router.include_router(admin_support_cfg_router)
+api_router.include_router(background_tasks_ws_router)
+api_router.include_router(migration_ws_router)
+api_router.include_router(cost_report_ws_router)
+api_router.include_router(security_automation_ws_router)
+api_router.include_router(partner_center_ws_router)
+api_router.include_router(costs_ws_router)
+api_router.include_router(k8s_ws_router)
+
+# Knowledge Base (global — read: all logged users, write: platform admin)
+api_router.include_router(knowledge_router)
 
 __all__ = ["api_router"]

@@ -1,7 +1,9 @@
-import { GOOGLE_CLIENT_ID, GITHUB_CLIENT_ID } from '../../config';
+import { GOOGLE_CLIENT_ID, GITHUB_CLIENT_ID, MICROSOFT_CLIENT_ID } from '../../config';
+import authService from '../../services/authService';
 
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GITHUB_AUTH_URL = 'https://github.com/login/oauth/authorize';
+const MICROSOFT_AUTH_URL = 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize';
 
 const GoogleIcon = () => (
   <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true">
@@ -18,39 +20,81 @@ const GitHubIcon = () => (
   </svg>
 );
 
-export default function OAuthButtons() {
-  const redirectUri = `${window.location.origin}/auth/google/callback`;
+const MicrosoftIcon = () => (
+  <svg viewBox="0 0 24 24" className="w-5 h-5" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <path fill="none" d="M0 0h24v24H0z"/>
+    <path fill="currentColor" d="M11.5 3v8.5H3V3h8.5zm0 18H3v-8.5h8.5V21zm1-18H21v8.5h-8.5V3zm8.5 9.5V21h-8.5v-8.5H21z"/>
+  </svg>
+);
 
-  const handleGoogle = () => {
+export default function OAuthButtons({ redirectTarget }) {
+  const storeRedirect = () => {
+    if (redirectTarget) sessionStorage.setItem('oauth_redirect', redirectTarget);
+  };
+
+  const beginOAuth = async (provider) => {
+    storeRedirect();
+    try {
+      const state = await authService.createOAuthState(provider);
+      sessionStorage.setItem(`oauth_state_${provider}`, state);
+      return state;
+    } catch (err) {
+      alert('Não foi possível iniciar o login com ' + provider + '. Tente novamente em alguns segundos.');
+      throw err;
+    }
+  };
+
+  const handleGoogle = async () => {
+    const state = await beginOAuth('google').catch(() => null);
+    if (!state) return;
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
-      redirect_uri: redirectUri,
+      redirect_uri: `${window.location.origin}/auth/google/callback`,
       response_type: 'code',
       scope: 'email profile',
       access_type: 'offline',
       prompt: 'select_account',
+      state,
     });
     window.location.href = `${GOOGLE_AUTH_URL}?${params}`;
   };
 
-  const handleGitHub = () => {
+  const handleGitHub = async () => {
+    const state = await beginOAuth('github').catch(() => null);
+    if (!state) return;
     const params = new URLSearchParams({
       client_id: GITHUB_CLIENT_ID,
       scope: 'user:email',
+      state,
     });
     window.location.href = `${GITHUB_AUTH_URL}?${params}`;
   };
 
+  const handleMicrosoft = async () => {
+    const state = await beginOAuth('microsoft').catch(() => null);
+    if (!state) return;
+    const params = new URLSearchParams({
+      client_id: MICROSOFT_CLIENT_ID,
+      redirect_uri: `${window.location.origin}/auth/microsoft/callback`,
+      response_type: 'code',
+      scope: 'openid profile email User.Read',
+      response_mode: 'query',
+      state,
+    });
+    window.location.href = `${MICROSOFT_AUTH_URL}?${params}`;
+  };
+
   const showGoogle = !!GOOGLE_CLIENT_ID;
   const showGitHub = !!GITHUB_CLIENT_ID;
+  const showMicrosoft = !!MICROSOFT_CLIENT_ID;
 
-  if (!showGoogle && !showGitHub) return null;
+  if (!showGoogle && !showGitHub && !showMicrosoft) return null;
 
   return (
     <>
       <div className="flex items-center gap-3 my-4">
         <div className="flex-1 h-px bg-gray-300" />
-        <span className="text-xs text-gray-400">ou</span>
+        <span className="text-xs text-gray-400">ou continue com</span>
         <div className="flex-1 h-px bg-gray-300" />
       </div>
 
@@ -63,6 +107,16 @@ export default function OAuthButtons() {
           >
             <GoogleIcon />
             Continuar com Google
+          </button>
+        )}
+        {showMicrosoft && (
+          <button
+            type="button"
+            onClick={handleMicrosoft}
+            className="w-full flex items-center justify-center gap-3 px-4 py-2.5 border border-gray-300 rounded-lg bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+          >
+            <MicrosoftIcon />
+            Continuar com Microsoft
           </button>
         )}
         {showGitHub && (

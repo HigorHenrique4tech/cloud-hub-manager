@@ -1,0 +1,3720 @@
+import { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  Users, Shield, Grid3x3, Key, Plug, Trash2, X,
+  CheckCircle, XCircle, AlertTriangle, RefreshCw, Pencil,
+  MessageSquare, ChevronDown, ChevronRight, UserPlus, Search, Plus,
+  Smartphone, Phone, Mail, Fingerprint, Monitor, Clock, Lock, LogOut,
+  Download, Activity, UserCheck, Send, CheckCheck, ShieldAlert, Siren,
+} from 'lucide-react';
+import Layout from '../../components/layout/layout';
+import LoadingSpinner from '../../components/common/loadingspinner';
+import SkeletonTable from '../../components/common/SkeletonTable';
+import PlanGate from '../../components/common/PlanGate';
+import m365Service from '../../services/m365Service';
+import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
+
+// ── Constants ─────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: 'visao-geral', label: 'Visão Geral',  icon: Grid3x3 },
+  { id: 'usuarios',    label: 'Usuários',       icon: Users },
+  { id: 'licencas',    label: 'Licenças',       icon: Key },
+  { id: 'equipes',     label: 'Grupos',         icon: MessageSquare },
+  { id: 'seguranca',   label: 'Segurança',      icon: Shield },
+  { id: 'convidados',  label: 'Convidados',     icon: UserCheck },
+  { id: 'defender',    label: 'Defender',       icon: ShieldAlert },
+];
+
+const REQUIRED_PERMISSIONS = [
+  'User.Read.All',
+  'Organization.Read.All',
+  'Reports.Read.All',
+  'Team.ReadBasic.All',
+  'TeamMember.ReadWrite.All',
+  'Directory.Read.All',
+  'IdentityRiskyUser.Read.All',
+  'SubscribedSku.Read.All',
+  'User.ReadWrite.All',
+  'Group.ReadWrite.All',
+  'UserAuthenticationMethod.ReadWrite.All',
+  'ServiceHealth.Read.All',
+];
+
+// ── SKU friendly names ─────────────────────────────────────────────────────────
+
+const SKU_FRIENDLY_NAMES = {
+  // Microsoft 365 / Office 365
+  'O365_BUSINESS_ESSENTIALS':          'Microsoft 365 Business Basic',
+  'O365_BUSINESS_PREMIUM':             'Microsoft 365 Business Standard',
+  'O365_BUSINESS':                     'Microsoft 365 Apps for Business',
+  'SPB':                               'Microsoft 365 Business Premium',
+  'ENTERPRISEPACK':                    'Microsoft 365 E3',
+  'ENTERPRISEPREMIUM':                 'Microsoft 365 E5',
+  'ENTERPRISEPACKWITHOUTPROPLUS':      'Microsoft 365 E3 (sem Apps)',
+  'STANDARDPACK':                      'Office 365 E1',
+  'STANDARDWOFFPACK':                  'Office 365 E2',
+  'ENTERPRISEWITHSCAL':                'Office 365 E4',
+  'DESKLESSPACK':                      'Office 365 F1',
+  'FLOW_FREE':                         'Microsoft Power Automate Free',
+  'POWERAPPS_VIRAL':                   'Microsoft Power Apps (Trial)',
+  // Teams
+  'TEAMS_EXPLORATORY':                 'Microsoft Teams Exploratory',
+  'TEAMS_FREE':                        'Microsoft Teams Free',
+  // Exchange
+  'EXCHANGESTANDARD':                  'Exchange Online (Plano 1)',
+  'EXCHANGEENTERPRISE':                'Exchange Online (Plano 2)',
+  'EXCHANGE_S_DESKLESS':               'Exchange Online Kiosk',
+  // Azure AD / Entra
+  'AAD_PREMIUM':                       'Microsoft Entra ID P1',
+  'AAD_PREMIUM_P2':                    'Microsoft Entra ID P2',
+  // Dynamics 365
+  'DYN365_ENTERPRISE_PLAN1':           'Dynamics 365 Customer Engagement',
+  // Power BI
+  'POWER_BI_STANDARD':                 'Power BI (Free)',
+  'POWER_BI_PRO':                      'Power BI Pro',
+  // Visio / Project
+  'VISIOCLIENT':                       'Visio Online Plan 2',
+  'PROJECTPREMIUM':                    'Project Online Premium',
+  'PROJECTPROFESSIONAL':               'Project Online Professional',
+  // EMS
+  'EMS':                               'Enterprise Mobility + Security E3',
+  'EMSPREMIUM':                        'Enterprise Mobility + Security E5',
+  // Intune
+  'INTUNE_A':                          'Microsoft Intune',
+  // Defender
+  'DEFENDER_ENDPOINT_P1':              'Microsoft Defender for Endpoint P1',
+  'WIN_DEF_ATP':                       'Microsoft Defender for Endpoint P2',
+};
+
+const skuLabel = (skuPartNumber) =>
+  SKU_FRIENDLY_NAMES[skuPartNumber] || skuPartNumber.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+const genPassword = () => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$';
+  return Array.from({ length: 16 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+};
+
+const pctColor = (pct) => {
+  if (pct >= 0.95) return 'bg-red-500';
+  if (pct >= 0.8)  return 'bg-yellow-500';
+  return 'bg-green-500';
+};
+
+const mfaColor = (pct) => {
+  if (pct >= 0.9) return 'bg-green-500';
+  if (pct >= 0.7) return 'bg-yellow-500';
+  return 'bg-red-500';
+};
+
+const fmtDate = (iso) => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+};
+
+// ── User Detail Drawer ────────────────────────────────────────────────────────
+
+const METHOD_ICON = {
+  microsoftAuthenticator: Smartphone,
+  phone:                  Phone,
+  email:                  Mail,
+  fido2:                  Fingerprint,
+  windowsHello:           Monitor,
+  tap:                    Clock,
+  oath:                   Lock,
+  password:               Lock,
+};
+
+const initials = (name) =>
+  (name || '?').split(' ').slice(0, 2).map((w) => w[0]).join('').toUpperCase();
+
+const AVATAR_COLORS = [
+  'bg-blue-600', 'bg-purple-600', 'bg-green-600',
+  'bg-rose-600', 'bg-amber-600', 'bg-teal-600',
+];
+const avatarColor = (name) =>
+  AVATAR_COLORS[(name || '').charCodeAt(0) % AVATAR_COLORS.length];
+
+const UserDetailDrawer = ({ user, onClose }) => {
+  const isOpen = !!user;
+  const qc = useQueryClient();
+  const [showResetPwd, setShowResetPwd] = useState(false);
+  const [showTap, setShowTap]           = useState(false);
+  const [tapResult, setTapResult]       = useState(null);
+  const [newPwd, setNewPwd]             = useState('');
+  const [forceChange, setForceChange]   = useState(true);
+  const [tapMinutes, setTapMinutes]     = useState(60);
+  const [tapOnce, setTapOnce]           = useState(true);
+  const [localEnabled, setLocalEnabled]   = useState(null); // optimistic
+  const [showOffboarding, setShowOffboarding] = useState(false);
+
+  // Sync localEnabled when user changes
+  useEffect(() => { setLocalEnabled(null); }, [user?.id]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [isOpen, onClose]);
+
+  const methodsQ = useQuery({
+    queryKey: ['m365-user-auth-methods', user?.id],
+    queryFn: () => m365Service.getUserAuthMethods(user.id),
+    enabled: isOpen && !!user?.id,
+    staleTime: 30_000,
+    retry: false,
+  });
+
+  const groupsQ = useQuery({
+    queryKey: ['m365-user-groups', user?.id],
+    queryFn: () => m365Service.getUserGroups(user.id),
+    enabled: isOpen && !!user?.id,
+    staleTime: 60_000,
+    retry: false,
+  });
+
+  const revokeMut = useMutation({
+    mutationFn: () => m365Service.revokeUserSessions(user.id),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: ({ methodType, methodId }) =>
+      m365Service.deleteAuthMethod(user.id, methodType, methodId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-user-auth-methods', user?.id] }),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: (enabled) => m365Service.toggleUserAccount(user.id, enabled),
+    onSuccess: (_, enabled) => {
+      setLocalEnabled(enabled);
+      qc.invalidateQueries({ queryKey: ['m365-users'] });
+    },
+  });
+
+  const resetPwdMut = useMutation({
+    mutationFn: () => m365Service.resetUserPassword(user.id, newPwd, forceChange),
+    onSuccess: () => { setShowResetPwd(false); setNewPwd(''); },
+  });
+
+  const tapMut = useMutation({
+    mutationFn: () => m365Service.createTap(user.id, tapMinutes, tapOnce),
+    onSuccess: (data) => setTapResult(data),
+  });
+
+  const methods    = methodsQ.data?.methods || [];
+  const mfaMethods = methods.filter((m) => m.methodType !== 'password');
+  const hasPassword = methods.some((m) => m.methodType === 'password');
+  const groups     = groupsQ.data?.groups || [];
+  const isEnabled  = localEnabled !== null ? localEnabled : (user?.accountEnabled ?? true);
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 bg-black/40 z-40 transition-opacity duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+        onClick={onClose}
+      />
+
+      {/* Drawer */}
+      <div
+        className={`fixed top-0 right-0 h-full w-full sm:w-[500px] bg-white dark:bg-gray-900 shadow-2xl z-50 flex flex-col transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : 'translate-x-full'}`}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-5 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className={`flex-shrink-0 w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg ${user ? avatarColor(user.displayName) : 'bg-gray-400'}`}>
+              {initials(user?.displayName)}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100 truncate">{user?.displayName || '—'}</h2>
+              <p className="text-xs text-gray-500 dark:text-gray-400 font-mono truncate">{user?.userPrincipalName}</p>
+              <div className="mt-1.5 flex items-center gap-2">
+                {isEnabled
+                  ? <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400 font-medium">Ativo</span>
+                  : <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 font-medium">Desativado</span>}
+                <button
+                  onClick={() => {
+                    const action = isEnabled ? 'desativar' : 'ativar';
+                    if (window.confirm(`${action.charAt(0).toUpperCase() + action.slice(1)} a conta de ${user?.displayName}?`)) {
+                      toggleMut.mutate(!isEnabled);
+                    }
+                  }}
+                  disabled={toggleMut.isPending}
+                  className={`text-xs px-2 py-0.5 rounded-full border font-medium transition-colors disabled:opacity-50 ${
+                    isEnabled
+                      ? 'border-red-300 dark:border-red-700 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20'
+                      : 'border-green-400 dark:border-green-700 text-green-600 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/20'
+                  }`}
+                >
+                  {toggleMut.isPending ? '...' : isEnabled ? 'Desativar' : 'Ativar'}
+                </button>
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 flex-shrink-0 ml-2">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
+
+          {/* Info section */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">Informações</h3>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {[
+                { label: 'Cargo',        value: user?.jobTitle },
+                { label: 'Departamento', value: user?.department },
+                { label: 'Licenças',     value: user?.licensedCount != null ? `${user.licensedCount} atribuída(s)` : null },
+                { label: 'Último acesso',value: fmtDate(user?.lastSignIn) },
+                { label: 'Senha local',  value: hasPassword ? 'Sim' : null },
+              ].filter((f) => f.value).map((f) => (
+                <div key={f.label} className="flex items-center justify-between py-2.5 gap-4">
+                  <span className="text-sm text-gray-500 dark:text-gray-400 flex-shrink-0 w-32">{f.label}</span>
+                  <span className="text-sm text-gray-900 dark:text-gray-100 text-right">{f.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Grupos */}
+          <div>
+            <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-3">
+              Grupos ({groupsQ.isLoading ? '…' : groups.length})
+            </h3>
+            {groupsQ.isLoading && <div className="h-10 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />}
+            {!groupsQ.isLoading && groups.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500">Nenhum grupo encontrado</p>
+            )}
+            <div className="flex flex-wrap gap-1.5">
+              {groups.map((g) => (
+                <span
+                  key={g.id}
+                  className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full font-medium ${
+                    g.isM365Group
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                  }`}
+                >
+                  {g.isM365Group ? <MessageSquare size={10} /> : <Shield size={10} />}
+                  {g.displayName}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          {/* Reset de senha */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button
+              onClick={() => { setShowResetPwd((p) => !p); setShowTap(false); setTapResult(null); }}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <span className="flex items-center gap-2"><Key size={14} className="text-gray-400" /> Resetar senha</span>
+              {showResetPwd ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+            {showResetPwd && (
+              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={newPwd}
+                    onChange={(e) => setNewPwd(e.target.value)}
+                    placeholder="Nova senha..."
+                    className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setNewPwd(genPassword())}
+                    className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                  >
+                    Gerar
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+                  <input type="checkbox" checked={forceChange} onChange={(e) => setForceChange(e.target.checked)} className="rounded" />
+                  Forçar troca no próximo login
+                </label>
+                {resetPwdMut.isError && (
+                  <p className="text-xs text-red-400">{resetPwdMut.error?.response?.data?.detail || 'Erro ao resetar senha'}</p>
+                )}
+                {resetPwdMut.isSuccess && (
+                  <p className="text-xs text-green-500">Senha alterada com sucesso!</p>
+                )}
+                <button
+                  onClick={() => resetPwdMut.mutate()}
+                  disabled={!newPwd || resetPwdMut.isPending}
+                  className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {resetPwdMut.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Key size={13} />}
+                  Confirmar reset
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Acesso Temporário (TAP) */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button
+              onClick={() => { setShowTap((p) => !p); setShowResetPwd(false); setTapResult(null); }}
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+            >
+              <span className="flex items-center gap-2"><Clock size={14} className="text-gray-400" /> Criar Acesso Temporário (TAP)</span>
+              {showTap ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
+            {showTap && (
+              <div className="px-4 pb-4 space-y-3 border-t border-gray-100 dark:border-gray-800 pt-3">
+                {tapResult ? (
+                  <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-400/40 p-4 space-y-2">
+                    <p className="text-xs font-semibold text-green-700 dark:text-green-400">TAP criado! Compartilhe com o usuário:</p>
+                    <div className="flex items-center gap-2">
+                      <code className="flex-1 font-mono text-lg font-bold text-green-700 dark:text-green-300 bg-green-100 dark:bg-green-900/40 rounded px-3 py-2 tracking-widest">
+                        {tapResult.temporaryAccessPass}
+                      </code>
+                      <button
+                        onClick={() => navigator.clipboard.writeText(tapResult.temporaryAccessPass)}
+                        className="rounded-lg border border-green-400/40 px-2 py-2 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/40"
+                        title="Copiar"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Válido por {tapResult.lifetimeInMinutes} min · {tapResult.isUsableOnce ? 'Uso único' : 'Múltiplos usos'}
+                    </p>
+                    <button onClick={() => { setTapResult(null); }} className="text-xs text-gray-400 hover:underline">Criar outro</button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex items-center gap-3">
+                      <label className="text-xs text-gray-600 dark:text-gray-400 flex-shrink-0">Validade (min)</label>
+                      <input
+                        type="number"
+                        min={10} max={480}
+                        value={tapMinutes}
+                        onChange={(e) => setTapMinutes(Number(e.target.value))}
+                        className="w-24 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none"
+                      />
+                    </div>
+                    <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
+                      <input type="checkbox" checked={tapOnce} onChange={(e) => setTapOnce(e.target.checked)} className="rounded" />
+                      Uso único (recomendado)
+                    </label>
+                    {tapMut.isError && (
+                      <p className="text-xs text-red-400">{tapMut.error?.response?.data?.detail || 'Erro ao criar TAP'}</p>
+                    )}
+                    <button
+                      onClick={() => tapMut.mutate()}
+                      disabled={tapMut.isPending}
+                      className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                    >
+                      {tapMut.isPending ? <RefreshCw size={13} className="animate-spin" /> : <Clock size={13} />}
+                      Gerar acesso temporário
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* MFA Methods section */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                Métodos de Autenticação (MFA)
+              </h3>
+              {user?.mfaRegistered === true  && <span className="flex items-center gap-1 text-xs text-green-500"><CheckCircle size={12} /> Registrado</span>}
+              {user?.mfaRegistered === false && <span className="flex items-center gap-1 text-xs text-red-400"><XCircle size={12} /> Não registrado</span>}
+            </div>
+
+            {methodsQ.isLoading && (
+              <div className="space-y-3">
+                {[1,2,3].map((i) => (
+                  <div key={i} className="h-14 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+                ))}
+              </div>
+            )}
+
+            {methodsQ.isError && (
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-center">
+                <p className="text-xs text-gray-400 dark:text-gray-500">
+                  Não foi possível carregar os métodos.
+                  Verifique a permissão <span className="font-mono">UserAuthenticationMethod.Read.All</span>.
+                </p>
+                <button onClick={() => qc.invalidateQueries({ queryKey: ['m365-user-auth-methods', user?.id] })} className="mt-2 text-xs text-blue-500 hover:underline">
+                  Tentar novamente
+                </button>
+              </div>
+            )}
+
+            {!methodsQ.isLoading && !methodsQ.isError && mfaMethods.length === 0 && (
+              <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-5 text-center">
+                <Shield size={24} className="text-gray-300 dark:text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-400 dark:text-gray-500">Nenhum método MFA registrado</p>
+              </div>
+            )}
+
+            <div className="space-y-2">
+              {mfaMethods.map((m) => {
+                const Icon = METHOD_ICON[m.methodType] || Shield;
+                const isDeleting = deleteMut.isPending && deleteMut.variables?.methodId === m.id;
+                return (
+                  <div key={m.id} className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-4 py-3">
+                    <div className="flex-shrink-0 w-8 h-8 rounded-lg bg-blue-600/15 flex items-center justify-center">
+                      <Icon size={15} className="text-blue-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{m.label}</p>
+                      {m.detail && <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{m.detail}</p>}
+                      {m.createdDateTime && <p className="text-xs text-gray-400 dark:text-gray-500">Registrado em {fmtDate(m.createdDateTime)}</p>}
+                    </div>
+                    {m.deletable && (
+                      <button
+                        onClick={() => {
+                          if (window.confirm(`Remover ${m.label}? O usuário precisará recadastrar este método.`)) {
+                            deleteMut.mutate({ methodType: m.methodType, methodId: m.id });
+                          }
+                        }}
+                        disabled={isDeleting}
+                        className="flex-shrink-0 text-gray-400 hover:text-red-500 dark:hover:text-red-400 transition-colors disabled:opacity-40"
+                        title={`Remover ${m.label}`}
+                      >
+                        {isDeleting ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 space-y-2">
+          {revokeMut.isSuccess && (
+            <p className="text-xs text-green-500 text-center">Sessões revogadas com sucesso.</p>
+          )}
+          {revokeMut.isError && (
+            <p className="text-xs text-red-400 text-center">{revokeMut.error?.response?.data?.detail || 'Erro ao revogar sessões'}</p>
+          )}
+          <button
+            onClick={() => {
+              if (window.confirm('Revogar todas as sessões ativas? O usuário será desconectado imediatamente de todos os dispositivos.')) {
+                revokeMut.mutate();
+              }
+            }}
+            disabled={revokeMut.isPending}
+            className="w-full flex items-center justify-center gap-2 rounded-xl border border-orange-400/50 bg-orange-50 dark:bg-orange-900/20 px-4 py-2.5 text-sm font-medium text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900/40 disabled:opacity-50 transition-colors"
+          >
+            {revokeMut.isPending ? <RefreshCw size={14} className="animate-spin" /> : <LogOut size={14} />}
+            Revogar todas as sessões
+          </button>
+          {/* Offboarding */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-2">
+            <button
+              onClick={() => setShowOffboarding(true)}
+              className="w-full flex items-center justify-center gap-2 rounded-xl border border-red-400/50 bg-red-50 dark:bg-red-900/20 px-4 py-2.5 text-sm font-medium text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors"
+            >
+              <LogOut size={14} />
+              Offboarding Completo
+            </button>
+          </div>
+        </div>
+      </div>
+      {showOffboarding && (
+        <OffboardingModal user={user} onClose={() => setShowOffboarding(false)} />
+      )}
+    </>
+  );
+};
+
+// ── Offboarding Modal ─────────────────────────────────────────────────────────
+
+const STEP_LABELS = {
+  disable_account:    { label: 'Desabilitar conta',              icon: Lock },
+  revoke_sessions:    { label: 'Revogar sessões ativas',         icon: LogOut },
+  reset_password:     { label: 'Redefinir senha',                icon: Key },
+  remove_from_groups: { label: 'Remover de grupos e times',      icon: Users },
+  remove_auth_methods:{ label: 'Remover métodos MFA',            icon: Smartphone },
+  remove_licenses:    { label: 'Remover licenças',               icon: Key },
+  auto_reply:         { label: 'Resposta automática de saída',   icon: Mail },
+};
+
+const OffboardingModal = ({ user, onClose }) => {
+  // step: 'loading' | 'options' | 'confirm' | 'results'
+  const [step, setStep]       = useState('loading');
+  const [context, setContext] = useState(null);
+  const [confirm, setConfirm] = useState('');
+  const [results, setResults] = useState(null);
+  const [opts, setOpts]       = useState({
+    disable_account:     true,
+    revoke_sessions:     true,
+    reset_password:      false,
+    remove_from_groups:  false,
+    remove_auth_methods: false,
+    remove_licenses:     false,
+    auto_reply:          false,
+    auto_reply_message:  '',
+  });
+  const toggle = (k) => setOpts((p) => ({ ...p, [k]: !p[k] }));
+
+  // Load context on mount — onSuccess/onError removed in TanStack Query v5, use useEffect
+  const ctxQ = useQuery({
+    queryKey: ['offboard-context', user.id],
+    queryFn: () => m365Service.getOffboardContext(user.id),
+    retry: false,
+    staleTime: Infinity,
+  });
+
+  useEffect(() => {
+    if (ctxQ.isSuccess) { setContext(ctxQ.data); setStep('options'); }
+    if (ctxQ.isError)   { setStep('options'); }
+  }, [ctxQ.isSuccess, ctxQ.isError, ctxQ.data]);
+
+  const offboardMut = useMutation({
+    mutationFn: () => m365Service.offboardUser(user.id, {
+      disable_account:     opts.disable_account,
+      revoke_sessions:     opts.revoke_sessions,
+      reset_password:      opts.reset_password,
+      remove_from_groups:  opts.remove_from_groups,
+      remove_auth_methods: opts.remove_auth_methods,
+      remove_licenses:     opts.remove_licenses,
+      auto_reply_message:  opts.auto_reply && opts.auto_reply_message ? opts.auto_reply_message : null,
+    }),
+    onSuccess: (data) => { setResults(data.results); setStep('results'); },
+  });
+
+  const selectedActions = Object.entries(opts)
+    .filter(([k, v]) => v === true && k !== 'auto_reply_message')
+    .map(([k]) => k === 'auto_reply' ? 'auto_reply' : k);
+
+  const userName = user.displayName || user.userPrincipalName || '';
+  const canConfirm = confirm.trim().toLowerCase() === userName.trim().toLowerCase();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={onClose}>
+      <div
+        className="w-full max-w-xl bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+              <LogOut className="w-4 h-4 text-red-600 dark:text-red-400" />
+            </div>
+            <div>
+              <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Offboarding de Usuário</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{userName}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            {/* Step indicator */}
+            {step !== 'loading' && step !== 'results' && (
+              <div className="flex items-center gap-1.5">
+                {['options','confirm'].map((s, i) => (
+                  <div key={s} className={`h-1.5 rounded-full transition-all ${
+                    step === s ? 'w-6 bg-red-500' :
+                    (step === 'confirm' && s === 'options') ? 'w-3 bg-red-300 dark:bg-red-700' :
+                    'w-3 bg-gray-200 dark:bg-gray-700'
+                  }`} />
+                ))}
+              </div>
+            )}
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800">
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5">
+
+          {/* STEP: loading */}
+          {step === 'loading' && (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <RefreshCw className="w-6 h-6 text-gray-400 animate-spin" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">Carregando dados do usuário...</p>
+            </div>
+          )}
+
+          {/* STEP: options */}
+          {step === 'options' && (
+            <div className="space-y-5">
+              {/* User context card */}
+              {context && (
+                <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 p-4">
+                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-3">Estado atual</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${context.accountEnabled ? 'bg-green-500' : 'bg-gray-400'}`} />
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
+                        Conta {context.accountEnabled ? 'ativa' : 'desabilitada'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Key className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
+                        {context.licenseCount} licença(s)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Users className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
+                        {context.groupCount} grupo(s)
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Smartphone className="w-3 h-3 text-gray-400" />
+                      <span className="text-xs text-gray-600 dark:text-gray-300">
+                        {context.authMethodCount} método(s) MFA
+                      </span>
+                    </div>
+                    {context.lastSignIn && (
+                      <div className="col-span-2 flex items-center gap-2">
+                        <Clock className="w-3 h-3 text-gray-400" />
+                        <span className="text-xs text-gray-600 dark:text-gray-300">
+                          Último login: {new Date(context.lastSignIn).toLocaleDateString('pt-BR', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {context.groups?.length > 0 && (
+                    <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-1.5">Grupos:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {context.groups.slice(0, 6).map(g => (
+                          <span key={g.id} className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                            {g.displayName}
+                          </span>
+                        ))}
+                        {context.groups.length > 6 && (
+                          <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-700 text-gray-500">
+                            +{context.groups.length - 6} mais
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Warning */}
+              <div className="flex items-start gap-2.5 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                <p className="text-xs text-red-600 dark:text-red-400">Atenção: algumas ações são irreversíveis. Revise com cuidado antes de continuar.</p>
+              </div>
+
+              {/* Actions */}
+              <div className="space-y-1">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Ações a executar</p>
+                {[
+                  { key: 'disable_account',     label: 'Desabilitar conta',             desc: 'Impede o login imediatamente',                  icon: Lock,        danger: true  },
+                  { key: 'revoke_sessions',      label: 'Revogar sessões ativas',        desc: 'Encerra todas as sessões abertas',               icon: LogOut,      danger: true  },
+                  { key: 'reset_password',       label: 'Redefinir senha',               desc: 'Gera senha aleatória segura (exibida no resultado)', icon: Key,     danger: false },
+                  { key: 'remove_from_groups',   label: 'Remover de grupos e times',     desc: `${context?.groupCount ?? '?'} grupo(s) encontrado(s)`, icon: Users, danger: false },
+                  { key: 'remove_auth_methods',  label: 'Remover métodos MFA',           desc: `${context?.authMethodCount ?? '?'} método(s) registrado(s)`, icon: Smartphone, danger: false },
+                  { key: 'remove_licenses',      label: 'Remover todas as licenças',     desc: `${context?.licenseCount ?? '?'} licença(s) atribuída(s)`, icon: Key,  danger: false },
+                  { key: 'auto_reply',           label: 'Resposta automática de saída',  desc: 'Configura mensagem no Exchange',                icon: Mail,        danger: false },
+                ].map(({ key, label, desc, icon: Icon, danger }) => (
+                  <label key={key} className={`flex items-start gap-3 p-2.5 rounded-lg cursor-pointer transition-colors ${
+                    opts[key] ? 'bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800/40' : 'hover:bg-gray-50 dark:hover:bg-gray-800/50'
+                  }`}>
+                    <input
+                      type="checkbox"
+                      checked={opts[key]}
+                      onChange={() => toggle(key)}
+                      className="w-4 h-4 rounded mt-0.5 border-gray-300 text-red-600 focus:ring-red-500"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Icon className={`w-3.5 h-3.5 flex-shrink-0 ${opts[key] ? 'text-red-500' : 'text-gray-400'}`} />
+                        <span className={`text-sm font-medium ${opts[key] ? 'text-red-700 dark:text-red-300' : 'text-gray-700 dark:text-gray-300'}`}>
+                          {label}
+                        </span>
+                        {danger && <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-medium">irreversível</span>}
+                      </div>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{desc}</p>
+                    </div>
+                  </label>
+                ))}
+              </div>
+
+              {/* Auto-reply message textarea */}
+              {opts.auto_reply && (
+                <textarea
+                  rows={3}
+                  placeholder="Ex: Este usuário não faz mais parte da empresa. Para assuntos pendentes, contate rh@empresa.com."
+                  value={opts.auto_reply_message}
+                  onChange={(e) => setOpts((p) => ({ ...p, auto_reply_message: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500 resize-none"
+                />
+              )}
+            </div>
+          )}
+
+          {/* STEP: confirm */}
+          {step === 'confirm' && (
+            <div className="space-y-5">
+              {/* Summary of selected actions */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">
+                    Resumo — {selectedActions.length} ação(ões) selecionada(s)
+                  </p>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {selectedActions.map((k) => {
+                    const cfg = STEP_LABELS[k] || { label: k, icon: CheckCircle };
+                    const Icon = cfg.icon;
+                    return (
+                      <div key={k} className="flex items-center gap-3 px-4 py-2.5">
+                        <Icon className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{cfg.label}</span>
+                      </div>
+                    );
+                  })}
+                  {opts.auto_reply && opts.auto_reply_message && (
+                    <div className="px-4 py-2.5">
+                      <p className="text-xs text-gray-400 italic">"{opts.auto_reply_message.slice(0, 80)}{opts.auto_reply_message.length > 80 ? '…' : ''}"</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Confirmation input */}
+              <div className="space-y-2">
+                <p className="text-sm text-gray-700 dark:text-gray-300">
+                  Para confirmar, digite o nome do usuário:
+                  <span className="ml-1 font-semibold text-gray-900 dark:text-gray-100">{userName}</span>
+                </p>
+                <input
+                  type="text"
+                  value={confirm}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  placeholder={userName}
+                  autoFocus
+                  className="w-full px-3 py-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              {offboardMut.isError && (
+                <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                  <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <p className="text-xs text-red-600 dark:text-red-400">
+                    {offboardMut.error?.response?.data?.detail || 'Erro ao executar offboarding.'}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* STEP: results */}
+          {step === 'results' && results && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800">
+                <CheckCircle className="w-4 h-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                <p className="text-sm text-green-700 dark:text-green-300 font-medium">Offboarding executado com sucesso</p>
+              </div>
+
+              <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+                <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-300 uppercase tracking-wide">Resultado por ação</p>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {Object.entries(results).map(([k, val]) => {
+                    const cfg = STEP_LABELS[k] || { label: k, icon: CheckCircle };
+                    const Icon = cfg.icon;
+                    const isSuccess = val === true || (typeof val === 'string' && !val.includes('erro') && !val.includes('Error') && !val.includes('Graph API'));
+                    return (
+                      <div key={k} className="flex items-start gap-3 px-4 py-3">
+                        <div className="flex items-center gap-2 flex-shrink-0 mt-0.5">
+                          {isSuccess
+                            ? <CheckCircle className="w-4 h-4 text-green-500" />
+                            : <XCircle className="w-4 h-4 text-red-500" />
+                          }
+                          <Icon className="w-3.5 h-3.5 text-gray-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">{cfg.label}</p>
+                          {val !== true && (
+                            /* If it's a generated password, show it in a copyable box */
+                            k === 'reset_password' && isSuccess ? (
+                              <div className="mt-1 flex items-center gap-2 px-2 py-1 rounded bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                                <Lock className="w-3 h-3 text-amber-600 flex-shrink-0" />
+                                <code className="text-xs font-mono text-amber-700 dark:text-amber-300 select-all">{val}</code>
+                                <span className="text-[10px] text-amber-500 ml-auto">copie agora</span>
+                              </div>
+                            ) : (
+                              <p className={`text-xs mt-0.5 ${isSuccess ? 'text-gray-500 dark:text-gray-400' : 'text-red-500 dark:text-red-400'}`}>
+                                {val}
+                              </p>
+                            )
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0 flex gap-3">
+          {step === 'loading' && (
+            <button onClick={onClose} className="flex-1 px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+              Cancelar
+            </button>
+          )}
+
+          {step === 'options' && (
+            <>
+              <button onClick={onClose} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+                Cancelar
+              </button>
+              <button
+                onClick={() => setStep('confirm')}
+                disabled={selectedActions.length === 0}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-40"
+              >
+                Continuar
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </>
+          )}
+
+          {step === 'confirm' && (
+            <>
+              <button onClick={() => setStep('options')} className="px-4 py-2 text-sm font-medium rounded-lg text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">
+                Voltar
+              </button>
+              <button
+                onClick={() => offboardMut.mutate()}
+                disabled={!canConfirm || offboardMut.isPending}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium rounded-lg disabled:opacity-40"
+              >
+                {offboardMut.isPending
+                  ? <><RefreshCw className="w-4 h-4 animate-spin" /> Executando...</>
+                  : <><LogOut className="w-4 h-4" /> Executar Offboarding</>
+                }
+              </button>
+            </>
+          )}
+
+          {step === 'results' && (
+            <button onClick={onClose} className="flex-1 px-4 py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-sm font-medium rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700">
+              Fechar
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Invite Guest Modal ────────────────────────────────────────────────────────
+
+const InviteGuestModal = ({ onClose }) => {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({ email: '', display_name: '', message: '' });
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+  const [done, setDone] = useState(false);
+  const [redeemUrl, setRedeemUrl] = useState('');
+
+  const inviteMut = useMutation({
+    mutationFn: () => m365Service.inviteGuest({
+      email: form.email,
+      display_name: form.display_name,
+      message: form.message,
+      redirect_url: 'https://myapps.microsoft.com',
+    }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['m365-guests'] });
+      setRedeemUrl(data?.invite_redeem_url || '');
+      setDone(true);
+    },
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-md bg-white dark:bg-gray-900 rounded-2xl shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center gap-2">
+            <UserCheck className="w-5 h-5 text-blue-500" />
+            <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Convidar Usuário Guest</p>
+          </div>
+          <button onClick={onClose} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
+        </div>
+        <div className="p-5 space-y-4">
+          {done ? (
+            <div className="flex flex-col items-center gap-3 py-4">
+              <CheckCheck className="w-10 h-10 text-green-500" />
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Convite enviado com sucesso!</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                Um e-mail de convite foi enviado. Verifique a pasta de spam caso não chegue.
+              </p>
+              {redeemUrl && (
+                <div className="w-full">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Link de convite (backup):</p>
+                  <div className="flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={redeemUrl}
+                      className="flex-1 px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800 text-gray-700 dark:text-gray-300 overflow-hidden"
+                      onClick={(e) => e.target.select()}
+                    />
+                    <button
+                      onClick={() => navigator.clipboard.writeText(redeemUrl)}
+                      className="px-2 py-1.5 text-xs rounded border border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                </div>
+              )}
+              <button onClick={onClose} className="mt-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg">
+                Fechar
+              </button>
+            </div>
+          ) : (
+            <>
+              {[
+                { key: 'email', label: 'E-mail*', type: 'email', placeholder: 'usuario@empresa.com' },
+                { key: 'display_name', label: 'Nome de exibição', type: 'text', placeholder: 'João Silva' },
+              ].map(({ key, label, type, placeholder }) => (
+                <div key={key}>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{label}</label>
+                  <input
+                    type={type}
+                    value={form[key]}
+                    onChange={(e) => set(key, e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              ))}
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Mensagem personalizada</label>
+                <textarea
+                  rows={3}
+                  value={form.message}
+                  onChange={(e) => set('message', e.target.value)}
+                  placeholder="Você foi convidado para colaborar no nosso tenant..."
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              {inviteMut.isError && (
+                <p className="text-xs text-red-500">{inviteMut.error?.response?.data?.detail || 'Erro ao enviar convite.'}</p>
+              )}
+              <button
+                onClick={() => inviteMut.mutate()}
+                disabled={!form.email || inviteMut.isPending}
+                className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg disabled:opacity-50"
+              >
+                {inviteMut.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                Enviar Convite
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Guests Tab ────────────────────────────────────────────────────────────────
+
+const GuestsTab = () => {
+  const qc = useQueryClient();
+  const [showInvite, setShowInvite] = useState(false);
+
+  const guestsQ = useQuery({
+    queryKey: ['m365-guests'],
+    queryFn: m365Service.getGuests,
+    staleTime: 120_000,
+    retry: false,
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (userId) => m365Service.deleteGuest(userId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['m365-guests'] }),
+  });
+
+  const guests = guestsQ.data?.guests || [];
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('pt-BR') : '—';
+
+  const thCls = 'px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider';
+  const tdCls = 'px-4 py-3 text-sm text-gray-700 dark:text-gray-300';
+
+  return (
+    <>
+      <div className="flex items-center justify-between mb-4">
+        <p className="text-sm text-gray-500 dark:text-gray-400">{guests.length} convidado{guests.length !== 1 ? 's' : ''}</p>
+        <button
+          onClick={() => setShowInvite(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium rounded-lg"
+        >
+          <UserPlus size={14} /> Convidar Guest
+        </button>
+      </div>
+      <div className="card rounded-xl overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+            <tr>
+              <th className={thCls}>Usuário</th>
+              <th className={thCls}>E-mail</th>
+              <th className={thCls}>Empresa</th>
+              <th className={thCls}>Status</th>
+              <th className={thCls}>Convidado em</th>
+              <th className={thCls} />
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+            {guestsQ.isLoading ? (
+              <SkeletonTable rows={5} cols={6} />
+            ) : guests.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">
+                  {guestsQ.isError
+                    ? 'Erro ao carregar convidados. Verifique a permissão User.Read.All.'
+                    : 'Nenhum usuário guest encontrado.'}
+                </td>
+              </tr>
+            ) : guests.map((g) => (
+              <tr key={g.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                <td className={tdCls}>
+                  <div className="flex items-center gap-2">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white flex-shrink-0 ${avatarColor(g.display_name || g.mail)}`}>
+                      {(g.display_name || g.mail || '?')[0].toUpperCase()}
+                    </div>
+                    <span className="font-medium text-gray-900 dark:text-gray-100">{g.display_name || '—'}</span>
+                  </div>
+                </td>
+                <td className={tdCls}>{g.mail || g.upn || '—'}</td>
+                <td className={tdCls}>{g.company_name || '—'}</td>
+                <td className={tdCls}>
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                    g.invitation_state === 'Accepted'
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                  }`}>
+                    {g.invitation_state === 'Accepted' ? 'Aceito' : 'Pendente'}
+                  </span>
+                </td>
+                <td className={tdCls}>{fmtDate(g.created_at)}</td>
+                <td className={tdCls}>
+                  <button
+                    onClick={() => {
+                      if (window.confirm(`Revogar acesso de ${g.display_name || g.mail}?`)) {
+                        deleteMut.mutate(g.id);
+                      }
+                    }}
+                    disabled={deleteMut.isPending && deleteMut.variables === g.id}
+                    className="text-xs text-red-500 hover:text-red-700 hover:underline disabled:opacity-50"
+                  >
+                    Revogar
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {showInvite && <InviteGuestModal onClose={() => setShowInvite(false)} />}
+    </>
+  );
+};
+
+// ── Credentials Modal ─────────────────────────────────────────────────────────
+
+const CredentialsModal = ({ existing, onClose, onSaved, onDeleted }) => {
+  const [form, setForm] = useState({
+    tenant_id:     existing?.tenant_id     || '',
+    client_id:     existing?.client_id     || '',
+    client_secret: '',
+    tenant_domain: existing?.tenant_domain || '',
+    label:         existing?.label         || 'M365 Tenant',
+  });
+  const [showDelete, setShowDelete] = useState(false);
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const qc = useQueryClient();
+
+  const saveMut = useMutation({
+    mutationFn: () => m365Service.saveCredentials(form),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ['m365-credentials'] });
+      onSaved(data);
+    },
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => m365Service.deleteCredentials(),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-credentials'] });
+      qc.removeQueries({ queryKey: ['m365-overview'] });
+      qc.removeQueries({ queryKey: ['m365-users'] });
+      qc.removeQueries({ queryKey: ['m365-licenses'] });
+      qc.removeQueries({ queryKey: ['m365-teams'] });
+      qc.removeQueries({ queryKey: ['m365-security'] });
+      onDeleted();
+    },
+  });
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.tenant_id || !form.client_id || !form.client_secret) return;
+    saveMut.mutate();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between border-b border-gray-700 px-5 py-4">
+          <h2 className="text-base font-semibold text-gray-100">
+            {existing ? 'Reconfigurar Microsoft 365' : 'Conectar Microsoft 365'}
+          </h2>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={18} /></button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Tenant ID <span className="text-red-400">*</span></label>
+            <input
+              value={form.tenant_id}
+              onChange={(e) => set('tenant_id', e.target.value)}
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">Client ID (Application ID) <span className="text-red-400">*</span></label>
+            <input
+              value={form.client_id}
+              onChange={(e) => set('client_id', e.target.value)}
+              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-400 mb-1">
+              Client Secret <span className="text-red-400">*</span>
+              {existing && <span className="ml-1 text-gray-500">(deixe em branco para manter o atual)</span>}
+            </label>
+            <input
+              type="password"
+              value={form.client_secret}
+              onChange={(e) => set('client_secret', e.target.value)}
+              placeholder={existing ? '••••••••••••' : 'Novo segredo do App Registration'}
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Domínio do Tenant</label>
+              <input
+                value={form.tenant_domain}
+                onChange={(e) => set('tenant_domain', e.target.value)}
+                placeholder="contoso.onmicrosoft.com"
+                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-400 mb-1">Rótulo</label>
+              <input
+                value={form.label}
+                onChange={(e) => set('label', e.target.value)}
+                placeholder="M365 Tenant"
+                className="w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-100 focus:border-blue-500 focus:outline-none"
+              />
+            </div>
+          </div>
+
+          {/* Required permissions info */}
+          <div className="rounded-lg border border-blue-800/40 bg-blue-900/20 p-3">
+            <p className="text-xs font-semibold text-blue-300 mb-1">Permissões necessárias no Azure AD App Registration:</p>
+            <div className="flex flex-wrap gap-1 mt-1">
+              {REQUIRED_PERMISSIONS.map((p) => (
+                <span key={p} className="rounded bg-gray-800 px-1.5 py-0.5 text-[10px] text-gray-300 font-mono">
+                  {p}
+                </span>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-2">
+              Tipo: <strong className="text-gray-300">Application</strong> (não delegado) • Admin consent obrigatório
+            </p>
+          </div>
+
+          {saveMut.isError && (
+            <p className="text-xs text-red-400">{saveMut.error?.response?.data?.detail || 'Erro ao salvar credenciais'}</p>
+          )}
+
+          <div className="flex justify-between pt-1">
+            {existing && (
+              <button
+                type="button"
+                onClick={() => setShowDelete(true)}
+                className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-red-400 hover:bg-red-900/30"
+              >
+                <Trash2 size={14} /> Remover conexão
+              </button>
+            )}
+            <div className="flex gap-2 ml-auto">
+              <button type="button" onClick={onClose} className="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-white">
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={saveMut.isPending}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                {saveMut.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Plug size={14} />}
+                {existing ? 'Salvar' : 'Conectar'}
+              </button>
+            </div>
+          </div>
+        </form>
+
+        {showDelete && (
+          <div className="border-t border-gray-700 px-5 py-4 bg-gray-800/50 rounded-b-2xl">
+            <p className="text-sm text-gray-300 mb-3">Tem certeza? As credenciais M365 serão removidas permanentemente.</p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowDelete(false)} className="rounded-lg px-3 py-1.5 text-sm text-gray-400 hover:text-white">Cancelar</button>
+              <button
+                onClick={() => deleteMut.mutate()}
+                disabled={deleteMut.isPending}
+                className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {deleteMut.isPending ? 'Removendo...' : 'Confirmar remoção'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ── Setup Screen (not connected) ──────────────────────────────────────────────
+
+const SetupScreen = ({ onConnect }) => (
+  <div className="flex flex-col items-center justify-center py-24 text-center">
+    <div className="mb-6 flex h-20 w-20 items-center justify-center rounded-2xl bg-blue-900/30 border border-blue-700/40">
+      <Grid3x3 size={36} className="text-blue-400" />
+    </div>
+    <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100 mb-2">Conectar Microsoft 365</h2>
+    <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mb-6">
+      Integre seu tenant Microsoft 365 para visualizar usuários, licenças, equipes e relatórios de segurança diretamente no Cloud Atlas Manager.
+    </p>
+    <button
+      onClick={onConnect}
+      className="flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-blue-500"
+    >
+      <Plug size={16} /> Conectar agora
+    </button>
+  </div>
+);
+
+// ── KPI Card ──────────────────────────────────────────────────────────────────
+
+const KpiCard = ({ label, value, sub, color = 'text-blue-400' }) => (
+  <div className="card rounded-2xl p-5">
+    <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+    <p className={`mt-1 text-3xl font-bold ${color}`}>{value ?? '—'}</p>
+    {sub && <p className="mt-1 text-xs text-gray-400 dark:text-gray-500">{sub}</p>}
+  </div>
+);
+
+const ApiErrorCard = ({ error, onRefresh }) => (
+  <div className="card rounded-2xl p-8 text-center space-y-3">
+    <XCircle size={36} className="text-red-400 mx-auto" />
+    <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Falha ao carregar dados</p>
+    <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md mx-auto">
+      {error?.response?.data?.detail || 'Verifique as permissões do App Registration no Azure AD.'}
+    </p>
+    {onRefresh && (
+      <button
+        onClick={onRefresh}
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+      >
+        <RefreshCw size={13} /> Tentar novamente
+      </button>
+    )}
+  </div>
+);
+
+// ── Tab: Visão Geral ──────────────────────────────────────────────────────────
+
+const OverviewTab = ({ overview, isLoading, isError, error, onRefresh }) => {
+  if (isLoading) return <LoadingSpinner />;
+
+  if (isError) {
+    return (
+      <div className="card rounded-2xl p-8 text-center space-y-3">
+        <XCircle size={36} className="text-red-400 mx-auto" />
+        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Falha ao carregar dados do tenant</p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 max-w-md mx-auto">
+          {error?.response?.data?.detail || 'Verifique se as credenciais estão corretas e se todas as permissões do App Registration foram concedidas com admin consent.'}
+        </p>
+        <button
+          onClick={onRefresh}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          <RefreshCw size={13} /> Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  if (!overview) return null;
+
+  const usagePct = overview.total_licenses > 0
+    ? overview.assigned_licenses / overview.total_licenses
+    : 0;
+
+  const noData = overview.total_users === 0 && overview.total_licenses === 0;
+
+  return (
+    <div className="space-y-6">
+      {noData && (
+        <div className="rounded-xl border border-yellow-300 dark:border-yellow-700/50 bg-yellow-50 dark:bg-yellow-900/20 px-4 py-3 flex items-start gap-3">
+          <AlertTriangle size={16} className="text-yellow-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">Nenhum dado encontrado</p>
+            <p className="text-xs text-yellow-700 dark:text-yellow-400 mt-0.5">
+              Verifique se as permissões <code className="bg-yellow-100 dark:bg-yellow-800/40 px-1 rounded">User.Read.All</code> e <code className="bg-yellow-100 dark:bg-yellow-800/40 px-1 rounded">SubscribedSku.Read.All</code> foram concedidas com <strong>admin consent</strong> no App Registration.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Tenant info strip */}
+      {overview.primary_domain && (
+        <div className="card rounded-xl px-4 py-3 flex items-center gap-2">
+          <span className="text-xs text-gray-400 dark:text-gray-500">Domínio primário</span>
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{overview.primary_domain}</span>
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <KpiCard label="Usuários ativos"       value={overview.active_users}     color="text-blue-400" />
+        <KpiCard label="Licenças disponíveis"  value={overview.available_licenses} color="text-green-400"
+                 sub={`de ${overview.total_licenses} total`} />
+        <KpiCard label="Grupos ativos"         value={overview.total_teams}      color="text-purple-400" />
+        <KpiCard label="Usuários desativados"  value={overview.disabled_users}   color="text-gray-400" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
+        <KpiCard label="Admins Globais"  value={overview.global_admins?.length ?? '—'} color="text-red-400" />
+        <KpiCard label="Dispositivos registrados" value={overview.device_count ?? '—'} color="text-amber-400" />
+      </div>
+
+      {/* Global admins list */}
+      {overview.global_admins?.length > 0 && (
+        <div className="card rounded-2xl p-5">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-3">Administradores Globais</p>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {overview.global_admins.map((admin, i) => (
+              <div key={i} className="flex items-center gap-3 py-2">
+                <div className="w-8 h-8 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+                  <span className="text-xs font-semibold text-red-600 dark:text-red-400">
+                    {(admin.name || admin.upn || '?')[0].toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{admin.name || '—'}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{admin.upn || ''}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* License utilization bar */}
+      <div className="card rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Utilização de Licenças</p>
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+            {overview.assigned_licenses} / {overview.total_licenses} ({Math.round(usagePct * 100)}%)
+          </span>
+        </div>
+        <div className="h-3 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+          <div
+            className={`h-3 rounded-full transition-all ${pctColor(usagePct)}`}
+            style={{ width: `${Math.min(usagePct * 100, 100)}%` }}
+          />
+        </div>
+        <div className="mt-2 flex justify-between text-xs text-gray-400 dark:text-gray-500">
+          <span>{overview.sku_count} plano(s) de licença</span>
+          <span>{overview.available_licenses} disponíveis</span>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Create User Panel (inline expandable) ─────────────────────────────────────
+
+const WIZARD_STEPS = ['Dados', 'Licença', 'Grupos', 'Confirmar'];
+
+const inputWiz = 'w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none';
+
+const CreateUserWizard = () => {
+  const [open, setOpen]       = useState(false);
+  const [step, setStep]       = useState(0);
+  const [results, setResults] = useState(null); // null = not done, {} = done
+  const [showPwd, setShowPwd] = useState(false);
+  const [groupSearch, setGroupSearch] = useState('');
+  const [selectedSkuId, setSelectedSkuId] = useState('');
+  const [selectedGroups, setSelectedGroups] = useState([]); // [{id, displayName}]
+
+  const emptyForm = () => ({
+    display_name: '', first_name: '', last_name: '',
+    upn: '', password: genPassword(),
+    job_title: '', department: '', usage_location: 'BR',
+    mail_nickname: '', account_enabled: true, force_change_password: true,
+  });
+  const [form, setForm] = useState(emptyForm);
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const qc = useQueryClient();
+
+  const licensesQ = useQuery({
+    queryKey: ['m365-licenses'],
+    queryFn: m365Service.getLicenses,
+    staleTime: 300_000,
+    enabled: open && step >= 1,
+    retry: false,
+  });
+
+  const groupsQ = useQuery({
+    queryKey: ['m365-groups'],
+    queryFn: m365Service.getGroups,
+    staleTime: 300_000,
+    enabled: open && step >= 2,
+    retry: false,
+  });
+
+  const licenses = (licensesQ.data?.licenses || licensesQ.data || []).filter(l => l.available > 0);
+  const groups   = (groupsQ.data?.groups || groupsQ.data || []).filter(g =>
+    !groupSearch || g.displayName?.toLowerCase().includes(groupSearch.toLowerCase())
+  );
+
+  const close = () => {
+    setOpen(false);
+    setStep(0);
+    setResults(null);
+    setForm(emptyForm());
+    setSelectedSkuId('');
+    setSelectedGroups([]);
+    setGroupSearch('');
+  };
+
+  const toggleGroup = (g) => {
+    setSelectedGroups(prev =>
+      prev.find(x => x.id === g.id) ? prev.filter(x => x.id !== g.id) : [...prev, g]
+    );
+  };
+
+  const execMut = useMutation({
+    mutationFn: async () => {
+      const res = {};
+      // Step 1: create user
+      let userId;
+      try {
+        const created = await m365Service.createUser(form);
+        userId = created?.id || created?.user?.id;
+        res.criar_usuario = true;
+      } catch (e) {
+        res.criar_usuario = e?.response?.data?.detail || e.message || 'Erro';
+        return res; // stop if user creation failed
+      }
+      // Step 2: assign license
+      if (selectedSkuId && userId) {
+        try {
+          await m365Service.assignLicense(selectedSkuId, userId);
+          res.atribuir_licenca = true;
+        } catch (e) {
+          res.atribuir_licenca = e?.response?.data?.detail || e.message || 'Erro';
+        }
+      }
+      // Step 3: add to groups
+      for (const g of selectedGroups) {
+        try {
+          await m365Service.addGroupMember(g.id, userId);
+          res[`grupo_${g.displayName}`] = true;
+        } catch (e) {
+          res[`grupo_${g.displayName}`] = e?.response?.data?.detail || e.message || 'Erro';
+        }
+      }
+      return res;
+    },
+    onSuccess: (res) => {
+      setResults(res);
+      qc.invalidateQueries({ queryKey: ['m365-users'] });
+    },
+  });
+
+  const step1Valid = form.display_name && form.upn && form.password;
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 shrink-0"
+      >
+        <Plus size={14} /> Criar usuário
+      </button>
+    );
+  }
+
+  const selectedSku = licenses.find(l => l.skuId === selectedSkuId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={close}>
+      <div
+        className="w-full max-w-lg bg-white dark:bg-gray-900 rounded-2xl shadow-2xl flex flex-col max-h-[90vh]"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
+          <div>
+            <p className="font-semibold text-gray-900 dark:text-gray-100 text-sm">Criar novo usuário</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Etapa {step + 1} de {WIZARD_STEPS.length}</p>
+          </div>
+          <button onClick={close} className="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
+            <X size={16} className="text-gray-500" />
+          </button>
+        </div>
+
+        {/* Step indicator */}
+        <div className="flex items-center px-5 py-3 border-b border-gray-100 dark:border-gray-800 flex-shrink-0">
+          {WIZARD_STEPS.map((label, i) => (
+            <div key={i} className="flex items-center">
+              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                i < step ? 'bg-green-500 text-white'
+                : i === step ? 'bg-blue-500 text-white'
+                : 'bg-gray-200 dark:bg-gray-700 text-gray-500'
+              }`}>
+                {i < step ? '✓' : i + 1}
+              </div>
+              <span className={`ml-1.5 text-xs ${i === step ? 'text-blue-600 dark:text-blue-400 font-medium' : 'text-gray-400'}`}>{label}</span>
+              {i < WIZARD_STEPS.length - 1 && <div className="w-6 h-px bg-gray-200 dark:bg-gray-700 mx-2" />}
+            </div>
+          ))}
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+
+          {/* ── Step 0: Dados básicos ── */}
+          {step === 0 && !results && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nome</label>
+                  <input value={form.first_name} onChange={e => set('first_name', e.target.value)} placeholder="João" className={inputWiz} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Sobrenome</label>
+                  <input value={form.last_name} onChange={e => set('last_name', e.target.value)} placeholder="Silva" className={inputWiz} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Nome de exibição <span className="text-red-400">*</span></label>
+                <input value={form.display_name} onChange={e => set('display_name', e.target.value)} placeholder="João Silva" className={inputWiz} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">UserPrincipalName <span className="text-red-400">*</span></label>
+                <input value={form.upn} onChange={e => set('upn', e.target.value)} placeholder="joao.silva@contoso.com" className={`${inputWiz} font-mono`} />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Senha inicial <span className="text-red-400">*</span></label>
+                <div className="flex gap-2">
+                  <input type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => set('password', e.target.value)} className={`flex-1 ${inputWiz} font-mono`} />
+                  <button type="button" onClick={() => setShowPwd(p => !p)} className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 whitespace-nowrap">{showPwd ? 'Ocultar' : 'Mostrar'}</button>
+                  <button type="button" onClick={() => set('password', genPassword())} className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-xs text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700">Gerar</button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Cargo</label>
+                  <input value={form.job_title} onChange={e => set('job_title', e.target.value)} placeholder="Analista de TI" className={inputWiz} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Departamento</label>
+                  <input value={form.department} onChange={e => set('department', e.target.value)} placeholder="TI" className={inputWiz} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Local de uso</label>
+                  <select value={form.usage_location} onChange={e => set('usage_location', e.target.value)} className={inputWiz}>
+                    <option value="BR">BR — Brasil</option>
+                    <option value="US">US — Estados Unidos</option>
+                    <option value="PT">PT — Portugal</option>
+                    <option value="GB">GB — Reino Unido</option>
+                    <option value="DE">DE — Alemanha</option>
+                    <option value="FR">FR — França</option>
+                    <option value="ES">ES — Espanha</option>
+                    <option value="AR">AR — Argentina</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Apelido de e-mail</label>
+                  <input value={form.mail_nickname} onChange={e => set('mail_nickname', e.target.value)} placeholder="auto (do UPN)" className={`${inputWiz} font-mono`} />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-6">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.account_enabled} onChange={e => set('account_enabled', e.target.checked)} className="rounded border-gray-400" />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Conta habilitada</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" checked={form.force_change_password} onChange={e => set('force_change_password', e.target.checked)} className="rounded border-gray-400" />
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Forçar troca de senha no 1º acesso</span>
+                </label>
+              </div>
+            </>
+          )}
+
+          {/* ── Step 1: Licença ── */}
+          {step === 1 && !results && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Selecione uma licença para atribuir ao usuário (opcional).</p>
+              {licensesQ.isLoading ? (
+                <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="h-12 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />)}</div>
+              ) : licenses.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">Nenhuma licença com vagas disponíveis.</p>
+              ) : licenses.map(l => {
+                const name = SKU_FRIENDLY_NAMES[l.skuPartNumber] || l.skuPartNumber;
+                return (
+                  <label key={l.skuId} className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                    selectedSkuId === l.skuId
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20'
+                      : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                  }`}>
+                    <input type="radio" name="sku" value={l.skuId} checked={selectedSkuId === l.skuId} onChange={() => setSelectedSkuId(l.skuId)} className="text-blue-500" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{name}</p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{l.available} disponíveis de {l.prepaid}</p>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Step 2: Grupos ── */}
+          {step === 2 && !results && (
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Adicione o usuário a grupos existentes (opcional).</p>
+              <input
+                value={groupSearch}
+                onChange={e => setGroupSearch(e.target.value)}
+                placeholder="Buscar grupo..."
+                className={inputWiz}
+              />
+              {selectedGroups.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 py-1">
+                  {selectedGroups.map(g => (
+                    <span key={g.id} className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs rounded-full">
+                      {g.displayName}
+                      <button onClick={() => toggleGroup(g)} className="hover:text-blue-900">×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <div className="space-y-1 max-h-60 overflow-y-auto">
+                {groupsQ.isLoading ? (
+                  [1,2,3,4].map(i => <div key={i} className="h-10 bg-gray-100 dark:bg-gray-800 rounded-lg animate-pulse" />)
+                ) : groups.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">Nenhum grupo encontrado.</p>
+                ) : groups.map(g => {
+                  const isSelected = !!selectedGroups.find(x => x.id === g.id);
+                  return (
+                    <label key={g.id} className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      isSelected ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                    }`}>
+                      <input type="checkbox" checked={isSelected} onChange={() => toggleGroup(g)} className="text-blue-500" />
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{g.displayName}</p>
+                        <p className="text-xs text-gray-400">{g.groupType}</p>
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Confirmar ── */}
+          {step === 3 && !results && (
+            <div className="space-y-3">
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg space-y-1">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Usuário</p>
+                <p className="text-sm text-gray-900 dark:text-gray-100"><span className="text-gray-500">Nome:</span> {form.display_name}</p>
+                <p className="text-sm text-gray-900 dark:text-gray-100"><span className="text-gray-500">UPN:</span> <span className="font-mono">{form.upn}</span></p>
+                {form.job_title && <p className="text-sm text-gray-900 dark:text-gray-100"><span className="text-gray-500">Cargo:</span> {form.job_title}</p>}
+                {form.department && <p className="text-sm text-gray-900 dark:text-gray-100"><span className="text-gray-500">Depto:</span> {form.department}</p>}
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Licença</p>
+                <p className="text-sm text-gray-900 dark:text-gray-100">
+                  {selectedSku ? (SKU_FRIENDLY_NAMES[selectedSku.skuPartNumber] || selectedSku.skuPartNumber) : <span className="text-gray-400 italic">Nenhuma</span>}
+                </p>
+              </div>
+              <div className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Grupos ({selectedGroups.length})</p>
+                {selectedGroups.length === 0
+                  ? <p className="text-sm text-gray-400 italic">Nenhum</p>
+                  : <div className="flex flex-wrap gap-1">{selectedGroups.map(g => <span key={g.id} className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs rounded-full">{g.displayName}</span>)}</div>
+                }
+              </div>
+              {execMut.isError && <p className="text-xs text-red-400">{execMut.error?.message || 'Erro ao executar.'}</p>}
+            </div>
+          )}
+
+          {/* ── Results ── */}
+          {results && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Resultado:</p>
+              {Object.entries(results).map(([key, val]) => (
+                <div key={key} className="flex items-center gap-2">
+                  {val === true
+                    ? <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                    : <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  }
+                  <span className="text-sm text-gray-700 dark:text-gray-300">
+                    {key.replace(/_/g, ' ').replace('grupo ', 'Grupo → ')}: {val === true ? 'Concluído' : <span className="text-red-500 text-xs">{val}</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
+          {results ? (
+            <button onClick={close} className="w-full px-4 py-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium rounded-lg">
+              Concluir
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              {step > 0 && (
+                <button onClick={() => setStep(s => s - 1)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white rounded-lg border border-gray-200 dark:border-gray-700">
+                  Voltar
+                </button>
+              )}
+              <div className="flex-1" />
+              {step < 3 && step > 0 && (
+                <button onClick={() => setStep(s => s + 1)} className="px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 rounded-lg">
+                  Pular
+                </button>
+              )}
+              {step < 3 ? (
+                <button
+                  onClick={() => setStep(s => s + 1)}
+                  disabled={step === 0 && !step1Valid}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  Próximo →
+                </button>
+              ) : (
+                <button
+                  onClick={() => execMut.mutate()}
+                  disabled={execMut.isPending}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {execMut.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Criar usuário
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Create Group Panel (inline expandable) ────────────────────────────────────
+
+const CreateGroupPanel = () => {
+  const [open, setOpen] = useState(false);
+  const emptyForm = () => ({
+    display_name: '', description: '', mail_nickname: '', group_type: 'm365', visibility: 'Private',
+  });
+  const [form, setForm] = useState(emptyForm);
+  const qc = useQueryClient();
+
+  const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
+  const autoNickname = (name) => name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+
+  const createMut = useMutation({
+    mutationFn: () => m365Service.createGroup(form),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-teams'] });
+      setOpen(false);
+      setForm(emptyForm());
+    },
+  });
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-500 shrink-0"
+      >
+        <Plus size={14} /> Criar grupo
+      </button>
+    );
+  }
+
+  return (
+    <div className="card rounded-2xl p-5 space-y-4 border-l-4 border-l-blue-500">
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Novo grupo</p>
+        <button onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-white">
+          <X size={16} />
+        </button>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+          Nome do grupo <span className="text-red-400">*</span>
+        </label>
+        <input
+          value={form.display_name}
+          onChange={(e) => {
+            const v = e.target.value;
+            set('display_name', v);
+            // Auto-fill nickname only if it hasn't been manually edited
+            if (!form.mail_nickname || form.mail_nickname === autoNickname(form.display_name)) {
+              set('mail_nickname', autoNickname(v));
+            }
+          }}
+          placeholder="Equipe de Marketing"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Apelido de e-mail</label>
+        <input value={form.mail_nickname} onChange={(e) => set('mail_nickname', e.target.value)}
+          placeholder="equipe-de-marketing"
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none font-mono" />
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Preenchido automaticamente — sem espaços ou caracteres especiais</p>
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Descrição</label>
+        <textarea value={form.description} onChange={(e) => set('description', e.target.value)}
+          placeholder="Descreva o propósito deste grupo..." rows={2}
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none resize-none" />
+      </div>
+
+      <div>
+        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Tipo de grupo</label>
+        <div className="flex gap-3">
+          {[
+            ['m365', 'Microsoft 365', 'Teams, SharePoint, Exchange'],
+            ['security', 'Grupo de Segurança', 'Controle de acesso a recursos'],
+          ].map(([val, label, hint]) => (
+            <label key={val} className={`flex-1 flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+              form.group_type === val
+                ? 'border-blue-500 bg-blue-600/10'
+                : 'border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+            }`}>
+              <input type="radio" name="group_type" value={val} checked={form.group_type === val}
+                onChange={() => set('group_type', val)} className="sr-only" />
+              <span className={`text-xs font-semibold ${form.group_type === val ? 'text-blue-500' : 'text-gray-700 dark:text-gray-300'}`}>{label}</span>
+              <span className="text-xs text-gray-400 dark:text-gray-500">{hint}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {form.group_type === 'm365' && (
+        <div>
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Visibilidade</label>
+          <div className="flex gap-3">
+            {[
+              ['Private', 'Privada', 'Apenas membros convidados'],
+              ['Public', 'Pública', 'Qualquer pessoa na organização'],
+            ].map(([val, label, hint]) => (
+              <label key={val} className={`flex-1 flex flex-col gap-0.5 rounded-lg border px-3 py-2.5 cursor-pointer transition-colors ${
+                form.visibility === val
+                  ? 'border-blue-500 bg-blue-600/10'
+                  : 'border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800'
+              }`}>
+                <input type="radio" name="visibility" value={val} checked={form.visibility === val}
+                  onChange={() => set('visibility', val)} className="sr-only" />
+                <span className={`text-xs font-semibold ${form.visibility === val ? 'text-blue-500' : 'text-gray-700 dark:text-gray-300'}`}>{label}</span>
+                <span className="text-xs text-gray-400 dark:text-gray-500">{hint}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {createMut.isError && (
+        <p className="text-xs text-red-400">
+          {createMut.error?.response?.data?.detail || 'Erro ao criar grupo'}
+        </p>
+      )}
+      {createMut.isSuccess && (
+        <p className="text-xs text-green-500">Grupo criado com sucesso!</p>
+      )}
+
+      <div className="flex justify-end gap-2 pt-1">
+        <button onClick={() => setOpen(false)}
+          className="rounded-lg px-4 py-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-white">
+          Cancelar
+        </button>
+        <button
+          onClick={() => createMut.mutate()}
+          disabled={!form.display_name || createMut.isPending}
+          className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+        >
+          {createMut.isPending ? <RefreshCw size={14} className="animate-spin" /> : <Plus size={14} />}
+          Criar grupo
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ── Tab: Usuários ─────────────────────────────────────────────────────────────
+
+const exportCsv = (users) => {
+  const headers = ['Nome', 'E-mail', 'Cargo', 'Departamento', 'Licenças', 'MFA', 'Último acesso', 'Status'];
+  const rows = users.map((u) => [
+    u.displayName || '',
+    u.userPrincipalName || '',
+    u.jobTitle || '',
+    u.department || '',
+    u.licensedCount ?? '',
+    u.mfaRegistered === true ? 'Sim' : u.mfaRegistered === false ? 'Não' : '—',
+    u.lastSignIn ? new Date(u.lastSignIn).toLocaleDateString('pt-BR') : '—',
+    u.accountEnabled ? 'Ativo' : 'Desativado',
+  ]);
+  const csv = [headers, ...rows]
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(','))
+    .join('\n');
+  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `m365-usuarios-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+const UsersTab = ({ data, isLoading, onSelectUser, selectedUser }) => {
+  const [search, setSearch] = useState('');
+  const [filterActive, setFilterActive] = useState('all');
+
+  if (isLoading) return <SkeletonTable columns={5} rows={8} />;
+
+  const now = Date.now();
+  const daysMs = (d) => d * 86_400_000;
+
+  const users = (data?.users || []).filter((u) => {
+    const matchSearch = !search || (
+      u.displayName?.toLowerCase().includes(search.toLowerCase()) ||
+      u.userPrincipalName?.toLowerCase().includes(search.toLowerCase())
+    );
+    let matchFilter = true;
+    if (filterActive === 'active')      matchFilter = !!u.accountEnabled;
+    else if (filterActive === 'inactive') matchFilter = !u.accountEnabled;
+    else if (filterActive === 'inactive-30')
+      matchFilter = !u.lastSignIn || (now - new Date(u.lastSignIn).getTime()) > daysMs(30);
+    else if (filterActive === 'inactive-60')
+      matchFilter = !u.lastSignIn || (now - new Date(u.lastSignIn).getTime()) > daysMs(60);
+    else if (filterActive === 'inactive-90')
+      matchFilter = !u.lastSignIn || (now - new Date(u.lastSignIn).getTime()) > daysMs(90);
+    return matchSearch && matchFilter;
+  });
+
+  return (
+    <div className="space-y-4">
+      <CreateUserWizard />
+
+      <div className="flex gap-3 flex-wrap items-center">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar por nome ou e-mail..."
+          className="flex-1 min-w-48 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none"
+        />
+        <select
+          value={filterActive}
+          onChange={(e) => setFilterActive(e.target.value)}
+          className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100"
+        >
+          <option value="all">Todos</option>
+          <option value="active">Ativos</option>
+          <option value="inactive">Desativados</option>
+          <optgroup label="Sem acesso há…">
+            <option value="inactive-30">+30 dias sem acesso</option>
+            <option value="inactive-60">+60 dias sem acesso</option>
+            <option value="inactive-90">+90 dias sem acesso</option>
+          </optgroup>
+        </select>
+        <button
+          onClick={() => exportCsv(users)}
+          disabled={users.length === 0}
+          className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-2 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40"
+          title="Exportar lista atual como CSV"
+        >
+          <Download size={14} /> Exportar CSV
+        </button>
+      </div>
+
+      <div className="card rounded-2xl overflow-hidden">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-800/60">
+            <tr>
+              {['Nome', 'E-mail', 'Departamento', 'Licenças', 'MFA', 'Último acesso', 'Status'].map((h) => (
+                <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+            {users.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400 dark:text-gray-500">Nenhum usuário encontrado</td></tr>
+            )}
+            {users.map((u) => {
+              const isSelected = selectedUser?.id === u.id;
+              return (
+                <tr
+                  key={u.id}
+                  onClick={() => onSelectUser(isSelected ? null : u)}
+                  className={`cursor-pointer transition-colors ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : 'hover:bg-gray-50 dark:hover:bg-gray-800/40'}`}
+                >
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2.5">
+                      <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.displayName)}`}>
+                        {initials(u.displayName)}
+                      </div>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{u.displayName || '—'}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 font-mono">{u.userPrincipalName || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{u.department || '—'}</td>
+                  <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{u.licensedCount ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    {u.mfaRegistered === true  && <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400"><CheckCircle size={12} /> Sim</span>}
+                    {u.mfaRegistered === false && <span className="flex items-center gap-1 text-xs text-red-500"><XCircle size={12} /> Não</span>}
+                    {u.mfaRegistered == null   && <span className="text-xs text-gray-400 dark:text-gray-500">—</span>}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500">{fmtDate(u.lastSignIn)}</td>
+                  <td className="px-4 py-3">
+                    {u.accountEnabled
+                      ? <span className="rounded-full bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400">Ativo</span>
+                      : <span className="rounded-full bg-gray-100 dark:bg-gray-700 px-2 py-0.5 text-xs text-gray-500 dark:text-gray-400">Desativado</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-400 dark:text-gray-500">{users.length} usuário(s) exibido(s)</p>
+    </div>
+  );
+};
+
+// ── Tab: Licenças ─────────────────────────────────────────────────────────────
+
+const AssignLicenseModal = ({ sku, onClose }) => {
+  const [search, setSearch] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const qc = useQueryClient();
+
+  const licenseUsersQ = useQuery({
+    queryKey: ['m365-license-users', sku.skuId],
+    queryFn: () => m365Service.getLicenseUsers(sku.skuId),
+  });
+
+  const allUsersQ = useQuery({
+    queryKey: ['m365-users-picker'],
+    queryFn: m365Service.getUsers,
+    staleTime: 60_000,
+  });
+
+  const assignMut = useMutation({
+    mutationFn: () => m365Service.assignLicense(sku.skuId, selectedUserId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-license-users', sku.skuId] });
+      qc.invalidateQueries({ queryKey: ['m365-licenses'] });
+      setSelectedUserId(null);
+      setSearch('');
+    },
+  });
+
+  const removeMut = useMutation({
+    mutationFn: (userId) => m365Service.removeLicense(sku.skuId, userId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-license-users', sku.skuId] });
+      qc.invalidateQueries({ queryKey: ['m365-licenses'] });
+    },
+  });
+
+  const assignedIds = new Set((licenseUsersQ.data?.users || []).map(u => u.id));
+  const allUsers = allUsersQ.data?.users || [];
+  const unassigned = allUsers.filter(u => !assignedIds.has(u.id));
+  const filtered = unassigned.filter(u => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return u.displayName?.toLowerCase().includes(q) || u.userPrincipalName?.toLowerCase().includes(q);
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col max-h-[85vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-700 flex-shrink-0">
+          <div>
+            <p className="text-base font-semibold text-gray-100">{skuLabel(sku.skuPartNumber)}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{sku.available} de {sku.prepaid} disponíveis</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-200"><X className="w-5 h-5" /></button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-5">
+          {/* Assigned users */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+              Usuários com esta licença ({licenseUsersQ.data?.users?.length ?? '…'})
+            </p>
+            {licenseUsersQ.isLoading ? (
+              <p className="text-xs text-gray-500 py-2">Carregando…</p>
+            ) : (licenseUsersQ.data?.users || []).length === 0 ? (
+              <p className="text-xs text-gray-500 py-2">Nenhum usuário com esta licença</p>
+            ) : (
+              <ul className="space-y-1">
+                {licenseUsersQ.data.users.map(u => (
+                  <li key={u.id} className="flex items-center justify-between rounded-lg px-3 py-2 bg-gray-800">
+                    <div className="min-w-0">
+                      <p className="text-sm text-gray-100 truncate">{u.displayName}</p>
+                      <p className="text-xs text-gray-400 truncate">{u.userPrincipalName}</p>
+                    </div>
+                    <button
+                      onClick={() => removeMut.mutate(u.id)}
+                      disabled={removeMut.isPending}
+                      className="ml-3 flex-shrink-0 text-xs text-red-400 hover:text-red-300 disabled:opacity-50"
+                    >
+                      Remover
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          {/* Assign to new user */}
+          <div>
+            <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Atribuir a usuário</p>
+            <div className="relative mb-2">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                value={search}
+                onChange={e => { setSearch(e.target.value); setSelectedUserId(null); }}
+                placeholder="Buscar usuário…"
+                className="w-full bg-gray-800 border border-gray-600 rounded-lg pl-9 pr-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+              />
+            </div>
+            {sku.available <= 0 && (
+              <p className="text-xs text-red-400 mb-2">Sem licenças disponíveis para atribuição.</p>
+            )}
+            <ul className="space-y-1 max-h-48 overflow-y-auto">
+              {filtered.slice(0, 30).map(u => (
+                <li
+                  key={u.id}
+                  onClick={() => setSelectedUserId(u.id)}
+                  className={`flex items-center justify-between rounded-lg px-3 py-2 cursor-pointer transition-colors ${
+                    selectedUserId === u.id
+                      ? 'bg-primary text-white'
+                      : 'bg-gray-800 hover:bg-gray-700 text-gray-100'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm truncate">{u.displayName}</p>
+                    <p className={`text-xs truncate ${selectedUserId === u.id ? 'text-primary-light' : 'text-gray-400'}`}>
+                      {u.userPrincipalName}
+                    </p>
+                  </div>
+                  {selectedUserId === u.id && <CheckCircle className="w-4 h-4 flex-shrink-0 ml-2" />}
+                </li>
+              ))}
+              {filtered.length === 0 && search && (
+                <p className="text-xs text-gray-500 py-2 text-center">Nenhum usuário encontrado</p>
+              )}
+            </ul>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex justify-end gap-3 px-5 py-4 border-t border-gray-700 flex-shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg text-gray-300 hover:text-gray-100">
+            Fechar
+          </button>
+          <button
+            onClick={() => assignMut.mutate()}
+            disabled={!selectedUserId || assignMut.isPending || sku.available <= 0}
+            className="px-4 py-2 text-sm rounded-lg bg-primary hover:bg-primary-dark text-white disabled:opacity-50"
+          >
+            {assignMut.isPending ? 'Atribuindo…' : 'Atribuir licença'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const LicensesTab = ({ data, isLoading }) => {
+  const [managingSku, setManagingSku] = useState(null);
+
+  if (isLoading) return <SkeletonTable columns={4} rows={5} />;
+
+  const licenses = data?.licenses || [];
+
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {licenses.length === 0 && (
+          <p className="col-span-full text-center text-sm text-gray-400 dark:text-gray-500 py-12">Nenhuma licença encontrada</p>
+        )}
+        {licenses.map((sku) => {
+          const pct = sku.prepaid > 0 ? sku.consumed / sku.prepaid : 0;
+          const low = sku.available < sku.prepaid * 0.1;
+          return (
+            <div key={sku.skuId} className="card rounded-2xl p-5 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 leading-tight">
+                    {skuLabel(sku.skuPartNumber)}
+                  </p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sku.skuPartNumber}</p>
+                </div>
+                {low && <span className="rounded-full bg-red-100 dark:bg-red-900/30 px-2 py-0.5 text-xs text-red-600 dark:text-red-400 flex-shrink-0">Baixo</span>}
+              </div>
+              <div>
+                <div className="flex justify-between text-xs mb-1 text-gray-500 dark:text-gray-400">
+                  <span>{sku.consumed} usadas</span>
+                  <span>{sku.prepaid} total</span>
+                </div>
+                <div className="h-2 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+                  <div className={`h-2 rounded-full ${pctColor(pct)}`} style={{ width: `${Math.min(pct * 100, 100)}%` }} />
+                </div>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex gap-3 text-xs text-gray-500 dark:text-gray-400">
+                  <span className="text-green-600 dark:text-green-400 font-medium">{sku.available} disponíveis</span>
+                  {sku.suspended > 0 && <span className="text-yellow-500">{sku.suspended} suspensas</span>}
+                </div>
+                <button
+                  onClick={() => setManagingSku(sku)}
+                  className="text-xs text-primary hover:text-primary-light flex items-center gap-1"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  Atribuir
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {managingSku && (
+        <AssignLicenseModal sku={managingSku} onClose={() => setManagingSku(null)} />
+      )}
+    </>
+  );
+};
+
+// ── Add Member Modal ──────────────────────────────────────────────────────────
+
+const AddMemberModal = ({ team, onClose }) => {
+  const [search, setSearch] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [asOwner, setAsOwner] = useState(false);
+  const qc = useQueryClient();
+
+  const usersQ = useQuery({
+    queryKey: ['m365-users-picker'],
+    queryFn: m365Service.getUsers,
+    staleTime: 60_000,
+  });
+
+  const addMut = useMutation({
+    mutationFn: () =>
+      m365Service.addTeamMember(team.id, selectedUserId, asOwner ? ['owner'] : []),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-team-members', team.id] });
+      onClose();
+    },
+  });
+
+  const allUsers = usersQ.data?.users || [];
+  const filtered = allUsers.filter((u) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      u.displayName?.toLowerCase().includes(q) ||
+      u.userPrincipalName?.toLowerCase().includes(q)
+    );
+  });
+
+  const selected = allUsers.find((u) => u.id === selectedUserId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col max-h-[80vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-700 px-5 py-4 shrink-0">
+          <div>
+            <h2 className="text-base font-semibold text-gray-100">Adicionar membro</h2>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">{team.displayName}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={18} /></button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pt-4 shrink-0">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar usuário por nome ou e-mail..."
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 pl-8 pr-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* User list */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1 min-h-0">
+          {usersQ.isLoading && (
+            <p className="text-center text-sm text-gray-400 py-6">Carregando usuários...</p>
+          )}
+          {!usersQ.isLoading && filtered.length === 0 && (
+            <p className="text-center text-sm text-gray-400 py-6">Nenhum usuário encontrado</p>
+          )}
+          {filtered.slice(0, 50).map((u) => (
+            <button
+              key={u.id}
+              onClick={() => setSelectedUserId(u.id === selectedUserId ? null : u.id)}
+              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                u.id === selectedUserId
+                  ? 'bg-blue-600/20 border border-blue-600/40'
+                  : 'hover:bg-gray-800 border border-transparent'
+              }`}
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-700 text-xs font-semibold text-gray-300">
+                {(u.displayName || u.userPrincipalName || '?')[0].toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-100 truncate">{u.displayName || '—'}</p>
+                <p className="text-xs text-gray-400 truncate font-mono">{u.userPrincipalName}</p>
+              </div>
+              {u.id === selectedUserId && (
+                <CheckCircle size={16} className="ml-auto shrink-0 text-blue-400" />
+              )}
+            </button>
+          ))}
+          {filtered.length > 50 && (
+            <p className="text-center text-xs text-gray-500 pt-2">
+              Mostrando 50 de {filtered.length} — refine a busca
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-700 px-5 py-4 shrink-0 space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={asOwner}
+              onChange={(e) => setAsOwner(e.target.checked)}
+              className="rounded border-gray-600"
+            />
+            <span className="text-sm text-gray-300">Adicionar como <strong>proprietário</strong> (owner)</span>
+          </label>
+
+          {addMut.isError && (
+            <p className="text-xs text-red-400">
+              {addMut.error?.response?.data?.detail || 'Erro ao adicionar membro'}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => addMut.mutate()}
+              disabled={!selectedUserId || addMut.isPending}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {addMut.isPending
+                ? <RefreshCw size={14} className="animate-spin" />
+                : <UserPlus size={14} />}
+              {selected ? `Adicionar ${selected.displayName?.split(' ')[0] || ''}` : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Add Group Member Modal ────────────────────────────────────────────────────
+
+const AddGroupMemberModal = ({ group, onClose }) => {
+  const [search, setSearch] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState(null);
+  const [asOwner, setAsOwner] = useState(false);
+  const qc = useQueryClient();
+
+  const usersQ = useQuery({
+    queryKey: ['m365-users-picker'],
+    queryFn: m365Service.getUsers,
+    staleTime: 60_000,
+  });
+
+  const addMut = useMutation({
+    mutationFn: () =>
+      m365Service.addGroupMember(group.id, selectedUserId, asOwner ? ['owner'] : []),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['m365-group-members', group.id] });
+      onClose();
+    },
+  });
+
+  const allUsers = usersQ.data?.users || [];
+  const filtered = allUsers.filter((u) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      u.displayName?.toLowerCase().includes(q) ||
+      u.userPrincipalName?.toLowerCase().includes(q)
+    );
+  });
+
+  const selected = allUsers.find((u) => u.id === selectedUserId);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-md rounded-2xl border border-gray-700 bg-gray-900 shadow-2xl flex flex-col max-h-[80vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-700 px-5 py-4 shrink-0">
+          <div>
+            <h2 className="text-base font-semibold text-gray-100">Adicionar membro</h2>
+            <p className="text-xs text-gray-400 mt-0.5 truncate">{group.displayName}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={18} /></button>
+        </div>
+
+        {/* Search */}
+        <div className="px-5 pt-4 shrink-0">
+          <div className="relative">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar usuário por nome ou e-mail..."
+              className="w-full rounded-lg border border-gray-700 bg-gray-800 pl-8 pr-3 py-2 text-sm text-gray-100 placeholder-gray-500 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+        </div>
+
+        {/* User list */}
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-1 min-h-0">
+          {usersQ.isLoading && (
+            <p className="text-center text-sm text-gray-400 py-6">Carregando usuários...</p>
+          )}
+          {!usersQ.isLoading && filtered.length === 0 && (
+            <p className="text-center text-sm text-gray-400 py-6">Nenhum usuário encontrado</p>
+          )}
+          {filtered.slice(0, 50).map((u) => (
+            <button
+              key={u.id}
+              onClick={() => setSelectedUserId(u.id === selectedUserId ? null : u.id)}
+              className={`w-full flex items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors ${
+                u.id === selectedUserId
+                  ? 'bg-blue-600/20 border border-blue-600/40'
+                  : 'hover:bg-gray-800 border border-transparent'
+              }`}
+            >
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-700 text-xs font-semibold text-gray-300">
+                {(u.displayName || u.userPrincipalName || '?')[0].toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-gray-100 truncate">{u.displayName || '—'}</p>
+                <p className="text-xs text-gray-400 truncate font-mono">{u.userPrincipalName}</p>
+              </div>
+              {u.id === selectedUserId && (
+                <CheckCircle size={16} className="ml-auto shrink-0 text-blue-400" />
+              )}
+            </button>
+          ))}
+          {filtered.length > 50 && (
+            <p className="text-center text-xs text-gray-500 pt-2">
+              Mostrando 50 de {filtered.length} — refine a busca
+            </p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t border-gray-700 px-5 py-4 shrink-0 space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={asOwner}
+              onChange={(e) => setAsOwner(e.target.checked)}
+              className="rounded border-gray-600"
+            />
+            <span className="text-sm text-gray-300">Adicionar como <strong>proprietário</strong> (owner)</span>
+          </label>
+
+          {addMut.isError && (
+            <p className="text-xs text-red-400">
+              {addMut.error?.response?.data?.detail || 'Erro ao adicionar membro'}
+            </p>
+          )}
+
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg px-4 py-2 text-sm text-gray-400 hover:text-white"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => addMut.mutate()}
+              disabled={!selectedUserId || addMut.isPending}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+            >
+              {addMut.isPending
+                ? <RefreshCw size={14} className="animate-spin" />
+                : <UserPlus size={14} />}
+              {selected ? `Adicionar ${selected.displayName?.split(' ')[0] || ''}` : 'Adicionar'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ── Group Card (expandable) ───────────────────────────────────────────────────
+
+const GroupCard = ({ group }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const membersQ = useQuery({
+    queryKey: ['m365-group-members', group.id],
+    queryFn: () => m365Service.getGroupMembers(group.id),
+    enabled: expanded,
+  });
+
+  const members = membersQ.data?.members || [];
+
+  return (
+    <>
+      <div className="card rounded-2xl overflow-hidden">
+        {/* Header row */}
+        <button
+          onClick={() => setExpanded((p) => !p)}
+          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors text-left"
+        >
+          {/* Group avatar */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600/20 border border-purple-600/30 text-sm font-bold text-purple-400 select-none">
+            {(group.displayName || '?')[0].toUpperCase()}
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{group.displayName}</p>
+              <GroupTypeBadge type={group.groupType} />
+              {group.isTeam && (
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                  Teams
+                </span>
+              )}
+            </div>
+            {group.description && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">{group.description}</p>
+            )}
+            {group.mail && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{group.mail}</p>
+            )}
+          </div>
+
+          {/* Visibility + chevron */}
+          <div className="shrink-0 flex items-center gap-2">
+            {group.visibility && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                group.visibility?.toLowerCase() === 'public'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+              }`}>
+                {group.visibility?.toLowerCase() === 'public' ? 'Pública' : 'Privada'}
+              </span>
+            )}
+            {expanded
+              ? <ChevronDown size={16} className="text-gray-400 dark:text-gray-400" />
+              : <ChevronRight size={16} className="text-gray-400 dark:text-gray-400" />}
+          </div>
+        </button>
+
+        {/* Expanded panel */}
+        {expanded && (
+          <div className="border-t border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4 bg-gray-50/50 dark:bg-gray-800/30">
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Membros
+              </p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600/10 border border-blue-600/30 px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-600/20 transition-colors"
+              >
+                <UserPlus size={12} /> Adicionar membro
+              </button>
+            </div>
+
+            {membersQ.isLoading && (
+              <div className="flex justify-center py-4">
+                <RefreshCw size={16} className="animate-spin text-gray-400" />
+              </div>
+            )}
+
+            {membersQ.isError && (
+              <p className="text-xs text-red-400 text-center py-2">
+                Falha ao carregar membros — verifique a permissão Directory.Read.All
+              </p>
+            )}
+
+            {!membersQ.isLoading && !membersQ.isError && members.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">
+                Nenhum membro encontrado
+              </p>
+            )}
+
+            {members.length > 0 && (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                {members.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2"
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                      {(m.displayName || m.email || '?')[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {m.displayName || '—'}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 truncate font-mono">
+                        {m.email || '—'}
+                      </p>
+                    </div>
+                    {m.roles?.includes('owner') && (
+                      <span className="rounded-full bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 text-xs font-medium text-purple-700 dark:text-purple-400 shrink-0">
+                        owner
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showAddModal && (
+        <AddGroupMemberModal group={group} onClose={() => setShowAddModal(false)} />
+      )}
+    </>
+  );
+};
+
+// ── Team Card (expandable) ────────────────────────────────────────────────────
+
+const TeamCard = ({ team }) => {
+  const [expanded, setExpanded] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  const membersQ = useQuery({
+    queryKey: ['m365-team-members', team.id],
+    queryFn: () => m365Service.getTeamMembers(team.id),
+    enabled: expanded,
+  });
+
+  const members = membersQ.data?.members || [];
+
+  return (
+    <>
+      <div className="card rounded-2xl overflow-hidden">
+        {/* Header row */}
+        <button
+          onClick={() => setExpanded((p) => !p)}
+          className="w-full flex items-center gap-4 px-5 py-4 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors text-left"
+        >
+          {/* Team avatar */}
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-600/20 border border-blue-600/30 text-sm font-bold text-blue-400 select-none">
+            {(team.displayName || '?')[0].toUpperCase()}
+          </div>
+
+          {/* Info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{team.displayName}</p>
+              {team.isTeam && (
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                  Teams
+                </span>
+              )}
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                team.visibility === 'public'
+                  ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                  : 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'
+              }`}>
+                {team.visibility === 'public' ? 'Pública' : 'Privada'}
+              </span>
+              {team.isArchived && (
+                <span className="rounded-full px-2 py-0.5 text-xs font-medium bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400">
+                  Arquivada
+                </span>
+              )}
+            </div>
+            {team.description && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">{team.description}</p>
+            )}
+          </div>
+
+          {/* Members count + chevron */}
+          <div className="shrink-0 flex items-center gap-3">
+            {team.membersCount != null && (
+              <span className="text-xs text-gray-500 dark:text-gray-400">
+                <Users size={12} className="inline mr-1" />{team.membersCount}
+              </span>
+            )}
+            {expanded
+              ? <ChevronDown size={16} className="text-gray-400 dark:text-gray-400" />
+              : <ChevronRight size={16} className="text-gray-400 dark:text-gray-400" />}
+          </div>
+        </button>
+
+        {/* Expanded panel */}
+        {expanded && (
+          <div className="border-t border-gray-200 dark:border-gray-700 px-5 py-4 space-y-4 bg-gray-50/50 dark:bg-gray-800/30">
+            {/* Members section */}
+            <div className="flex items-center justify-between">
+              <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                Membros
+              </p>
+              <button
+                onClick={() => setShowAddModal(true)}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600/10 border border-blue-600/30 px-2.5 py-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:bg-blue-600/20 transition-colors"
+              >
+                <UserPlus size={12} /> Adicionar membro
+              </button>
+            </div>
+
+            {membersQ.isLoading && (
+              <div className="flex justify-center py-4">
+                <RefreshCw size={16} className="animate-spin text-gray-400" />
+              </div>
+            )}
+
+            {membersQ.isError && (
+              <p className="text-xs text-red-400 text-center py-2">
+                Falha ao carregar membros — verifique a permissão TeamMember.Read.All
+              </p>
+            )}
+
+            {!membersQ.isLoading && !membersQ.isError && members.length === 0 && (
+              <p className="text-xs text-gray-400 dark:text-gray-500 text-center py-2">
+                Nenhum membro encontrado
+              </p>
+            )}
+
+            {members.length > 0 && (
+              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+                {members.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 rounded-lg bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 px-3 py-2"
+                  >
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-700 text-xs font-semibold text-gray-600 dark:text-gray-300">
+                      {(m.displayName || m.email || '?')[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                        {m.displayName || '—'}
+                      </p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500 truncate font-mono">
+                        {m.email || '—'}
+                      </p>
+                    </div>
+                    {m.roles?.includes('owner') && (
+                      <span className="rounded-full bg-purple-100 dark:bg-purple-900/30 px-2 py-0.5 text-xs font-medium text-purple-700 dark:text-purple-400 shrink-0">
+                        owner
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {showAddModal && (
+        <AddMemberModal team={team} onClose={() => setShowAddModal(false)} />
+      )}
+    </>
+  );
+};
+
+// ── Tab: Grupos ───────────────────────────────────────────────────────────────
+
+const GROUP_TYPE_META = {
+  'M365 Group':            { bg: 'bg-primary-50 dark:bg-indigo-900/30', text: 'text-primary-dark dark:text-primary-light' },
+  'Security':              { bg: 'bg-red-100 dark:bg-red-900/30',       text: 'text-red-700 dark:text-red-400'       },
+  'Distribution':          { bg: 'bg-yellow-100 dark:bg-yellow-900/30', text: 'text-yellow-700 dark:text-yellow-400' },
+  'Mail-enabled Security': { bg: 'bg-orange-100 dark:bg-orange-900/30', text: 'text-orange-700 dark:text-orange-400' },
+};
+
+const GroupTypeBadge = ({ type }) => {
+  const meta = GROUP_TYPE_META[type] || GROUP_TYPE_META['Security'];
+  return (
+    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${meta.bg} ${meta.text}`}>
+      {type}
+    </span>
+  );
+};
+
+const GroupsTab = ({ data, isLoading }) => {
+  const [search, setSearch] = useState('');
+
+  if (isLoading) return <SkeletonTable columns={4} rows={8} />;
+
+  const groups = (data?.groups || []).filter((g) =>
+    !search || g.displayName?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  return (
+    <div className="space-y-4">
+      <CreateGroupPanel />
+
+      {/* Search */}
+      <div className="relative max-w-sm">
+        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-gray-400" />
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Buscar grupo por nome..."
+          className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 pl-8 pr-3 py-2 text-sm text-gray-900 dark:text-gray-100 focus:border-blue-500 focus:outline-none"
+        />
+      </div>
+
+      {groups.length === 0 ? (
+        <div className="card rounded-2xl py-16 text-center">
+          <MessageSquare size={32} className="mx-auto mb-3 text-gray-300 dark:text-gray-600" />
+          <p className="text-sm text-gray-400 dark:text-gray-500">
+            {search ? 'Nenhum grupo encontrado para a busca' : 'Nenhum grupo encontrado'}
+          </p>
+          {!search && (
+            <p className="text-xs text-gray-400 dark:text-gray-600 mt-1">
+              Verifique se a permissão Directory.Read.All foi concedida no Azure AD
+            </p>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {groups.map((g) => (
+            <GroupCard key={g.id} group={g} />
+          ))}
+          <p className="text-xs text-gray-400 dark:text-gray-500 px-1">
+            {groups.length} grupo(s) · {groups.filter(g => g.isTeam).length} com Microsoft Teams
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Tab: Segurança ────────────────────────────────────────────────────────────
+
+const RISK_LEVEL_LABEL = { high: 'Alto', medium: 'Médio', low: 'Baixo' };
+const RISK_STATE_LABEL  = {
+  atRisk:               'Em risco',
+  confirmedCompromised: 'Comprometido',
+  remediated:           'Remediado',
+  dismissed:            'Dispensado',
+};
+
+const SERVICE_STATUS_META = {
+  operational: { label: 'Operacional',   cls: 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400',  dot: 'bg-green-500'  },
+  warning:     { label: 'Atenção',        cls: 'bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400', dot: 'bg-yellow-400' },
+  degraded:    { label: 'Degradado',      cls: 'bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400', dot: 'bg-orange-500' },
+  outage:      { label: 'Interrupção',    cls: 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400',           dot: 'bg-red-500'    },
+};
+
+const SecurityTab = ({ data, isLoading, onSelectUser, selectedUser, serviceHealthData, serviceHealthLoading }) => {
+  if (isLoading) return <LoadingSpinner />;
+  if (!data) return null;
+
+  const mfaPct     = data.mfa_coverage_pct ?? 0;
+  const mfaError   = data.mfa_error;    // "permission_denied" | "error" | null
+  const riskyError = data.risky_error;  // "permission_denied" | "not_available" | "error" | null
+  const noMfaData  = data.total_users_checked === 0;
+  const isClean    = !noMfaData && !mfaError && !riskyError
+    && data.risky_users_count === 0 && (data.users_without_mfa?.length ?? 0) === 0;
+
+  return (
+    <div className="space-y-5">
+
+      {/* KPI cards */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="card rounded-2xl p-4 text-center">
+          <p className={`text-2xl font-bold ${mfaError ? 'text-gray-400 dark:text-gray-600' : 'text-red-400'}`}>
+            {mfaError ? '—' : (data.users_without_mfa?.length ?? 0)}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Sem MFA</p>
+        </div>
+        <div className="card rounded-2xl p-4 text-center">
+          <p className={`text-2xl font-bold ${riskyError ? 'text-gray-400 dark:text-gray-600' : 'text-orange-400'}`}>
+            {riskyError ? '—' : (data.risky_users_count ?? 0)}
+          </p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Usuários de risco</p>
+        </div>
+        <div className="card rounded-2xl p-4 text-center">
+          <p className="text-2xl font-bold text-gray-500 dark:text-gray-400">{data.total_users_checked}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Total verificados</p>
+        </div>
+      </div>
+
+      {/* MFA permission/error banner */}
+      {mfaError && (
+        <div className="card rounded-2xl p-4 border border-yellow-400/30 bg-yellow-50/5">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={16} className="text-yellow-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                {mfaError === 'permission_denied' ? 'Permissão insuficiente — Reports.Read.All' : 'Falha ao carregar dados de MFA'}
+              </p>
+              {mfaError === 'permission_denied' && (
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  No Azure Portal → App Registration → <strong>API permissions</strong> → adicione{' '}
+                  <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">Reports.Read.All</code>{' '}
+                  (Application) e clique em <strong>"Grant admin consent"</strong>.
+                  Após o consent, reinicie o backend para forçar um novo token MSAL.
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Identity Protection permission/license banner */}
+      {riskyError && (
+        <div className="card rounded-2xl p-4 border border-gray-300/30 dark:border-gray-700">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={16} className="text-gray-400 dark:text-gray-500 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                {riskyError === 'not_available' ? 'Identity Protection indisponível neste tenant' : 'Usuários de risco — sem acesso'}
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                Este recurso requer <strong>Azure AD Premium P2</strong> e a permissão{' '}
+                <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">IdentityRiskyUser.Read.All</code>{' '}
+                com admin consent. Sem licença P2, a API retorna 403 independente das permissões.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MFA coverage bar */}
+      {!noMfaData && !mfaError && (
+        <div className="card rounded-2xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Cobertura MFA</p>
+            <span className={`text-2xl font-bold ${mfaPct >= 0.9 ? 'text-green-400' : mfaPct >= 0.7 ? 'text-yellow-400' : 'text-red-400'}`}>
+              {Math.round(mfaPct * 100)}%
+            </span>
+          </div>
+          <div className="h-3 w-full rounded-full bg-gray-200 dark:bg-gray-700">
+            <div className={`h-3 rounded-full transition-all ${mfaColor(mfaPct)}`} style={{ width: `${Math.min(mfaPct * 100, 100)}%` }} />
+          </div>
+          <div className="mt-2 flex justify-between text-xs text-gray-400 dark:text-gray-500">
+            <span>{data.mfa_enabled} com MFA ativado</span>
+            <span>{data.total_users_checked} verificados</span>
+          </div>
+        </div>
+      )}
+
+      {/* Users without MFA */}
+      {(data.users_without_mfa?.length ?? 0) > 0 && (
+        <div className="card rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <AlertTriangle size={16} className="text-yellow-500" />
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Usuários sem MFA ({data.users_without_mfa.length})
+            </p>
+          </div>
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {data.users_without_mfa.map((u) => {
+              const isSelected = selectedUser?.id === u.id;
+              return (
+                <button
+                  key={u.id || u.userPrincipalName}
+                  onClick={() => onSelectUser?.(isSelected ? null : { ...u, mfaRegistered: false, accountEnabled: true })}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
+                    isSelected
+                      ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-400/30'
+                      : 'bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 border border-transparent'
+                  }`}
+                >
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.displayName || u.userPrincipalName)}`}>
+                    {initials(u.displayName || u.userPrincipalName)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
+                      {u.displayName || u.userPrincipalName}
+                    </p>
+                    {u.displayName && (
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">{u.userPrincipalName}</p>
+                    )}
+                  </div>
+                  <XCircle size={14} className="flex-shrink-0 text-red-400" />
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Risky users */}
+      {data.risky_users_count > 0 && (
+        <div className="card rounded-2xl p-5">
+          <div className="flex items-center gap-2 mb-4">
+            <Shield size={16} className="text-red-500" />
+            <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+              Usuários de risco ({data.risky_users_count})
+            </p>
+          </div>
+          <div className="space-y-1.5 max-h-72 overflow-y-auto">
+            {data.risky_users.map((u) => {
+              const isSelected = selectedUser?.id === u.id;
+              const riskCls =
+                u.riskLevel === 'high'   ? 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400 border-red-300 dark:border-red-700'   :
+                u.riskLevel === 'medium' ? 'bg-yellow-100 dark:bg-yellow-900/40 text-yellow-700 dark:text-yellow-400 border-yellow-300 dark:border-yellow-700' :
+                                           'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-gray-600';
+              return (
+                <button
+                  key={u.id}
+                  onClick={() => onSelectUser?.(isSelected ? null : { id: u.id, userPrincipalName: u.userPrincipalName, displayName: u.userPrincipalName, accountEnabled: true })}
+                  className={`w-full flex items-center gap-3 rounded-xl px-3 py-2.5 text-left border transition-colors ${
+                    isSelected ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-400/30' : `${riskCls}`
+                  }`}
+                >
+                  <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold ${avatarColor(u.userPrincipalName)}`}>
+                    {initials(u.userPrincipalName)}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate font-mono">{u.userPrincipalName}</p>
+                    {u.riskState && (
+                      <p className="text-xs text-gray-500 dark:text-gray-400">{RISK_STATE_LABEL[u.riskState] || u.riskState}</p>
+                    )}
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold border ${riskCls}`}>
+                      {RISK_LEVEL_LABEL[u.riskLevel] || u.riskLevel}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Clean state — only when we have real data */}
+      {isClean && (
+        <div className="card rounded-2xl p-8 text-center">
+          <CheckCircle size={36} className="text-green-400 mx-auto mb-3" />
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Nenhum problema de segurança detectado</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+            Todos os {data.total_users_checked} usuários verificados têm MFA ativado e nenhum risco foi identificado.
+          </p>
+        </div>
+      )}
+
+      {/* ── Service Health ── */}
+      <div className="card rounded-2xl p-5">
+        <div className="flex items-center gap-2 mb-4">
+          <Activity size={16} className="text-blue-400" />
+          <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">Saúde dos Serviços M365</p>
+        </div>
+
+        {serviceHealthLoading && (
+          <div className="space-y-2">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-10 rounded-xl bg-gray-100 dark:bg-gray-800 animate-pulse" />
+            ))}
+          </div>
+        )}
+
+        {!serviceHealthLoading && !serviceHealthData && (
+          <div className="rounded-xl border border-yellow-300/40 dark:border-yellow-700/30 bg-yellow-50 dark:bg-yellow-900/10 px-4 py-3 flex items-start gap-3">
+            <AlertTriangle size={14} className="text-yellow-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Adicione a permissão{' '}
+              <code className="font-mono bg-gray-100 dark:bg-gray-800 px-1 rounded">ServiceHealth.Read.All</code>{' '}
+              (Application) com admin consent no App Registration para ver o status dos serviços.
+            </p>
+          </div>
+        )}
+
+        {!serviceHealthLoading && serviceHealthData && (() => {
+          const services = serviceHealthData.services || [];
+          const hasIssues = services.some((s) => s.status !== 'operational');
+          return services.length === 0 ? (
+            <p className="text-xs text-gray-400 dark:text-gray-500">Nenhum serviço encontrado</p>
+          ) : (
+            <>
+              {!hasIssues && (
+                <div className="mb-3 flex items-center gap-2 rounded-xl bg-green-50 dark:bg-green-900/20 border border-green-300/40 dark:border-green-700/30 px-3 py-2">
+                  <CheckCircle size={13} className="text-green-500" />
+                  <span className="text-xs text-green-700 dark:text-green-400 font-medium">Todos os serviços operacionais</span>
+                </div>
+              )}
+              <div className="space-y-1.5 max-h-80 overflow-y-auto">
+                {services.map((svc) => {
+                  const meta = SERVICE_STATUS_META[svc.status] || SERVICE_STATUS_META.operational;
+                  return (
+                    <div
+                      key={svc.id}
+                      className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2.5"
+                    >
+                      <span className={`flex-shrink-0 w-2 h-2 rounded-full ${meta.dot}`} />
+                      <p className="flex-1 text-sm text-gray-800 dark:text-gray-200 truncate">
+                        {svc.displayName || svc.id || '—'}
+                      </p>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${meta.cls}`}>
+                        {svc.statusLabel || meta.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">{services.length} serviço(s) monitorado(s)</p>
+            </>
+          );
+        })()}
+      </div>
+    </div>
+  );
+};
+
+// ── Defender Tab ──────────────────────────────────────────────────────────────
+
+const SEVERITY_META = {
+  high:     { cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',     dot: 'bg-red-500',    label: 'Alta' },
+  medium:   { cls: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400', dot: 'bg-orange-500', label: 'Média' },
+  low:      { cls: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400', dot: 'bg-yellow-500', label: 'Baixa' },
+  informational: { cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', dot: 'bg-blue-400', label: 'Info' },
+  unknown:  { cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',   dot: 'bg-gray-400',   label: '—' },
+};
+
+const INCIDENT_STATUS_META = {
+  active:    { cls: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',     label: 'Ativo' },
+  resolved:  { cls: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400', label: 'Resolvido' },
+  inProgress: { cls: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400', label: 'Em Progresso' },
+  redirected: { cls: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400', label: 'Redirecionado' },
+};
+
+const fmtDateShort = (iso) => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+};
+
+const SERVICE_SOURCE_LABEL = {
+  'microsoftDefenderForEndpoint':  'Defender for Endpoint',
+  'microsoftDefenderForOffice365': 'Defender for Office 365',
+  'microsoftDefenderForIdentity':  'Defender for Identity',
+  'microsoftDefenderForCloudApps': 'Defender for Cloud Apps',
+  'microsoftDefenderForCloud':     'Defender for Cloud',
+  'azureActiveDirectory':          'Entra ID',
+  'microsoftSentinel':             'Microsoft Sentinel',
+};
+
+const srcLabel = (s) => SERVICE_SOURCE_LABEL[s] || s || '—';
+
+const DefenderTab = ({ incidentsData, incidentsLoading, incidentsError, alertsData, alertsLoading, alertsError, onRefresh }) => {
+  const [activeSection, setActiveSection] = useState('incidents');
+  const [severityFilter, setSeverityFilter] = useState('all');
+
+  const incidents = incidentsData?.incidents || [];
+  const permError = incidentsData?.error === 'permission_denied';
+
+  const alerts = alertsData?.alerts || [];
+  const alertsPermError = alertsData?.error === 'permission_denied';
+
+  const kpiIncidents = {
+    total: incidents.length,
+    active: incidents.filter(i => i.status === 'active').length,
+    highSeverity: incidents.filter(i => i.severity === 'high').length,
+    resolved: incidents.filter(i => i.status === 'resolved').length,
+  };
+
+  const filteredAlerts = severityFilter === 'all' ? alerts : alerts.filter(a => a.severity === severityFilter);
+
+  return (
+    <div className="space-y-5">
+      {/* Permission warning */}
+      {permError && (
+        <div className="flex items-start gap-3 rounded-xl border border-orange-300/50 bg-orange-50 dark:bg-orange-900/10 dark:border-orange-700/30 px-4 py-3">
+          <AlertTriangle size={16} className="mt-0.5 flex-shrink-0 text-orange-500" />
+          <div>
+            <p className="text-sm font-medium text-orange-700 dark:text-orange-400">Permissão insuficiente</p>
+            <p className="mt-0.5 text-xs text-orange-600 dark:text-orange-500">
+              Adicione a permissão <code className="font-mono bg-orange-100 dark:bg-orange-900/30 px-1 rounded">SecurityIncident.Read.All</code> (Application) com admin consent no App Registration do Azure AD.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* KPIs — Incidents */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: 'Total de Incidentes', value: kpiIncidents.total, cls: 'text-gray-700 dark:text-gray-200', icon: Siren },
+          { label: 'Incidentes Ativos',   value: kpiIncidents.active, cls: 'text-red-600 dark:text-red-400', icon: ShieldAlert },
+          { label: 'Alta Severidade',     value: kpiIncidents.highSeverity, cls: 'text-orange-600 dark:text-orange-400', icon: AlertTriangle },
+          { label: 'Resolvidos',          value: kpiIncidents.resolved, cls: 'text-green-600 dark:text-green-400', icon: CheckCircle },
+        ].map(({ label, value, cls, icon: Icon }) => (
+          <div key={label} className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 flex items-center gap-3">
+            <Icon size={18} className={cls} />
+            <div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{label}</p>
+              <p className={`text-2xl font-bold ${cls}`}>{incidentsLoading ? '—' : value}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Section toggle */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+        {[{ id: 'incidents', label: 'Incidentes' }, { id: 'alerts', label: 'Alertas' }].map(({ id, label }) => (
+          <button
+            key={id}
+            onClick={() => setActiveSection(id)}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              activeSection === id
+                ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Incidents Table ── */}
+      {activeSection === 'incidents' && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Incidentes de Segurança</p>
+            <button onClick={onRefresh} className="text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 flex items-center gap-1">
+              <RefreshCw size={11} /> Recarregar
+            </button>
+          </div>
+          {incidentsLoading ? (
+            <div className="p-6 flex justify-center"><div className="h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
+          ) : incidents.length === 0 ? (
+            <div className="p-8 text-center">
+              <ShieldAlert size={32} className="mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+              <p className="text-sm text-gray-400 dark:text-gray-500">{permError ? 'Sem permissão para listar incidentes.' : 'Nenhum incidente encontrado.'}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    {['ID', 'Título', 'Severidade', 'Status', 'Produtos', 'Alertas', 'Criado em'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {incidents.map((inc) => {
+                    const sevMeta = SEVERITY_META[inc.severity] || SEVERITY_META.unknown;
+                    const stMeta = INCIDENT_STATUS_META[inc.status] || { cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400', label: inc.status };
+                    return (
+                      <tr key={inc.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                        <td className="px-4 py-3 font-mono text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap">{inc.id}</td>
+                        <td className="px-4 py-3 max-w-xs">
+                          <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{inc.title}</p>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${sevMeta.cls}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${sevMeta.dot}`} />
+                            {sevMeta.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stMeta.cls}`}>{stMeta.label}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1 max-w-[200px]">
+                            {(inc.products || []).length === 0
+                              ? <span className="text-xs text-gray-400 dark:text-gray-500">—</span>
+                              : (inc.products || []).map(p => (
+                                <span key={p} className="rounded px-1.5 py-0.5 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-700/30">{srcLabel(p)}</span>
+                              ))
+                            }
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center text-xs text-gray-500 dark:text-gray-400">{inc.alert_count ?? 0}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtDateShort(inc.created_at)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Alerts Table ── */}
+      {activeSection === 'alerts' && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 overflow-hidden">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-gray-700">
+            <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">Alertas de Segurança</p>
+            <div className="flex items-center gap-2">
+              <select
+                value={severityFilter}
+                onChange={e => setSeverityFilter(e.target.value)}
+                className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-xs px-2 py-1 text-gray-700 dark:text-gray-200"
+              >
+                <option value="all">Todas as severidades</option>
+                <option value="high">Alta</option>
+                <option value="medium">Média</option>
+                <option value="low">Baixa</option>
+                <option value="informational">Informacional</option>
+              </select>
+            </div>
+          </div>
+          {alertsPermError && (
+            <div className="px-4 py-3 flex items-center gap-2 bg-orange-50 dark:bg-orange-900/10 border-b border-orange-200 dark:border-orange-700/30">
+              <AlertTriangle size={13} className="text-orange-500" />
+              <p className="text-xs text-orange-600 dark:text-orange-400">Permissão <code className="font-mono">SecurityEvents.Read.All</code> necessária para alertas.</p>
+            </div>
+          )}
+          {alertsLoading ? (
+            <div className="p-6 flex justify-center"><div className="h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" /></div>
+          ) : filteredAlerts.length === 0 ? (
+            <div className="p-8 text-center">
+              <Shield size={32} className="mx-auto mb-2 text-gray-300 dark:text-gray-600" />
+              <p className="text-sm text-gray-400 dark:text-gray-500">{alertsPermError ? 'Sem permissão para listar alertas.' : 'Nenhum alerta encontrado.'}</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 dark:bg-gray-700/50">
+                  <tr>
+                    {['Título', 'Severidade', 'Status', 'Categoria', 'Fonte', 'Incidente', 'Criado em'].map(h => (
+                      <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 dark:text-gray-400 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                  {filteredAlerts.map((a) => {
+                    const sevMeta = SEVERITY_META[a.severity] || SEVERITY_META.unknown;
+                    const stMeta = INCIDENT_STATUS_META[a.status] || { cls: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400', label: a.status };
+                    return (
+                      <tr key={a.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/30 transition-colors">
+                        <td className="px-4 py-3 max-w-xs">
+                          <p className="font-medium text-gray-800 dark:text-gray-100 truncate">{a.title}</p>
+                          {a.description && <p className="text-xs text-gray-400 dark:text-gray-500 truncate max-w-[260px]">{a.description}</p>}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${sevMeta.cls}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${sevMeta.dot}`} />
+                            {sevMeta.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stMeta.cls}`}>{stMeta.label}</span>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{a.category || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{srcLabel(a.service_source)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-400 dark:text-gray-500 font-mono whitespace-nowrap">{a.incident_id || '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{fmtDateShort(a.created_at)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Main Component ────────────────────────────────────────────────────────────
+
+export default function M365Dashboard() {
+  const { currentOrg } = useOrgWorkspace();
+  const effectivePlan = (currentOrg?.effective_plan || currentOrg?.plan_tier || 'free').toLowerCase();
+  const isEnterprise = ['enterprise', 'enterprise_e1', 'enterprise_e2', 'enterprise_e3', 'enterprise_migration'].includes(effectivePlan);
+
+  const [activeTab, setActiveTab] = useState('visao-geral');
+  const [showCredModal, setShowCredModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+
+  const qc = useQueryClient();
+
+  const credsQ = useQuery({
+    queryKey: ['m365-credentials'],
+    queryFn: m365Service.getCredentials,
+    retry: false,
+  });
+
+  const connected = credsQ.data?.connected === true;
+
+  const overviewQ = useQuery({
+    queryKey: ['m365-overview'],
+    queryFn: m365Service.getOverview,
+    enabled: connected && isEnterprise && activeTab === 'visao-geral',
+  });
+
+  const usersQ = useQuery({
+    queryKey: ['m365-users'],
+    queryFn: m365Service.getUsers,
+    enabled: connected && isEnterprise && activeTab === 'usuarios',
+  });
+
+  const licensesQ = useQuery({
+    queryKey: ['m365-licenses'],
+    queryFn: m365Service.getLicenses,
+    enabled: connected && isEnterprise && activeTab === 'licencas',
+  });
+
+  const groupsQ = useQuery({
+    queryKey: ['m365-groups'],
+    queryFn: m365Service.getGroups,
+    enabled: connected && isEnterprise && activeTab === 'equipes',
+  });
+
+  const securityQ = useQuery({
+    queryKey: ['m365-security'],
+    queryFn: m365Service.getSecurity,
+    enabled: connected && isEnterprise && activeTab === 'seguranca',
+  });
+
+  const defenderIncidentsQ = useQuery({
+    queryKey: ['m365-defender-incidents'],
+    queryFn: () => m365Service.getSecurityIncidents(50),
+    enabled: connected && isEnterprise && activeTab === 'defender',
+    staleTime: 60_000,
+  });
+
+  const defenderAlertsQ = useQuery({
+    queryKey: ['m365-defender-alerts'],
+    queryFn: () => m365Service.getSecurityAlerts(50),
+    enabled: connected && isEnterprise && activeTab === 'defender',
+    staleTime: 60_000,
+  });
+
+  const serviceHealthQ = useQuery({
+    queryKey: ['m365-service-health'],
+    queryFn: m365Service.getServiceHealth,
+    enabled: connected && isEnterprise && activeTab === 'seguranca',
+    staleTime: 5 * 60_000, // 5 min — service health doesn't change often
+    retry: false,
+  });
+
+  const handleCredSaved = () => {
+    setShowCredModal(false);
+    qc.invalidateQueries({ queryKey: ['m365-credentials'] });
+  };
+
+  const handleCredDeleted = () => {
+    setShowCredModal(false);
+    setActiveTab('visao-geral');
+  };
+
+  return (
+    <Layout>
+      <PlanGate requiredPlan="enterprise">
+        <div className="space-y-6">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-600/20 border border-blue-600/30">
+                <Grid3x3 size={20} className="text-blue-400" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Microsoft 365</h1>
+                {credsQ.data?.tenant_domain && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">{credsQ.data.tenant_domain}</p>
+                )}
+              </div>
+            </div>
+            {connected && (
+              <div className="flex items-center gap-2">
+                {(() => {
+                  const activeQ = { 'visao-geral': overviewQ, usuarios: usersQ, licencas: licensesQ, equipes: groupsQ, seguranca: securityQ, defender: defenderIncidentsQ }[activeTab];
+                  const isFetching = activeQ?.isFetching || (activeTab === 'seguranca' && serviceHealthQ.isFetching) || (activeTab === 'defender' && defenderAlertsQ.isFetching);
+                  return (
+                    <button
+                      onClick={() => {
+                        qc.invalidateQueries({ queryKey: ['m365-overview'] });
+                        qc.invalidateQueries({ queryKey: ['m365-users'] });
+                        qc.invalidateQueries({ queryKey: ['m365-licenses'] });
+                        qc.invalidateQueries({ queryKey: ['m365-teams'] });
+                        qc.invalidateQueries({ queryKey: ['m365-security'] });
+                        qc.invalidateQueries({ queryKey: ['m365-service-health'] });
+                        qc.invalidateQueries({ queryKey: ['m365-defender-incidents'] });
+                        qc.invalidateQueries({ queryKey: ['m365-defender-alerts'] });
+                      }}
+                      disabled={isFetching}
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"
+                      title="Recarregar dados do tenant"
+                    >
+                      <RefreshCw size={13} className={isFetching ? 'animate-spin' : ''} /> Recarregar
+                    </button>
+                  );
+                })()}
+                <button
+                  onClick={() => setShowCredModal(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                >
+                  <Pencil size={13} /> Reconfigurar
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Not connected */}
+          {credsQ.isSuccess && !connected && (
+            <SetupScreen onConnect={() => setShowCredModal(true)} />
+          )}
+
+          {/* Connected — tabs */}
+          {connected && (
+            <>
+              {/* Tab bar */}
+              <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">
+                {TABS.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === id
+                        ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                        : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
+                    }`}
+                  >
+                    <Icon size={14} /> {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Tab content */}
+              {activeTab === 'visao-geral' && (
+                <OverviewTab
+                  overview={overviewQ.data}
+                  isLoading={overviewQ.isLoading}
+                  isError={overviewQ.isError}
+                  error={overviewQ.error}
+                  onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-overview'] })}
+                />
+              )}
+              {activeTab === 'usuarios' && (
+                usersQ.isError
+                  ? <ApiErrorCard error={usersQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-users'] })} />
+                  : <UsersTab data={usersQ.data} isLoading={usersQ.isLoading} onSelectUser={setSelectedUser} selectedUser={selectedUser} />
+              )}
+              {activeTab === 'licencas' && (
+                licensesQ.isError
+                  ? <ApiErrorCard error={licensesQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-licenses'] })} />
+                  : <LicensesTab data={licensesQ.data} isLoading={licensesQ.isLoading} />
+              )}
+              {activeTab === 'equipes' && (
+                groupsQ.isError
+                  ? <ApiErrorCard error={groupsQ.error} onRefresh={() => qc.invalidateQueries({ queryKey: ['m365-groups'] })} />
+                  : <GroupsTab data={groupsQ.data} isLoading={groupsQ.isLoading} />
+              )}
+              {activeTab === 'seguranca' && (
+                <SecurityTab
+                  data={securityQ.data}
+                  isLoading={securityQ.isLoading}
+                  onSelectUser={setSelectedUser}
+                  selectedUser={selectedUser}
+                  serviceHealthData={serviceHealthQ.data}
+                  serviceHealthLoading={serviceHealthQ.isLoading}
+                />
+              )}
+              {activeTab === 'convidados' && <GuestsTab />}
+              {activeTab === 'defender' && (
+                <DefenderTab
+                  incidentsData={defenderIncidentsQ.data}
+                  incidentsLoading={defenderIncidentsQ.isLoading}
+                  incidentsError={defenderIncidentsQ.isError}
+                  alertsData={defenderAlertsQ.data}
+                  alertsLoading={defenderAlertsQ.isLoading}
+                  alertsError={defenderAlertsQ.isError}
+                  onRefresh={() => {
+                    qc.invalidateQueries({ queryKey: ['m365-defender-incidents'] });
+                    qc.invalidateQueries({ queryKey: ['m365-defender-alerts'] });
+                  }}
+                />
+              )}
+            </>
+          )}
+        </div>
+      </PlanGate>
+
+      <UserDetailDrawer user={selectedUser} onClose={() => setSelectedUser(null)} />
+
+      {showCredModal && (
+        <CredentialsModal
+          existing={connected ? credsQ.data : null}
+          onClose={() => setShowCredModal(false)}
+          onSaved={handleCredSaved}
+          onDeleted={handleCredDeleted}
+        />
+      )}
+    </Layout>
+  );
+}

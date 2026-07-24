@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Depends, Query
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from typing import Optional
@@ -57,12 +58,14 @@ def alert_to_dict(alert: CostAlert) -> dict:
 def event_to_dict(event: AlertEvent) -> dict:
     return {
         'id': str(event.id),
-        'alert_id': str(event.alert_id),
+        'alert_id': str(event.alert_id) if event.alert_id else None,
         'triggered_at': event.triggered_at.isoformat() if event.triggered_at else None,
         'current_value': event.current_value,
         'threshold_value': event.threshold_value,
         'message': event.message,
         'is_read': event.is_read,
+        'notification_type': event.notification_type,
+        'link_to': event.link_to,
     }
 
 
@@ -168,20 +171,28 @@ async def ws_delete_alert(
 @ws_router.get("/events")
 async def ws_get_events(
     unread_only: bool = Query(False),
+    notification_type: str = Query(None, description="Filter by type, e.g. migration, security_alert, backup"),
     limit: int = Query(50, le=200),
+    offset: int = Query(0, ge=0),
     member: MemberContext = Depends(require_permission("alerts.view")),
     db: Session = Depends(get_db),
 ):
     """Get alert events for this workspace."""
     query = (
         db.query(AlertEvent)
-        .join(CostAlert, AlertEvent.alert_id == CostAlert.id)
-        .filter(CostAlert.workspace_id == member.workspace_id)
+        .outerjoin(CostAlert, AlertEvent.alert_id == CostAlert.id)
+        .filter(or_(
+            AlertEvent.workspace_id == member.workspace_id,
+            CostAlert.workspace_id == member.workspace_id,
+        ))
     )
     if unread_only:
         query = query.filter(AlertEvent.is_read == False)
-    events = query.order_by(AlertEvent.triggered_at.desc()).limit(limit).all()
-    return [event_to_dict(e) for e in events]
+    if notification_type:
+        query = query.filter(AlertEvent.notification_type == notification_type)
+    total = query.count()
+    events = query.order_by(AlertEvent.triggered_at.desc()).offset(offset).limit(limit).all()
+    return {"items": [event_to_dict(e) for e in events], "total": total, "offset": offset, "limit": limit}
 
 
 @ws_router.post("/events/{event_id}/read")
@@ -192,8 +203,14 @@ async def ws_mark_event_read(
 ):
     event = (
         db.query(AlertEvent)
-        .join(CostAlert, AlertEvent.alert_id == CostAlert.id)
-        .filter(AlertEvent.id == event_id, CostAlert.workspace_id == member.workspace_id)
+        .outerjoin(CostAlert, AlertEvent.alert_id == CostAlert.id)
+        .filter(
+            AlertEvent.id == event_id,
+            or_(
+                AlertEvent.workspace_id == member.workspace_id,
+                CostAlert.workspace_id == member.workspace_id,
+            ),
+        )
         .first()
     )
     if not event:
@@ -210,8 +227,14 @@ async def ws_mark_all_events_read(
 ):
     (
         db.query(AlertEvent)
-        .join(CostAlert, AlertEvent.alert_id == CostAlert.id)
-        .filter(CostAlert.workspace_id == member.workspace_id, AlertEvent.is_read == False)
+        .outerjoin(CostAlert, AlertEvent.alert_id == CostAlert.id)
+        .filter(
+            or_(
+                AlertEvent.workspace_id == member.workspace_id,
+                CostAlert.workspace_id == member.workspace_id,
+            ),
+            AlertEvent.is_read == False,
+        )
         .update({AlertEvent.is_read: True}, synchronize_session=False)
     )
     db.commit()
@@ -260,4 +283,16 @@ async def ws_evaluate_alerts(
             triggered.append({'alert_id': str(alert.id), 'message': message})
 
     db.commit()
+
+    # Fire webhook events for each triggered alert
+    if triggered:
+        from app.services.notification_channel_service import fire_event as _fire
+        for t in triggered:
+            _fire(db, member.workspace_id, "alert.triggered", {
+                "alert_id":      t["alert_id"],
+                "message":       t["message"],
+                "provider":      payload.provider,
+                "current_value": payload.current_value,
+            })
+
     return {'triggered': len(triggered), 'events': triggered}

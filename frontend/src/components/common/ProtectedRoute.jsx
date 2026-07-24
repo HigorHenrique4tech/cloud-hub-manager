@@ -17,6 +17,11 @@ const ProtectedRoute = ({ children }) => {
     return <Navigate to="/login" replace />;
   }
 
+  // Redirect new users to onboarding wizard (first-time setup)
+  if (user && !user.onboarding_completed && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />;
+  }
+
   // Block unverified users — redirect to verify-email (disabled for now)
   // if (user && !user.is_verified && location.pathname !== '/select-plan') {
   //   return <Navigate to="/verify-email" replace />;

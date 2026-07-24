@@ -3,6 +3,25 @@ import api, { wsUrl } from './api';
 export const awsService = {
   testConnection: async () => (await api.get(wsUrl('/aws/test-connection'))).data,
 
+  // ── ECS / Fargate ─────────────────────────────────────────────────────────
+  listEcsClusters: async () => (await api.get(wsUrl('/aws/ecs/clusters'))).data,
+  listEcsServices: async (cluster) => (await api.get(wsUrl(`/aws/ecs/clusters/${cluster}/services`))).data,
+  listEcsTasks: async (cluster) => (await api.get(wsUrl(`/aws/ecs/clusters/${cluster}/tasks`))).data,
+  scaleEcsService: async (cluster, service, desired_count) =>
+    (await api.post(wsUrl(`/aws/ecs/clusters/${cluster}/services/${service}/scale`), { desired_count })).data,
+  stopEcsTask: async (cluster, taskId) =>
+    (await api.post(wsUrl(`/aws/ecs/clusters/${cluster}/tasks/${taskId}/stop`))).data,
+
+  // ── DynamoDB ──────────────────────────────────────────────────────────────
+  listDynamoTables: async () => (await api.get(wsUrl('/aws/dynamodb/tables'))).data,
+
+  // ── CloudFront ────────────────────────────────────────────────────────────
+  listCloudFront: async () => (await api.get(wsUrl('/aws/cloudfront/distributions'))).data,
+
+  // ── Route 53 ──────────────────────────────────────────────────────────────
+  listRoute53Zones: async () => (await api.get(wsUrl('/aws/route53/zones'))).data,
+  listRoute53Records: async (zoneId) => (await api.get(wsUrl(`/aws/route53/zones/${zoneId}/records`))).data,
+
   // Overview
   getOverview: async () => (await api.get(wsUrl('/aws/overview'))).data,
 
@@ -16,13 +35,22 @@ export const awsService = {
   listAMIs: async (search = '') => (await api.get(wsUrl('/aws/ec2/amis'), { params: { search } })).data,
   listInstanceTypes: async () => (await api.get(wsUrl('/aws/ec2/instance-types'))).data,
   listKeyPairs: async () => (await api.get(wsUrl('/aws/ec2/key-pairs'))).data,
-  listSecurityGroups: async () => (await api.get(wsUrl('/aws/ec2/security-groups'))).data,
-  listSubnets: async () => (await api.get(wsUrl('/aws/ec2/subnets'))).data,
+  listSecurityGroups: async (vpc_id) => (await api.get(wsUrl('/aws/ec2/security-groups'), { params: vpc_id ? { vpc_id } : {} })).data,
+  listSubnets: async (vpc_id) => (await api.get(wsUrl('/aws/ec2/subnets'), { params: vpc_id ? { vpc_id } : {} })).data,
   listAvailabilityZones: async () => (await api.get(wsUrl('/aws/ec2/availability-zones'))).data,
 
   // VPC
   listVPCs: async () => (await api.get(wsUrl('/aws/ec2/vpcs'))).data,
   createVPC: async (data) => (await api.post(wsUrl('/aws/ec2/vpcs'), data)).data,
+
+  // VPC Subnets
+  createVPCSubnet: async (vpcId, data) => (await api.post(wsUrl(`/aws/ec2/vpcs/${vpcId}/subnets`), data)).data,
+  deleteVPCSubnet: async (vpcId, subnetId) => (await api.delete(wsUrl(`/aws/ec2/vpcs/${vpcId}/subnets/${subnetId}`))).data,
+
+  // VPC Peering
+  createVPCPeering: async (vpcId, data) => (await api.post(wsUrl(`/aws/ec2/vpcs/${vpcId}/peerings`), data)).data,
+  acceptVPCPeering: async (peeringId) => (await api.post(wsUrl(`/aws/ec2/vpcs/peerings/${peeringId}/accept`))).data,
+  deleteVPCPeering: async (peeringId) => (await api.delete(wsUrl(`/aws/ec2/vpcs/peerings/${peeringId}`))).data,
 
   // S3
   listS3Buckets: async () => (await api.get(wsUrl('/aws/s3/buckets'))).data,
@@ -41,6 +69,13 @@ export const awsService = {
   createLambdaFunction: async (data) => (await api.post(wsUrl('/aws/lambda/functions'), data)).data,
   listIAMRoles: async (service = 'lambda') => (await api.get(wsUrl('/aws/iam/roles'), { params: { service } })).data,
 
+  // Detail
+  getEC2InstanceDetail: async (instanceId) => (await api.get(wsUrl(`/aws/ec2/instances/${instanceId}`))).data,
+  getVPCDetail: async (vpcId) => (await api.get(wsUrl(`/aws/ec2/vpcs/${vpcId}`))).data,
+  getS3BucketDetail: async (bucketName) => (await api.get(wsUrl(`/aws/s3/buckets/${encodeURIComponent(bucketName)}`))).data,
+  getRDSInstanceDetail: async (dbInstanceId) => (await api.get(wsUrl(`/aws/rds/instances/${dbInstanceId}`))).data,
+  getLambdaFunctionDetail: async (functionName) => (await api.get(wsUrl(`/aws/lambda/functions/${encodeURIComponent(functionName)}`))).data,
+
   // Delete
   deleteEC2Instance: async (instanceId) => (await api.delete(wsUrl(`/aws/ec2/instances/${instanceId}`))).data,
   deleteS3Bucket: async (bucketName) => (await api.delete(wsUrl(`/aws/s3/buckets/${bucketName}`))).data,
@@ -51,6 +86,24 @@ export const awsService = {
   // Costs
   getCosts: async (startDate, endDate, granularity = 'DAILY') =>
     (await api.get(wsUrl('/aws/costs'), { params: { start_date: startDate, end_date: endDate, granularity } })).data,
+
+  // Metrics
+  getMetrics: async () => (await api.get(wsUrl('/aws/metrics'))).data,
+
+  // Backup — EBS Snapshots
+  listSnapshots: (instanceId) =>
+    api.get(wsUrl('/aws/backups/snapshots'), instanceId ? { params: { instance_id: instanceId } } : {}).then(r => r.data),
+  createSnapshot: (data) => api.post(wsUrl('/aws/backups/snapshots'), data).then(r => r.data),
+  deleteSnapshot: (snapshotId) => api.delete(wsUrl(`/aws/backups/snapshots/${snapshotId}`)).then(r => r.data),
+
+  // Backup — AMIs
+  listOwnedAMIs: () => api.get(wsUrl('/aws/backups/amis')).then(r => r.data),
+  createOwnedAMI: (data) => api.post(wsUrl('/aws/backups/amis'), data).then(r => r.data),
+
+  // Advisor (Trusted Advisor + Compute Optimizer + Cost Explorer)
+  getAdvisorSummary: () => api.get(wsUrl('/aws/advisor/summary')).then(r => r.data),
+  getAdvisorRecommendations: (category) =>
+    api.get(wsUrl('/aws/advisor/recommendations'), { params: category ? { category } : {} }).then(r => r.data),
 };
 
 export default awsService;

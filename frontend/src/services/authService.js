@@ -16,14 +16,14 @@ const authService = {
     return data;
   },
 
-  refreshToken: async (refreshToken) => {
-    const { data } = await api.post('/auth/refresh', { refresh_token: refreshToken });
+  refreshToken: async () => {
+    const { data } = await api.post('/auth/refresh', {});
     return data;
   },
 
-  logoutServer: async (refreshToken) => {
+  logoutServer: async () => {
     try {
-      await api.post('/auth/logout', { refresh_token: refreshToken });
+      await api.post('/auth/logout', {});
     } catch {
       // Ignore — token may already be expired/revoked
     }
@@ -62,14 +62,84 @@ const authService = {
     return data;
   },
 
-  // OAuth
-  googleCallback: async (code, redirectUri) => {
-    const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri });
+  // MFA
+  verifyMFA: async (mfaToken, otp) => {
+    const { data } = await api.post('/auth/mfa/verify', { mfa_token: mfaToken, otp });
     return data;
   },
 
-  githubCallback: async (code) => {
-    const { data } = await api.post('/auth/github/callback', { code });
+  resendMFA: async (mfaToken) => {
+    const { data } = await api.post('/auth/mfa/resend', { mfa_token: mfaToken });
+    return data;
+  },
+
+  toggleMFA: async (enabled, password) => {
+    const { data } = await api.put('/auth/me/mfa', { enabled, password });
+    return data;
+  },
+
+  markOnboardingComplete: async () => {
+    const { data } = await api.put('/auth/me', { onboarding_completed: true });
+    return data;
+  },
+
+  updateCompanyInfo: async (payload) => {
+    const { data } = await api.put('/auth/me/company-info', payload);
+    return data;
+  },
+
+  validateCnpj: async (cnpj) => {
+    const digits = cnpj.replace(/\D/g, '');
+    const { data } = await api.get(`/auth/cnpj/${digits}`);
+    return data;
+  },
+
+  // Password reset
+  forgotPassword: async (email) => {
+    const { data } = await api.post('/auth/forgot-password', { email });
+    return data;
+  },
+
+  resetPassword: async (token, newPassword) => {
+    const { data } = await api.post('/auth/reset-password', { token, new_password: newPassword });
+    return data;
+  },
+
+  // Termos de uso
+  acceptTerms: async () => {
+    const { data } = await api.post('/auth/terms/accept');
+    return data;
+  },
+
+  // OAuth
+  createOAuthState: async (provider) => {
+    const { data } = await api.post('/auth/oauth/state', { provider });
+    return data.state;
+  },
+
+  googleCallback: async (code, redirectUri, state) => {
+    const { data } = await api.post('/auth/google/callback', { code, redirect_uri: redirectUri, state });
+    return data;
+  },
+
+  githubCallback: async (code, state) => {
+    const { data } = await api.post('/auth/github/callback', { code, state });
+    return data;
+  },
+
+  microsoftCallback: async (code, redirectUri, state) => {
+    const { data } = await api.post('/auth/microsoft/callback', { code, redirect_uri: redirectUri, state });
+    return data;
+  },
+
+  // LGPD
+  exportMyData: async () => {
+    const { data } = await api.get('/auth/me/export');
+    return data;
+  },
+
+  deleteAccount: async (password) => {
+    const { data } = await api.delete('/auth/me/account', { data: { password } });
     return data;
   },
 };

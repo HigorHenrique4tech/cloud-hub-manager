@@ -1,78 +1,231 @@
+import { useState, useRef, useLayoutEffect } from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Server, Cloud, DollarSign, Settings, FileText, Building2, Layers, CreditCard } from 'lucide-react';
+import {
+  LayoutDashboard, DollarSign, Settings, FileText,
+  Building2, Layers, CreditCard, Zap, Clock, Network,
+  ShieldCheck, Bell, PackageSearch, GitPullRequestArrow, ChevronDown,
+  BookOpen, Boxes,
+} from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { AwsIcon, AzureIcon, GcpIcon, M365Icon } from '../common/CloudProviderIcons';
 import WorkspaceSwitcher from './WorkspaceSwitcher';
 import PermissionGate from '../common/PermissionGate';
+import { useOrgWorkspace } from '../../contexts/OrgWorkspaceContext';
+import { useAuth } from '../../contexts/AuthContext';
+import approvalService from '../../services/approvalService';
 
-const navItems = [
-  { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
-  { to: '/aws', label: 'AWS', icon: Server, permission: 'resources.view' },
-  { to: '/azure', label: 'Azure', icon: Cloud, permission: 'resources.view' },
-  { to: '/costs', label: 'Custos', icon: DollarSign, permission: 'costs.view' },
-  { to: '/logs', label: 'Logs', icon: FileText, permission: 'logs.view' },
-  { to: '/settings', label: 'Configurações', icon: Settings },
-];
+// ── Prefetch map: route → lazy import for preloading on hover ─────────────────
+const _prefetchMap = {
+  '/': () => import('../../pages/dashboard'),
+  '/aws': () => import('../../pages/aws/AwsOverview'),
+  '/azure': () => import('../../pages/azure/AzureOverview'),
+  '/gcp': () => import('../../pages/gcp/GcpOverview'),
+  '/m365': () => import('../../pages/m365/M365Dashboard'),
+  '/costs': () => import('../../pages/costs'),
+  '/finops': () => import('../../pages/FinOps'),
+  '/inventory': () => import('../../pages/Inventory'),
+  '/schedules': () => import('../../pages/Schedules'),
+  '/approvals': () => import('../../pages/ApprovalsPage'),
+  '/notifications': () => import('../../pages/NotificationChannels'),
+  '/logs': () => import('../../pages/logs'),
+  '/security/automation': () => import('../../pages/security/SecurityAutomation'),
+  '/billing': () => import('../../pages/Billing'),
+  '/org/settings': () => import('../../pages/OrgSettings'),
+  '/workspace/settings': () => import('../../pages/WorkspaceSettings'),
+  '/org/managed': () => import('../../pages/ManagedOrgsPage'),
+  '/admin': () => import('../../pages/AdminPanel'),
+  '/settings': () => import('../../pages/settings'),
+};
+const _prefetched = new Set();
+const prefetch = (to) => {
+  if (_prefetched.has(to)) return;
+  const loader = _prefetchMap[to];
+  if (loader) { _prefetched.add(to); loader(); }
+};
 
-const bottomItems = [
-  { to: '/billing', label: 'Faturamento', icon: CreditCard, permission: 'costs.view' },
-  { to: '/org/settings', label: 'Organização', icon: Building2 },
-  { to: '/workspace/settings', label: 'Workspace', icon: Layers },
-];
+// ── Sub-components ────────────────────────────────────────────────────────────
 
-const NavItem = ({ to, label, icon: Icon, end }) => (
+const NavItem = ({ to, label, icon: Icon, end, activeColor, badge }) => (
   <NavLink
     to={to}
     end={end}
-    className={({ isActive }) =>
-      `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-        isActive
-          ? 'bg-primary text-white'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100'
-      }`
-    }
+    onMouseEnter={() => prefetch(to)}
+    className={({ isActive }) => {
+      const base = 'flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors';
+      if (isActive) {
+        return `${base} ${activeColor ?? 'bg-primary/10 text-primary dark:text-primary-light'}`;
+      }
+      return `${base} text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100`;
+    }}
   >
     <Icon className="w-5 h-5 flex-shrink-0" />
-    {label}
+    <span className="flex-1">{label}</span>
+    {badge > 0 && (
+      <span aria-label={`${badge} pendentes`} className="ml-auto flex-shrink-0 min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-amber-500 dark:bg-amber-600 text-white text-[10px] font-bold">
+        {badge > 99 ? '99+' : badge}
+      </span>
+    )}
   </NavLink>
 );
 
-const Sidebar = () => {
+/** Collapsible section group. Persists open/closed state in localStorage. */
+const NavSection = ({ label, storageKey, children, defaultOpen = true }) => {
+  const [open, setOpen] = useState(() => {
+    try { return localStorage.getItem(storageKey) !== 'false'; } catch { return defaultOpen; }
+  });
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    try { localStorage.setItem(storageKey, String(next)); } catch { /* ignore */ }
+  };
+
   return (
-    <aside className="w-56 min-h-screen bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4 flex-shrink-0">
+    <div>
+      <button
+        onClick={toggle}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-widest text-gray-400 dark:text-gray-600 hover:text-gray-500 dark:hover:text-gray-500 select-none transition-colors"
+      >
+        {label}
+        <ChevronDown
+          size={12}
+          className={`transition-transform duration-200 ${open ? '' : '-rotate-90'}`}
+        />
+      </button>
+      {open && <div className="space-y-0.5">{children}</div>}
+    </div>
+  );
+};
+
+// ── Cloud active-state colors ─────────────────────────────────────────────────
+
+const CLOUD_ACTIVE = {
+  aws:  'bg-orange-500/10 text-orange-600 dark:text-orange-400',
+  azure: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+  gcp:  'bg-green-500/10 text-green-600 dark:text-green-400',
+  m365: 'bg-blue-600/10 text-blue-600 dark:text-blue-400',
+  k8s:  'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
+};
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
+const Sidebar = ({ mobileOpen, onClose }) => {
+  const { isMasterOrg, currentOrg } = useOrgWorkspace();
+  const { user } = useAuth();
+  const effectivePlan = currentOrg?.effective_plan || currentOrg?.plan_tier || 'free';
+  const isEnterprise = ['enterprise_e1', 'enterprise_e2', 'enterprise_e3', 'enterprise_migration'].includes(effectivePlan);
+
+  const navRef = useRef(null);
+  const scrollPos = useRef(0);
+  useLayoutEffect(() => {
+    if (navRef.current) navRef.current.scrollTop = scrollPos.current;
+  });
+
+  const pendingCountQ = useQuery({
+    queryKey: ['approvals-count'],
+    queryFn: approvalService.getCount,
+    refetchInterval: 60_000,
+    select: (d) => d?.pending ?? 0,
+  });
+
+  const pendingCount = pendingCountQ.data ?? 0;
+
+  return (
+    <aside aria-label="Menu principal" className={`w-56 h-full bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 flex flex-col pt-4 flex-shrink-0 transition-transform duration-200 ease-in-out fixed lg:static z-40 ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
       {/* Workspace switcher */}
       <WorkspaceSwitcher />
 
-      {/* Main navigation */}
-      <nav className="flex-1 px-2 space-y-1">
-        {navItems.map(({ to, label, icon, end, permission }) => {
-          const item = <NavItem key={to} to={to} label={label} icon={icon} end={end} />;
-          if (permission) {
-            return (
-              <PermissionGate key={to} permission={permission}>
-                {item}
-              </PermissionGate>
-            );
-          }
-          return item;
-        })}
+      {/* Main navigation — scrollable */}
+      <nav
+        ref={navRef}
+        onScroll={(e) => { scrollPos.current = e.currentTarget.scrollTop; }}
+        className="flex-1 px-2 overflow-y-auto"
+        aria-label="Navegação principal"
+      >
 
-        {/* Separator + settings links */}
-        <div className="pt-3 mt-3 border-t border-gray-200 dark:border-gray-700 space-y-1">
-          {bottomItems.map(({ to, label, icon, permission }) => {
-            const item = <NavItem key={to} to={to} label={label} icon={icon} />;
-            if (permission) {
-              return (
-                <PermissionGate key={to} permission={permission}>
-                  {item}
-                </PermissionGate>
-              );
-            }
-            return item;
-          })}
+        {/* Dashboard */}
+        <div className="mb-1">
+          <NavItem to="/" label="Dashboard" icon={LayoutDashboard} end />
         </div>
+
+        {/* ── Nuvem ── */}
+        <NavSection label="Nuvem" storageKey="sidebar-section-cloud">
+          <PermissionGate permission="resources.view">
+            <NavItem to="/aws"   label="AWS"   icon={AwsIcon}   activeColor={CLOUD_ACTIVE.aws} />
+          </PermissionGate>
+          <PermissionGate permission="resources.view">
+            <NavItem to="/azure" label="Azure" icon={AzureIcon} activeColor={CLOUD_ACTIVE.azure} />
+          </PermissionGate>
+          <PermissionGate permission="resources.view">
+            <NavItem to="/gcp"   label="GCP"   icon={GcpIcon}   activeColor={CLOUD_ACTIVE.gcp} />
+          </PermissionGate>
+          {isEnterprise && (
+            <NavItem to="/m365" label="Microsoft 365" icon={M365Icon} activeColor={CLOUD_ACTIVE.m365} />
+          )}
+          {isEnterprise && (
+            <PermissionGate permission="resources.view">
+              <NavItem to="/k8s" label="Kubernetes" icon={Boxes} activeColor={CLOUD_ACTIVE.k8s} />
+            </PermissionGate>
+          )}
+        </NavSection>
+
+        {/* ── Ferramentas ── */}
+        <NavSection label="Ferramentas" storageKey="sidebar-section-tools">
+          <PermissionGate permission="costs.view">
+            <NavItem to="/costs" label="Custos" icon={DollarSign} />
+          </PermissionGate>
+          <PermissionGate permission="finops.view">
+            <NavItem to="/finops" label="FinOps" icon={Zap} />
+          </PermissionGate>
+          <PermissionGate permission="resources.view">
+            <NavItem to="/inventory" label="Inventário" icon={PackageSearch} />
+          </PermissionGate>
+          <PermissionGate permission="resources.view">
+            <NavItem to="/schedules" label="Agendamentos" icon={Clock} />
+          </PermissionGate>
+          <PermissionGate permission="resources.manage">
+            <NavItem to="/approvals" label="Aprovações" icon={GitPullRequestArrow} badge={pendingCount} />
+          </PermissionGate>
+          <PermissionGate permission="webhooks.view">
+            <NavItem to="/notifications" label="Notificações" icon={Bell} />
+          </PermissionGate>
+          <PermissionGate permission="logs.view">
+            <NavItem to="/logs" label="Logs" icon={FileText} />
+          </PermissionGate>
+          <PermissionGate permission="resources.manage">
+            <NavItem to="/security/automation" label="Segurança" icon={ShieldCheck} />
+          </PermissionGate>
+          <NavItem to="/knowledge" label="Base de Conhecimento" icon={BookOpen} />
+        </NavSection>
+
+        {/* ── Conta / Org ── */}
+        <NavSection label="Conta" storageKey="sidebar-section-account" defaultOpen={false}>
+          <PermissionGate permission="costs.view">
+            <NavItem to="/billing" label="Faturamento" icon={CreditCard} />
+          </PermissionGate>
+          {['owner', 'admin', 'billing'].includes(currentOrg?.role) && (
+            <NavItem to="/org/settings" label="Organização" icon={Building2} />
+          )}
+          {['owner', 'admin'].includes(currentOrg?.role) && (
+            <NavItem to="/workspace/settings" label="Workspace" icon={Layers} />
+          )}
+          {isEnterprise && isMasterOrg && (
+            <NavItem to="/org/managed" label="Orgs Gerenciadas" icon={Network} />
+          )}
+          {user?.is_admin && (
+            <NavItem to="/admin" label="Admin" icon={ShieldCheck} />
+          )}
+        </NavSection>
       </nav>
 
-      <div className="px-4 py-3 border-t border-gray-200 dark:border-gray-700">
-        <p className="text-xs text-gray-400 dark:text-gray-500">v0.3.0</p>
+      {/* Configurações — pinned at the very bottom */}
+      <div className="px-2 pt-1 border-t border-gray-200 dark:border-gray-700">
+        <NavItem to="/settings" label="Configurações" icon={Settings} />
+      </div>
+
+      <div className="px-4 py-2">
+        <p className="text-xs text-gray-400 dark:text-gray-500">v1.0.0</p>
       </div>
     </aside>
   );

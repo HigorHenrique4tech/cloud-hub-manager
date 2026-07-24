@@ -65,3 +65,34 @@ export const formatInstanceType = (type) => {
   if (!type) return 'N/A';
   return type.toUpperCase();
 };
+
+// Format USD currency
+export const fmtUSD = (v) =>
+  v == null ? '—' : `$${Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+// Format BRL currency
+export const fmtBRL = (v) =>
+  v == null ? '—' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+// Format cost in the org's preferred currency
+export const fmtCurrency = (v, currency = 'USD', rate = null) => {
+  if (v == null) return '—';
+  if (currency === 'BRL' && rate) {
+    return fmtBRL(Number(v) * rate);
+  }
+  return fmtUSD(v);
+};
+
+// Estimate reading time in minutes based on word count (~200 wpm).
+// Strips markdown noise lightly before counting.
+export const estimateReadingTime = (markdown) => {
+  if (!markdown) return 1;
+  const text = String(markdown)
+    .replace(/```[\s\S]*?```/g, ' ')
+    .replace(/`[^`]*`/g, ' ')
+    .replace(/!\[.*?\]\(.*?\)/g, ' ')
+    .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+    .replace(/[#>*_~\-]/g, ' ');
+  const words = text.split(/\s+/).filter(Boolean).length;
+  return Math.max(1, Math.ceil(words / 200));
+};
