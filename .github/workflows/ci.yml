@@ -1,0 +1,133 @@
+name: CI
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Pipeline de Integração Contínua do CloudAtlas.
+#
+# Roda a cada PR e push em dev/main. Replica, num ambiente limpo, os 4 lugares
+# onde o projeto quebra: testes backend, migrations, build do frontend e build
+# da imagem Docker. Cada job existe por causa de um bug real já vivido.
+#
+# Jobs BLOQUEANTES (falha = PR não faz merge, se branch protection estiver ativo):
+#   - backend-tests   : suíte pytest (128 verdes)
+#   - migrations      : alembic upgrade head num Postgres LIMPO + cabeça única
+#   - frontend-build  : vite build
+#   - docker-build    : build da imagem do backend (pega CRLF/entrypoint/deps)
+#
+# Jobs INFORMATIVOS (continue-on-error — não bloqueiam ainda):
+#   - frontend-quality: eslint + vitest (promover a bloqueante após configurar
+#                       o ambiente jsdom do vitest e zerar os warnings do eslint)
+# ─────────────────────────────────────────────────────────────────────────────
+
+on:
+  pull_request:
+    branches: [dev, main]
+  push:
+    branches: [dev, main]
+
+# Cancela execuções antigas do mesmo PR/branch quando um novo push chega.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Testes do backend (pytest, SQLite in-memory via conftest) ───────────────
+  backend-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"   # mesma versão do container (3.14 quebra wheels)
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Instalar dependências
+        run: pip install -r backend/requirements.txt
+      - name: pytest
+        working-directory: backend
+        run: pytest -q --tb=short
+
+  # ── Migrations num Postgres limpo (pega o crash-loop de migration) ──────────
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ca
+          POSTGRES_PASSWORD: ca
+          POSTGRES_DB: ca_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DEBUG: "True"
+      SECRET_KEY: "ci-secret-key-not-used-in-prod"
+      DATABASE_URL: "postgresql://ca:ca@localhost:5432/ca_test"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Instalar dependências
+        run: pip install -r backend/requirements.txt
+      - name: Cadeia Alembic deve ter uma única cabeça
+        working-directory: backend
+        run: |
+          alembic heads
+          count=$(alembic heads | grep -cE '\S')
+          echo "cabeças encontradas: $count"
+          test "$count" -eq 1
+      - name: Migrar do zero (alembic upgrade head)
+        working-directory: backend
+        run: alembic upgrade head
+
+  # ── Build do frontend (pega erros de import/JSX) ────────────────────────────
+  frontend-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependências
+        working-directory: frontend
+        run: npm ci
+      - name: vite build
+        working-directory: frontend
+        run: npm run build
+
+  # ── Build da imagem Docker do backend (pega CRLF no entrypoint, deps) ───────
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: docker build (backend)
+        run: docker build -t cloudatlas-backend:ci ./backend
+
+  # ── Qualidade do frontend (informativo — não bloqueia por enquanto) ─────────
+  frontend-quality:
+    runs-on: ubuntu-latest
+    continue-on-error: true   # TODO: remover quando vitest (jsdom) + eslint estiverem verdes
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Instalar dependências
+        working-directory: frontend
+        run: npm ci
+      - name: eslint
+        working-directory: frontend
+        run: npm run lint
+      - name: vitest
+        working-directory: frontend
+        run: npm test
