@@ -171,8 +171,8 @@ def _install_fake_containerservice():
         def list(self):
             return [_MC()]
 
-        def list_cluster_user_credentials(self, rg, name):
-            assert rg == "rg-prod" and name == "aks-prod"
+        def list_cluster_user_credentials(self, resource_group_name, resource_name):
+            assert resource_group_name == "rg-prod" and resource_name == "aks-prod"
             return _Creds()
 
     class ContainerServiceClient:
