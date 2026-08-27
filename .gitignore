@@ -54,10 +54,8 @@ build/
 .env.*.local
 *.key
 *.pem
-# Documentation / internal .md files (keep README.md tracked)
-*.md
-!README.md
-docs/
+# Documentação: markdown é PERMITIDO por padrão (repo público informativo).
+# Documentos internos ficam ignorados individualmente na seção abaixo.
 
 # Docker
 .dockerignore
@@ -80,12 +78,28 @@ coverage/
 # OS
 Thumbs.db
 
+# ── Documentos internos (não versionar em repo público) ──────────────────────
+PROJETO.md
 tutorialgdap.md
 ONBOARDING.md
 APRESENTACAO_PARCEIROS_ENTERPRISE.md
+featuresfuturas.md
+docs/APRESENTACAO_PARCEIROS_ENTERPRISE.md
+
+# ── Config local de ferramentas (expõe caminhos da máquina do dev) ───────────
 settings.local.json
-docker-compose.yml
-.env.example
+.claude/settings.local.json
+
+# ── Infra de produção: revela topologia/hosts/portas — manter fora do público ─
+Caddyfile.monitoring
+nginx-monitoring.conf
+CADDY-SETUP.md
+NGINX-SETUP.md
+
+# ── Assinaturas de e-mail: contêm dados pessoais (nome, celular, e-mail) ─────
+landingpage/email-signature.html
+landingpage/email-signature-capture.html
+landingpage/email-signature.png
 
 # Pentest internal docs (não versionar — relatórios contêm contexto sensível)
 implementação pentest/

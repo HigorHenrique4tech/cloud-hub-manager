@@ -1,0 +1,94 @@
+CloudAtlas — Licença Proprietária
+Copyright (c) 2026 Higor Henrique. Todos os direitos reservados.
+All rights reserved.
+
+================================================================================
+PORTUGUÊS
+================================================================================
+
+1. AVISO
+
+Este código-fonte é software proprietário. Ele é disponibilizado publicamente
+EXCLUSIVAMENTE para fins de transparência técnica, avaliação e demonstração de
+capacidade de engenharia.
+
+A publicação deste repositório NÃO constitui, sob nenhuma hipótese, uma licença
+de código aberto (open source) nem uma renúncia a quaisquer direitos autorais,
+marcas ou segredos de negócio do titular.
+
+2. DIREITOS CONCEDIDOS
+
+É permitido, sem necessidade de autorização prévia:
+
+  a) visualizar e ler o código-fonte;
+  b) citar trechos com atribuição, para fins educacionais, jornalísticos,
+     acadêmicos ou de pesquisa em segurança.
+
+3. RESTRIÇÕES
+
+É EXPRESSAMENTE VEDADO, sem autorização prévia e por escrito do titular:
+
+  a) usar o software, no todo ou em parte, para qualquer finalidade comercial
+     ou privada, inclusive uso interno em organização;
+  b) copiar, reproduzir ou armazenar o software fora da consulta ao repositório;
+  c) modificar o software ou criar trabalhos derivados;
+  d) redistribuir, sublicenciar, vender, alugar ou de qualquer forma
+     disponibilizar o software a terceiros;
+  e) operar o software, ou qualquer derivação, como serviço hospedado,
+     gerenciado ou SaaS, gratuito ou remunerado;
+  f) remover, ocultar ou alterar avisos de copyright, marca ou autoria;
+  g) usar as marcas, nomes comerciais, logotipos ou identidade visual
+     "CloudAtlas" e "Atlas".
+
+4. AUSÊNCIA DE GARANTIA
+
+O SOFTWARE É FORNECIDO "NO ESTADO EM QUE SE ENCONTRA", SEM GARANTIA DE QUALQUER
+NATUREZA, EXPRESSA OU IMPLÍCITA, INCLUINDO MAS NÃO SE LIMITANDO ÀS GARANTIAS DE
+COMERCIALIZAÇÃO, ADEQUAÇÃO A UMA FINALIDADE ESPECÍFICA E NÃO VIOLAÇÃO. EM
+NENHUMA HIPÓTESE O TITULAR SERÁ RESPONSÁVEL POR QUAISQUER REIVINDICAÇÕES, DANOS
+OU OUTRAS RESPONSABILIDADES DECORRENTES DO SOFTWARE OU DE SEU USO.
+
+5. LICENCIAMENTO COMERCIAL
+
+Para uso comercial, avaliação sob contrato, licenciamento ou parceria, entre em
+contato: contato@cloudatlas.app.br
+
+6. COMPONENTES DE TERCEIROS
+
+Este projeto depende de bibliotecas de terceiros, cada uma sujeita à sua própria
+licença. Esta licença aplica-se apenas ao código original deste repositório e
+não altera os termos aplicáveis a tais dependências.
+
+7. LEI APLICÁVEL
+
+Esta licença é regida pelas leis da República Federativa do Brasil, em especial
+pela Lei nº 9.610/1998 (Direitos Autorais) e pela Lei nº 9.609/1998 (Programa de
+Computador). Fica eleito o foro da comarca de São Paulo/SP.
+
+================================================================================
+ENGLISH (informative translation — the Portuguese text prevails)
+================================================================================
+
+This source code is proprietary software, published solely for technical
+transparency, evaluation, and demonstration purposes. Publication does NOT
+constitute an open source license or a waiver of any copyright, trademark, or
+trade secret rights.
+
+PERMITTED: viewing and reading the source code; quoting excerpts with
+attribution for educational, journalistic, academic, or security research
+purposes.
+
+PROHIBITED without prior written permission: commercial or private use
+(including internal organizational use); copying or reproduction; modification
+or derivative works; redistribution, sublicensing, sale, or rental; operating
+the software or any derivative as a hosted, managed, or SaaS offering; removing
+or altering copyright and authorship notices; use of the "CloudAtlas" and
+"Atlas" trademarks, trade names, logos, or visual identity.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY ARISING FROM THE SOFTWARE OR ITS USE.
+
+Commercial licensing inquiries: contato@cloudatlas.app.br
+
+Governed by the laws of the Federative Republic of Brazil.

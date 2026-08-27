@@ -6,7 +6,7 @@
 ![Frontend](https://img.shields.io/badge/Frontend-React%2018%20%7C%20Vite-61DAFB)
 ![Banco](https://img.shields.io/badge/DB-PostgreSQL%2016-336791)
 ![Infra](https://img.shields.io/badge/Infra-Docker%20Compose-2496ED)
-![Licença](https://img.shields.io/badge/Licen%C3%A7a-MIT-green)
+![Licença](https://img.shields.io/badge/Licen%C3%A7a-Propriet%C3%A1ria-red)
 
 ---
 
@@ -840,8 +840,9 @@ apscheduler_jobs           ← Jobstore do APScheduler
 
 ## Roadmap
 
-### Em produção (beta desde 2026-05-14)
-- Plataforma em uso por cliente enterprise em período de avaliação de 30 dias
+### Status
+
+Plataforma em **beta**, em operação desde maio de 2026.
 
 ### Concluído recentemente
 - [x] Dashboard customizável com drag-and-drop e persistência por usuário
@@ -882,15 +883,23 @@ apscheduler_jobs           ← Jobstore do APScheduler
 - [x] Logs — filtro de status, debounce no campo de e-mail, linha expansível com payload
 - [x] RBAC — logs restritos a Owner/Admin; exclusão de workspace exclusiva do Owner
 - [x] Segurança — frontend e backend de permissões sincronizados (PermissionGate)
+- [x] Kubernetes — gestão agentless multi-cloud de clusters (AKS, EKS, GKE e on-premises)
+- [x] AWS — ECS/Fargate, DynamoDB, CloudFront e Route 53
+- [x] Azure — Container Registry (ACR) e Function Apps (start/stop/restart)
+- [x] Base de conhecimento — artigos em markdown e vídeos tutoriais
+- [x] Multi-moeda — exibição em BRL/USD com câmbio automático via API do Banco Central
+- [x] White label — identidade visual por organização (logo, cores, e-mails e relatórios)
+- [x] Testes automatizados de backend — suíte `pytest` (128 testes) verde
+- [x] CI/CD — GitHub Actions: testes, migrations em Postgres limpo, build do frontend e da imagem Docker
 
 ### Próximos — Alta Prioridade
-- [ ] AWS — ECS/EKS, DynamoDB, CloudFront, Route 53, API Gateway, SNS/SQS
-- [ ] Azure — AKS, Container Registry, API Management, Service Bus, Function Apps
+- [ ] AWS — API Gateway, SNS/SQS
+- [ ] Azure — API Management, Service Bus
 - [ ] GCP — Cloud Run, BigQuery, Pub/Sub, Firestore, Cloud Armor
 - [ ] M365 — Intune (dispositivos gerenciados e políticas de conformidade)
 - [ ] M365 — Defender for M365 (alertas e incidents via Graph Security API)
 - [ ] FinOps — Reserved Instance advisor + Spot recommendations + Azure Reservations
-- [ ] Testes automatizados (`pytest` backend + `vitest` + Playwright E2E)
+- [ ] Testes de frontend (`vitest`) e E2E (Playwright) — hoje o CI roda o job, mas a suíte ainda está vazia
 
 ### Próximos — Média Prioridade
 - [ ] Motor de automação visual (workflows if/then multi-cloud)
@@ -902,10 +911,14 @@ apscheduler_jobs           ← Jobstore do APScheduler
 - [ ] M365 — Calendários e salas via Graph API
 - [ ] Retentativa automática de webhooks (backoff exponencial)
 
-> Roadmap completo com detalhes técnicos em [`featuresfuturas.md`](./featuresfuturas.md)
-
 ---
 
 ## Licença
 
-MIT License
+**Software proprietário — todos os direitos reservados.** Ver [`LICENSE`](./LICENSE).
+
+Este repositório é público para fins de **transparência técnica e avaliação**.
+Isso não o torna open source: uso, cópia, modificação, redistribuição e operação
+como serviço dependem de autorização prévia por escrito.
+
+Interessado em usar o CloudAtlas ou licenciá-lo? → **contato@cloudatlas.app.br**
